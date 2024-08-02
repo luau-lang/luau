@@ -41,7 +41,15 @@ static IrOp builtinLoadDouble(IrBuilder& build, IrOp arg)
 
 // (number, ...) -> number
 static BuiltinImplResult translateBuiltinNumberToNumber(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+    IrBuilder& build,
+    LuauBuiltinFunction bfid,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    int nresults,
+    int pcpos
+)
 {
     CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
 
@@ -59,7 +67,14 @@ static BuiltinImplResult translateBuiltinNumberToNumber(
 }
 
 static BuiltinImplResult translateBuiltinNumberToNumberLibm(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, int nresults, int pcpos)
+    IrBuilder& build,
+    LuauBuiltinFunction bfid,
+    int nparams,
+    int ra,
+    int arg,
+    int nresults,
+    int pcpos
+)
 {
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -78,7 +93,15 @@ static BuiltinImplResult translateBuiltinNumberToNumberLibm(
 }
 
 static BuiltinImplResult translateBuiltin2NumberToNumberLibm(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+    IrBuilder& build,
+    LuauBuiltinFunction bfid,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    int nresults,
+    int pcpos
+)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -104,7 +127,15 @@ static BuiltinImplResult translateBuiltin2NumberToNumberLibm(
 
 // (number, ...) -> (number, number)
 static BuiltinImplResult translateBuiltinNumberTo2Number(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+    IrBuilder& build,
+    LuauBuiltinFunction bfid,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    int nresults,
+    int pcpos
+)
 {
     if (nparams < 1 || nresults > 2)
         return {BuiltinImplType::None, -1};
@@ -114,8 +145,15 @@ static BuiltinImplResult translateBuiltinNumberTo2Number(
     if (FFlag::LuauCodegenFastcall3)
         build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), build.constInt(nresults == 1 ? 1 : 2));
     else
-        build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), build.undef(), build.constInt(1),
-            build.constInt(nresults == 1 ? 1 : 2));
+        build.inst(
+            IrCmd::FASTCALL,
+            build.constUint(bfid),
+            build.vmReg(ra),
+            build.vmReg(arg),
+            build.undef(),
+            build.constInt(1),
+            build.constInt(nresults == 1 ? 1 : 2)
+        );
 
     return {BuiltinImplType::Full, 2};
 }
@@ -195,7 +233,16 @@ static BuiltinImplResult translateBuiltinMathLog(IrBuilder& build, int nparams, 
 }
 
 static BuiltinImplResult translateBuiltinMathMinMax(
-    IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
+    IrBuilder& build,
+    IrCmd cmd,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos
+)
 {
     if (nparams < 2 || nparams > kMinMaxUnrolledParams || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -235,7 +282,16 @@ static BuiltinImplResult translateBuiltinMathMinMax(
 }
 
 static BuiltinImplResult translateBuiltinMathClamp(
-    IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    IrOp fallback,
+    int pcpos
+)
 {
     if (nparams < 3 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -312,7 +368,17 @@ static BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, i
 }
 
 static BuiltinImplResult translateBuiltinBit32BinaryOp(
-    IrBuilder& build, IrCmd cmd, bool btest, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
+    IrBuilder& build,
+    IrCmd cmd,
+    bool btest,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos
+)
 {
     if (nparams < 2 || nparams > kBit32BinaryOpUnrolledParams || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -401,7 +467,16 @@ static BuiltinImplResult translateBuiltinBit32Bnot(IrBuilder& build, int nparams
 }
 
 static BuiltinImplResult translateBuiltinBit32Shift(
-    IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build,
+    IrCmd cmd,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    int nresults,
+    IrOp fallback,
+    int pcpos
+)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -467,7 +542,16 @@ static BuiltinImplResult translateBuiltinBit32Rotate(IrBuilder& build, IrCmd cmd
 }
 
 static BuiltinImplResult translateBuiltinBit32Extract(
-    IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    IrOp fallback,
+    int pcpos
+)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -605,7 +689,16 @@ static BuiltinImplResult translateBuiltinBit32Unary(IrBuilder& build, IrCmd cmd,
 }
 
 static BuiltinImplResult translateBuiltinBit32Replace(
-    IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    IrOp fallback,
+    int pcpos
+)
 {
     if (nparams < 3 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -755,7 +848,16 @@ static BuiltinImplResult translateBuiltinStringLen(IrBuilder& build, int nparams
 }
 
 static void translateBufferArgsAndCheckBounds(
-    IrBuilder& build, int nparams, int arg, IrOp args, IrOp arg3, int size, int pcpos, IrOp& buf, IrOp& intIndex)
+    IrBuilder& build,
+    int nparams,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int size,
+    int pcpos,
+    IrOp& buf,
+    IrOp& intIndex
+)
 {
     build.loadAndCheckTag(build.vmReg(arg), LUA_TBUFFER, build.vmExit(pcpos));
     builtinCheckDouble(build, args, pcpos);
@@ -772,7 +874,18 @@ static void translateBufferArgsAndCheckBounds(
 }
 
 static BuiltinImplResult translateBuiltinBufferRead(
-    IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos, IrCmd readCmd, int size, IrCmd convCmd)
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos,
+    IrCmd readCmd,
+    int size,
+    IrCmd convCmd
+)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -788,7 +901,18 @@ static BuiltinImplResult translateBuiltinBufferRead(
 }
 
 static BuiltinImplResult translateBuiltinBufferWrite(
-    IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos, IrCmd writeCmd, int size, IrCmd convCmd)
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos,
+    IrCmd writeCmd,
+    int size,
+    IrCmd convCmd
+)
 {
     if (nparams < 3 || nresults > 0)
         return {BuiltinImplType::None, -1};
@@ -803,7 +927,17 @@ static BuiltinImplResult translateBuiltinBufferWrite(
 }
 
 BuiltinImplResult translateBuiltin(
-    IrBuilder& build, int bfid, int ra, int arg, IrOp args, IrOp arg3, int nparams, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build,
+    int bfid,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nparams,
+    int nresults,
+    IrOp fallback,
+    int pcpos
+)
 {
     // Builtins are not allowed to handle variadic arguments
     if (nparams == LUA_MULTRET)

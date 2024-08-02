@@ -11,7 +11,6 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(DebugLuauSharedSelf);
 
 using namespace Luau;
 
@@ -369,26 +368,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
         end
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
-
-    CheckResult result = check(R"(
-        local x = {}
-        function x:id(x) return x end
-        function x:f(): string return self:id("hello") end
-        function x:g(): number return self:id(37) end
-    )");
-
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-    {
-        // TODO: Quantification should be doing the conversion, not normalization.
-        LUAU_REQUIRE_ERRORS(result);
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
@@ -802,8 +781,10 @@ local d: D = c
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]),
-        R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
+    CHECK_EQ(
+        toString(result.errors[0]),
+        R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_functions_dont_cache_type_parameters")
@@ -847,7 +828,8 @@ y.a.c = y
     if (FFlag::DebugLuauDeferredConstraintResolution)
         CHECK(
             toString(result.errors.at(0)) ==
-            R"(Type '{ a: { c: nil, d: number }, b: number }' could not be converted into 'T<number>'; type { a: { c: nil, d: number }, b: number }[read "a"][read "c"] (nil) is not exactly T<number>[read "a"][read "c"][0] (T<number>))");
+            R"(Type '{ a: { c: nil, d: number }, b: number }' could not be converted into 'T<number>'; type { a: { c: nil, d: number }, b: number }[read "a"][read "c"] (nil) is not exactly T<number>[read "a"][read "c"][0] (T<number>))"
+        );
     else
     {
         const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
@@ -1154,9 +1136,14 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
     else
         CHECK_EQ("*error-type*", toString(*t0));
 
-    auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
-        return get<OccursCheckFailed>(err);
-    });
+    auto it = std::find_if(
+        result.errors.begin(),
+        result.errors.end(),
+        [](TypeError& err)
+        {
+            return get<OccursCheckFailed>(err);
+        }
+    );
     CHECK(it != result.errors.end());
 }
 
@@ -1173,11 +1160,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
             return sum(2, 3, function<T>(a: T, b: T): add<T> return a + b end)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        InternalError* ie = get<InternalError>(result.errors[0]);
-        REQUIRE(ie);
-        CHECK_EQ("Type inference failed to complete, you may see some confusing types and type errors.", ie->message);
+        LUAU_REQUIRE_NO_ERRORS(result);
     }
     else
     {
@@ -1280,11 +1263,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
             local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        InternalError* ie = get<InternalError>(result.errors[0]);
-        REQUIRE(ie);
-        CHECK_EQ("Type inference failed to complete, you may see some confusing types and type errors.", ie->message);
+        LUAU_REQUIRE_NO_ERRORS(result);
     }
     else
     {

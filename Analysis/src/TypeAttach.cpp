@@ -166,7 +166,8 @@ public:
             }
 
             return allocator->alloc<AstTypeReference>(
-                Location(), std::nullopt, AstName(ttv.name->c_str()), std::nullopt, Location(), parameters.size != 0, parameters);
+                Location(), std::nullopt, AstName(ttv.name->c_str()), std::nullopt, Location(), parameters.size != 0, parameters
+            );
         }
 
         if (hasSeen(&ttv))
@@ -319,7 +320,8 @@ public:
             retTailAnnotation = rehydrate(*retTail);
 
         return allocator->alloc<AstTypeFunction>(
-            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation});
+            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
+        );
     }
     AstType* operator()(const Unifiable::Error&)
     {
@@ -328,7 +330,8 @@ public:
     AstType* operator()(const GenericType& gtv)
     {
         return allocator->alloc<AstTypeReference>(
-            Location(), std::nullopt, AstName(getName(allocator, syntheticNames, gtv)), std::nullopt, Location());
+            Location(), std::nullopt, AstName(getName(allocator, syntheticNames, gtv)), std::nullopt, Location()
+        );
     }
     AstType* operator()(const Unifiable::Bound<TypeId>& bound)
     {

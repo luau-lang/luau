@@ -22,8 +22,18 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 {
     AstStatBlock* root = parse(code);
     dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
-    cg = std::make_unique<ConstraintGenerator>(mainModule, NotNull{&normalizer}, NotNull(&moduleResolver), builtinTypes, NotNull(&ice),
-        frontend.globals.globalScope, /*prepareModuleScope*/ nullptr, &logger, NotNull{dfg.get()}, std::vector<RequireCycle>());
+    cg = std::make_unique<ConstraintGenerator>(
+        mainModule,
+        NotNull{&normalizer},
+        NotNull(&moduleResolver),
+        builtinTypes,
+        NotNull(&ice),
+        frontend.globals.globalScope,
+        /*prepareModuleScope*/ nullptr,
+        &logger,
+        NotNull{dfg.get()},
+        std::vector<RequireCycle>()
+    );
     cg->visitModuleRoot(root);
     rootScope = cg->rootScope;
     constraints = Luau::borrowConstraints(cg->constraints);

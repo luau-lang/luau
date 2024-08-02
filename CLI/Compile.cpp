@@ -108,7 +108,11 @@ static void reportError(const char* name, const Luau::CompileError& error)
 }
 
 static std::string getCodegenAssembly(
-    const char* name, const std::string& bytecode, Luau::CodeGen::AssemblyOptions options, Luau::CodeGen::LoweringStats* stats)
+    const char* name,
+    const std::string& bytecode,
+    Luau::CodeGen::AssemblyOptions options,
+    Luau::CodeGen::LoweringStats* stats
+)
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
@@ -326,8 +330,10 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
 
         if (format == CompileFormat::Text)
         {
-            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
-                             Luau::BytecodeBuilder::Dump_Remarks | Luau::BytecodeBuilder::Dump_Types);
+            bcb.setDumpFlags(
+                Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
+                Luau::BytecodeBuilder::Dump_Remarks | Luau::BytecodeBuilder::Dump_Types
+            );
             bcb.setDumpSource(*source);
         }
         else if (format == CompileFormat::Remarks)
@@ -335,11 +341,12 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
-        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
-                 format == CompileFormat::CodegenVerbose)
+        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr || format == CompileFormat::CodegenVerbose)
         {
-            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
-                             Luau::BytecodeBuilder::Dump_Remarks);
+            bcb.setDumpFlags(
+                Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
+                Luau::BytecodeBuilder::Dump_Remarks
+            );
             bcb.setDumpSource(*source);
         }
 
@@ -623,19 +630,37 @@ int main(int argc, char** argv)
 
     if (compileFormat == CompileFormat::Null)
     {
-        printf("Compiled %d KLOC into %d KB bytecode (read %.2fs, parse %.2fs, compile %.2fs)\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
-            stats.readTime, stats.parseTime, stats.compileTime);
+        printf(
+            "Compiled %d KLOC into %d KB bytecode (read %.2fs, parse %.2fs, compile %.2fs)\n",
+            int(stats.lines / 1000),
+            int(stats.bytecode / 1024),
+            stats.readTime,
+            stats.parseTime,
+            stats.compileTime
+        );
     }
     else if (compileFormat == CompileFormat::CodegenNull)
     {
-        printf("Compiled %d KLOC into %d KB bytecode => %d KB native code (%.2fx) (read %.2fs, parse %.2fs, compile %.2fs, codegen %.2fs)\n",
-            int(stats.lines / 1000), int(stats.bytecode / 1024), int(stats.codegen / 1024),
-            stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode), stats.readTime, stats.parseTime, stats.compileTime,
-            stats.codegenTime);
+        printf(
+            "Compiled %d KLOC into %d KB bytecode => %d KB native code (%.2fx) (read %.2fs, parse %.2fs, compile %.2fs, codegen %.2fs)\n",
+            int(stats.lines / 1000),
+            int(stats.bytecode / 1024),
+            int(stats.codegen / 1024),
+            stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode),
+            stats.readTime,
+            stats.parseTime,
+            stats.compileTime,
+            stats.codegenTime
+        );
 
-        printf("Lowering: regalloc failed: %d, lowering failed %d; spills to stack: %d, spills to restore: %d, max spill slot %u\n",
-            stats.lowerStats.regAllocErrors, stats.lowerStats.loweringErrors, stats.lowerStats.spillsToSlot, stats.lowerStats.spillsToRestore,
-            stats.lowerStats.maxSpillSlotsUsed);
+        printf(
+            "Lowering: regalloc failed: %d, lowering failed %d; spills to stack: %d, spills to restore: %d, max spill slot %u\n",
+            stats.lowerStats.regAllocErrors,
+            stats.lowerStats.loweringErrors,
+            stats.lowerStats.spillsToSlot,
+            stats.lowerStats.spillsToRestore,
+            stats.lowerStats.maxSpillSlotsUsed
+        );
     }
 
     if (recordStats != RecordStats::None)

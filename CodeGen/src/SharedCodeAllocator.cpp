@@ -40,8 +40,12 @@ struct NativeProtoBytecodeIdLess
     }
 };
 
-NativeModule::NativeModule(SharedCodeAllocator* allocator, const std::optional<ModuleId>& moduleId, const uint8_t* moduleBaseAddress,
-    std::vector<NativeProtoExecDataPtr> nativeProtos) noexcept
+NativeModule::NativeModule(
+    SharedCodeAllocator* allocator,
+    const std::optional<ModuleId>& moduleId,
+    const uint8_t* moduleBaseAddress,
+    std::vector<NativeProtoExecDataPtr> nativeProtos
+) noexcept
     : allocator{allocator}
     , moduleId{moduleId}
     , moduleBaseAddress{moduleBaseAddress}
@@ -62,7 +66,8 @@ NativeModule::NativeModule(SharedCodeAllocator* allocator, const std::optional<M
 
     // We should not have two NativeProtos for the same bytecode id:
     CODEGEN_ASSERT(
-        std::adjacent_find(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdEqual{}) == this->nativeProtos.end());
+        std::adjacent_find(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdEqual{}) == this->nativeProtos.end()
+    );
 }
 
 NativeModule::~NativeModule() noexcept
@@ -216,8 +221,14 @@ SharedCodeAllocator::~SharedCodeAllocator() noexcept
     return tryGetNativeModuleWithLockHeld(moduleId);
 }
 
-std::pair<NativeModuleRef, bool> SharedCodeAllocator::getOrInsertNativeModule(const ModuleId& moduleId,
-    std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+std::pair<NativeModuleRef, bool> SharedCodeAllocator::getOrInsertNativeModule(
+    const ModuleId& moduleId,
+    std::vector<NativeProtoExecDataPtr> nativeProtos,
+    const uint8_t* data,
+    size_t dataSize,
+    const uint8_t* code,
+    size_t codeSize
+)
 {
     std::unique_lock lock{mutex};
 
@@ -239,7 +250,12 @@ std::pair<NativeModuleRef, bool> SharedCodeAllocator::getOrInsertNativeModule(co
 }
 
 NativeModuleRef SharedCodeAllocator::insertAnonymousNativeModule(
-    std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+    std::vector<NativeProtoExecDataPtr> nativeProtos,
+    const uint8_t* data,
+    size_t dataSize,
+    const uint8_t* code,
+    size_t codeSize
+)
 {
     std::unique_lock lock{mutex};
 

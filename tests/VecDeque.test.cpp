@@ -294,14 +294,16 @@ const static std::string testStringSet[2][10] = {
 
     // This list of non-SSO test strings consists of quotes from Ursula K. Le Guin.
     {"Love doesn't just sit there, like a stone, it has to be made, like bread; remade all the time, made new.",
-        "People who deny the existence of dragons are often eaten by dragons. From within.",
-        "It is good to have an end to journey toward; but it is the journey that matters, in the end.",
-        "We're each of us alone, to be sure. What can you do but hold your hand out in the dark?", "When you light a candle, you also cast a shadow.",
-        "You cannot buy the revolution. You cannot make the revolution. You can only be the revolution. It is in your spirit, or it is nowhere.",
-        "To learn which questions are unanswerable, and not to answer them: this skill is most needful in times of stress and darkness.",
-        "What sane person could live in this world and not be crazy?",
-        "The only thing that makes life possible is permanent, intolerable uncertainty: not knowing what comes next.",
-        "My imagination makes me human and makes me a fool; it gives me all the world and exiles me from it."}};
+     "People who deny the existence of dragons are often eaten by dragons. From within.",
+     "It is good to have an end to journey toward; but it is the journey that matters, in the end.",
+     "We're each of us alone, to be sure. What can you do but hold your hand out in the dark?",
+     "When you light a candle, you also cast a shadow.",
+     "You cannot buy the revolution. You cannot make the revolution. You can only be the revolution. It is in your spirit, or it is nowhere.",
+     "To learn which questions are unanswerable, and not to answer them: this skill is most needful in times of stress and darkness.",
+     "What sane person could live in this world and not be crazy?",
+     "The only thing that makes life possible is permanent, intolerable uncertainty: not knowing what comes next.",
+     "My imagination makes me human and makes me a fool; it gives me all the world and exiles me from it."}
+};
 
 TEST_CASE("string_queue_test_no_initial_capacity")
 {

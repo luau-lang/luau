@@ -42,8 +42,12 @@ class SharedCodeAllocator;
 class NativeModule
 {
 public:
-    NativeModule(SharedCodeAllocator* allocator, const std::optional<ModuleId>& moduleId, const uint8_t* moduleBaseAddress,
-        std::vector<NativeProtoExecDataPtr> nativeProtos) noexcept;
+    NativeModule(
+        SharedCodeAllocator* allocator,
+        const std::optional<ModuleId>& moduleId,
+        const uint8_t* moduleBaseAddress,
+        std::vector<NativeProtoExecDataPtr> nativeProtos
+    ) noexcept;
 
     NativeModule(const NativeModule&) = delete;
     NativeModule(NativeModule&&) = delete;
@@ -132,11 +136,22 @@ public:
     // data and code such that it can be executed).  Like std::map::insert, the
     // bool result is true if a new module was created; false if an existing
     // module is being returned.
-    std::pair<NativeModuleRef, bool> getOrInsertNativeModule(const ModuleId& moduleId, std::vector<NativeProtoExecDataPtr> nativeProtos,
-        const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize);
+    std::pair<NativeModuleRef, bool> getOrInsertNativeModule(
+        const ModuleId& moduleId,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize
+    );
 
     NativeModuleRef insertAnonymousNativeModule(
-        std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize);
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize
+    );
 
     // If a NativeModule exists for the given ModuleId and that NativeModule
     // is no longer referenced, the NativeModule is destroyed.  This should

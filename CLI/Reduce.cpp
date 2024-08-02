@@ -184,7 +184,8 @@ struct Reducer
     {
         std::vector<AstStat*> result;
 
-        auto append = [&](AstStatBlock* block) {
+        auto append = [&](AstStatBlock* block)
+        {
             if (block)
                 result.insert(result.end(), block->body.data, block->body.data + block->body.size);
         };
@@ -250,7 +251,8 @@ struct Reducer
 
         std::vector<std::pair<Span, Span>> result;
 
-        auto append = [&result](Span a, Span b) {
+        auto append = [&result](Span a, Span b)
+        {
             if (a.first == a.second && b.first == b.second)
                 return;
             else

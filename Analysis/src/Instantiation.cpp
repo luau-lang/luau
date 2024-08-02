@@ -102,8 +102,15 @@ TypePackId Instantiation::clean(TypePackId tp)
     return tp;
 }
 
-void ReplaceGenerics::resetState(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope,
-    const std::vector<TypeId>& generics, const std::vector<TypePackId>& genericPacks)
+void ReplaceGenerics::resetState(
+    const TxnLog* log,
+    TypeArena* arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeLevel level,
+    Scope* scope,
+    const std::vector<TypeId>& generics,
+    const std::vector<TypePackId>& genericPacks
+)
 {
     LUAU_ASSERT(FFlag::LuauReusableSubstitutions);
 
@@ -187,7 +194,12 @@ TypePackId ReplaceGenerics::clean(TypePackId tp)
 }
 
 std::optional<TypeId> instantiate(
-    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<TypeCheckLimits> limits, NotNull<Scope> scope, TypeId ty)
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena,
+    NotNull<TypeCheckLimits> limits,
+    NotNull<Scope> scope,
+    TypeId ty
+)
 {
     ty = follow(ty);
 

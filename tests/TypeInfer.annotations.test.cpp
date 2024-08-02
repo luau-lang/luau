@@ -228,14 +228,17 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(result.errors[0] == TypeError{
-                                  Location{{1, 17}, {1, 28}},
-                                  getMainSourceModule()->name,
-                                  UnknownSymbol{
-                                      "IDoNotExist",
-                                      UnknownSymbol::Context::Type,
-                                  },
-                              });
+    CHECK(
+        result.errors[0] ==
+        TypeError{
+            Location{{1, 17}, {1, 28}},
+            getMainSourceModule()->name,
+            UnknownSymbol{
+                "IDoNotExist",
+                UnknownSymbol::Context::Type,
+            },
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_variable_type_annotation_should_return_its_type")
@@ -267,8 +270,9 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         CHECK("nil" == toString(requireType("b")));
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(result.errors[0] ==
-              (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{builtinTypes->nilType, builtinTypes->numberType}}));
+        CHECK(
+            result.errors[0] == (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{builtinTypes->nilType, builtinTypes->numberType}})
+        );
     }
     else
     {
@@ -276,8 +280,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(result.errors[0],
-            (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+        CHECK_EQ(
+            result.errors[0],
+            (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}})
+        );
     }
 }
 
@@ -749,7 +755,8 @@ struct AssertionCatcher
     {
         tripped = 0;
         oldhook = Luau::assertHandler();
-        Luau::assertHandler() = [](const char* expr, const char* file, int line, const char* function) -> int {
+        Luau::assertHandler() = [](const char* expr, const char* file, int line, const char* function) -> int
+        {
             ++tripped;
             return 0;
         };
@@ -773,10 +780,12 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
 
     AssertionCatcher ac;
 
-    CHECK_THROWS_AS(check(R"(
+    CHECK_THROWS_AS(
+        check(R"(
         local a: _luau_ice = 55
     )"),
-        InternalCompilerError);
+        InternalCompilerError
+    );
 
     LUAU_ASSERT(1 == AssertionCatcher::tripped);
 }
@@ -787,14 +796,17 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
 
     bool caught = false;
 
-    frontend.iceHandler.onInternalError = [&](const char*) {
+    frontend.iceHandler.onInternalError = [&](const char*)
+    {
         caught = true;
     };
 
-    CHECK_THROWS_AS(check(R"(
+    CHECK_THROWS_AS(
+        check(R"(
         local a: _luau_ice = 55
     )"),
-        InternalCompilerError);
+        InternalCompilerError
+    );
 
     CHECK_EQ(true, caught);
 }
@@ -813,9 +825,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
 {
     static std::vector<std::string> output;
     output.clear();
-    Luau::setPrintLine([](const std::string& s) {
-        output.push_back(s);
-    });
+    Luau::setPrintLine(
+        [](const std::string& s)
+        {
+            output.push_back(s);
+        }
+    );
 
     ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 

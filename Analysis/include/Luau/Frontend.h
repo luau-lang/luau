@@ -185,30 +185,55 @@ struct Frontend
     void registerBuiltinDefinition(const std::string& name, std::function<void(Frontend&, GlobalTypes&, ScopePtr)>);
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
-    LoadDefinitionFileResult loadDefinitionFile(GlobalTypes& globals, ScopePtr targetScope, std::string_view source, const std::string& packageName,
-        bool captureComments, bool typeCheckForAutocomplete = false);
+    LoadDefinitionFileResult loadDefinitionFile(
+        GlobalTypes& globals,
+        ScopePtr targetScope,
+        std::string_view source,
+        const std::string& packageName,
+        bool captureComments,
+        bool typeCheckForAutocomplete = false
+    );
 
     // Batch module checking. Queue modules and check them together, retrieve results with 'getCheckResult'
     // If provided, 'executeTask' function is allowed to call the 'task' function on any thread and return without waiting for 'task' to complete
     void queueModuleCheck(const std::vector<ModuleName>& names);
     void queueModuleCheck(const ModuleName& name);
-    std::vector<ModuleName> checkQueuedModules(std::optional<FrontendOptions> optionOverride = {},
-        std::function<void(std::function<void()> task)> executeTask = {}, std::function<bool(size_t done, size_t total)> progress = {});
+    std::vector<ModuleName> checkQueuedModules(
+        std::optional<FrontendOptions> optionOverride = {},
+        std::function<void(std::function<void()> task)> executeTask = {},
+        std::function<bool(size_t done, size_t total)> progress = {}
+    );
 
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
 
 private:
-    ModulePtr check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, std::optional<ScopePtr> environmentScope,
-        bool forAutocomplete, bool recordJsonLog, TypeCheckLimits typeCheckLimits);
+    ModulePtr check(
+        const SourceModule& sourceModule,
+        Mode mode,
+        std::vector<RequireCycle> requireCycles,
+        std::optional<ScopePtr> environmentScope,
+        bool forAutocomplete,
+        bool recordJsonLog,
+        TypeCheckLimits typeCheckLimits
+    );
 
     std::pair<SourceNode*, SourceModule*> getSourceNode(const ModuleName& name);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 
     bool parseGraph(
-        std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete, std::function<bool(const ModuleName&)> canSkip = {});
+        std::vector<ModuleName>& buildQueue,
+        const ModuleName& root,
+        bool forAutocomplete,
+        std::function<bool(const ModuleName&)> canSkip = {}
+    );
 
-    void addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vector<ModuleName>& buildQueue, bool cycleDetected,
-        DenseHashSet<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions);
+    void addBuildQueueItems(
+        std::vector<BuildQueueItem>& items,
+        std::vector<ModuleName>& buildQueue,
+        bool cycleDetected,
+        DenseHashSet<Luau::ModuleName>& seen,
+        const FrontendOptions& frontendOptions
+    );
     void checkBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);
@@ -248,14 +273,34 @@ public:
     std::vector<ModuleName> moduleQueue;
 };
 
-ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
-    TypeCheckLimits limits);
+ModulePtr check(
+    const SourceModule& sourceModule,
+    Mode mode,
+    const std::vector<RequireCycle>& requireCycles,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> iceHandler,
+    NotNull<ModuleResolver> moduleResolver,
+    NotNull<FileResolver> fileResolver,
+    const ScopePtr& globalScope,
+    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
+    FrontendOptions options,
+    TypeCheckLimits limits
+);
 
-ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
-    TypeCheckLimits limits, bool recordJsonLog, std::function<void(const ModuleName&, std::string)> writeJsonLog);
+ModulePtr check(
+    const SourceModule& sourceModule,
+    Mode mode,
+    const std::vector<RequireCycle>& requireCycles,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> iceHandler,
+    NotNull<ModuleResolver> moduleResolver,
+    NotNull<FileResolver> fileResolver,
+    const ScopePtr& globalScope,
+    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
+    FrontendOptions options,
+    TypeCheckLimits limits,
+    bool recordJsonLog,
+    std::function<void(const ModuleName&, std::string)> writeJsonLog
+);
 
 } // namespace Luau

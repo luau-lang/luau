@@ -182,8 +182,14 @@ struct DifferFixtureGeneric : BaseFixture
         compareNe(left, std::nullopt, right, std::nullopt, expectedMessage, multiLine);
     }
 
-    void compareNe(TypeId left, std::optional<std::string> symbolLeft, TypeId right, std::optional<std::string> symbolRight,
-        const std::string& expectedMessage, bool multiLine)
+    void compareNe(
+        TypeId left,
+        std::optional<std::string> symbolLeft,
+        TypeId right,
+        std::optional<std::string> symbolRight,
+        const std::string& expectedMessage,
+        bool multiLine
+    )
     {
         DifferResult diffRes = diffWithSymbols(left, right, symbolLeft, symbolRight);
         REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
@@ -191,18 +197,25 @@ struct DifferFixtureGeneric : BaseFixture
         CHECK_EQ(expectedMessage, diffMessage);
     }
 
-    void compareTypesNe(const std::string& leftSymbol, const std::string& rightSymbol, const std::string& expectedMessage, bool forwardSymbol = false,
-        bool multiLine = false)
+    void compareTypesNe(
+        const std::string& leftSymbol,
+        const std::string& rightSymbol,
+        const std::string& expectedMessage,
+        bool forwardSymbol = false,
+        bool multiLine = false
+    )
     {
         if (forwardSymbol)
         {
             compareNe(
-                BaseFixture::requireType(leftSymbol), leftSymbol, BaseFixture::requireType(rightSymbol), rightSymbol, expectedMessage, multiLine);
+                BaseFixture::requireType(leftSymbol), leftSymbol, BaseFixture::requireType(rightSymbol), rightSymbol, expectedMessage, multiLine
+            );
         }
         else
         {
             compareNe(
-                BaseFixture::requireType(leftSymbol), std::nullopt, BaseFixture::requireType(rightSymbol), std::nullopt, expectedMessage, multiLine);
+                BaseFixture::requireType(leftSymbol), std::nullopt, BaseFixture::requireType(rightSymbol), std::nullopt, expectedMessage, multiLine
+            );
         }
     }
 

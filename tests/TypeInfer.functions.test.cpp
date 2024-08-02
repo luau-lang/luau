@@ -17,7 +17,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 LUAU_FASTINT(LuauTarjanChildLimit);
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
@@ -88,10 +87,16 @@ TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
     }
     else
     {
-        CHECK_EQ(result.errors[0], (TypeError{Location{Position{3, 16}, Position{3, 20}}, TypeMismatch{
-                                                                                              builtinTypes->numberType,
-                                                                                              builtinTypes->booleanType,
-                                                                                          }}));
+        CHECK_EQ(
+            result.errors[0],
+            (TypeError{
+                Location{Position{3, 16}, Position{3, 20}},
+                TypeMismatch{
+                    builtinTypes->numberType,
+                    builtinTypes->booleanType,
+                }
+            })
+        );
     }
 }
 
@@ -109,11 +114,17 @@ TEST_CASE_FIXTURE(Fixture, "cannot_hoist_interior_defns_into_signature")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(result.errors[0] == TypeError{Location{{1, 28}, {1, 29}}, getMainSourceModule()->name,
-                                  UnknownSymbol{
-                                      "T",
-                                      UnknownSymbol::Context::Type,
-                                  }});
+    CHECK(
+        result.errors[0] ==
+        TypeError{
+            Location{{1, 28}, {1, 29}},
+            getMainSourceModule()->name,
+            UnknownSymbol{
+                "T",
+                UnknownSymbol::Context::Type,
+            }
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_type")
@@ -931,15 +942,27 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{3, 12}, Position{3, 18}}, TypeMismatch{
-                                                                                          builtinTypes->numberType,
-                                                                                          builtinTypes->stringType,
-                                                                                      }}));
+    CHECK_EQ(
+        result.errors[0],
+        (TypeError{
+            Location{Position{3, 12}, Position{3, 18}},
+            TypeMismatch{
+                builtinTypes->numberType,
+                builtinTypes->stringType,
+            }
+        })
+    );
 
-    CHECK_EQ(result.errors[1], (TypeError{Location{Position{3, 20}, Position{3, 23}}, TypeMismatch{
-                                                                                          builtinTypes->stringType,
-                                                                                          builtinTypes->numberType,
-                                                                                      }}));
+    CHECK_EQ(
+        result.errors[1],
+        (TypeError{
+            Location{Position{3, 20}, Position{3, 23}},
+            TypeMismatch{
+                builtinTypes->stringType,
+                builtinTypes->numberType,
+            }
+        })
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
@@ -1218,7 +1241,7 @@ caused by:
     else
     {
         expected = R"(Type
-    '(number, number, a) -> number'
+    '(number, number, *error-type*) -> number'
 could not be converted into
     '(number, number) -> number'
 caused by:
@@ -1651,13 +1674,15 @@ function t:b() return 2 end -- not OK
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type
+    CHECK_EQ(
+        R"(Type
     '(*error-type*) -> number'
 could not be converted into
     '() -> number'
 caused by:
   Argument count mismatch. Function expects 1 argument, but none are specified)",
-        toString(result.errors[0]));
+        toString(result.errors[0])
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
@@ -2049,10 +2074,6 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
-    };
-
     CheckResult result = check(R"(
         local function foo<a>(x: a, y: a?)
             return x
@@ -2105,8 +2126,6 @@ Table type '{ x: number }' not compatible with type 'vec2' because the former is
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible_2")
 {
-    ScopedFastFlag sff{FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true};
-
     CheckResult result = check(R"(
         local function f<a>(x: a, y: a): a
             return if math.random() > 0.5 then x else y
@@ -2298,14 +2317,22 @@ end
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(4, result);
-        CHECK(toString(result.errors[0]) ==
-              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
-        CHECK(toString(result.errors[1]) ==
-              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
-        CHECK(toString(result.errors[2]) ==
-              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
-        CHECK(toString(result.errors[3]) ==
-              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
+        CHECK(
+            toString(result.errors[0]) ==
+            "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub"
+        );
+        CHECK(
+            toString(result.errors[1]) ==
+            "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub"
+        );
+        CHECK(
+            toString(result.errors[2]) ==
+            "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub"
+        );
+        CHECK(
+            toString(result.errors[3]) ==
+            "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub"
+        );
     }
     else
     {

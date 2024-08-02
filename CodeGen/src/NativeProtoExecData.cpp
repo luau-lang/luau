@@ -42,7 +42,8 @@ void destroyNativeProtoExecData(const uint32_t* instructionOffsets) noexcept
 [[nodiscard]] const NativeProtoExecDataHeader& getNativeProtoExecDataHeader(const uint32_t* instructionOffsets) noexcept
 {
     return *reinterpret_cast<const NativeProtoExecDataHeader*>(
-        reinterpret_cast<const uint8_t*>(instructionOffsets) - sizeof(NativeProtoExecDataHeader));
+        reinterpret_cast<const uint8_t*>(instructionOffsets) - sizeof(NativeProtoExecDataHeader)
+    );
 }
 
 } // namespace CodeGen

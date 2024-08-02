@@ -24,7 +24,8 @@ bool occursCheck(TypeId needle, TypeId haystack)
     LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
     haystack = follow(haystack);
 
-    auto checkHaystack = [needle](TypeId haystack) {
+    auto checkHaystack = [needle](TypeId haystack)
+    {
         return occursCheck(needle, haystack);
     };
 
@@ -92,7 +93,12 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
 }
 
 std::optional<TypeId> findMetatableEntry(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location)
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId type,
+    const std::string& entry,
+    Location location
+)
 {
     type = follow(type);
 
@@ -120,13 +126,24 @@ std::optional<TypeId> findMetatableEntry(
 }
 
 std::optional<TypeId> findTablePropertyRespectingMeta(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location)
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId ty,
+    const std::string& name,
+    Location location
+)
 {
     return findTablePropertyRespectingMeta(builtinTypes, errors, ty, name, ValueContext::RValue, location);
 }
 
 std::optional<TypeId> findTablePropertyRespectingMeta(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, ValueContext context, Location location)
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId ty,
+    const std::string& name,
+    ValueContext context,
+    Location location
+)
 {
     if (get<AnyType>(ty))
         return ty;
@@ -217,7 +234,12 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
 }
 
 TypePack extendTypePack(
-    TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length, std::vector<std::optional<TypeId>> overrides)
+    TypeArena& arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypePackId pack,
+    size_t length,
+    std::vector<std::optional<TypeId>> overrides
+)
 {
     TypePack result;
 

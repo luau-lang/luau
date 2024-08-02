@@ -246,8 +246,12 @@ struct BuiltinVisitor : AstVisitor
 
     const CompileOptions& options;
 
-    BuiltinVisitor(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
-        const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options)
+    BuiltinVisitor(
+        DenseHashMap<AstExprCall*, int>& result,
+        const DenseHashMap<AstName, Global>& globals,
+        const DenseHashMap<AstLocal*, Variable>& variables,
+        const CompileOptions& options
+    )
         : result(result)
         , globals(globals)
         , variables(variables)
@@ -274,8 +278,13 @@ struct BuiltinVisitor : AstVisitor
     }
 };
 
-void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
-    const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options, AstNode* root)
+void analyzeBuiltins(
+    DenseHashMap<AstExprCall*, int>& result,
+    const DenseHashMap<AstName, Global>& globals,
+    const DenseHashMap<AstLocal*, Variable>& variables,
+    const CompileOptions& options,
+    AstNode* root
+)
 {
     BuiltinVisitor visitor{result, globals, variables, options};
     root->visit(&visitor);

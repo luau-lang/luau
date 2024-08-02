@@ -58,8 +58,10 @@ TEST_CASE_FIXTURE(Fixture, "tc_error")
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        CHECK_EQ(result.errors[0],
-            (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+        CHECK_EQ(
+            result.errors[0],
+            (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}})
+        );
     }
 }
 
@@ -76,10 +78,16 @@ TEST_CASE_FIXTURE(Fixture, "tc_error_2")
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 18}, Position{0, 22}}, TypeMismatch{
-                                                                                              requireType("a"),
-                                                                                              builtinTypes->stringType,
-                                                                                          }}));
+        CHECK_EQ(
+            result.errors[0],
+            (TypeError{
+                Location{Position{0, 18}, Position{0, 22}},
+                TypeMismatch{
+                    requireType("a"),
+                    builtinTypes->stringType,
+                }
+            })
+        );
     }
 }
 
@@ -732,9 +740,14 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
 
     CHECK_EQ("*error-type*", toString(*t0));
 
-    auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
-        return get<OccursCheckFailed>(err);
-    });
+    auto it = std::find_if(
+        result.errors.begin(),
+        result.errors.end(),
+        [](TypeError& err)
+        {
+            return get<OccursCheckFailed>(err);
+        }
+    );
     CHECK(it != result.errors.end());
 }
 

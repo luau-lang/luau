@@ -141,7 +141,8 @@ size_t editDistance(std::string_view a, std::string_view b)
     size_t maxDistance = a.size() + b.size();
 
     std::vector<size_t> distances((a.size() + 2) * (b.size() + 2), 0);
-    auto getPos = [b](size_t x, size_t y) -> size_t {
+    auto getPos = [b](size_t x, size_t y) -> size_t
+    {
         return (x * (b.size() + 2)) + y;
     };
 

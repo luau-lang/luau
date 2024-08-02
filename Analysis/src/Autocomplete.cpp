@@ -15,8 +15,8 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
-static const std::unordered_set<std::string> kStatementStartingKeywords = {
-    "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
+static const std::unordered_set<std::string> kStatementStartingKeywords =
+    {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
 namespace Luau
 {
@@ -161,7 +161,13 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 }
 
 static TypeCorrectKind checkTypeCorrectKind(
-    const Module& module, TypeArena* typeArena, NotNull<BuiltinTypes> builtinTypes, AstNode* node, Position position, TypeId ty)
+    const Module& module,
+    TypeArena* typeArena,
+    NotNull<BuiltinTypes> builtinTypes,
+    AstNode* node,
+    Position position,
+    TypeId ty
+)
 {
     ty = follow(ty);
 
@@ -176,7 +182,8 @@ static TypeCorrectKind checkTypeCorrectKind(
 
     TypeId expectedType = follow(*typeAtPosition);
 
-    auto checkFunctionType = [typeArena, builtinTypes, moduleScope, &expectedType](const FunctionType* ftv) {
+    auto checkFunctionType = [typeArena, builtinTypes, moduleScope, &expectedType](const FunctionType* ftv)
+    {
         if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
             return checkTypeMatch(*firstRetTy, expectedType, moduleScope, typeArena, builtinTypes);
 
@@ -209,9 +216,18 @@ enum class PropIndexType
     Key,
 };
 
-static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNull<BuiltinTypes> builtinTypes, TypeId rootTy, TypeId ty,
-    PropIndexType indexType, const std::vector<AstNode*>& nodes, AutocompleteEntryMap& result, std::unordered_set<TypeId>& seen,
-    std::optional<const ClassType*> containingClass = std::nullopt)
+static void autocompleteProps(
+    const Module& module,
+    TypeArena* typeArena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeId rootTy,
+    TypeId ty,
+    PropIndexType indexType,
+    const std::vector<AstNode*>& nodes,
+    AutocompleteEntryMap& result,
+    std::unordered_set<TypeId>& seen,
+    std::optional<const ClassType*> containingClass = std::nullopt
+)
 {
     rootTy = follow(rootTy);
     ty = follow(ty);
@@ -220,13 +236,15 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
         return;
     seen.insert(ty);
 
-    auto isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type) {
+    auto isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
+    {
         if (indexType == PropIndexType::Key)
             return false;
 
         bool calledWithSelf = indexType == PropIndexType::Colon;
 
-        auto isCompatibleCall = [typeArena, builtinTypes, &module, rootTy, calledWithSelf](const FunctionType* ftv) {
+        auto isCompatibleCall = [typeArena, builtinTypes, &module, rootTy, calledWithSelf](const FunctionType* ftv)
+        {
             // Strong match with definition is a success
             if (calledWithSelf == ftv->hasSelf)
                 return true;
@@ -265,7 +283,8 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
         return calledWithSelf;
     };
 
-    auto fillProps = [&](const ClassType::Props& props) {
+    auto fillProps = [&](const ClassType::Props& props)
+    {
         for (const auto& [name, prop] : props)
         {
             // We are walking up the class hierarchy, so if we encounter a property that we have
@@ -291,13 +310,26 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(type, nodes, typeCorrect);
 
-                result[name] = AutocompleteEntry{AutocompleteEntryKind::Property, type, prop.deprecated, isWrongIndexer(type), typeCorrect,
-                    containingClass, &prop, prop.documentationSymbol, {}, parens, {}, indexType == PropIndexType::Colon};
+                result[name] = AutocompleteEntry{
+                    AutocompleteEntryKind::Property,
+                    type,
+                    prop.deprecated,
+                    isWrongIndexer(type),
+                    typeCorrect,
+                    containingClass,
+                    &prop,
+                    prop.documentationSymbol,
+                    {},
+                    parens,
+                    {},
+                    indexType == PropIndexType::Colon
+                };
             }
         }
     };
 
-    auto fillMetatableProps = [&](const TableType* mtable) {
+    auto fillMetatableProps = [&](const TableType* mtable)
+    {
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
@@ -409,7 +441,11 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
 }
 
 static void autocompleteKeywords(
-    const SourceModule& sourceModule, const std::vector<AstNode*>& ancestry, Position position, AutocompleteEntryMap& result)
+    const SourceModule& sourceModule,
+    const std::vector<AstNode*>& ancestry,
+    Position position,
+    AutocompleteEntryMap& result
+)
 {
     LUAU_ASSERT(!ancestry.empty());
 
@@ -429,15 +465,28 @@ static void autocompleteKeywords(
     }
 }
 
-static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNull<BuiltinTypes> builtinTypes, TypeId ty, PropIndexType indexType,
-    const std::vector<AstNode*>& nodes, AutocompleteEntryMap& result)
+static void autocompleteProps(
+    const Module& module,
+    TypeArena* typeArena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeId ty,
+    PropIndexType indexType,
+    const std::vector<AstNode*>& nodes,
+    AutocompleteEntryMap& result
+)
 {
     std::unordered_set<TypeId> seen;
     autocompleteProps(module, typeArena, builtinTypes, ty, ty, indexType, nodes, result, seen);
 }
 
-AutocompleteEntryMap autocompleteProps(const Module& module, TypeArena* typeArena, NotNull<BuiltinTypes> builtinTypes, TypeId ty,
-    PropIndexType indexType, const std::vector<AstNode*>& nodes)
+AutocompleteEntryMap autocompleteProps(
+    const Module& module,
+    TypeArena* typeArena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeId ty,
+    PropIndexType indexType,
+    const std::vector<AstNode*>& nodes
+)
 {
     AutocompleteEntryMap result;
     autocompleteProps(module, typeArena, builtinTypes, ty, indexType, nodes, result);
@@ -472,7 +521,8 @@ static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node
             return;
     }
 
-    auto formatKey = [addQuotes](const std::string& key) {
+    auto formatKey = [addQuotes](const std::string& key)
+    {
         if (addQuotes)
             return "\"" + escape(key) + "\"";
 
@@ -705,9 +755,14 @@ static std::optional<bool> functionIsExpectedAt(const Module& module, AstNode* n
 
     if (const IntersectionType* itv = get<IntersectionType>(expectedType))
     {
-        return std::all_of(begin(itv->parts), end(itv->parts), [](auto&& ty) {
-            return get<FunctionType>(Luau::follow(ty)) != nullptr;
-        });
+        return std::all_of(
+            begin(itv->parts),
+            end(itv->parts),
+            [](auto&& ty)
+            {
+                return get<FunctionType>(Luau::follow(ty)) != nullptr;
+            }
+        );
     }
 
     if (const UnionType* utv = get<UnionType>(expectedType))
@@ -727,15 +782,31 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
         for (const auto& [name, ty] : scope->exportedTypeBindings)
         {
             if (!result.count(name))
-                result[name] = AutocompleteEntry{AutocompleteEntryKind::Type, ty.type, false, false, TypeCorrectKind::None, std::nullopt,
-                    std::nullopt, ty.type->documentationSymbol};
+                result[name] = AutocompleteEntry{
+                    AutocompleteEntryKind::Type,
+                    ty.type,
+                    false,
+                    false,
+                    TypeCorrectKind::None,
+                    std::nullopt,
+                    std::nullopt,
+                    ty.type->documentationSymbol
+                };
         }
 
         for (const auto& [name, ty] : scope->privateTypeBindings)
         {
             if (!result.count(name))
-                result[name] = AutocompleteEntry{AutocompleteEntryKind::Type, ty.type, false, false, TypeCorrectKind::None, std::nullopt,
-                    std::nullopt, ty.type->documentationSymbol};
+                result[name] = AutocompleteEntry{
+                    AutocompleteEntryKind::Type,
+                    ty.type,
+                    false,
+                    false,
+                    TypeCorrectKind::None,
+                    std::nullopt,
+                    std::nullopt,
+                    ty.type->documentationSymbol
+                };
         }
 
         for (const auto& [name, _] : scope->importedTypeBindings)
@@ -825,7 +896,8 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
     else if (AstExprFunction* node = parent->as<AstExprFunction>())
     {
         // For lookup inside expected function type if that's available
-        auto tryGetExpectedFunctionType = [](const Module& module, AstExpr* expr) -> const FunctionType* {
+        auto tryGetExpectedFunctionType = [](const Module& module, AstExpr* expr) -> const FunctionType*
+        {
             auto it = module.astExpectedTypes.find(expr);
 
             if (!it)
@@ -1029,7 +1101,11 @@ static bool isBindingLegalAtCurrentPosition(const Symbol& symbol, const Binding&
 }
 
 static AutocompleteEntryMap autocompleteStatement(
-    const SourceModule& sourceModule, const Module& module, const std::vector<AstNode*>& ancestry, Position position)
+    const SourceModule& sourceModule,
+    const Module& module,
+    const std::vector<AstNode*>& ancestry,
+    Position position
+)
 {
     // This is inefficient. :(
     ScopePtr scope = findScopeAtPosition(module, position);
@@ -1051,8 +1127,18 @@ static AutocompleteEntryMap autocompleteStatement(
 
             std::string n = toString(name);
             if (!result.count(n))
-                result[n] = {AutocompleteEntryKind::Binding, binding.typeId, binding.deprecated, false, TypeCorrectKind::None, std::nullopt,
-                    std::nullopt, binding.documentationSymbol, {}, getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)};
+                result[n] = {
+                    AutocompleteEntryKind::Binding,
+                    binding.typeId,
+                    binding.deprecated,
+                    false,
+                    TypeCorrectKind::None,
+                    std::nullopt,
+                    std::nullopt,
+                    binding.documentationSymbol,
+                    {},
+                    getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)
+                };
         }
 
         scope = scope->parent;
@@ -1122,7 +1208,11 @@ static AutocompleteEntryMap autocompleteStatement(
 
 // Returns true iff `node` was handled by this function (completions, if any, are returned in `outResult`)
 static bool autocompleteIfElseExpression(
-    const AstNode* node, const std::vector<AstNode*>& ancestry, const Position& position, AutocompleteEntryMap& outResult)
+    const AstNode* node,
+    const std::vector<AstNode*>& ancestry,
+    const Position& position,
+    AutocompleteEntryMap& outResult
+)
 {
     AstNode* parent = ancestry.size() >= 2 ? ancestry.rbegin()[1] : nullptr;
     if (!parent)
@@ -1161,8 +1251,15 @@ static bool autocompleteIfElseExpression(
     }
 }
 
-static AutocompleteContext autocompleteExpression(const SourceModule& sourceModule, const Module& module, NotNull<BuiltinTypes> builtinTypes,
-    TypeArena* typeArena, const std::vector<AstNode*>& ancestry, Position position, AutocompleteEntryMap& result)
+static AutocompleteContext autocompleteExpression(
+    const SourceModule& sourceModule,
+    const Module& module,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeArena* typeArena,
+    const std::vector<AstNode*>& ancestry,
+    Position position,
+    AutocompleteEntryMap& result
+)
 {
     LUAU_ASSERT(!ancestry.empty());
 
@@ -1197,8 +1294,18 @@ static AutocompleteContext autocompleteExpression(const SourceModule& sourceModu
                 {
                     TypeCorrectKind typeCorrect = checkTypeCorrectKind(module, typeArena, builtinTypes, node, position, binding.typeId);
 
-                    result[n] = {AutocompleteEntryKind::Binding, binding.typeId, binding.deprecated, false, typeCorrect, std::nullopt, std::nullopt,
-                        binding.documentationSymbol, {}, getParenRecommendation(binding.typeId, ancestry, typeCorrect)};
+                    result[n] = {
+                        AutocompleteEntryKind::Binding,
+                        binding.typeId,
+                        binding.deprecated,
+                        false,
+                        typeCorrect,
+                        std::nullopt,
+                        std::nullopt,
+                        binding.documentationSymbol,
+                        {},
+                        getParenRecommendation(binding.typeId, ancestry, typeCorrect)
+                    };
                 }
             }
 
@@ -1225,8 +1332,14 @@ static AutocompleteContext autocompleteExpression(const SourceModule& sourceModu
     return AutocompleteContext::Expression;
 }
 
-static AutocompleteResult autocompleteExpression(const SourceModule& sourceModule, const Module& module, NotNull<BuiltinTypes> builtinTypes,
-    TypeArena* typeArena, const std::vector<AstNode*>& ancestry, Position position)
+static AutocompleteResult autocompleteExpression(
+    const SourceModule& sourceModule,
+    const Module& module,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeArena* typeArena,
+    const std::vector<AstNode*>& ancestry,
+    Position position
+)
 {
     AutocompleteEntryMap result;
     AutocompleteContext context = autocompleteExpression(sourceModule, module, builtinTypes, typeArena, ancestry, position, result);
@@ -1312,8 +1425,13 @@ static std::optional<std::string> getStringContents(const AstNode* node)
     }
 }
 
-static std::optional<AutocompleteEntryMap> autocompleteStringParams(const SourceModule& sourceModule, const ModulePtr& module,
-    const std::vector<AstNode*>& nodes, Position position, StringCompletionCallback callback)
+static std::optional<AutocompleteEntryMap> autocompleteStringParams(
+    const SourceModule& sourceModule,
+    const ModulePtr& module,
+    const std::vector<AstNode*>& nodes,
+    Position position,
+    StringCompletionCallback callback
+)
 {
     if (nodes.size() < 2)
     {
@@ -1354,7 +1472,8 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
 
     std::optional<std::string> candidateString = getStringContents(nodes.back());
 
-    auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap> {
+    auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap>
+    {
         for (const std::string& tag : funcType->tags)
         {
             if (std::optional<AutocompleteEntryMap> ret = callback(tag, getMethodContainingClass(module, candidate->func), candidateString))
@@ -1463,7 +1582,11 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
 }
 
 static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
-    const ModulePtr& module, Position position, const AstNode* node, const std::vector<AstNode*>& ancestry)
+    const ModulePtr& module,
+    Position position,
+    const AstNode* node,
+    const std::vector<AstNode*>& ancestry
+)
 {
     const AstExprCall* call = node->as<AstExprCall>();
     if (!call && ancestry.size() > 1)
@@ -1530,8 +1653,15 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
     return std::make_optional(std::move(entry));
 }
 
-static AutocompleteResult autocomplete(const SourceModule& sourceModule, const ModulePtr& module, NotNull<BuiltinTypes> builtinTypes,
-    TypeArena* typeArena, Scope* globalScope, Position position, StringCompletionCallback callback)
+static AutocompleteResult autocomplete(
+    const SourceModule& sourceModule,
+    const ModulePtr& module,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeArena* typeArena,
+    Scope* globalScope,
+    Position position,
+    StringCompletionCallback callback
+)
 {
     if (isWithinComment(sourceModule, position))
         return {};
@@ -1656,14 +1786,17 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
     else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry);
              (statWhile && (!statWhile->hasDo || statWhile->doLocation.containsClosed(position)) && statWhile->condition &&
-                 !statWhile->condition->location.containsClosed(position)))
+              !statWhile->condition->location.containsClosed(position)))
     {
         return autocompleteWhileLoopKeywords(ancestry);
     }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {
-        return {{{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}},
-            ancestry, AutocompleteContext::Keyword};
+        return {
+            {{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}},
+            ancestry,
+            AutocompleteContext::Keyword
+        };
     }
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {

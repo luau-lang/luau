@@ -9,8 +9,14 @@
 namespace Luau
 {
 
-Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler,
-    TypeId anyType, TypePackId anyTypePack)
+Anyification::Anyification(
+    TypeArena* arena,
+    NotNull<Scope> scope,
+    NotNull<BuiltinTypes> builtinTypes,
+    InternalErrorReporter* iceHandler,
+    TypeId anyType,
+    TypePackId anyTypePack
+)
     : Substitution(TxnLog::empty(), arena)
     , scope(scope)
     , builtinTypes(builtinTypes)
@@ -20,8 +26,14 @@ Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, NotNull<Built
 {
 }
 
-Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler,
-    TypeId anyType, TypePackId anyTypePack)
+Anyification::Anyification(
+    TypeArena* arena,
+    const ScopePtr& scope,
+    NotNull<BuiltinTypes> builtinTypes,
+    InternalErrorReporter* iceHandler,
+    TypeId anyType,
+    TypePackId anyTypePack
+)
     : Anyification(arena, NotNull{scope.get()}, builtinTypes, iceHandler, anyType, anyTypePack)
 {
 }

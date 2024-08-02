@@ -24,8 +24,8 @@ static bool contains(Position pos, Comment comment)
 {
     if (comment.location.contains(pos))
         return true;
-    else if (comment.type == Lexeme::BrokenComment &&
-             comment.location.begin <= pos) // Broken comments are broken specifically because they don't have an end
+    else if (comment.type == Lexeme::BrokenComment && comment.location.begin <= pos) // Broken comments are broken specifically because they don't
+                                                                                     // have an end
         return true;
     else if (comment.type == Lexeme::Comment && comment.location.end == pos)
         return true;
@@ -36,9 +36,14 @@ static bool contains(Position pos, Comment comment)
 static bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
 {
     auto iter = std::lower_bound(
-        commentLocations.begin(), commentLocations.end(), Comment{Lexeme::Comment, Location{pos, pos}}, [](const Comment& a, const Comment& b) {
+        commentLocations.begin(),
+        commentLocations.end(),
+        Comment{Lexeme::Comment, Location{pos, pos}},
+        [](const Comment& a, const Comment& b)
+        {
             return a.location.end < b.location.end;
-        });
+        }
+    );
 
     if (iter == commentLocations.end())
         return false;

@@ -159,10 +159,15 @@ size_t TypeIds::getHash() const
 
 bool TypeIds::isNever() const
 {
-    return std::all_of(begin(), end(), [&](TypeId i) {
-        // If each typeid is never, then I guess typeid's is also never?
-        return get<NeverType>(i) != nullptr;
-    });
+    return std::all_of(
+        begin(),
+        end(),
+        [&](TypeId i)
+        {
+            // If each typeid is never, then I guess typeid's is also never?
+            return get<NeverType>(i) != nullptr;
+        }
+    );
 }
 
 bool TypeIds::operator==(const TypeIds& there) const
@@ -371,10 +376,15 @@ bool NormalizedType::shouldSuppressErrors() const
 
 bool NormalizedType::hasTopTable() const
 {
-    return hasTables() && std::any_of(tables.begin(), tables.end(), [&](TypeId ty) {
-        auto primTy = get<PrimitiveType>(ty);
-        return primTy && primTy->type == PrimitiveType::Type::Table;
-    });
+    return hasTables() && std::any_of(
+                              tables.begin(),
+                              tables.end(),
+                              [&](TypeId ty)
+                              {
+                                  auto primTy = get<PrimitiveType>(ty);
+                                  return primTy && primTy->type == PrimitiveType::Type::Table;
+                              }
+                          );
 }
 
 bool NormalizedType::hasTops() const
@@ -449,7 +459,7 @@ bool NormalizedType::isFalsy() const
     }
 
     return (hasAFalse || hasNils()) && (!hasTops() && !hasClasses() && !hasErrors() && !hasNumbers() && !hasStrings() && !hasThreads() &&
-                                           !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars());
+                                        !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars());
 }
 
 bool NormalizedType::isTruthy() const
@@ -806,7 +816,8 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
             if (isSubclass(ctv, octv))
             {
-                auto iss = [ctv](TypeId t) {
+                auto iss = [ctv](TypeId t)
+                {
                     const ClassType* c = get<ClassType>(t);
                     if (!c)
                         return false;
@@ -970,7 +981,6 @@ NormalizationResult Normalizer::normalizeIntersections(const std::vector<TypeId>
     NormalizedType norm{builtinTypes};
     norm.tops = builtinTypes->anyType;
     // Now we need to intersect the two types
-    Set<TypeId> seenSetTypes{nullptr};
     for (auto ty : intersections)
     {
         NormalizationResult res = intersectNormalWithTy(norm, ty, seenSet);
@@ -1417,8 +1427,9 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
         itt++;
     }
 
-    auto dealWithDifferentArities = [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere,
-                                        bool& thereSubHere) {
+    auto dealWithDifferentArities =
+        [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere, bool& thereSubHere)
+    {
         if (ith != end(here))
         {
             TypeId tty = builtinTypes->nilType;
@@ -1803,8 +1814,7 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
     }
     else if (get<UnknownType>(here.tops))
         return NormalizationResult::True;
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
-             get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return NormalizationResult::True;
@@ -2379,8 +2389,9 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
         itt++;
     }
 
-    auto dealWithDifferentArities = [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere,
-                                        bool& thereSubHere) {
+    auto dealWithDifferentArities =
+        [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere, bool& thereSubHere)
+    {
         if (ith != end(here))
         {
             TypeId tty = builtinTypes->nilType;
@@ -2570,7 +2581,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                                 }
                             }
 
-                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy, seenSet);
+                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy);
 
                             // Cleanup
                             if (fixCyclicTablesBlowingStack())
@@ -3088,8 +3099,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
         }
         return NormalizationResult::True;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
-             get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -3441,7 +3451,12 @@ bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, Not
 }
 
 bool isConsistentSubtype(
-    TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+    TypePackId subPack,
+    TypePackId superPack,
+    NotNull<Scope> scope,
+    NotNull<BuiltinTypes> builtinTypes,
+    InternalErrorReporter& ice
+)
 {
     LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
 

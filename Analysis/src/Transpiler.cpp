@@ -28,8 +28,8 @@ bool isIdentifierChar(char c)
     return isIdentifierStartChar(c) || isDigit(c);
 }
 
-const std::vector<std::string> keywords = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil",
-    "not", "or", "repeat", "return", "then", "true", "until", "while"};
+const std::vector<std::string> keywords = {"and",   "break", "do",  "else", "elseif", "end",    "false", "for",  "function", "if",   "in",
+                                           "local", "nil",   "not", "or",   "repeat", "return", "then",  "true", "until",    "while"};
 
 } // namespace
 
@@ -842,6 +842,15 @@ struct Printer
                 writer.maybeSpace(a->type->location.begin, 2);
                 writer.symbol("=");
                 visualizeTypeAnnotation(*a->type);
+            }
+        }
+        else if (const auto& t = program.as<AstStatTypeFunction>())
+        {
+            if (writeTypes)
+            {
+                writer.keyword("type function");
+                writer.identifier(t->name.value);
+                visualizeFunctionBody(*t->body);
             }
         }
         else if (const auto& a = program.as<AstStatError>())

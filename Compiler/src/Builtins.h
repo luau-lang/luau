@@ -36,8 +36,13 @@ struct Builtin
 
 Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, const DenseHashMap<AstLocal*, Variable>& variables);
 
-void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
-    const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options, AstNode* root);
+void analyzeBuiltins(
+    DenseHashMap<AstExprCall*, int>& result,
+    const DenseHashMap<AstName, Global>& globals,
+    const DenseHashMap<AstLocal*, Variable>& variables,
+    const CompileOptions& options,
+    AstNode* root
+);
 
 struct BuiltinInfo
 {

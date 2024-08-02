@@ -292,8 +292,14 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     TypeId root = &ttvTweenResult;
 
     ModulePtr currentModule = std::make_shared<Module>();
-    Anyification anyification(&currentModule->internalTypes, frontend.globals.globalScope, builtinTypes, &frontend.iceHandler, builtinTypes->anyType,
-        builtinTypes->anyTypePack);
+    Anyification anyification(
+        &currentModule->internalTypes,
+        frontend.globals.globalScope,
+        builtinTypes,
+        &frontend.iceHandler,
+        builtinTypes->anyType,
+        builtinTypes->anyTypePack
+    );
     std::optional<TypeId> any = anyification.substitute(root);
 
     REQUIRE(!anyification.normalizationTooComplex);

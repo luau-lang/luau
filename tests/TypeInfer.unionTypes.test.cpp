@@ -517,10 +517,13 @@ end
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ(toString(result.errors[0]), "Type 'X | Y | Z' could not be converted into '{ w: number }'; type X | Y | Z[0] (X) is not a subtype "
-                                             "of { w: number } ({ w: number })\n\t"
-                                             "type X | Y | Z[1] (Y) is not a subtype of { w: number } ({ w: number })\n\t"
-                                             "type X | Y | Z[2] (Z) is not a subtype of { w: number } ({ w: number })");
+        CHECK_EQ(
+            toString(result.errors[0]),
+            "Type 'X | Y | Z' could not be converted into '{ w: number }'; type X | Y | Z[0] (X) is not a subtype "
+            "of { w: number } ({ w: number })\n\t"
+            "type X | Y | Z[1] (Y) is not a subtype of { w: number } ({ w: number })\n\t"
+            "type X | Y | Z[2] (Z) is not a subtype of { w: number } ({ w: number })"
+        );
     }
     else
     {
@@ -592,7 +595,8 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
 
     u.options.push_back(badCyclicUnionTy);
     u.options.push_back(arena.addType(TableType{
-        {}, TableIndexer{builtinTypes->numberType, builtinTypes->numberType}, TypeLevel{}, frontend.globals.globalScope.get(), TableState::Sealed}));
+        {}, TableIndexer{builtinTypes->numberType, builtinTypes->numberType}, TypeLevel{}, frontend.globals.globalScope.get(), TableState::Sealed
+    }));
 
     asMutable(badCyclicUnionTy)->ty.emplace<UnionType>(std::move(u));
 
@@ -696,8 +700,10 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]),
-        "Type '(a) -> a?' could not be converted into '((b) -> b) | ((b?) -> nil)'; none of the union options are compatible");
+    CHECK_EQ(
+        toString(result.errors[0]),
+        "Type '(a) -> a?' could not be converted into '((b) -> b) | ((b?) -> nil)'; none of the union options are compatible"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")

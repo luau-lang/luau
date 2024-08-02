@@ -37,9 +37,15 @@ static LuauBytecodeType getPrimitiveType(AstName name)
         return LBC_TYPE_INVALID;
 }
 
-static LuauBytecodeType getType(const AstType* ty, const AstArray<AstGenericType>& generics,
-    const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases, bool resolveAliases, const char* vectorType,
-    const DenseHashMap<AstName, uint8_t>& userdataTypes, BytecodeBuilder& bytecode)
+static LuauBytecodeType getType(
+    const AstType* ty,
+    const AstArray<AstGenericType>& generics,
+    const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases,
+    bool resolveAliases,
+    const char* vectorType,
+    const DenseHashMap<AstName, uint8_t>& userdataTypes,
+    BytecodeBuilder& bytecode
+)
 {
     if (const AstTypeReference* ref = ty->as<AstTypeReference>())
     {
@@ -122,8 +128,13 @@ static LuauBytecodeType getType(const AstType* ty, const AstArray<AstGenericType
     return LBC_TYPE_ANY;
 }
 
-static std::string getFunctionType(const AstExprFunction* func, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases, const char* vectorType,
-    const DenseHashMap<AstName, uint8_t>& userdataTypes, BytecodeBuilder& bytecode)
+static std::string getFunctionType(
+    const AstExprFunction* func,
+    const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases,
+    const char* vectorType,
+    const DenseHashMap<AstName, uint8_t>& userdataTypes,
+    BytecodeBuilder& bytecode
+)
 {
     bool self = func->self != 0;
 
@@ -171,7 +182,7 @@ struct TypeMapVisitor : AstVisitor
     DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes;
     const char* vectorType;
     const DenseHashMap<AstName, uint8_t>& userdataTypes;
-    const BuiltinTypes& builtinTypes;
+    const BuiltinAstTypes& builtinTypes;
     const DenseHashMap<AstExprCall*, int>& builtinCalls;
     const DenseHashMap<AstName, Compile::Global>& globals;
     BytecodeBuilder& bytecode;
@@ -181,10 +192,17 @@ struct TypeMapVisitor : AstVisitor
     DenseHashMap<AstLocal*, const AstType*> resolvedLocals;
     DenseHashMap<AstExpr*, const AstType*> resolvedExprs;
 
-    TypeMapVisitor(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
-        DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes, const char* vectorType, const DenseHashMap<AstName, uint8_t>& userdataTypes,
-        const BuiltinTypes& builtinTypes, const DenseHashMap<AstExprCall*, int>& builtinCalls, const DenseHashMap<AstName, Compile::Global>& globals,
-        BytecodeBuilder& bytecode)
+    TypeMapVisitor(
+        DenseHashMap<AstExprFunction*, std::string>& functionTypes,
+        DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
+        DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes,
+        const char* vectorType,
+        const DenseHashMap<AstName, uint8_t>& userdataTypes,
+        const BuiltinAstTypes& builtinTypes,
+        const DenseHashMap<AstExprCall*, int>& builtinCalls,
+        const DenseHashMap<AstName, Compile::Global>& globals,
+        BytecodeBuilder& bytecode
+    )
         : functionTypes(functionTypes)
         , localTypes(localTypes)
         , exprTypes(exprTypes)
@@ -694,10 +712,18 @@ struct TypeMapVisitor : AstVisitor
     // * AstExprCall is very complex (especially if builtins and registered globals are included), will be extended in the future
 };
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
-    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes, AstNode* root, const char* vectorType, const DenseHashMap<AstName, uint8_t>& userdataTypes,
-    const BuiltinTypes& builtinTypes, const DenseHashMap<AstExprCall*, int>& builtinCalls, const DenseHashMap<AstName, Compile::Global>& globals,
-    BytecodeBuilder& bytecode)
+void buildTypeMap(
+    DenseHashMap<AstExprFunction*, std::string>& functionTypes,
+    DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
+    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes,
+    AstNode* root,
+    const char* vectorType,
+    const DenseHashMap<AstName, uint8_t>& userdataTypes,
+    const BuiltinAstTypes& builtinTypes,
+    const DenseHashMap<AstExprCall*, int>& builtinCalls,
+    const DenseHashMap<AstName, Compile::Global>& globals,
+    BytecodeBuilder& bytecode
+)
 {
     TypeMapVisitor visitor(functionTypes, localTypes, exprTypes, vectorType, userdataTypes, builtinTypes, builtinCalls, globals, bytecode);
     root->visit(&visitor);

@@ -135,8 +135,11 @@ LUAI_FUNC void luaC_barriertable(lua_State* L, Table* t, GCObject* v);
 LUAI_FUNC void luaC_barrierback(lua_State* L, GCObject* o, GCObject** gclist);
 LUAI_FUNC void luaC_validate(lua_State* L);
 LUAI_FUNC void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
-LUAI_FUNC void luaC_enumheap(lua_State* L, void* context,
+LUAI_FUNC void luaC_enumheap(
+    lua_State* L,
+    void* context,
     void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, size_t size, const char* name),
-    void (*edge)(void* context, void* from, void* to, const char* name));
+    void (*edge)(void* context, void* from, void* to, const char* name)
+);
 LUAI_FUNC int64_t luaC_allocationrate(lua_State* L);
 LUAI_FUNC const char* luaC_statename(int state);

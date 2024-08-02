@@ -170,12 +170,15 @@ private:
 
         Id id = unionfind.makeSet();
 
-        classes.insert_or_assign(id, EClass<L, typename N::Data>{
+        classes.insert_or_assign(
             id,
-            {enode},
-            analysis.make(*this, enode),
-            {},
-        });
+            EClass<L, typename N::Data>{
+                id,
+                {enode},
+                analysis.make(*this, enode),
+                {},
+            }
+        );
 
         for (Id operand : enode.operands())
             get(operand).parents.push_back({enode, id});

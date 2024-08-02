@@ -52,7 +52,12 @@ struct NullConfigResolver : ConfigResolver
 
 std::optional<std::string> parseModeString(Mode& mode, const std::string& modeString, bool compat = false);
 std::optional<std::string> parseLintRuleString(
-    LintOptions& enabledLints, LintOptions& fatalLints, const std::string& warningName, const std::string& value, bool compat = false);
+    LintOptions& enabledLints,
+    LintOptions& fatalLints,
+    const std::string& warningName,
+    const std::string& value,
+    bool compat = false
+);
 
 bool isValidAlias(const std::string& alias);
 

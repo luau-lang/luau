@@ -9,7 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -74,25 +74,31 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK(result.errors[0] == TypeError{
-                                      Location{{1, 21}, {1, 26}},
-                                      getMainSourceModule()->name,
-                                      TypeMismatch{
-                                          builtinTypes->numberType,
-                                          builtinTypes->stringType,
-                                      },
-                                  });
+        CHECK(
+            result.errors[0] ==
+            TypeError{
+                Location{{1, 21}, {1, 26}},
+                getMainSourceModule()->name,
+                TypeMismatch{
+                    builtinTypes->numberType,
+                    builtinTypes->stringType,
+                },
+            }
+        );
     }
     else
     {
-        CHECK(result.errors[0] == TypeError{
-                                      Location{{1, 8}, {1, 26}},
-                                      getMainSourceModule()->name,
-                                      TypeMismatch{
-                                          builtinTypes->numberType,
-                                          builtinTypes->stringType,
-                                      },
-                                  });
+        CHECK(
+            result.errors[0] ==
+            TypeError{
+                Location{{1, 8}, {1, 26}},
+                getMainSourceModule()->name,
+                TypeMismatch{
+                    builtinTypes->numberType,
+                    builtinTypes->stringType,
+                },
+            }
+        );
     }
 }
 
@@ -103,8 +109,10 @@ TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) ==
-          "Generic type 'A' is used as a variadic type parameter; consider changing 'A' to 'A...' in the generic argument list");
+    CHECK(
+        toString(result.errors[0]) ==
+        "Generic type 'A' is used as a variadic type parameter; consider changing 'A' to 'A...' in the generic argument list"
+    );
     CHECK(result.errors[0].location == Location{{1, 21}, {1, 25}});
 }
 
@@ -115,8 +123,10 @@ TEST_CASE_FIXTURE(Fixture, "mismatched_generic_pack_type_param")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) ==
-          "Variadic type parameter 'A...' is used as a regular generic type; consider changing 'A...' to 'A' in the generic argument list");
+    CHECK(
+        toString(result.errors[0]) ==
+        "Variadic type parameter 'A...' is used as a regular generic type; consider changing 'A...' to 'A' in the generic argument list"
+    );
     CHECK(result.errors[0].location == Location{{1, 24}, {1, 25}});
 }
 
@@ -824,37 +834,6 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauSharedSelf, true},
-    };
-
-    CheckResult result = check(R"(
-        local B = {}
-        B.bar = 4
-
-        function B:smth1()
-            local self: FutureIntersection = self
-            self.foo = 4
-            return 4
-        end
-
-        function B:smth2()
-            local self: FutureIntersection = self
-            self.bar = 5 -- error, even though we should have B part with bar
-        end
-
-        type A = { foo: typeof(B.smth1({foo=3})) } -- trick toposort into sorting functions before types
-        type B = typeof(B)
-
-        type FutureIntersection = A & B
-    )");
-
-    // TODO: shared self causes this test to break in bizarre ways.
-    LUAU_REQUIRE_ERRORS(result);
-}
-
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
 {
     CheckResult result = check(R"(
@@ -1134,6 +1113,20 @@ type Foo<T> = Foo<T> | string
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<OccursCheckFailed>(result.errors[0]);
     REQUIRE(err);
+}
+
+TEST_CASE_FIXTURE(Fixture, "user_defined_type_function_errors")
+{
+    if (!FFlag::LuauUserDefinedTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+    type function foo()
+        return nil
+    end
+    )");
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "This syntax is not supported");
 }
 
 TEST_SUITE_END();

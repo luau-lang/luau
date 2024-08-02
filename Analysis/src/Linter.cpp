@@ -275,8 +275,14 @@ private:
             else if (g->deprecated)
             {
                 if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
-                        gv->name.value, replacement);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_DeprecatedGlobal,
+                        gv->location,
+                        "Global '%s' is deprecated, use '%s' instead",
+                        gv->name.value,
+                        replacement
+                    );
                 else
                     emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
             }
@@ -291,18 +297,33 @@ private:
                 AstExprFunction* top = g.functionRef.back();
 
                 if (top->debugname.value)
-                    emitWarning(*context, LintWarning::Code_GlobalUsedAsLocal, g.firstRef->location,
-                        "Global '%s' is only used in the enclosing function '%s'; consider changing it to local", g.firstRef->name.value,
-                        top->debugname.value);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_GlobalUsedAsLocal,
+                        g.firstRef->location,
+                        "Global '%s' is only used in the enclosing function '%s'; consider changing it to local",
+                        g.firstRef->name.value,
+                        top->debugname.value
+                    );
                 else
-                    emitWarning(*context, LintWarning::Code_GlobalUsedAsLocal, g.firstRef->location,
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_GlobalUsedAsLocal,
+                        g.firstRef->location,
                         "Global '%s' is only used in the enclosing function defined at line %d; consider changing it to local",
-                        g.firstRef->name.value, top->location.begin.line + 1);
+                        g.firstRef->name.value,
+                        top->location.begin.line + 1
+                    );
             }
             else if (g.assigned && !g.readBeforeWritten && !g.definedInModuleScope && g.firstRef->name != context->placeholder)
             {
-                emitWarning(*context, LintWarning::Code_GlobalUsedAsLocal, g.firstRef->location,
-                    "Global '%s' is never read before being written. Consider changing it to local", g.firstRef->name.value);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_GlobalUsedAsLocal,
+                    g.firstRef->location,
+                    "Global '%s' is never read before being written. Consider changing it to local",
+                    g.firstRef->name.value
+                );
             }
         }
     }
@@ -329,7 +350,8 @@ private:
 
         if (node->name == context->placeholder)
             emitWarning(
-                *context, LintWarning::Code_PlaceholderRead, node->location, "Placeholder value '_' is read here; consider using a named variable");
+                *context, LintWarning::Code_PlaceholderRead, node->location, "Placeholder value '_' is read here; consider using a named variable"
+            );
 
         return true;
     }
@@ -338,7 +360,8 @@ private:
     {
         if (node->local->name == context->placeholder)
             emitWarning(
-                *context, LintWarning::Code_PlaceholderRead, node->location, "Placeholder value '_' is read here; consider using a named variable");
+                *context, LintWarning::Code_PlaceholderRead, node->location, "Placeholder value '_' is read here; consider using a named variable"
+            );
 
         return true;
     }
@@ -366,8 +389,13 @@ private:
                 }
 
                 if (g.builtin)
-                    emitWarning(*context, LintWarning::Code_BuiltinGlobalWrite, gv->location,
-                        "Built-in global '%s' is overwritten here; consider using a local or changing the name", gv->name.value);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_BuiltinGlobalWrite,
+                        gv->location,
+                        "Built-in global '%s' is overwritten here; consider using a local or changing the name",
+                        gv->name.value
+                    );
                 else
                     g.assigned = true;
 
@@ -396,8 +424,13 @@ private:
             Global& g = globals[gv->name];
 
             if (g.builtin)
-                emitWarning(*context, LintWarning::Code_BuiltinGlobalWrite, gv->location,
-                    "Built-in global '%s' is overwritten here; consider using a local or changing the name", gv->name.value);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_BuiltinGlobalWrite,
+                    gv->location,
+                    "Built-in global '%s' is overwritten here; consider using a local or changing the name",
+                    gv->name.value
+                );
             else
             {
                 g.assigned = true;
@@ -565,8 +598,12 @@ private:
             if (node->body.data[i - 1]->hasSemicolon)
                 continue;
 
-            emitWarning(*context, LintWarning::Code_SameLineStatement, location,
-                "A new statement is on the same line; add semi-colon on previous statement to silence");
+            emitWarning(
+                *context,
+                LintWarning::Code_SameLineStatement,
+                location,
+                "A new statement is on the same line; add semi-colon on previous statement to silence"
+            );
 
             lastLine = location.begin.line;
         }
@@ -613,7 +650,8 @@ private:
                 if (location.begin.column <= top.start.begin.column)
                 {
                     emitWarning(
-                        *context, LintWarning::Code_MultiLineStatement, location, "Statement spans multiple lines; use indentation to silence");
+                        *context, LintWarning::Code_MultiLineStatement, location, "Statement spans multiple lines; use indentation to silence"
+                    );
 
                     top.flagged = true;
                 }
@@ -727,8 +765,14 @@ private:
 
             // don't warn on inter-function shadowing since it is much more fragile wrt refactoring
             if (shadow->functionDepth == local->functionDepth)
-                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, "Variable '%s' shadows previous declaration at line %d",
-                    local->name.value, shadow->location.begin.line + 1);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_LocalShadow,
+                    local->location,
+                    "Variable '%s' shadows previous declaration at line %d",
+                    local->name.value,
+                    shadow->location.begin.line + 1
+                );
         }
         else if (Global* global = globals.find(local->name))
         {
@@ -736,8 +780,14 @@ private:
                 ; // there are many builtins with common names like 'table'; some of them are deprecated as well
             else if (global->firstRef)
             {
-                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, "Variable '%s' shadows a global variable used at line %d",
-                    local->name.value, global->firstRef->location.begin.line + 1);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_LocalShadow,
+                    local->location,
+                    "Variable '%s' shadows a global variable used at line %d",
+                    local->name.value,
+                    global->firstRef->location.begin.line + 1
+                );
             }
             else
             {
@@ -752,14 +802,21 @@ private:
             return;
 
         if (info.function)
-            emitWarning(*context, LintWarning::Code_FunctionUnused, local->location, "Function '%s' is never used; prefix with '_' to silence",
-                local->name.value);
+            emitWarning(
+                *context,
+                LintWarning::Code_FunctionUnused,
+                local->location,
+                "Function '%s' is never used; prefix with '_' to silence",
+                local->name.value
+            );
         else if (info.import)
-            emitWarning(*context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence",
-                local->name.value);
+            emitWarning(
+                *context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence", local->name.value
+            );
         else
-            emitWarning(*context, LintWarning::Code_LocalUnused, local->location, "Variable '%s' is never used; prefix with '_' to silence",
-                local->name.value);
+            emitWarning(
+                *context, LintWarning::Code_LocalUnused, local->location, "Variable '%s' is never used; prefix with '_' to silence", local->name.value
+            );
     }
 
     bool isRequireCall(AstExpr* expr)
@@ -913,8 +970,13 @@ private:
         for (auto& g : globals)
         {
             if (g.second.function && !g.second.used && g.first.value[0] != '_')
-                emitWarning(*context, LintWarning::Code_FunctionUnused, g.second.location, "Function '%s' is never used; prefix with '_' to silence",
-                    g.first.value);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_FunctionUnused,
+                    g.second.location,
+                    "Function '%s' is never used; prefix with '_' to silence",
+                    g.first.value
+                );
         }
     }
 
@@ -1013,8 +1075,13 @@ private:
                     if (step == Error && si->is<AstStatExpr>() && next->is<AstStatReturn>() && i + 2 == stat->body.size)
                         return Error;
 
-                    emitWarning(*context, LintWarning::Code_UnreachableCode, next->location, "Unreachable code (previous statement always %ss)",
-                        getReason(step));
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_UnreachableCode,
+                        next->location,
+                        "Unreachable code (previous statement always %ss)",
+                        getReason(step)
+                    );
                     return step;
                 }
             }
@@ -1209,22 +1276,34 @@ private:
             // for i=#t,1 do
             if (fu && fu->op == AstExprUnary::Len && tc && tc->value == 1.0)
                 emitWarning(
-                    *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?");
+                    *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?"
+                );
             // for i=8,1 do
             else if (fc && tc && fc->value > tc->value)
                 emitWarning(
-                    *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?");
+                    *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?"
+                );
             // for i=1,8.75 do
             else if (fc && tc && getLoopEnd(fc->value, tc->value) != tc->value)
-                emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, "For loop ends at %g instead of %g; did you forget to specify step?",
-                    getLoopEnd(fc->value, tc->value), tc->value);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ForRange,
+                    rangeLocation,
+                    "For loop ends at %g instead of %g; did you forget to specify step?",
+                    getLoopEnd(fc->value, tc->value),
+                    tc->value
+                );
             // for i=0,#t do
             else if (fc && tu && fc->value == 0.0 && tu->op == AstExprUnary::Len)
                 emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, "For loop starts at 0, but arrays start at 1");
             // for i=#t,0 do
             else if (fu && fu->op == AstExprUnary::Len && tc && tc->value == 0.0)
-                emitWarning(*context, LintWarning::Code_ForRange, rangeLocation,
-                    "For loop should iterate backwards; did you forget to specify -1 as step? Also consider changing 0 to 1 since arrays start at 1");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ForRange,
+                    rangeLocation,
+                    "For loop should iterate backwards; did you forget to specify -1 as step? Also consider changing 0 to 1 since arrays start at 1"
+                );
         }
 
         return true;
@@ -1252,16 +1331,27 @@ private:
             AstExpr* last = values.data[values.size - 1];
 
             if (vars < values.size)
-                emitWarning(*context, LintWarning::Code_UnbalancedAssignment, location,
-                    "Assigning %d values to %d variables leaves some values unused", int(values.size), int(vars));
+                emitWarning(
+                    *context,
+                    LintWarning::Code_UnbalancedAssignment,
+                    location,
+                    "Assigning %d values to %d variables leaves some values unused",
+                    int(values.size),
+                    int(vars)
+                );
             else if (last->is<AstExprCall>() || last->is<AstExprVarargs>())
                 ; // we don't know how many values the last expression returns
             else if (last->is<AstExprConstantNil>())
                 ; // last expression is nil which explicitly silences the nil-init warning
             else
-                emitWarning(*context, LintWarning::Code_UnbalancedAssignment, location,
-                    "Assigning %d values to %d variables initializes extra variables with nil; add 'nil' to value list to silence", int(values.size),
-                    int(vars));
+                emitWarning(
+                    *context,
+                    LintWarning::Code_UnbalancedAssignment,
+                    location,
+                    "Assigning %d values to %d variables initializes extra variables with nil; add 'nil' to value list to silence",
+                    int(values.size),
+                    int(vars)
+                );
         }
     }
 
@@ -1344,13 +1434,22 @@ private:
             Location location = getEndLocation(bodyf);
 
             if (node->debugname.value)
-                emitWarning(*context, LintWarning::Code_ImplicitReturn, location,
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ImplicitReturn,
+                    location,
                     "Function '%s' can implicitly return no values even though there's an explicit return at line %d; add explicit return to silence",
-                    node->debugname.value, vret->location.begin.line + 1);
+                    node->debugname.value,
+                    vret->location.begin.line + 1
+                );
             else
-                emitWarning(*context, LintWarning::Code_ImplicitReturn, location,
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ImplicitReturn,
+                    location,
                     "Function can implicitly return no values even though there's an explicit return at line %d; add explicit return to silence",
-                    vret->location.begin.line + 1);
+                    vret->location.begin.line + 1
+                );
         }
 
         return true;
@@ -1821,23 +1920,41 @@ private:
                 int& line = names[&expr->value];
 
                 if (line)
-                    emitWarning(*context, LintWarning::Code_TableLiteral, expr->location,
-                        "Table field '%.*s' is a duplicate; previously defined at line %d", int(expr->value.size), expr->value.data, line);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_TableLiteral,
+                        expr->location,
+                        "Table field '%.*s' is a duplicate; previously defined at line %d",
+                        int(expr->value.size),
+                        expr->value.data,
+                        line
+                    );
                 else
                     line = expr->location.begin.line + 1;
             }
             else if (AstExprConstantNumber* expr = item.key->as<AstExprConstantNumber>())
             {
                 if (expr->value >= 1 && expr->value <= double(count) && double(int(expr->value)) == expr->value)
-                    emitWarning(*context, LintWarning::Code_TableLiteral, expr->location,
-                        "Table index %d is a duplicate; previously defined as a list entry", int(expr->value));
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_TableLiteral,
+                        expr->location,
+                        "Table index %d is a duplicate; previously defined as a list entry",
+                        int(expr->value)
+                    );
                 else if (expr->value >= 0 && expr->value <= double(INT_MAX) && double(int(expr->value)) == expr->value)
                 {
                     int& line = indices[int(expr->value)];
 
                     if (line)
-                        emitWarning(*context, LintWarning::Code_TableLiteral, expr->location,
-                            "Table index %d is a duplicate; previously defined at line %d", int(expr->value), line);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_TableLiteral,
+                            expr->location,
+                            "Table index %d is a duplicate; previously defined at line %d",
+                            int(expr->value),
+                            line
+                        );
                     else
                         line = expr->location.begin.line + 1;
                 }
@@ -1875,18 +1992,41 @@ private:
                 if (int(rec->access) & int(item.access))
                 {
                     if (rec->access == item.access)
-                        emitWarning(*context, LintWarning::Code_TableLiteral, item.location,
-                            "Table type field '%s' is a duplicate; previously defined at line %d", item.name.value, rec->location.begin.line + 1);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_TableLiteral,
+                            item.location,
+                            "Table type field '%s' is a duplicate; previously defined at line %d",
+                            item.name.value,
+                            rec->location.begin.line + 1
+                        );
                     else if (rec->access == AstTableAccess::ReadWrite)
-                        emitWarning(*context, LintWarning::Code_TableLiteral, item.location,
-                            "Table type field '%s' is already read-write; previously defined at line %d", item.name.value,
-                            rec->location.begin.line + 1);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_TableLiteral,
+                            item.location,
+                            "Table type field '%s' is already read-write; previously defined at line %d",
+                            item.name.value,
+                            rec->location.begin.line + 1
+                        );
                     else if (rec->access == AstTableAccess::Read)
-                        emitWarning(*context, LintWarning::Code_TableLiteral, rec->location,
-                            "Table type field '%s' already has a read type defined at line %d", item.name.value, rec->location.begin.line + 1);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_TableLiteral,
+                            rec->location,
+                            "Table type field '%s' already has a read type defined at line %d",
+                            item.name.value,
+                            rec->location.begin.line + 1
+                        );
                     else if (rec->access == AstTableAccess::Write)
-                        emitWarning(*context, LintWarning::Code_TableLiteral, rec->location,
-                            "Table type field '%s' already has a write type defined at line %d", item.name.value, rec->location.begin.line + 1);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_TableLiteral,
+                            rec->location,
+                            "Table type field '%s' already has a write type defined at line %d",
+                            item.name.value,
+                            rec->location.begin.line + 1
+                        );
                     else
                         LUAU_ASSERT(!"Unreachable");
                 }
@@ -1904,8 +2044,14 @@ private:
             int& line = names[item.name];
 
             if (line)
-                emitWarning(*context, LintWarning::Code_TableLiteral, item.location,
-                    "Table type field '%s' is a duplicate; previously defined at line %d", item.name.value, line);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableLiteral,
+                    item.location,
+                    "Table type field '%s' is a duplicate; previously defined at line %d",
+                    item.name.value,
+                    line
+                );
             else
                 line = item.location.begin.line + 1;
         }
@@ -1966,9 +2112,14 @@ private:
 
             if (l.defined && !l.initialized && !l.assigned && l.firstUse)
             {
-                emitWarning(*context, LintWarning::Code_UninitializedLocal, l.firstUse->location,
-                    "Variable '%s' defined at line %d is never initialized or assigned; initialize with 'nil' to silence", local->name.value,
-                    local->location.begin.line + 1);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_UninitializedLocal,
+                    l.firstUse->location,
+                    "Variable '%s' defined at line %d is never initialized or assigned; initialize with 'nil' to silence",
+                    local->name.value,
+                    local->location.begin.line + 1
+                );
             }
         }
     }
@@ -2102,8 +2253,14 @@ private:
 
     void report(const std::string& name, Location location, Location otherLocation)
     {
-        emitWarning(*context, LintWarning::Code_DuplicateFunction, location, "Duplicate function definition: '%s' also defined on line %d",
-            name.c_str(), otherLocation.begin.line + 1);
+        emitWarning(
+            *context,
+            LintWarning::Code_DuplicateFunction,
+            location,
+            "Duplicate function definition: '%s' also defined on line %d",
+            name.c_str(),
+            otherLocation.begin.line + 1
+        );
     }
 };
 
@@ -2152,7 +2309,8 @@ private:
                     const char* suggestion = (fenv->name == "getfenv") ? "; consider using 'debug.info' instead" : "";
 
                     emitWarning(
-                        *context, LintWarning::Code_DeprecatedApi, node->location, "Function '%s' is deprecated%s", fenv->name.value, suggestion);
+                        *context, LintWarning::Code_DeprecatedApi, node->location, "Function '%s' is deprecated%s", fenv->name.value, suggestion
+                    );
                 }
             }
         }
@@ -2265,7 +2423,8 @@ private:
 
         if (!tty->indexer && !tty->props.empty() && tty->state != TableState::Generic)
             emitWarning(
-                *context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
+                *context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op
+            );
         else if (tty->indexer && isString(tty->indexer->indexType)) // note: to avoid complexity of subtype tests we just check if the key is a string
             emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table with string keys is likely a bug", op);
     }
@@ -2283,9 +2442,13 @@ private:
                     size_t ret = getReturnCount(follow(*funty));
 
                     if (ret > 1)
-                        emitWarning(*context, LintWarning::Code_TableOperations, tail->location,
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_TableOperations,
+                            tail->location,
                             "table.insert may change behavior if the call returns more than one result; consider adding parentheses around second "
-                            "argument");
+                            "argument"
+                        );
                 }
             }
         }
@@ -2294,28 +2457,44 @@ private:
         {
             // table.insert(t, 0, ?)
             if (isConstant(args[1], 0.0))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
+                    "table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?"
+                );
 
             // table.insert(t, #t, ?)
             if (isLength(args[1], args[0]))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
                     "table.insert will insert the value before the last element, which is likely a bug; consider removing the second argument or "
-                    "wrap it in parentheses to silence");
+                    "wrap it in parentheses to silence"
+                );
 
             // table.insert(t, #t+1, ?)
             if (AstExprBinary* add = args[1]->as<AstExprBinary>();
                 add && add->op == AstExprBinary::Add && isLength(add->left, args[0]) && isConstant(add->right, 1.0))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.insert will append the value to the table; consider removing the second argument for efficiency");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
+                    "table.insert will append the value to the table; consider removing the second argument for efficiency"
+                );
         }
 
         if (func->index == "remove" && node->args.size >= 2)
         {
             // table.remove(t, 0)
             if (isConstant(args[1], 0.0))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.remove uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
+                    "table.remove uses index 0 but arrays are 1-based; did you mean 1 instead?"
+                );
 
             // note: it's tempting to check for table.remove(t, #t), which is equivalent to table.remove(t), but it's correct, occurs frequently,
             // and also reads better.
@@ -2323,35 +2502,55 @@ private:
             // table.remove(t, #t-1)
             if (AstExprBinary* sub = args[1]->as<AstExprBinary>();
                 sub && sub->op == AstExprBinary::Sub && isLength(sub->left, args[0]) && isConstant(sub->right, 1.0))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
                     "table.remove will remove the value before the last element, which is likely a bug; consider removing the second argument or "
-                    "wrap it in parentheses to silence");
+                    "wrap it in parentheses to silence"
+                );
         }
 
         if (func->index == "move" && node->args.size >= 4)
         {
             // table.move(t, 0, _, _)
             if (isConstant(args[1], 0.0))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
+                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?"
+                );
 
             // table.move(t, _, _, 0)
             else if (isConstant(args[3], 0.0))
-                emitWarning(*context, LintWarning::Code_TableOperations, args[3]->location,
-                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[3]->location,
+                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?"
+                );
         }
 
         if (func->index == "create" && node->args.size == 2)
         {
             // table.create(n, {...})
             if (args[1]->is<AstExprTable>())
-                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    args[1]->location,
+                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead"
+                );
 
             // table.create(n, {...} :: ?)
             if (AstExprTypeAssertion* as = args[1]->as<AstExprTypeAssertion>(); as && as->expr->is<AstExprTable>())
-                emitWarning(*context, LintWarning::Code_TableOperations, as->expr->location,
-                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TableOperations,
+                    as->expr->location,
+                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead"
+                );
         }
     }
 
@@ -2543,11 +2742,21 @@ private:
                 if (similar(conditions[j], conditions[i]))
                 {
                     if (conditions[i]->location.begin.line == conditions[j]->location.begin.line)
-                        emitWarning(*context, LintWarning::Code_DuplicateCondition, conditions[i]->location,
-                            "Condition has already been checked on column %d", conditions[j]->location.begin.column + 1);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_DuplicateCondition,
+                            conditions[i]->location,
+                            "Condition has already been checked on column %d",
+                            conditions[j]->location.begin.column + 1
+                        );
                     else
-                        emitWarning(*context, LintWarning::Code_DuplicateCondition, conditions[i]->location,
-                            "Condition has already been checked on line %d", conditions[j]->location.begin.line + 1);
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_DuplicateCondition,
+                            conditions[i]->location,
+                            "Condition has already been checked on line %d",
+                            conditions[j]->location.begin.line + 1
+                        );
                     break;
                 }
             }
@@ -2592,11 +2801,23 @@ private:
             if (local->shadow && locals[local->shadow] == node && !ignoreDuplicate(local))
             {
                 if (local->shadow->location.begin.line == local->location.begin.line)
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Variable '%s' already defined on column %d",
-                        local->name.value, local->shadow->location.begin.column + 1);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_DuplicateLocal,
+                        local->location,
+                        "Variable '%s' already defined on column %d",
+                        local->name.value,
+                        local->shadow->location.begin.column + 1
+                    );
                 else
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Variable '%s' already defined on line %d",
-                        local->name.value, local->shadow->location.begin.line + 1);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_DuplicateLocal,
+                        local->location,
+                        "Variable '%s' already defined on line %d",
+                        local->name.value,
+                        local->shadow->location.begin.line + 1
+                    );
             }
         }
 
@@ -2620,11 +2841,23 @@ private:
                 if (local->shadow == node->self)
                     emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter 'self' already defined implicitly");
                 else if (local->shadow->location.begin.line == local->location.begin.line)
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter '%s' already defined on column %d",
-                        local->name.value, local->shadow->location.begin.column + 1);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_DuplicateLocal,
+                        local->location,
+                        "Function parameter '%s' already defined on column %d",
+                        local->name.value,
+                        local->shadow->location.begin.column + 1
+                    );
                 else
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter '%s' already defined on line %d",
-                        local->name.value, local->shadow->location.begin.line + 1);
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_DuplicateLocal,
+                        local->location,
+                        "Function parameter '%s' already defined on line %d",
+                        local->name.value,
+                        local->shadow->location.begin.line + 1
+                    );
             }
         }
 
@@ -2668,10 +2901,14 @@ private:
             alt = "false";
 
         if (alt)
-            emitWarning(*context, LintWarning::Code_MisleadingAndOr, node->location,
+            emitWarning(
+                *context,
+                LintWarning::Code_MisleadingAndOr,
+                node->location,
                 "The and-or expression always evaluates to the second alternative because the first alternative is %s; consider using if-then-else "
                 "expression instead",
-                alt);
+                alt
+            );
 
         return true;
     }
@@ -2699,16 +2936,28 @@ private:
         case ConstantNumberParseResult::Malformed:
             break;
         case ConstantNumberParseResult::Imprecise:
-            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Number literal exceeded available precision and was truncated to closest representable number");
+            emitWarning(
+                *context,
+                LintWarning::Code_IntegerParsing,
+                node->location,
+                "Number literal exceeded available precision and was truncated to closest representable number"
+            );
             break;
         case ConstantNumberParseResult::BinOverflow:
-            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Binary number literal exceeded available precision and was truncated to 2^64");
+            emitWarning(
+                *context,
+                LintWarning::Code_IntegerParsing,
+                node->location,
+                "Binary number literal exceeded available precision and was truncated to 2^64"
+            );
             break;
         case ConstantNumberParseResult::HexOverflow:
-            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
+            emitWarning(
+                *context,
+                LintWarning::Code_IntegerParsing,
+                node->location,
+                "Hexadecimal number literal exceeded available precision and was truncated to 2^64"
+            );
             break;
         }
 
@@ -2759,12 +3008,24 @@ private:
             std::string op = toString(node->op);
 
             if (isEquality(node->op))
-                emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
-                    "not X %s Y is equivalent to (not X) %s Y; consider using X %s Y, or add parentheses to silence", op.c_str(), op.c_str(),
-                    node->op == AstExprBinary::CompareEq ? "~=" : "==");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ComparisonPrecedence,
+                    node->location,
+                    "not X %s Y is equivalent to (not X) %s Y; consider using X %s Y, or add parentheses to silence",
+                    op.c_str(),
+                    op.c_str(),
+                    node->op == AstExprBinary::CompareEq ? "~=" : "=="
+                );
             else
-                emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
-                    "not X %s Y is equivalent to (not X) %s Y; add parentheses to silence", op.c_str(), op.c_str());
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ComparisonPrecedence,
+                    node->location,
+                    "not X %s Y is equivalent to (not X) %s Y; add parentheses to silence",
+                    op.c_str(),
+                    op.c_str()
+                );
         }
         else if (AstExprBinary* left = node->left->as<AstExprBinary>(); left && isComparison(left->op))
         {
@@ -2772,12 +3033,29 @@ private:
             std::string rop = toString(node->op);
 
             if (isEquality(left->op) || isEquality(node->op))
-                emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
-                    "X %s Y %s Z is equivalent to (X %s Y) %s Z; add parentheses to silence", lop.c_str(), rop.c_str(), lop.c_str(), rop.c_str());
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ComparisonPrecedence,
+                    node->location,
+                    "X %s Y %s Z is equivalent to (X %s Y) %s Z; add parentheses to silence",
+                    lop.c_str(),
+                    rop.c_str(),
+                    lop.c_str(),
+                    rop.c_str()
+                );
             else
-                emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
-                    "X %s Y %s Z is equivalent to (X %s Y) %s Z; did you mean X %s Y and Y %s Z?", lop.c_str(), rop.c_str(), lop.c_str(), rop.c_str(),
-                    lop.c_str(), rop.c_str());
+                emitWarning(
+                    *context,
+                    LintWarning::Code_ComparisonPrecedence,
+                    node->location,
+                    "X %s Y %s Z is equivalent to (X %s Y) %s Z; did you mean X %s Y and Y %s Z?",
+                    lop.c_str(),
+                    rop.c_str(),
+                    lop.c_str(),
+                    rop.c_str(),
+                    lop.c_str(),
+                    rop.c_str()
+                );
         }
 
         return true;
@@ -2843,8 +3121,12 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
 
         if (!hc.header)
         {
-            emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                "Comment directive is ignored because it is placed after the first non-comment token");
+            emitWarning(
+                context,
+                LintWarning::Code_CommentDirective,
+                hc.location,
+                "Comment directive is ignored because it is placed after the first non-comment token"
+            );
         }
         else
         {
@@ -2865,21 +3147,36 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
 
                     // skip Unknown
                     if (const char* suggestion = fuzzyMatch(rule, kWarningNames + 1, LintWarning::Code__Count - 1))
-                        emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                            "nolint directive refers to unknown lint rule '%s'; did you mean '%s'?", rule, suggestion);
+                        emitWarning(
+                            context,
+                            LintWarning::Code_CommentDirective,
+                            hc.location,
+                            "nolint directive refers to unknown lint rule '%s'; did you mean '%s'?",
+                            rule,
+                            suggestion
+                        );
                     else
                         emitWarning(
-                            context, LintWarning::Code_CommentDirective, hc.location, "nolint directive refers to unknown lint rule '%s'", rule);
+                            context, LintWarning::Code_CommentDirective, hc.location, "nolint directive refers to unknown lint rule '%s'", rule
+                        );
                 }
             }
             else if (first == "nocheck" || first == "nonstrict" || first == "strict")
             {
                 if (space != std::string::npos)
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                        "Comment directive with the type checking mode has extra symbols at the end of the line");
+                    emitWarning(
+                        context,
+                        LintWarning::Code_CommentDirective,
+                        hc.location,
+                        "Comment directive with the type checking mode has extra symbols at the end of the line"
+                    );
                 else if (seenMode)
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                        "Comment directive with the type checking mode has already been used");
+                    emitWarning(
+                        context,
+                        LintWarning::Code_CommentDirective,
+                        hc.location,
+                        "Comment directive with the type checking mode has already been used"
+                    );
                 else
                     seenMode = true;
             }
@@ -2894,15 +3191,21 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                     const char* level = hc.content.c_str() + notspace;
 
                     if (strcmp(level, "0") && strcmp(level, "1") && strcmp(level, "2"))
-                        emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                            "optimize directive uses unknown optimization level '%s', 0..2 expected", level);
+                        emitWarning(
+                            context,
+                            LintWarning::Code_CommentDirective,
+                            hc.location,
+                            "optimize directive uses unknown optimization level '%s', 0..2 expected",
+                            level
+                        );
                 }
             }
             else if (first == "native")
             {
                 if (space != std::string::npos)
                     emitWarning(
-                        context, LintWarning::Code_CommentDirective, hc.location, "native directive has extra symbols at the end of the line");
+                        context, LintWarning::Code_CommentDirective, hc.location, "native directive has extra symbols at the end of the line"
+                    );
             }
             else
             {
@@ -2916,11 +3219,19 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                 };
 
                 if (const char* suggestion = fuzzyMatch(first, kHotComments, std::size(kHotComments)))
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'; did you mean '%s'?",
-                        int(first.size()), first.data(), suggestion);
+                    emitWarning(
+                        context,
+                        LintWarning::Code_CommentDirective,
+                        hc.location,
+                        "Unknown comment directive '%.*s'; did you mean '%s'?",
+                        int(first.size()),
+                        first.data(),
+                        suggestion
+                    );
                 else
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'", int(first.size()),
-                        first.data());
+                    emitWarning(
+                        context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'", int(first.size()), first.data()
+                    );
             }
         }
     }
@@ -2973,8 +3284,12 @@ private:
         {
             if (attribute->type == AstAttr::Type::Native)
             {
-                emitWarning(*context, LintWarning::Code_RedundantNativeAttribute, attribute->location,
-                    "native attribute on a function is redundant in a native module; consider removing it");
+                emitWarning(
+                    *context,
+                    LintWarning::Code_RedundantNativeAttribute,
+                    attribute->location,
+                    "native attribute on a function is redundant in a native module; consider removing it"
+                );
             }
         }
 
@@ -2982,8 +3297,14 @@ private:
     }
 };
 
-std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
-    const std::vector<HotComment>& hotcomments, const LintOptions& options)
+std::vector<LintWarning> lint(
+    AstStat* root,
+    const AstNameTable& names,
+    const ScopePtr& env,
+    const Module* module,
+    const std::vector<HotComment>& hotcomments,
+    const LintOptions& options
+)
 {
     LintContext context;
 
@@ -3068,8 +3389,7 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
     if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence))
         LintComparisonPrecedence::process(context);
 
-    if (FFlag::LuauNativeAttribute && FFlag::LintRedundantNativeAttribute &&
-        context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
+    if (FFlag::LuauNativeAttribute && FFlag::LintRedundantNativeAttribute && context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
     {
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);

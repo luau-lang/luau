@@ -106,11 +106,21 @@ struct Unifier
      * Populate the transaction log with the set of TypeIds that need to be reset to undo the unification attempt.
      */
     void tryUnify(
-        TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
+        TypeId subTy,
+        TypeId superTy,
+        bool isFunctionCall = false,
+        bool isIntersection = false,
+        const LiteralProperties* aliasableMap = nullptr
+    );
 
 private:
     void tryUnify_(
-        TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
+        TypeId subTy,
+        TypeId superTy,
+        bool isFunctionCall = false,
+        bool isIntersection = false,
+        const LiteralProperties* aliasableMap = nullptr
+    );
     void tryUnifyUnionWithType(TypeId subTy, const UnionType* uv, TypeId superTy);
 
     // Traverse the two types provided and block on any BlockedTypes we find.
@@ -120,8 +130,14 @@ private:
     void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionType* uv, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionType* uv);
     void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);
-    void tryUnifyNormalizedTypes(TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason,
-        std::optional<TypeError> error = std::nullopt);
+    void tryUnifyNormalizedTypes(
+        TypeId subTy,
+        TypeId superTy,
+        const NormalizedType& subNorm,
+        const NormalizedType& superNorm,
+        std::string reason,
+        std::optional<TypeError> error = std::nullopt
+    );
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);

@@ -14,7 +14,6 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("TypeInferClasses");
 
@@ -402,9 +401,6 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
-    };
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -617,7 +613,8 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
 
 
         CHECK_EQ(
-            toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
+            toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
+        );
     }
     {
         CheckResult result = check(R"(
@@ -626,7 +623,8 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
         )");
 
         CHECK_EQ(
-            toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
+            toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
+        );
     }
 
     // Test type checking for the return type of the indexer (i.e. a number)
@@ -716,9 +714,16 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
     TypeId scriptType =
         arena.addType(ClassType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test", {}});
 
-    TypeId partType = arena.addType(
-        ClassType{"Part", {{"BrickColor", Property::rw(builtinTypes->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
-            instanceType, nullopt, {}, {}, "Test", {}});
+    TypeId partType = arena.addType(ClassType{
+        "Part",
+        {{"BrickColor", Property::rw(builtinTypes->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
+        instanceType,
+        nullopt,
+        {},
+        {},
+        "Test",
+        {}
+    });
 
     getMutable<ClassType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
 
@@ -751,7 +756,8 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_index_a_class_with_no_indexer")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_MESSAGE(
-        get<DynamicPropertyLookupOnClassesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnClassesUnsafe but got " << result.errors[0]);
+        get<DynamicPropertyLookupOnClassesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnClassesUnsafe but got " << result.errors[0]
+    );
 
     CHECK(builtinTypes->errorType == requireType("c"));
 }

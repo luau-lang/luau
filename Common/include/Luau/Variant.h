@@ -239,8 +239,9 @@ auto visit(Visitor&& vis, const Variant<Ts...>& var)
     static_assert(std::conjunction_v<std::is_invocable<Visitor, Ts>...>, "visitor must accept every alternative as an argument");
 
     using Result = std::invoke_result_t<Visitor, typename Variant<Ts...>::first_alternative>;
-    static_assert(std::conjunction_v<std::is_same<Result, std::invoke_result_t<Visitor, Ts>>...>,
-        "visitor result type must be consistent between alternatives");
+    static_assert(
+        std::conjunction_v<std::is_same<Result, std::invoke_result_t<Visitor, Ts>>...>, "visitor result type must be consistent between alternatives"
+    );
 
     if constexpr (std::is_same_v<Result, void>)
     {
@@ -266,8 +267,9 @@ auto visit(Visitor&& vis, Variant<Ts...>& var)
     static_assert(std::conjunction_v<std::is_invocable<Visitor, Ts&>...>, "visitor must accept every alternative as an argument");
 
     using Result = std::invoke_result_t<Visitor, typename Variant<Ts...>::first_alternative&>;
-    static_assert(std::conjunction_v<std::is_same<Result, std::invoke_result_t<Visitor, Ts&>>...>,
-        "visitor result type must be consistent between alternatives");
+    static_assert(
+        std::conjunction_v<std::is_same<Result, std::invoke_result_t<Visitor, Ts&>>...>, "visitor result type must be consistent between alternatives"
+    );
 
     if constexpr (std::is_same_v<Result, void>)
     {

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/AstQuery.h"
 #include "Luau/Config.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Scope.h"
@@ -36,6 +37,7 @@ struct AnyTypeSummary
 {
     TypeArena arena;
 
+    AstStatBlock* rootSrc = nullptr;
     DenseHashSet<TypeId> seenTypeFamilyInstances{nullptr};
 
     int recursionCount = 0;
@@ -47,33 +49,30 @@ struct AnyTypeSummary
 
     AnyTypeSummary();
 
-    void traverse(Module* module, AstStat* src, NotNull<BuiltinTypes> builtinTypes);
+    void traverse(const Module* module, AstStat* src, NotNull<BuiltinTypes> builtinTypes);
 
-    std::pair<bool, TypeId> checkForAnyCast(Scope* scope, AstExprTypeAssertion* expr);
-
-    // Todo: errors resolved by anys
-    void reportError(Location location, TypeErrorData err);
+    std::pair<bool, TypeId> checkForAnyCast(const Scope* scope, AstExprTypeAssertion* expr);
 
     bool containsAny(TypePackId typ);
     bool containsAny(TypeId typ);
 
-    bool isAnyCast(Scope* scope, AstExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    bool isAnyCall(Scope* scope, AstExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
+    bool isAnyCast(const Scope* scope, AstExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    bool isAnyCall(const Scope* scope, AstExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
 
-    bool hasVariadicAnys(Scope* scope, AstExprFunction* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    bool hasArgAnys(Scope* scope, AstExprFunction* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    bool hasAnyReturns(Scope* scope, AstExprFunction* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
+    bool hasVariadicAnys(const Scope* scope, AstExprFunction* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    bool hasArgAnys(const Scope* scope, AstExprFunction* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    bool hasAnyReturns(const Scope* scope, AstExprFunction* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
 
-    TypeId checkForFamilyInhabitance(TypeId instance, Location location);
-    TypeId lookupType(AstExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    TypePackId reconstructTypePack(AstArray<AstExpr*> exprs, Module* module, NotNull<BuiltinTypes> builtinTypes);
+    TypeId checkForFamilyInhabitance(const TypeId instance, Location location);
+    TypeId lookupType(const AstExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    TypePackId reconstructTypePack(const AstArray<AstExpr*> exprs, const Module* module, NotNull<BuiltinTypes> builtinTypes);
 
     DenseHashSet<TypeId> seenTypeFunctionInstances{nullptr};
-    TypeId lookupAnnotation(AstType* annotation, Module* module, NotNull<BuiltinTypes> builtintypes);
-    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation, Module* module);
-    TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location);
+    TypeId lookupAnnotation(AstType* annotation, const Module* module, NotNull<BuiltinTypes> builtintypes);
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation, const Module* module);
+    TypeId checkForTypeFunctionInhabitance(const TypeId instance, const Location location);
 
-    enum Pattern : uint64_t
+    enum Pattern: uint64_t
     {
         Casts,
         FuncArg,
@@ -91,9 +90,23 @@ struct AnyTypeSummary
         Pattern code;
         std::string node;
         TelemetryTypePair type;
-        std::string debug;
 
         explicit TypeInfo(Pattern code, std::string node, TelemetryTypePair type);
+    };
+
+    struct FindReturnAncestry final : public AstVisitor
+    {
+        AstNode* currNode{nullptr};
+        AstNode* stat{nullptr};
+        Position rootEnd;
+        bool found = false;
+
+        explicit FindReturnAncestry(AstNode* stat, Position rootEnd);
+
+        bool visit(AstType* node) override;
+        bool visit(AstNode* node) override;
+        bool visit(AstStatFunction* node) override;
+        bool visit(AstStatLocalFunction* node) override;
     };
 
     std::vector<TypeInfo> typeInfo;
@@ -103,29 +116,32 @@ struct AnyTypeSummary
      * @param node the lexical node that the scope belongs to.
      * @param parent the parent scope of the new scope. Must not be null.
      */
-    Scope* childScope(AstNode* node, const Scope* parent);
+    const Scope* childScope(const AstNode* node, const Scope* parent);
 
-    Scope* findInnerMostScope(Location location, Module* module);
+    std::optional<AstExpr*> matchRequire(const AstExprCall& call);
+    AstNode* getNode(AstStatBlock* root, AstNode* node);
+    const Scope* findInnerMostScope(const Location location, const Module* module);
+    const AstNode* findAstAncestryAtLocation(const AstStatBlock* root, AstNode* node);
 
-    void visit(Scope* scope, AstStat* stat, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatBlock* block, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatIf* ifStatement, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatWhile* while_, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatRepeat* repeat, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatReturn* ret, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatLocal* local, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatFor* for_, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatForIn* forIn, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatAssign* assign, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatCompoundAssign* assign, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatFunction* function, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatLocalFunction* function, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatTypeAlias* alias, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatDeclareGlobal* declareGlobal, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatDeclareClass* declareClass, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatDeclareFunction* declareFunction, Module* module, NotNull<BuiltinTypes> builtinTypes);
-    void visit(Scope* scope, AstStatError* error, Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStat* stat, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatBlock* block, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatIf* ifStatement, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatWhile* while_, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatRepeat* repeat, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatReturn* ret, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatLocal* local, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatFor* for_, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatForIn* forIn, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatAssign* assign, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatCompoundAssign* assign, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatFunction* function, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatLocalFunction* function, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatTypeAlias* alias, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatDeclareGlobal* declareGlobal, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatDeclareClass* declareClass, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatDeclareFunction* declareFunction, const Module* module, NotNull<BuiltinTypes> builtinTypes);
+    void visit(const Scope* scope, AstStatError* error, const Module* module, NotNull<BuiltinTypes> builtinTypes);
 };
 
 } // namespace Luau

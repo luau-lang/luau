@@ -46,33 +46,12 @@ LUAU_FASTFLAG(DebugLuauMagicTypes);
 namespace Luau
 {
 
-// TODO: instead of pair just type for solver? generated type
-// TODO: see lookupAnnotation in typechecker2. is cleaner than resolvetype
-// or delay containsAny() check and do not return pair.
-// quick flag in typeid saying was annotation or inferred, would be solid
-std::optional<TypeOrPack> getInferredType(AstExpr* expr, Module* module)
+void AnyTypeSummary::traverse(const Module* module, AstStat* src, NotNull<BuiltinTypes> builtinTypes)
 {
-    std::optional<TypeOrPack> inferredType;
-
-    if (module->astTypePacks.contains(expr))
-    {
-        inferredType = *module->astTypePacks.find(expr);
-    }
-    else if (module->astTypes.contains(expr))
-    {
-        inferredType = *module->astTypes.find(expr);
-    }
-
-    return inferredType;
+    visit(findInnerMostScope(src->location, module), src, module, builtinTypes);
 }
 
-void AnyTypeSummary::traverse(Module* module, AstStat* src, NotNull<BuiltinTypes> builtinTypes)
-{
-    Scope* scope = findInnerMostScope(src->location, module);
-    visit(scope, src, module, builtinTypes);
-}
-
-void AnyTypeSummary::visit(Scope* scope, AstStat* stat, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStat* stat, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     RecursionLimiter limiter{&recursionCount, FInt::LuauAnySummaryRecursionLimit};
 
@@ -114,7 +93,7 @@ void AnyTypeSummary::visit(Scope* scope, AstStat* stat, Module* module, NotNull<
         return visit(scope, s, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatBlock* block, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatBlock* block, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -125,37 +104,38 @@ void AnyTypeSummary::visit(Scope* scope, AstStatBlock* block, Module* module, No
         visit(scope, stat, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatIf* ifStatement, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatIf* ifStatement, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (ifStatement->thenbody)
     {
-        Scope* thenScope = findInnerMostScope(ifStatement->thenbody->location, module);
+        const Scope* thenScope = findInnerMostScope(ifStatement->thenbody->location, module);
         visit(thenScope, ifStatement->thenbody, module, builtinTypes);
     }
 
     if (ifStatement->elsebody)
     {
-        Scope* elseScope = findInnerMostScope(ifStatement->elsebody->location, module);
+        const Scope* elseScope = findInnerMostScope(ifStatement->elsebody->location, module);
         visit(elseScope, ifStatement->elsebody, module, builtinTypes);
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatWhile* while_, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatWhile* while_, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
-    Scope* whileScope = findInnerMostScope(while_->location, module);
+    const Scope* whileScope = findInnerMostScope(while_->location, module);
     visit(whileScope, while_->body, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatRepeat* repeat, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatRepeat* repeat, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
-    Scope* repeatScope = findInnerMostScope(repeat->location, module);
+    const Scope* repeatScope = findInnerMostScope(repeat->location, module);
     visit(repeatScope, repeat->body, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatReturn* ret, Module* module, NotNull<BuiltinTypes> builtinTypes)
-{   
-    // Scope* outScope = findOuterScope(ret->location, module);
-    Scope* retScope = findInnerMostScope(ret->location, module);
+void AnyTypeSummary::visit(const Scope* scope, AstStatReturn* ret, const Module* module, NotNull<BuiltinTypes> builtinTypes)
+{
+    const Scope* retScope = findInnerMostScope(ret->location, module);
+
+    auto ctxNode = getNode(rootSrc, ret);
 
     for (auto val : ret->list)
     {
@@ -163,7 +143,7 @@ void AnyTypeSummary::visit(Scope* scope, AstStatReturn* ret, Module* module, Not
         {
             TelemetryTypePair types;
             types.inferredType = toString(lookupType(val, module, builtinTypes));
-            TypeInfo ti{Pattern::FuncApp, toString(ret), types};
+            TypeInfo ti{Pattern::FuncApp, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
 
@@ -174,19 +154,19 @@ void AnyTypeSummary::visit(Scope* scope, AstStatReturn* ret, Module* module, Not
                 TelemetryTypePair types;
 
                 types.annotatedType = toString(lookupAnnotation(cast->annotation, module, builtinTypes));
-                auto inf = getInferredType(cast->expr, module);
-                if (inf)    
-                    types.inferredType = toString(*inf);
+                types.inferredType = toString(lookupType(cast->expr, module, builtinTypes));
 
-                TypeInfo ti{Pattern::Casts, toString(ret), types};
+                TypeInfo ti{Pattern::Casts, toString(ctxNode), types};
                 typeInfo.push_back(ti);
             }
         }
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatLocal* local, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatLocal* local, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
+    auto ctxNode = getNode(rootSrc, local);
+
     TypePackId values = reconstructTypePack(local->values, module, builtinTypes);
     auto [head, tail] = flatten(values);
 
@@ -203,18 +183,30 @@ void AnyTypeSummary::visit(Scope* scope, AstStatLocal* local, Module* module, No
                     TelemetryTypePair types;
 
                     types.annotatedType = toString(annot);
+                    types.inferredType = toString(lookupType(local->values.data[posn], module, builtinTypes));
 
-                    auto inf = getInferredType(local->values.data[posn], module);
-                    if (inf)
-                        types.inferredType = toString(*inf);
-
-                    TypeInfo ti{Pattern::VarAnnot, toString(local), types};
+                    TypeInfo ti{Pattern::VarAnnot, toString(ctxNode), types};
                     typeInfo.push_back(ti);
                 }
+            }
+            
+            const AstExprTypeAssertion* maybeRequire = local->values.data[posn]->as<AstExprTypeAssertion>();
+            if (!maybeRequire)
+                continue;
+
+            if (isAnyCast(scope, local->values.data[posn], module, builtinTypes))
+            {
+                TelemetryTypePair types;
+
+                types.inferredType = toString(head[std::min(local->values.size - 1, posn)]);
+
+                TypeInfo ti{Pattern::Casts, toString(ctxNode), types};
+                typeInfo.push_back(ti);
             }
         }
         else
         {
+
             if (std::min(local->values.size - 1, posn) < head.size())
             {
                 if (loc->annotation)
@@ -227,7 +219,7 @@ void AnyTypeSummary::visit(Scope* scope, AstStatLocal* local, Module* module, No
                         types.annotatedType = toString(annot);
                         types.inferredType = toString(head[std::min(local->values.size - 1, posn)]);
 
-                        TypeInfo ti{Pattern::VarAnnot, toString(local), types};
+                        TypeInfo ti{Pattern::VarAnnot, toString(ctxNode), types};
                         typeInfo.push_back(ti);
                     }
                 }
@@ -242,7 +234,7 @@ void AnyTypeSummary::visit(Scope* scope, AstStatLocal* local, Module* module, No
 
                         types.inferredType = toString(*tail);
 
-                        TypeInfo ti{Pattern::VarAny, toString(local), types};
+                        TypeInfo ti{Pattern::VarAny, toString(ctxNode), types};
                         typeInfo.push_back(ti);
                     }
                 }
@@ -253,20 +245,22 @@ void AnyTypeSummary::visit(Scope* scope, AstStatLocal* local, Module* module, No
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatFor* for_, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatFor* for_, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
-    Scope* forScope = findInnerMostScope(for_->location, module);
+    const Scope* forScope = findInnerMostScope(for_->location, module);
     visit(forScope, for_->body, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatForIn* forIn, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatForIn* forIn, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
-    Scope* loopScope = findInnerMostScope(forIn->location, module);
+    const Scope* loopScope = findInnerMostScope(forIn->location, module);
     visit(loopScope, forIn->body, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatAssign* assign, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatAssign* assign, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
+    auto ctxNode = getNode(rootSrc, assign);
+
     TypePackId values = reconstructTypePack(assign->values, module, builtinTypes);
     auto [head, tail] = flatten(values);
 
@@ -290,7 +284,7 @@ void AnyTypeSummary::visit(Scope* scope, AstStatAssign* assign, Module* module, 
             else
                 types.inferredType = toString(builtinTypes->nilType);
 
-            TypeInfo ti{Pattern::Assign, toString(assign), types};
+            TypeInfo ti{Pattern::Assign, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
         ++posn;
@@ -302,11 +296,9 @@ void AnyTypeSummary::visit(Scope* scope, AstStatAssign* assign, Module* module, 
         {
             TelemetryTypePair types;
 
-            auto inf = getInferredType(val, module);
-            if (inf)
-                types.inferredType = toString(*inf);
+            types.inferredType = toString(lookupType(val, module, builtinTypes));
 
-            TypeInfo ti{Pattern::FuncApp, toString(assign), types};
+            TypeInfo ti{Pattern::FuncApp, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
 
@@ -317,17 +309,15 @@ void AnyTypeSummary::visit(Scope* scope, AstStatAssign* assign, Module* module, 
                 TelemetryTypePair types;
 
                 types.annotatedType = toString(lookupAnnotation(cast->annotation, module, builtinTypes));
-                auto inf = getInferredType(val, module);
-                if (inf)    
-                    types.inferredType = toString(*inf);
+                types.inferredType = toString(lookupType(val, module, builtinTypes));
 
-                TypeInfo ti{Pattern::Casts, toString(assign), types};
+                TypeInfo ti{Pattern::Casts, toString(ctxNode), types};
                 typeInfo.push_back(ti);
             }
         }
     }
 
-    if (tail) 
+    if (tail)
     {
         if (containsAny(*tail))
         {
@@ -335,14 +325,16 @@ void AnyTypeSummary::visit(Scope* scope, AstStatAssign* assign, Module* module, 
 
             types.inferredType = toString(*tail);
 
-            TypeInfo ti{Pattern::Assign, toString(assign), types};
+            TypeInfo ti{Pattern::Assign, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatCompoundAssign* assign, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatCompoundAssign* assign, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
+    auto ctxNode = getNode(rootSrc, assign);
+
     TelemetryTypePair types;
 
     types.inferredType = toString(lookupType(assign->value, module, builtinTypes));
@@ -352,7 +344,7 @@ void AnyTypeSummary::visit(Scope* scope, AstStatCompoundAssign* assign, Module* 
     {
         if (containsAny(*module->astTypes.find(assign->var)))
         {
-            TypeInfo ti{Pattern::Assign, toString(assign), types};
+            TypeInfo ti{Pattern::Assign, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
     }
@@ -360,14 +352,14 @@ void AnyTypeSummary::visit(Scope* scope, AstStatCompoundAssign* assign, Module* 
     {
         if (containsAny(*module->astTypePacks.find(assign->var)))
         {
-            TypeInfo ti{Pattern::Assign, toString(assign), types};
+            TypeInfo ti{Pattern::Assign, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
     }
 
     if (isAnyCall(scope, assign->value, module, builtinTypes))
     {
-        TypeInfo ti{Pattern::FuncApp, toString(assign), types};
+        TypeInfo ti{Pattern::FuncApp, toString(ctxNode), types};
         typeInfo.push_back(ti);
     }
 
@@ -376,17 +368,15 @@ void AnyTypeSummary::visit(Scope* scope, AstStatCompoundAssign* assign, Module* 
         if (auto cast = assign->value->as<AstExprTypeAssertion>())
         {
             types.annotatedType = toString(lookupAnnotation(cast->annotation, module, builtinTypes));
-            auto inf = getInferredType(cast->expr, module);
-            if (inf)    
-                types.inferredType = toString(*inf);
+            types.inferredType = toString(lookupType(cast->expr, module, builtinTypes));
 
-            TypeInfo ti{Pattern::Casts, toString(assign), types};
+            TypeInfo ti{Pattern::Casts, toString(ctxNode), types};
             typeInfo.push_back(ti);
         }
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatFunction* function, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatFunction* function, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     TelemetryTypePair types;
     types.inferredType = toString(lookupType(function->func, module, builtinTypes));
@@ -413,25 +403,27 @@ void AnyTypeSummary::visit(Scope* scope, AstStatFunction* function, Module* modu
         visit(scope, function->func->body, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatLocalFunction* function, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatLocalFunction* function, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     TelemetryTypePair types;
-    types.inferredType = toString(lookupType(function->func, module, builtinTypes));
 
     if (hasVariadicAnys(scope, function->func, module, builtinTypes))
     {
+        types.inferredType = toString(lookupType(function->func, module, builtinTypes));
         TypeInfo ti{Pattern::VarAny, toString(function), types};
         typeInfo.push_back(ti);
     }
 
     if (hasArgAnys(scope, function->func, module, builtinTypes))
     {
+        types.inferredType = toString(lookupType(function->func, module, builtinTypes));
         TypeInfo ti{Pattern::FuncArg, toString(function), types};
         typeInfo.push_back(ti);
     }
 
     if (hasAnyReturns(scope, function->func, module, builtinTypes))
     {
+        types.inferredType = toString(lookupType(function->func, module, builtinTypes));
         TypeInfo ti{Pattern::FuncRet, toString(function), types};
         typeInfo.push_back(ti);
     }
@@ -440,8 +432,9 @@ void AnyTypeSummary::visit(Scope* scope, AstStatLocalFunction* function, Module*
         visit(scope, function->func->body, module, builtinTypes);
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatTypeAlias* alias, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatTypeAlias* alias, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
+    auto ctxNode = getNode(rootSrc, alias);
 
     auto annot = lookupAnnotation(alias->type, module, builtinTypes);
     if (containsAny(annot))
@@ -450,33 +443,34 @@ void AnyTypeSummary::visit(Scope* scope, AstStatTypeAlias* alias, Module* module
         TelemetryTypePair types;
 
         types.annotatedType = toString(annot);
-        TypeInfo ti{Pattern::Alias, toString(alias), types};
+        TypeInfo ti{Pattern::Alias, toString(ctxNode), types};
         typeInfo.push_back(ti);
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+void AnyTypeSummary::visit(const Scope* scope, AstStatExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
+    auto ctxNode = getNode(rootSrc, expr);
+
     if (isAnyCall(scope, expr->expr, module, builtinTypes))
     {
         TelemetryTypePair types;
-
         types.inferredType = toString(lookupType(expr->expr, module, builtinTypes));
 
-        TypeInfo ti{Pattern::FuncApp, toString(expr), types};
+        TypeInfo ti{Pattern::FuncApp, toString(ctxNode), types};
         typeInfo.push_back(ti);
     }
 }
 
-void AnyTypeSummary::visit(Scope* scope, AstStatDeclareGlobal* declareGlobal, Module* module, NotNull<BuiltinTypes> builtinTypes) {}
+void AnyTypeSummary::visit(const Scope* scope, AstStatDeclareGlobal* declareGlobal, const Module* module, NotNull<BuiltinTypes> builtinTypes) {}
 
-void AnyTypeSummary::visit(Scope* scope, AstStatDeclareClass* declareClass, Module* module, NotNull<BuiltinTypes> builtinTypes) {}
+void AnyTypeSummary::visit(const Scope* scope, AstStatDeclareClass* declareClass, const Module* module, NotNull<BuiltinTypes> builtinTypes) {}
 
-void AnyTypeSummary::visit(Scope* scope, AstStatDeclareFunction* declareFunction, Module* module, NotNull<BuiltinTypes> builtinTypes) {}
+void AnyTypeSummary::visit(const Scope* scope, AstStatDeclareFunction* declareFunction, const Module* module, NotNull<BuiltinTypes> builtinTypes) {}
 
-void AnyTypeSummary::visit(Scope* scope, AstStatError* error, Module* module, NotNull<BuiltinTypes> builtinTypes) {}
+void AnyTypeSummary::visit(const Scope* scope, AstStatError* error, const Module* module, NotNull<BuiltinTypes> builtinTypes) {}
 
-TypeId AnyTypeSummary::checkForFamilyInhabitance(TypeId instance, Location location)
+TypeId AnyTypeSummary::checkForFamilyInhabitance(const TypeId instance, const Location location)
 {
     if (seenTypeFamilyInstances.find(instance))
         return instance;
@@ -485,13 +479,13 @@ TypeId AnyTypeSummary::checkForFamilyInhabitance(TypeId instance, Location locat
     return instance;
 }
 
-TypeId AnyTypeSummary::lookupType(AstExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+TypeId AnyTypeSummary::lookupType(const AstExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
-    TypeId* ty = module->astTypes.find(expr);
+    const TypeId* ty = module->astTypes.find(expr);
     if (ty)
         return checkForFamilyInhabitance(follow(*ty), expr->location);
 
-    TypePackId* tp = module->astTypePacks.find(expr);
+    const TypePackId* tp = module->astTypePacks.find(expr);
     if (tp)
     {
         if (auto fst = first(*tp, /*ignoreHiddenVariadics*/ false))
@@ -503,7 +497,7 @@ TypeId AnyTypeSummary::lookupType(AstExpr* expr, Module* module, NotNull<Builtin
     return builtinTypes->errorRecoveryType();
 }
 
-TypePackId AnyTypeSummary::reconstructTypePack(AstArray<AstExpr*> exprs, Module* module, NotNull<BuiltinTypes> builtinTypes)
+TypePackId AnyTypeSummary::reconstructTypePack(AstArray<AstExpr*> exprs, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (exprs.size == 0)
         return arena.addTypePack(TypePack{{}, std::nullopt});
@@ -515,14 +509,14 @@ TypePackId AnyTypeSummary::reconstructTypePack(AstArray<AstExpr*> exprs, Module*
         head.push_back(lookupType(exprs.data[i], module, builtinTypes));
     }
 
-    TypePackId* tail = module->astTypePacks.find(exprs.data[exprs.size - 1]);
+    const TypePackId* tail = module->astTypePacks.find(exprs.data[exprs.size - 1]);
     if (tail)
         return arena.addTypePack(TypePack{std::move(head), follow(*tail)});
     else
         return arena.addTypePack(TypePack{std::move(head), builtinTypes->errorRecoveryTypePack()});
 }
 
-bool AnyTypeSummary::isAnyCall(Scope* scope, AstExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+bool AnyTypeSummary::isAnyCall(const Scope* scope, AstExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (auto call = expr->as<AstExprCall>())
     {
@@ -537,7 +531,7 @@ bool AnyTypeSummary::isAnyCall(Scope* scope, AstExpr* expr, Module* module, NotN
     return false;
 }
 
-bool AnyTypeSummary::hasVariadicAnys(Scope* scope, AstExprFunction* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+bool AnyTypeSummary::hasVariadicAnys(const Scope* scope, AstExprFunction* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (expr->vararg && expr->varargAnnotation)
     {
@@ -550,7 +544,7 @@ bool AnyTypeSummary::hasVariadicAnys(Scope* scope, AstExprFunction* expr, Module
     return false;
 }
 
-bool AnyTypeSummary::hasArgAnys(Scope* scope, AstExprFunction* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+bool AnyTypeSummary::hasArgAnys(const Scope* scope, AstExprFunction* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (expr->args.size > 0)
     {
@@ -569,7 +563,7 @@ bool AnyTypeSummary::hasArgAnys(Scope* scope, AstExprFunction* expr, Module* mod
     return false;
 }
 
-bool AnyTypeSummary::hasAnyReturns(Scope* scope, AstExprFunction* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+bool AnyTypeSummary::hasAnyReturns(const Scope* scope, AstExprFunction* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (!expr->returnAnnotation)
     {
@@ -596,7 +590,7 @@ bool AnyTypeSummary::hasAnyReturns(Scope* scope, AstExprFunction* expr, Module* 
     return false;
 }
 
-bool AnyTypeSummary::isAnyCast(Scope* scope, AstExpr* expr, Module* module, NotNull<BuiltinTypes> builtinTypes)
+bool AnyTypeSummary::isAnyCast(const Scope* scope, AstExpr* expr, const Module* module, NotNull<BuiltinTypes> builtinTypes)
 {
     if (auto cast = expr->as<AstExprTypeAssertion>())
     {
@@ -609,7 +603,7 @@ bool AnyTypeSummary::isAnyCast(Scope* scope, AstExpr* expr, Module* module, NotN
     return false;
 }
 
-TypeId AnyTypeSummary::lookupAnnotation(AstType* annotation, Module* module, NotNull<BuiltinTypes> builtintypes)
+TypeId AnyTypeSummary::lookupAnnotation(AstType* annotation, const Module* module, NotNull<BuiltinTypes> builtintypes)
 {
     if (FFlag::DebugLuauMagicTypes)
     {
@@ -623,14 +617,14 @@ TypeId AnyTypeSummary::lookupAnnotation(AstType* annotation, Module* module, Not
         }
     }
 
-    TypeId* ty = module->astResolvedTypes.find(annotation);
+    const TypeId* ty = module->astResolvedTypes.find(annotation);
     if (ty)
         return checkForTypeFunctionInhabitance(follow(*ty), annotation->location);
     else
         return checkForTypeFunctionInhabitance(builtintypes->errorRecoveryType(), annotation->location);
 }
 
-TypeId AnyTypeSummary::checkForTypeFunctionInhabitance(TypeId instance, Location location)
+TypeId AnyTypeSummary::checkForTypeFunctionInhabitance(const TypeId instance, const Location location)
 {
     if (seenTypeFunctionInstances.find(instance))
         return instance;
@@ -639,9 +633,9 @@ TypeId AnyTypeSummary::checkForTypeFunctionInhabitance(TypeId instance, Location
     return instance;
 }
 
-std::optional<TypePackId> AnyTypeSummary::lookupPackAnnotation(AstTypePack* annotation, Module* module)
+std::optional<TypePackId> AnyTypeSummary::lookupPackAnnotation(AstTypePack* annotation, const Module* module)
 {
-    TypePackId* tp = module->astResolvedTypePacks.find(annotation);
+    const TypePackId* tp = module->astResolvedTypePacks.find(annotation);
     if (tp != nullptr)
         return {follow(*tp)};
     return {};
@@ -786,9 +780,9 @@ bool AnyTypeSummary::containsAny(TypePackId typ)
     return found;
 }
 
-Scope* AnyTypeSummary::findInnerMostScope(Location location, Module* module)
+const Scope* AnyTypeSummary::findInnerMostScope(const Location location, const Module* module)
 {
-    Scope* bestScope = module->getModuleScope().get();
+    const Scope* bestScope = module->getModuleScope().get();
 
     bool didNarrow = false;
     do
@@ -808,10 +802,79 @@ Scope* AnyTypeSummary::findInnerMostScope(Location location, Module* module)
     return bestScope;
 }
 
+std::optional<AstExpr*> AnyTypeSummary::matchRequire(const AstExprCall& call)
+{
+    const char* require = "require";
+
+    if (call.args.size != 1)
+        return std::nullopt;
+
+    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    if (!funcAsGlobal || funcAsGlobal->name != require)
+        return std::nullopt;
+
+    if (call.args.size != 1)
+        return std::nullopt;
+
+    return call.args.data[0];
+}
+
+AstNode* AnyTypeSummary::getNode(AstStatBlock* root, AstNode* node)
+{
+    FindReturnAncestry finder(node, root->location.end);
+    root->visit(&finder);
+
+    if (!finder.currNode)
+        finder.currNode = node;
+
+    LUAU_ASSERT(finder.found && finder.currNode);
+    return finder.currNode;
+}
+
+bool AnyTypeSummary::FindReturnAncestry::visit(AstStatLocalFunction* node)
+{
+    currNode = node;
+    return !found;
+}
+
+bool AnyTypeSummary::FindReturnAncestry::visit(AstStatFunction* node)
+{
+    currNode = node;
+    return !found;
+}
+
+bool AnyTypeSummary::FindReturnAncestry::visit(AstType* node)
+{
+    return !found;
+}
+
+bool AnyTypeSummary::FindReturnAncestry::visit(AstNode* node)
+{
+    if (node == stat)
+    {
+        found = true;
+    }
+
+    if (node->location.end == rootEnd && stat->location.end >= rootEnd)
+    {
+        currNode = node;
+        found = true;
+    }
+
+    return !found;
+}
+
+
 AnyTypeSummary::TypeInfo::TypeInfo(Pattern code, std::string node, TelemetryTypePair type)
     : code(code)
     , node(node)
     , type(type)
+{
+}
+
+AnyTypeSummary::FindReturnAncestry::FindReturnAncestry(AstNode* stat, Position rootEnd)
+    : stat(stat)
+    , rootEnd(rootEnd)
 {
 }
 

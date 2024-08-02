@@ -227,19 +227,23 @@ private:
     void cloneChildren(TypeId ty)
     {
         return visit(
-            [&](auto&& t) {
+            [&](auto&& t)
+            {
                 return cloneChildren(&t);
             },
-            asMutable(ty)->ty);
+            asMutable(ty)->ty
+        );
     }
 
     void cloneChildren(TypePackId tp)
     {
         return visit(
-            [&](auto&& t) {
+            [&](auto&& t)
+            {
                 return cloneChildren(&t);
             },
-            asMutable(tp)->ty);
+            asMutable(tp)->ty
+        );
     }
 
     void cloneChildren(Kind kind)

@@ -54,8 +54,9 @@ void setLuauFlags(const char* list)
             else if (value == "false" || value == "False")
                 setLuauFlag(key, false);
             else
-                fprintf(stderr, "Warning: unrecognized value '%.*s' for flag '%.*s'.\n", int(value.length()), value.data(), int(key.length()),
-                    key.data());
+                fprintf(
+                    stderr, "Warning: unrecognized value '%.*s' for flag '%.*s'.\n", int(value.length()), value.data(), int(key.length()), key.data()
+                );
         }
         else
         {

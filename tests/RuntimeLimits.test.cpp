@@ -30,9 +30,14 @@ struct LimitFixture : BuiltinsFixture
 template<typename T>
 bool hasError(const CheckResult& result, T* = nullptr)
 {
-    auto it = std::find_if(result.errors.begin(), result.errors.end(), [](const TypeError& a) {
-        return nullptr != get<T>(a);
-    });
+    auto it = std::find_if(
+        result.errors.begin(),
+        result.errors.end(),
+        [](const TypeError& a)
+        {
+            return nullptr != get<T>(a);
+        }
+    );
     return it != result.errors.end();
 }
 

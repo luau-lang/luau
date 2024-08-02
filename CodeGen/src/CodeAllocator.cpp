@@ -143,7 +143,14 @@ CodeAllocator::~CodeAllocator()
 }
 
 bool CodeAllocator::allocate(
-    const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize, uint8_t*& result, size_t& resultSize, uint8_t*& resultCodeStart)
+    const uint8_t* data,
+    size_t dataSize,
+    const uint8_t* code,
+    size_t codeSize,
+    uint8_t*& result,
+    size_t& resultSize,
+    uint8_t*& resultCodeStart
+)
 {
     // 'Round up' to preserve code alignment
     size_t alignedDataSize = (dataSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1);

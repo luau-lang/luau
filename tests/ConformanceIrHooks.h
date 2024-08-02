@@ -112,7 +112,15 @@ inline uint8_t vectorNamecallBytecodeType(const char* member, size_t memberLengt
 }
 
 inline bool vectorNamecall(
-    Luau::CodeGen::IrBuilder& build, const char* member, size_t memberLength, int argResReg, int sourceReg, int params, int results, int pcpos)
+    Luau::CodeGen::IrBuilder& build,
+    const char* member,
+    size_t memberLength,
+    int argResReg,
+    int sourceReg,
+    int params,
+    int results,
+    int pcpos
+)
 {
     using namespace Luau::CodeGen;
 
@@ -225,7 +233,14 @@ inline uint8_t userdataAccessBytecodeType(uint8_t type, const char* member, size
 }
 
 inline bool userdataAccess(
-    Luau::CodeGen::IrBuilder& build, uint8_t type, const char* member, size_t memberLength, int resultReg, int sourceReg, int pcpos)
+    Luau::CodeGen::IrBuilder& build,
+    uint8_t type,
+    const char* member,
+    size_t memberLength,
+    int resultReg,
+    int sourceReg,
+    int pcpos
+)
 {
     using namespace Luau::CodeGen;
 
@@ -337,8 +352,16 @@ inline uint8_t userdataMetamethodBytecodeType(uint8_t lhsTy, uint8_t rhsTy, Luau
     return LBC_TYPE_ANY;
 }
 
-inline bool userdataMetamethod(Luau::CodeGen::IrBuilder& build, uint8_t lhsTy, uint8_t rhsTy, int resultReg, Luau::CodeGen::IrOp lhs,
-    Luau::CodeGen::IrOp rhs, Luau::CodeGen::HostMetamethod method, int pcpos)
+inline bool userdataMetamethod(
+    Luau::CodeGen::IrBuilder& build,
+    uint8_t lhsTy,
+    uint8_t rhsTy,
+    int resultReg,
+    Luau::CodeGen::IrOp lhs,
+    Luau::CodeGen::IrOp rhs,
+    Luau::CodeGen::HostMetamethod method,
+    int pcpos
+)
 {
     using namespace Luau::CodeGen;
 
@@ -460,8 +483,17 @@ inline uint8_t userdataNamecallBytecodeType(uint8_t type, const char* member, si
     return LBC_TYPE_ANY;
 }
 
-inline bool userdataNamecall(Luau::CodeGen::IrBuilder& build, uint8_t type, const char* member, size_t memberLength, int argResReg, int sourceReg,
-    int params, int results, int pcpos)
+inline bool userdataNamecall(
+    Luau::CodeGen::IrBuilder& build,
+    uint8_t type,
+    const char* member,
+    size_t memberLength,
+    int argResReg,
+    int sourceReg,
+    int params,
+    int results,
+    int pcpos
+)
 {
     using namespace Luau::CodeGen;
 

@@ -44,8 +44,14 @@ struct TypeFunctionContext
     {
     }
 
-    TypeFunctionContext(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer,
-        NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits)
+    TypeFunctionContext(
+        NotNull<TypeArena> arena,
+        NotNull<BuiltinTypes> builtins,
+        NotNull<Scope> scope,
+        NotNull<Normalizer> normalizer,
+        NotNull<InternalErrorReporter> ice,
+        NotNull<TypeCheckLimits> limits
+    )
         : arena(arena)
         , builtins(builtins)
         , scope(scope)

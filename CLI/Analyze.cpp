@@ -64,8 +64,13 @@ static void reportError(const Luau::Frontend& frontend, ReportFormat format, con
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
         report(format, humanReadableName.c_str(), error.location, "SyntaxError", syntaxError->message.c_str());
     else
-        report(format, humanReadableName.c_str(), error.location, "TypeError",
-            Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str());
+        report(
+            format,
+            humanReadableName.c_str(),
+            error.location,
+            "TypeError",
+            Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str()
+        );
 }
 
 static void reportWarning(ReportFormat format, const char* name, const Luau::LintWarning& warning)
@@ -235,9 +240,12 @@ struct TaskScheduler
     {
         for (unsigned i = 0; i < threadCount; i++)
         {
-            workers.emplace_back([this] {
-                workerFunction();
-            });
+            workers.emplace_back(
+                [this]
+                {
+                    workerFunction();
+                }
+            );
         }
     }
 
@@ -254,9 +262,13 @@ struct TaskScheduler
     {
         std::unique_lock guard(mtx);
 
-        cv.wait(guard, [this] {
-            return !tasks.empty();
-        });
+        cv.wait(
+            guard,
+            [this]
+            {
+                return !tasks.empty();
+            }
+        );
 
         std::function<void()> task = tasks.front();
         tasks.pop();
@@ -351,7 +363,8 @@ int main(int argc, char** argv)
 
     if (FFlag::DebugLuauLogSolverToJsonFile)
     {
-        frontend.writeJsonLog = [&basePath](const Luau::ModuleName& moduleName, std::string log) {
+        frontend.writeJsonLog = [&basePath](const Luau::ModuleName& moduleName, std::string log)
+        {
             std::string path = moduleName + ".log.json";
             size_t pos = moduleName.find_last_of('/');
             if (pos != std::string::npos)
@@ -390,9 +403,13 @@ int main(int argc, char** argv)
     {
         TaskScheduler scheduler(threadCount);
 
-        checkedModules = frontend.checkQueuedModules(std::nullopt, [&](std::function<void()> f) {
-            scheduler.push(std::move(f));
-        });
+        checkedModules = frontend.checkQueuedModules(
+            std::nullopt,
+            [&](std::function<void()> f)
+            {
+                scheduler.push(std::move(f));
+            }
+        );
     }
     catch (const Luau::InternalCompilerError& ice)
     {
@@ -403,8 +420,13 @@ int main(int argc, char** argv)
 
         Luau::TypeError error(location, moduleName, Luau::InternalError{ice.message});
 
-        report(format, humanReadableName.c_str(), location, "InternalCompilerError",
-            Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str());
+        report(
+            format,
+            humanReadableName.c_str(),
+            location,
+            "InternalCompilerError",
+            Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str()
+        );
         return 1;
     }
 

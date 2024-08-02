@@ -274,8 +274,15 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     CODEGEN_ASSERT(build.data.empty());
 
     uint8_t* codeStart = nullptr;
-    if (!codeGenContext.codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0])), codeGenContext.gateData, codeGenContext.gateDataSize, codeStart))
+    if (!codeGenContext.codeAllocator.allocate(
+            build.data.data(),
+            int(build.data.size()),
+            reinterpret_cast<const uint8_t*>(build.code.data()),
+            int(build.code.size() * sizeof(build.code[0])),
+            codeGenContext.gateData,
+            codeGenContext.gateDataSize,
+            codeStart
+        ))
     {
         CODEGEN_ASSERT(!"Failed to create entry function");
         return false;

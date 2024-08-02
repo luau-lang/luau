@@ -36,10 +36,19 @@ public:
     [[nodiscard]] bool initHeaderFunctions();
 
     [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) = 0;
+        const ModuleId& moduleId,
+        const std::vector<Proto*>& moduleProtos
+    ) = 0;
 
-    [[nodiscard]] virtual ModuleBindResult bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) = 0;
+    [[nodiscard]] virtual ModuleBindResult bindModule(
+        const std::optional<ModuleId>& moduleId,
+        const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize
+    ) = 0;
 
     virtual void onCloseState() noexcept = 0;
     virtual void onDestroyFunction(void* execdata) noexcept = 0;
@@ -61,11 +70,18 @@ class StandaloneCodeGenContext final : public BaseCodeGenContext
 public:
     StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
+    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos)
+        override;
 
-    [[nodiscard]] virtual ModuleBindResult bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) override;
+    [[nodiscard]] virtual ModuleBindResult bindModule(
+        const std::optional<ModuleId>& moduleId,
+        const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize
+    ) override;
 
     virtual void onCloseState() noexcept override;
     virtual void onDestroyFunction(void* execdata) noexcept override;
@@ -78,11 +94,18 @@ class SharedCodeGenContext final : public BaseCodeGenContext
 public:
     SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
+    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos)
+        override;
 
-    [[nodiscard]] virtual ModuleBindResult bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) override;
+    [[nodiscard]] virtual ModuleBindResult bindModule(
+        const std::optional<ModuleId>& moduleId,
+        const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize
+    ) override;
 
     virtual void onCloseState() noexcept override;
     virtual void onDestroyFunction(void* execdata) noexcept override;

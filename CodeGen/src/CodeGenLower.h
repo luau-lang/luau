@@ -53,7 +53,12 @@ inline void gatherFunctions_DEPRECATED(std::vector<Proto*>& results, Proto* prot
 }
 
 inline void gatherFunctionsHelper(
-    std::vector<Proto*>& results, Proto* proto, const unsigned int flags, const bool hasNativeFunctions, const bool root)
+    std::vector<Proto*>& results,
+    Proto* proto,
+    const unsigned int flags,
+    const bool hasNativeFunctions,
+    const bool root
+)
 {
     if (results.size() <= size_t(proto->bytecodeid))
         results.resize(proto->bytecodeid + 1);
@@ -83,14 +88,25 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* root, const uns
 
 inline unsigned getInstructionCount(const std::vector<IrInst>& instructions, IrCmd cmd)
 {
-    return unsigned(std::count_if(instructions.begin(), instructions.end(), [&cmd](const IrInst& inst) {
-        return inst.cmd == cmd;
-    }));
+    return unsigned(std::count_if(
+        instructions.begin(),
+        instructions.end(),
+        [&cmd](const IrInst& inst)
+        {
+            return inst.cmd == cmd;
+        }
+    ));
 }
 
 template<typename AssemblyBuilder, typename IrLowering>
-inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, const std::vector<uint32_t>& sortedBlocks, int bytecodeid,
-    AssemblyOptions options)
+inline bool lowerImpl(
+    AssemblyBuilder& build,
+    IrLowering& lowering,
+    IrFunction& function,
+    const std::vector<uint32_t>& sortedBlocks,
+    int bytecodeid,
+    AssemblyOptions options
+)
 {
     // For each IR instruction that begins a bytecode instruction, which bytecode instruction is it?
     std::vector<uint32_t> bcLocations(function.instructions.size() + 1, ~0u);
@@ -259,8 +275,15 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     return true;
 }
 
-inline bool lowerIr(X64::AssemblyBuilderX64& build, IrBuilder& ir, const std::vector<uint32_t>& sortedBlocks, ModuleHelpers& helpers, Proto* proto,
-    AssemblyOptions options, LoweringStats* stats)
+inline bool lowerIr(
+    X64::AssemblyBuilderX64& build,
+    IrBuilder& ir,
+    const std::vector<uint32_t>& sortedBlocks,
+    ModuleHelpers& helpers,
+    Proto* proto,
+    AssemblyOptions options,
+    LoweringStats* stats
+)
 {
     optimizeMemoryOperandsX64(ir.function);
 
@@ -269,8 +292,15 @@ inline bool lowerIr(X64::AssemblyBuilderX64& build, IrBuilder& ir, const std::ve
     return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
 }
 
-inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, const std::vector<uint32_t>& sortedBlocks, ModuleHelpers& helpers, Proto* proto,
-    AssemblyOptions options, LoweringStats* stats)
+inline bool lowerIr(
+    A64::AssemblyBuilderA64& build,
+    IrBuilder& ir,
+    const std::vector<uint32_t>& sortedBlocks,
+    ModuleHelpers& helpers,
+    Proto* proto,
+    AssemblyOptions options,
+    LoweringStats* stats
+)
 {
     A64::IrLoweringA64 lowering(build, helpers, ir.function, stats);
 
@@ -278,8 +308,15 @@ inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, const std::ve
 }
 
 template<typename AssemblyBuilder>
-inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats,
-    CodeGenCompilationResult& codeGenCompilationResult)
+inline bool lowerFunction(
+    IrBuilder& ir,
+    AssemblyBuilder& build,
+    ModuleHelpers& helpers,
+    Proto* proto,
+    AssemblyOptions options,
+    LoweringStats* stats,
+    CodeGenCompilationResult& codeGenCompilationResult
+)
 {
     killUnusedBlocks(ir.function);
 

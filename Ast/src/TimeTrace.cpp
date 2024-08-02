@@ -184,8 +184,14 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
 
             Token& token = context.tokens[ev.token];
 
-            formatAppend(temp, R"({"name": "%s", "cat": "%s", "ph": "B", "ts": %u, "pid": 0, "tid": %u)", token.name, token.category,
-                ev.data.microsec, threadId);
+            formatAppend(
+                temp,
+                R"({"name": "%s", "cat": "%s", "ph": "B", "ts": %u, "pid": 0, "tid": %u)",
+                token.name,
+                token.category,
+                ev.data.microsec,
+                threadId
+            );
             unfinishedEnter = true;
         }
         break;
@@ -201,10 +207,13 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
                 unfinishedEnter = false;
             }
 
-            formatAppend(temp,
+            formatAppend(
+                temp,
                 R"({"ph": "E", "ts": %u, "pid": 0, "tid": %u},)"
                 "\n",
-                ev.data.microsec, threadId);
+                ev.data.microsec,
+                threadId
+            );
             break;
         case EventType::ArgName:
             LUAU_ASSERT(unfinishedEnter);

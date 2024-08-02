@@ -247,7 +247,8 @@ TEST_CASE("PathNormalization")
     CHECK(result);
     std::string normalized = *result;
     std::vector<std::string> variants = {
-        "./.././.././modules/./module/", "placeholder/../../../modules/module", "../placeholder/placeholder2/../../../modules/module"};
+        "./.././.././modules/./module/", "placeholder/../../../modules/module", "../placeholder/placeholder2/../../../modules/module"
+    };
     for (const std::string& variant : variants)
     {
         result = normalizePath(variant);
@@ -259,8 +260,11 @@ TEST_CASE("PathNormalization")
     result = normalizePath(prefix + "Users/modules/module");
     CHECK(result);
     normalized = *result;
-    variants = {"Users/Users/Users/.././.././modules/./module/", "placeholder/../Users/..//Users/modules/module",
-        "Users/../placeholder/placeholder2/../../Users/modules/module"};
+    variants = {
+        "Users/Users/Users/.././.././modules/./module/",
+        "placeholder/../Users/..//Users/modules/module",
+        "Users/../placeholder/placeholder2/../../Users/modules/module"
+    };
     for (const std::string& variant : variants)
     {
         result = normalizePath(prefix + variant);

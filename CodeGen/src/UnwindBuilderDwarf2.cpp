@@ -53,8 +53,24 @@
 #define DW_REG_A64_SP 31
 
 // X64 register mapping from real register index to DWARF2 (r8..r15 are mapped 1-1, but named registers aren't)
-const int regIndexToDwRegX64[16] = {DW_REG_X64_RAX, DW_REG_X64_RCX, DW_REG_X64_RDX, DW_REG_X64_RBX, DW_REG_X64_RSP, DW_REG_X64_RBP, DW_REG_X64_RSI,
-    DW_REG_X64_RDI, 8, 9, 10, 11, 12, 13, 14, 15};
+const int regIndexToDwRegX64[16] = {
+    DW_REG_X64_RAX,
+    DW_REG_X64_RCX,
+    DW_REG_X64_RDX,
+    DW_REG_X64_RBX,
+    DW_REG_X64_RSP,
+    DW_REG_X64_RBP,
+    DW_REG_X64_RSI,
+    DW_REG_X64_RDI,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+};
 
 const int kCodeAlignFactor = 1;
 const int kDataAlignFactor = 8;
@@ -225,8 +241,13 @@ void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize,
     }
 }
 
-void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
-    const std::vector<X64::RegisterX64>& simd)
+void UnwindBuilderDwarf2::prologueX64(
+    uint32_t prologueSize,
+    uint32_t stackSize,
+    bool setupFrame,
+    std::initializer_list<X64::RegisterX64> gpr,
+    const std::vector<X64::RegisterX64>& simd
+)
 {
     CODEGEN_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
 

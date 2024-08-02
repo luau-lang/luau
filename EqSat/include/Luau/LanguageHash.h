@@ -16,7 +16,7 @@ struct LanguageHash
     }
 };
 
-template <typename T>
+template<typename T>
 size_t languageHash(const T& lang)
 {
     return LanguageHash<T>{}(lang);

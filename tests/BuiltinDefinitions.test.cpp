@@ -20,7 +20,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
         std::string expectedRootSymbol = "@luau/global/" + nameString;
         std::optional<std::string> actualRootSymbol = binding.documentationSymbol;
         CHECK_MESSAGE(
-            actualRootSymbol == expectedRootSymbol, "expected symbol ", expectedRootSymbol, " for global ", nameString, ", got ", actualRootSymbol);
+            actualRootSymbol == expectedRootSymbol, "expected symbol ", expectedRootSymbol, " for global ", nameString, ", got ", actualRootSymbol
+        );
 
         const TableType::Props* props = nullptr;
         if (const TableType* ttv = get<TableType>(binding.typeId))
@@ -39,8 +40,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
                 std::string fullPropName = nameString + "." + propName;
                 std::string expectedPropSymbol = expectedRootSymbol + "." + propName;
                 std::optional<std::string> actualPropSymbol = prop.documentationSymbol;
-                CHECK_MESSAGE(actualPropSymbol == expectedPropSymbol, "expected symbol ", expectedPropSymbol, " for ", fullPropName, ", got ",
-                    actualPropSymbol);
+                CHECK_MESSAGE(
+                    actualPropSymbol == expectedPropSymbol, "expected symbol ", expectedPropSymbol, " for ", fullPropName, ", got ", actualPropSymbol
+                );
             }
         }
     }

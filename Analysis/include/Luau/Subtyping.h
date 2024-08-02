@@ -140,8 +140,13 @@ struct Subtyping
 
     SeenSet seenTypes{{}};
 
-    Subtyping(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> typeArena, NotNull<Normalizer> normalizer,
-        NotNull<InternalErrorReporter> iceReporter, NotNull<Scope> scope);
+    Subtyping(
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<TypeArena> typeArena,
+        NotNull<Normalizer> normalizer,
+        NotNull<InternalErrorReporter> iceReporter,
+        NotNull<Scope> scope
+    );
 
     Subtyping(const Subtyping&) = delete;
     Subtyping& operator=(const Subtyping&) = delete;
@@ -209,13 +214,19 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const Property& subProperty, const Property& superProperty, const std::string& name);
 
     SubtypingResult isCovariantWith(
-        SubtypingEnvironment& env, const std::shared_ptr<const NormalizedType>& subNorm, const std::shared_ptr<const NormalizedType>& superNorm);
+        SubtypingEnvironment& env,
+        const std::shared_ptr<const NormalizedType>& subNorm,
+        const std::shared_ptr<const NormalizedType>& superNorm
+    );
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedClassType& subClass, const NormalizedClassType& superClass);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedClassType& subClass, const TypeIds& superTables);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedStringType& subString, const NormalizedStringType& superString);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedStringType& subString, const TypeIds& superTables);
     SubtypingResult isCovariantWith(
-        SubtypingEnvironment& env, const NormalizedFunctionType& subFunction, const NormalizedFunctionType& superFunction);
+        SubtypingEnvironment& env,
+        const NormalizedFunctionType& subFunction,
+        const NormalizedFunctionType& superFunction
+    );
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeIds& subTypes, const TypeIds& superTypes);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);

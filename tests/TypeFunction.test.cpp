@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
 struct TypeFunctionFixture : Fixture
@@ -22,10 +23,12 @@ struct TypeFunctionFixture : Fixture
     TypeFunctionFixture()
         : Fixture(true, false)
     {
-        swapFunction = TypeFunction{/* name */ "Swap",
+        swapFunction = TypeFunction{
+            /* name */ "Swap",
             /* reducer */
-            [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
-                NotNull<TypeFunctionContext> ctx) -> TypeFunctionReductionResult<TypeId> {
+            [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps, NotNull<TypeFunctionContext> ctx
+            ) -> TypeFunctionReductionResult<TypeId>
+            {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = follow(tys.at(0));
 
@@ -46,7 +49,8 @@ struct TypeFunctionFixture : Fixture
                 {
                     return TypeFunctionReductionResult<TypeId>{std::nullopt, true, {}, {}};
                 }
-            }};
+            }
+        };
 
         unfreeze(frontend.globals.globalTypes);
         TypeId t = frontend.globals.globalTypes.addType(GenericType{"T"});
@@ -114,11 +118,10 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "function_as_fn_arg")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    // FIXME: Can we constrain these to `never` or `unknown`?
-    CHECK("a" == toString(requireType("a")));
-    CHECK("a" == toString(requireType("b")));
-    CHECK("Type function instance Swap<a> is uninhabited" == toString(result.errors[0]));
-    CHECK("Type function instance Swap<a> is uninhabited" == toString(result.errors[1]));
+    CHECK("unknown" == toString(requireType("a")));
+    CHECK("unknown" == toString(requireType("b")));
+    CHECK("Type 'number' could not be converted into 'never'" == toString(result.errors[0]));
+    CHECK("Type 'boolean' could not be converted into 'never'" == toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "resolve_deep_functions")
@@ -145,11 +148,13 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
         local b = impossible(true)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    for (size_t i = 0; i < 2; ++i)
-    {
-        CHECK(toString(result.errors[i]) == "Type function instance Swap<a> is uninhabited");
-    }
+    LUAU_REQUIRE_ERROR_COUNT(6, result);
+    CHECK(toString(result.errors[0]) == "Type function instance Swap<Swap<T>> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type function instance Swap<T> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type function instance Swap<Swap<T>> is uninhabited");
+    CHECK(toString(result.errors[3]) == "Type function instance Swap<T> is uninhabited");
+    CHECK(toString(result.errors[4]) == "Type function instance Swap<Swap<T>> is uninhabited");
+    CHECK(toString(result.errors[5]) == "Type function instance Swap<T> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
@@ -210,10 +215,10 @@ TEST_CASE_FIXTURE(Fixture, "add_function_at_work")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(requireType("a")) == "number");
-    CHECK(toString(requireType("b")) == "Add<number, string>");
-    CHECK(toString(requireType("c")) == "Add<string, number>");
-    CHECK(toString(result.errors[0]) == "Type function instance Add<number, string> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type function instance Add<string, number> is uninhabited");
+    CHECK(toString(requireType("b")) == "add<number, string>");
+    CHECK(toString(requireType("c")) == "add<string, number>");
+    CHECK(toString(result.errors[0]) == "Operator '+' could not be applied to operands of types number and string; there is no corresponding overload for __add");
+    CHECK(toString(result.errors[1]) == "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_function_at_work")
@@ -284,8 +289,9 @@ TEST_CASE_FIXTURE(Fixture, "internal_functions_raise_errors")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == "Type function instance Add<a, b> depends on generic function parameters but does not appear in the function "
-                                        "signature; this construct cannot be type-checked at this time");
+    CHECK(
+        toString(result.errors[0]) == "Operator '+' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __add"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
@@ -695,8 +701,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
         fnB(result)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
@@ -1161,6 +1168,20 @@ TEST_CASE_FIXTURE(ClassFixture, "rawget_type_function_errors_w_classes")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Property '\"BaseField\"' does not exist on type 'BaseClass'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "user_defined_type_function_errors")
+{
+    if (!FFlag::LuauUserDefinedTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+    type function foo()
+        return nil
+    end
+    )");
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "This syntax is not supported");
 }
 
 TEST_SUITE_END();

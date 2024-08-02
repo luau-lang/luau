@@ -344,8 +344,9 @@ static void dumptable(FILE* f, Table* h)
 
 static void dumpclosure(FILE* f, Closure* cl)
 {
-    fprintf(f, "{\"type\":\"function\",\"cat\":%d,\"size\":%d", cl->memcat,
-        cl->isC ? int(sizeCclosure(cl->nupvalues)) : int(sizeLclosure(cl->nupvalues)));
+    fprintf(
+        f, "{\"type\":\"function\",\"cat\":%d,\"size\":%d", cl->memcat, cl->isC ? int(sizeCclosure(cl->nupvalues)) : int(sizeLclosure(cl->nupvalues))
+    );
 
     fprintf(f, ",\"env\":");
     dumpref(f, obj2gco(cl->env));
@@ -888,8 +889,12 @@ static bool enumgco(void* context, lua_Page* page, GCObject* gco)
     return false;
 }
 
-void luaC_enumheap(lua_State* L, void* context, void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, size_t size, const char* name),
-    void (*edge)(void* context, void* from, void* to, const char* name))
+void luaC_enumheap(
+    lua_State* L,
+    void* context,
+    void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, size_t size, const char* name),
+    void (*edge)(void* context, void* from, void* to, const char* name)
+)
 {
     global_State* g = L->global;
 
