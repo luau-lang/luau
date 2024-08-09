@@ -2536,7 +2536,10 @@ local y: number = tmp.p.y
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK("Type 'tmp' could not be converted into 'HasSuper'; at [read \"p\"], { x: number, y: number } is not exactly Super" == toString(result.errors[0]));
+        CHECK(
+            "Type 'tmp' could not be converted into 'HasSuper'; at [read \"p\"], { x: number, y: number } is not exactly Super" ==
+            toString(result.errors[0])
+        );
     else
     {
         const std::string expected = R"(Type 'tmp' could not be converted into 'HasSuper'

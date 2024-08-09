@@ -13,6 +13,7 @@
 #include "Luau/Scope.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
+#include "Luau/TypeFunction.h"
 
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"

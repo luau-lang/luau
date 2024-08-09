@@ -72,7 +72,7 @@ struct AnyTypeSummary
     std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation, const Module* module);
     TypeId checkForTypeFunctionInhabitance(const TypeId instance, const Location location);
 
-    enum Pattern: uint64_t
+    enum Pattern : uint64_t
     {
         Casts,
         FuncArg,
@@ -82,7 +82,8 @@ struct AnyTypeSummary
         VarAny,
         TableProp,
         Alias,
-        Assign
+        Assign,
+        TypePk
     };
 
     struct TypeInfo

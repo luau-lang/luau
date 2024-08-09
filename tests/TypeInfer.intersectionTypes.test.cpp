@@ -447,14 +447,17 @@ end
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ(R"(Type pack 'X & Y & Z' could not be converted into 'number'; type X & Y & Z[0][0] (X) is not a subtype of number[0] (number)
+        CHECK_EQ(
+            R"(Type pack 'X & Y & Z' could not be converted into 'number'; type X & Y & Z[0][0] (X) is not a subtype of number[0] (number)
 	type X & Y & Z[0][1] (Y) is not a subtype of number[0] (number)
 	type X & Y & Z[0][2] (Z) is not a subtype of number[0] (number))",
-            toString(result.errors[0]));
+            toString(result.errors[0])
+        );
     }
     else
         CHECK_EQ(
-            toString(result.errors[0]), R"(Type 'X & Y & Z' could not be converted into 'number'; none of the intersection parts are compatible)");
+            toString(result.errors[0]), R"(Type 'X & Y & Z' could not be converted into 'number'; none of the intersection parts are compatible)"
+        );
 }
 
 TEST_CASE_FIXTURE(Fixture, "overload_is_not_a_function")
@@ -497,13 +500,16 @@ TEST_CASE_FIXTURE(Fixture, "intersect_bool_and_false")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ(R"(Type 'boolean & false' could not be converted into 'true'; type boolean & false[0] (boolean) is not a subtype of true (true)
+        CHECK_EQ(
+            R"(Type 'boolean & false' could not be converted into 'true'; type boolean & false[0] (boolean) is not a subtype of true (true)
 	type boolean & false[1] (false) is not a subtype of true (true))",
-            toString(result.errors[0]));
+            toString(result.errors[0])
+        );
     }
     else
         CHECK_EQ(
-            toString(result.errors[0]), "Type 'boolean & false' could not be converted into 'true'; none of the intersection parts are compatible");
+            toString(result.errors[0]), "Type 'boolean & false' could not be converted into 'true'; none of the intersection parts are compatible"
+        );
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
@@ -522,10 +528,13 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
             R"(Type 'boolean & false & false' could not be converted into 'true'; type boolean & false & false[0] (false) is not a subtype of true (true)
 	type boolean & false & false[1] (boolean) is not a subtype of true (true)
 	type boolean & false & false[2] (false) is not a subtype of true (true))",
-            toString(result.errors[0]));
+            toString(result.errors[0])
+        );
     else
-        CHECK_EQ(toString(result.errors[0]),
-            "Type 'boolean & false & false' could not be converted into 'true'; none of the intersection parts are compatible");
+        CHECK_EQ(
+            toString(result.errors[0]),
+            "Type 'boolean & false & false' could not be converted into 'true'; none of the intersection parts are compatible"
+        );
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")

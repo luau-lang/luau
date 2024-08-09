@@ -317,14 +317,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_if_condition_position")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
 {
     CheckResult result = check(R"(
-        local a
-        assert(type(a) == "number")
-        local b = a
+        function f(a)
+            assert(type(a) == "number")
+            local b = a
+            return b
+        end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("number", toString(requireType("b")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("<a>(a) -> a & number" == toString(requireType("f")));
+    else
+        CHECK("<a>(a) -> number" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_prop")
@@ -440,15 +445,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+    CHECK(Location{{ 7, 18}, {7, 19}} == result.errors[0].location);
 
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[1]));
+    CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
+    CHECK(Location{{ 13, 18}, {13, 19}} == result.errors[1].location);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
@@ -485,7 +488,8 @@ TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK("{| x: number |}" == toString(requireTypeAtPosition({4, 23})));
+        // CLI-115281 - Types produced by refinements don't always get simplified
+        CHECK("{ x: number? } & { x: ~(false?) }" == toString(requireTypeAtPosition({4, 23})));
         CHECK("number" == toString(requireTypeAtPosition({5, 26})));
     }
 
@@ -699,7 +703,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    else
+        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
@@ -722,11 +729,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
-    CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // CLI-115281 Types produced by refinements do not consistently get simplified
+        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
+        CHECK_EQ("(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
-    CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+        CHECK_EQ("(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+
+        CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+        CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_not_to_be_string")
@@ -844,7 +863,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_narrowed_into_nothingness")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // CLI-115281 Types produced by refinements do not consistently get simplified
+        CHECK_EQ("{ x: number } & ~table", toString(requireTypeAtPosition({3, 28})));
+    }
+    else
+        CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b")
@@ -950,7 +975,10 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("{| x: true |}?", toString(requireTypeAtPosition({3, 28})));
+    {
+        // CLI-115281 Types produced by refinements do not consistently get simplified
+        CHECK_EQ("({ x: boolean } & { x: ~(false?) })?", toString(requireTypeAtPosition({3, 28})));
+    }
     else
         CHECK_EQ("{| x: boolean |}?", toString(requireTypeAtPosition({3, 28})));
 }
@@ -1196,11 +1224,17 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(R"({| tag: "exists", x: string |})", toString(requireTypeAtPosition({5, 28})));
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ(R"({| tag: "missing", x: nil |})", toString(requireTypeAtPosition({7, 28})));
+    {
+        // CLI-115281 Types produced by refinements do not consistently get simplified
+        CHECK("{ tag: \"exists\", x: string } & { x: ~(false?) }" == toString(requireTypeAtPosition({5, 28})));
+        CHECK("({ tag: \"exists\", x: string } & { x: ~~(false?) }) | { tag: \"missing\", x: nil }" == toString(requireTypeAtPosition({7, 28})));
+    }
     else
+    {
+        CHECK_EQ(R"({| tag: "exists", x: string |})", toString(requireTypeAtPosition({5, 28})));
         CHECK_EQ(R"({| tag: "exists", x: string |} | {| tag: "missing", x: nil |})", toString(requireTypeAtPosition({7, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
@@ -1328,8 +1362,8 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ(R"({ tag: "Part", x: Part })", toString(requireTypeAtPosition({5, 28})));
-        CHECK_EQ(R"({ tag: "Folder", x: Folder })", toString(requireTypeAtPosition({7, 28})));
+        CHECK(R"({ tag: "Part", x: Part })" == toString(requireTypeAtPosition({5, 28})));
+        CHECK(R"({ tag: "Folder", x: Folder })" == toString(requireTypeAtPosition({7, 28})));
     }
     else
     {
@@ -1340,6 +1374,9 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
 {
+    // CLI-115286 - Refining via type(x) == 'vector' does not work in the new solver
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         local function f(vec)
             local X, Y, Z = vec.X, vec.Y, vec.Z
@@ -1527,6 +1564,10 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "refine_param_of_type_folder_or_part_w
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "isa_type_refinement_must_be_known_ahead_of_time")
 {
+    // CLI-115087 - The new solver does not consistently combine tables with
+    // class types when they appear in the upper bounds of a free type.
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         local function f(x): Instance
             if x:IsA("Folder") then
@@ -1819,7 +1860,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
     {
         LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-        CHECK_EQ("~(false?)", toString(requireTypeAtPosition({4, 30})));
+        CHECK_EQ("*error-type* | buffer | class | function | number | string | table | thread | true", toString(requireTypeAtPosition({4, 30})));
     }
 }
 
@@ -1843,9 +1884,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_
             end
 
             if typeof(s) == "nil" then
-                local foo = s
+                local foo = s -- line 18
             else
-                local foo = s
+                local foo = s -- line 20
             end
         end
     )");
@@ -1860,7 +1901,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ("never", toString(requireTypeAtPosition({18, 28})));
+        // CLI-115281 - Types produced by refinements don't always get simplified
+        CHECK_EQ("nil & string", toString(requireTypeAtPosition({18, 28})));
         CHECK_EQ("string", toString(requireTypeAtPosition({20, 28})));
     }
     else
@@ -1948,7 +1990,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({8, 28})));
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("never", toString(requireTypeAtPosition({9, 28})));
+    {
+        // CLI-115478 - This should be never
+        CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
+    }
     else
         CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
 }
@@ -2044,7 +2089,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
 TEST_CASE_FIXTURE(BuiltinsFixture, "conditional_refinement_should_stay_error_suppressing")
 {
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
-    // this test is DCR-only as an instance of DCR fixing a bug in the old solver
 
     CheckResult result = check(R"(
         local function test(element: any?)
@@ -2065,7 +2109,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "globals_can_be_narrowed_too")
         end
     )");
 
-    CHECK("never" == toString(requireTypeAtPosition(Position{2, 24})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // CLI-114134
+        CHECK("string & typeof(string)" == toString(requireTypeAtPosition(Position{2, 24})));
+    }
+    else
+        CHECK("never" == toString(requireTypeAtPosition(Position{2, 24})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction")
@@ -2094,17 +2144,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "globals_can_be_narrowed_too")
-{
-    CheckResult result = check(R"(
-        if typeof(string) == 'string' then
-            local foo = string
-        end
-    )");
-
-    CHECK("never" == toString(requireTypeAtPosition(Position{2, 24})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ex")

@@ -2243,15 +2243,24 @@ std::optional<AstExprBinary::Op> Parser::checkBinaryConfusables(const BinaryOpPr
 // where `binop' is any binary operator with a priority higher than `limit'
 AstExpr* Parser::parseExpr(unsigned int limit)
 {
-    // clang-format off
     static const BinaryOpPriority binaryPriority[] = {
-        {6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7}, {7, 7}, // `+' `-' `*' `/' `//' `%'
-        {10, 9}, {5, 4},                                // power and concat (right associative)
-        {3, 3}, {3, 3},                                 // equality and inequality
-        {3, 3}, {3, 3}, {3, 3}, {3, 3},                 // order
-        {2, 2}, {1, 1}                                  // logical (and/or)
+        {6, 6},  // '+'
+        {6, 6},  // '-'
+        {7, 7},  // '*'
+        {7, 7},  // '/'
+        {7, 7},  // '//'
+        {7, 7},  // `%'
+        {10, 9}, // power (right associative)
+        {5, 4},  // concat (right associative)
+        {3, 3},  // inequality
+        {3, 3},  // equality
+        {3, 3},  // '<'
+        {3, 3},  // '<='
+        {3, 3},  // '>'
+        {3, 3},  // '>='
+        {2, 2},  // logical and
+        {1, 1}   // logical or
     };
-    // clang-format on
 
     static_assert(sizeof(binaryPriority) / sizeof(binaryPriority[0]) == size_t(AstExprBinary::Op__Count), "binaryPriority needs an entry per op");
 

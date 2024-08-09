@@ -1036,7 +1036,10 @@ struct TypeStringifier
 
     void operator()(TypeId, const TypeFunctionInstanceType& tfitv)
     {
-        state.emit(tfitv.function->name);
+        if (tfitv.userFuncName) // Special stringification for user-defined type functions
+            state.emit(tfitv.userFuncName->value);
+        else
+            state.emit(tfitv.function->name);
         state.emit("<");
 
         bool comma = false;
