@@ -847,6 +847,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
         "(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
         toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>"))
     );
+
+    CHECK("Child" == toString(normal("(Child | Unrelated) & Not<Unrelated>")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_unknown")
@@ -998,17 +1000,13 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     // { x: ~(false?) }
-    TypeId t1 = arena.addType(TableType{
-        TableType::Props{{"x", builtinTypes->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed
-    });
+    TypeId t1 = arena.addType(TableType{TableType::Props{{"x", builtinTypes->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
     // { x: number? }?
-    TypeId t2 = arena.addType(UnionType{{
-        arena.addType(TableType{
-            TableType::Props{{"x", builtinTypes->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed
-        }),
-        builtinTypes->nilType
-    }});
+    TypeId t2 = arena.addType(UnionType{
+        {arena.addType(TableType{TableType::Props{{"x", builtinTypes->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed}),
+         builtinTypes->nilType}
+    });
 
     TypeId intersection = arena.addType(IntersectionType{{t2, t1}});
 

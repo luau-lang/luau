@@ -893,6 +893,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { x: number 
     CHECK_IS_NOT_SUBTYPE(meta({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->numberType}}));
 }
 
+TEST_IS_SUBTYPE(builtinTypes->tableType, tbl({}));
+TEST_IS_SUBTYPE(tbl({}), builtinTypes->tableType);
+
 // Negated subtypes
 TEST_IS_NOT_SUBTYPE(negate(builtinTypes->neverType), builtinTypes->stringType);
 TEST_IS_SUBTYPE(negate(builtinTypes->unknownType), builtinTypes->stringType);
@@ -1213,7 +1216,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(...any) -> () <: <T>(T...) -> ()")
 // See https://github.com/luau-lang/luau/issues/767
 TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
 {
-    TypeId unknownsToNothing = arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{builtinTypes->unknownType}), builtinTypes->emptyTypePack});
+    TypeId unknownsToNothing =
+        arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{builtinTypes->unknownType}), builtinTypes->emptyTypePack});
     TypeId genericTToAnys = arena.addType(FunctionType{genericAs, builtinTypes->emptyTypePack});
 
     CHECK_MESSAGE(subtyping.isSubtype(unknownsToNothing, genericTToAnys).isSubtype, "(...unknown) -> () <: <T>(T...) -> ()");
@@ -1222,25 +1226,11 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
 TEST_CASE_FIXTURE(SubtypeFixture, "bill")
 {
     TypeId a = arena.addType(TableType{
-        {{"a", builtinTypes->stringType}},
-        TableIndexer{
-            builtinTypes->stringType,
-            builtinTypes->numberType
-        },
-        TypeLevel{},
-        nullptr,
-        TableState::Sealed
+        {{"a", builtinTypes->stringType}}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, TypeLevel{}, nullptr, TableState::Sealed
     });
 
     TypeId b = arena.addType(TableType{
-        {{"a", builtinTypes->stringType}},
-        TableIndexer{
-            builtinTypes->stringType,
-            builtinTypes->numberType
-        },
-        TypeLevel{},
-        nullptr,
-        TableState::Sealed
+        {{"a", builtinTypes->stringType}}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, TypeLevel{}, nullptr, TableState::Sealed
     });
 
     CHECK(subtyping.isSubtype(a, b).isSubtype);
@@ -1250,22 +1240,17 @@ TEST_CASE_FIXTURE(SubtypeFixture, "bill")
 // TEST_CASE_FIXTURE(SubtypeFixture, "({[string]: number, a: string}) -> () <: ({[string]: number, a: string}) -> ()")
 TEST_CASE_FIXTURE(SubtypeFixture, "fred")
 {
-    auto makeTheType = [&]() {
+    auto makeTheType = [&]()
+    {
         TypeId argType = arena.addType(TableType{
             {{"a", builtinTypes->stringType}},
-            TableIndexer{
-                builtinTypes->stringType,
-                builtinTypes->numberType
-            },
+            TableIndexer{builtinTypes->stringType, builtinTypes->numberType},
             TypeLevel{},
             nullptr,
             TableState::Sealed
         });
 
-        return arena.addType(FunctionType {
-            arena.addTypePack({argType}),
-            builtinTypes->emptyTypePack
-        });
+        return arena.addType(FunctionType{arena.addTypePack({argType}), builtinTypes->emptyTypePack});
     };
 
     TypeId a = makeTheType();

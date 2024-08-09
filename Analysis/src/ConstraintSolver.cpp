@@ -924,6 +924,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         return true;
     }
 
+    // Adding ReduceConstraint on type function for the constraint solver
+    if (auto typeFn = get<TypeFunctionInstanceType>(follow(tf->type)))
+        pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
+
     // If there are no parameters to the type function we can just use the type
     // directly.
     if (tf->typeParams.empty() && tf->typePackParams.empty())
@@ -1051,7 +1055,6 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // there are e.g. generic saturatedTypeArguments that go unused.
     const TableType* tfTable = getTableType(tf->type);
 
-    //clang-format off
     bool needsClone = follow(tf->type) == target || (tfTable != nullptr && tfTable == getTableType(target)) ||
                       std::any_of(
                           typeArguments.begin(),
@@ -1061,7 +1064,6 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
                               return other == target;
                           }
                       );
-    //clang-format on
 
     // Only tables have the properties we're trying to set.
     TableType* ttv = getMutableTableType(target);

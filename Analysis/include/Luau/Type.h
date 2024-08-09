@@ -594,10 +594,21 @@ struct TypeFunctionInstanceType
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
 
-    TypeFunctionInstanceType(NotNull<const TypeFunction> function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+    std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
+    std::optional<AstExprFunction*> userFuncBody; // Body of the user-defined type function; only available for UDTFs
+
+    TypeFunctionInstanceType(
+        NotNull<const TypeFunction> function,
+        std::vector<TypeId> typeArguments,
+        std::vector<TypePackId> packArguments,
+        std::optional<AstName> userFuncName = std::nullopt,
+        std::optional<AstExprFunction*> userFuncBody = std::nullopt
+    )
         : function(function)
         , typeArguments(typeArguments)
         , packArguments(packArguments)
+        , userFuncName(userFuncName)
+        , userFuncBody(userFuncBody)
     {
     }
 

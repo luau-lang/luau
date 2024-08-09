@@ -358,6 +358,9 @@ struct TypeFunctionReducer
             if (tryGuessing(subject))
                 return;
 
+            ctx.userFuncName = tfit->userFuncName;
+            ctx.userFuncBody = tfit->userFuncBody;
+
             TypeFunctionReductionResult<TypeId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleTypeFunctionReduction(subject, result);
         }
@@ -565,6 +568,24 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
     }
 
     return std::nullopt;
+}
+
+TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    if (!ctx->userFuncName || !ctx->userFuncBody)
+    {
+        ctx->ice->ice("all user-defined type functions must have an associated function definition");
+        return {std::nullopt, true, {}, {}};
+    }
+
+    // TODO: implementation of user-defined type functions goes here
+
+    return {std::nullopt, true, {}, {}};
 }
 
 TypeFunctionReductionResult<TypeId> notTypeFunction(
@@ -2253,7 +2274,8 @@ TypeFunctionReductionResult<TypeId> rawgetTypeFunction(
 }
 
 BuiltinTypeFunctions::BuiltinTypeFunctions()
-    : notFunc{"not", notTypeFunction}
+    : userFunc{"user", userDefinedTypeFunction}
+    , notFunc{"not", notTypeFunction}
     , lenFunc{"len", lenTypeFunction}
     , unmFunc{"unm", unmTypeFunction}
     , addFunc{"add", addTypeFunction}

@@ -570,15 +570,8 @@ ControlFlow DataFlowGraphBuilder::visit(DfgScope* scope, AstStatAssign* a)
 
 ControlFlow DataFlowGraphBuilder::visit(DfgScope* scope, AstStatCompoundAssign* c)
 {
-    // TODO: This needs revisiting because this is incorrect. The `c->var` part is both being read and written to,
-    // but the `c->var` only has one pointer address, so we need to come up with a way to store both.
-    // For now, it's not important because we don't have type states, but it is going to be important, e.g.
-    //
-    // local a = 5 -- a-1
-    // a += 5      -- a-2 = a-1 + 5
-    // We can't just visit `c->var` as a rvalue and then separately traverse `c->var` as an lvalue, since that's O(n^2).
-    DefId def = visitExpr(scope, c->value).def;
-    visitLValue(scope, c->var, def, /* isCompoundAssignment */ true);
+    (void) visitExpr(scope, c->value);
+    (void) visitExpr(scope, c->var);
 
     return ControlFlow::None;
 }
@@ -920,14 +913,14 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprError* er
     return {defArena->freshCell(), nullptr};
 }
 
-void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExpr* e, DefId incomingDef, bool isCompoundAssignment)
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExpr* e, DefId incomingDef)
 {
     auto go = [&]()
     {
         if (auto l = e->as<AstExprLocal>())
-            return visitLValue(scope, l, incomingDef, isCompoundAssignment);
+            return visitLValue(scope, l, incomingDef);
         else if (auto g = e->as<AstExprGlobal>())
-            return visitLValue(scope, g, incomingDef, isCompoundAssignment);
+            return visitLValue(scope, g, incomingDef);
         else if (auto i = e->as<AstExprIndexName>())
             return visitLValue(scope, i, incomingDef);
         else if (auto i = e->as<AstExprIndexExpr>())
@@ -941,15 +934,8 @@ void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExpr* e, DefId incomi
     graph.astDefs[e] = go();
 }
 
-DefId DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l, DefId incomingDef, bool isCompoundAssignment)
+DefId DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l, DefId incomingDef)
 {
-    // We need to keep the previous def around for a compound assignment.
-    if (isCompoundAssignment)
-    {
-        DefId def = lookup(scope, l->local);
-        graph.compoundAssignDefs[l] = def;
-    }
-
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
     if (scope->canUpdateDefinition(l->local))
     {
@@ -962,15 +948,8 @@ DefId DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l, DefId 
         return visitExpr(scope, static_cast<AstExpr*>(l)).def;
 }
 
-DefId DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprGlobal* g, DefId incomingDef, bool isCompoundAssignment)
+DefId DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprGlobal* g, DefId incomingDef)
 {
-    // We need to keep the previous def around for a compound assignment.
-    if (isCompoundAssignment)
-    {
-        DefId def = lookup(scope, g->name);
-        graph.compoundAssignDefs[g] = def;
-    }
-
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
     if (scope->canUpdateDefinition(g->name))
     {

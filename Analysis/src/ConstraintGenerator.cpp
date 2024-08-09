@@ -271,6 +271,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
         TypeId domainTy = builtinTypes->neverType;
         for (TypeId d : domain)
         {
+            d = follow(d);
             if (d == ty)
                 continue;
             domainTy = simplifyUnion(builtinTypes, arena, domainTy, d).result;
@@ -662,6 +663,51 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
 
             astTypeAliasDefiningScopes[alias] = defnScope;
             aliasDefinitionLocations[alias->name.value] = alias->location;
+        }
+        else if (auto function = stat->as<AstStatTypeFunction>())
+        {
+            // If a type function w/ same name has already been defined, error for having duplicates
+            if (scope->exportedTypeBindings.count(function->name.value) || scope->privateTypeBindings.count(function->name.value))
+            {
+                auto it = aliasDefinitionLocations.find(function->name.value);
+                LUAU_ASSERT(it != aliasDefinitionLocations.end());
+                reportError(function->location, DuplicateTypeDefinition{function->name.value, it->second});
+                continue;
+            }
+
+            ScopePtr defnScope = childScope(function, scope);
+
+            // Create TypeFunctionInstanceType
+
+            std::vector<TypeId> typeParams;
+            typeParams.reserve(function->body->args.size);
+
+            std::vector<GenericTypeDefinition> quantifiedTypeParams;
+            quantifiedTypeParams.reserve(function->body->args.size);
+
+            for (size_t i = 0; i < function->body->args.size; i++)
+            {
+                std::string name = format("T%zu", i);
+                TypeId ty = arena->addType(GenericType{name});
+                typeParams.push_back(ty);
+
+                GenericTypeDefinition genericTy{ty};
+                quantifiedTypeParams.push_back(genericTy);
+            }
+
+            TypeId typeFunctionTy = arena->addType(TypeFunctionInstanceType{
+                NotNull{&builtinTypeFunctions().userFunc},
+                std::move(typeParams),
+                {},
+                function->name,
+                function->body,
+            });
+
+            TypeFun typeFunction{std::move(quantifiedTypeParams), typeFunctionTy};
+
+            // Set type bindings and definition locations for this user-defined type function
+            scope->privateTypeBindings[function->name.value] = std::move(typeFunction);
+            aliasDefinitionLocations[function->name.value] = function->location;
         }
     }
 
@@ -1368,6 +1414,20 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunction* function)
 {
+    // If a type function with the same name was already defined, we skip over
+    auto bindingIt = scope->privateTypeBindings.find(function->name.value);
+    if (bindingIt == scope->privateTypeBindings.end())
+        return ControlFlow::None;
+
+    TypeFun typeFunction = bindingIt->second;
+
+    // Adding typeAliasExpansionConstraint on user-defined type function for the constraint solver
+    if (auto typeFunctionTy = get<TypeFunctionInstanceType>(typeFunction.type))
+    {
+        TypeId expansionTy = arena->addType(PendingExpansionType{{}, function->name, typeFunctionTy->typeArguments, typeFunctionTy->packArguments});
+        addConstraint(scope, function->location, TypeAliasExpansionConstraint{/* target */ expansionTy});
+    }
+
     return ControlFlow::None;
 }
 

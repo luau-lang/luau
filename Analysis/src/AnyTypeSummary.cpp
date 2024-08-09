@@ -136,6 +136,7 @@ void AnyTypeSummary::visit(const Scope* scope, AstStatReturn* ret, const Module*
     const Scope* retScope = findInnerMostScope(ret->location, module);
 
     auto ctxNode = getNode(rootSrc, ret);
+    bool seenTP = false;
 
     for (auto val : ret->list)
     {
@@ -160,7 +161,23 @@ void AnyTypeSummary::visit(const Scope* scope, AstStatReturn* ret, const Module*
                 typeInfo.push_back(ti);
             }
         }
+        
+        if (ret->list.size > 1 && !seenTP)
+        {
+            if (containsAny(retScope->returnType))
+            {
+                seenTP = true;
+
+                TelemetryTypePair types;
+
+                types.inferredType = toString(retScope->returnType);
+
+                TypeInfo ti{Pattern::TypePk, toString(ctxNode), types};
+                typeInfo.push_back(ti);
+            }
+        }
     }
+
 }
 
 void AnyTypeSummary::visit(const Scope* scope, AstStatLocal* local, const Module* module, NotNull<BuiltinTypes> builtinTypes)
@@ -189,7 +206,7 @@ void AnyTypeSummary::visit(const Scope* scope, AstStatLocal* local, const Module
                     typeInfo.push_back(ti);
                 }
             }
-            
+
             const AstExprTypeAssertion* maybeRequire = local->values.data[posn]->as<AstExprTypeAssertion>();
             if (!maybeRequire)
                 continue;
