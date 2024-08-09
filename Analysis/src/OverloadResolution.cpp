@@ -230,7 +230,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             // function arguments are options, then this function call
             // is ok.
 
-            const size_t firstUnsatisfiedArgument = argExprs->size();
+            const size_t firstUnsatisfiedArgument = args->head.size();
             const auto [requiredHead, _requiredTail] = flatten(fn->argTypes);
 
             // If too many arguments were supplied, this overload

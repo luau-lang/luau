@@ -1115,6 +1115,20 @@ type Foo<T> = Foo<T> | string
     REQUIRE(err);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_adds_reduce_constraint_for_type_function")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution || !FFlag::LuauUserDefinedTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+    type plus<T> = add<number, T>
+
+    local sum: plus<number> = 10
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "user_defined_type_function_errors")
 {
     if (!FFlag::LuauUserDefinedTypeFunctions)

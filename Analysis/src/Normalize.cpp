@@ -2186,6 +2186,11 @@ void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedCl
 
             if (isSubclass(thereTy, hereTy))
             {
+                // If thereTy is a subtype of hereTy, we need to replace hereTy
+                // by thereTy and combine their negation lists.
+                //
+                // If any types in the negation list are not subtypes of
+                // thereTy, they need to be removed from the negation list.
                 TypeIds negations = std::move(hereNegations);
 
                 for (auto nIt = negations.begin(); nIt != negations.end();)
@@ -2209,22 +2214,45 @@ void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedCl
             }
             else if (isSubclass(hereTy, thereTy))
             {
+                // If thereTy is a supertype of hereTy, we need to extend the
+                // negation list of hereTy by that of thereTy.
+                //
+                // If any of the types of thereTy's negations are not subtypes
+                // of hereTy, they must not be added to hereTy's negation list.
+                //
+                // If any of the types of thereTy's negations are supertypes of
+                // hereTy, then hereTy must be removed entirely.
+                //
+                // If any of the types of thereTy's negations are supertypes of
+                // the negations of herety, the former must supplant the latter.
                 TypeIds negations = thereNegations;
+
+                bool erasedHere = false;
 
                 for (auto nIt = negations.begin(); nIt != negations.end();)
                 {
+                    if (isSubclass(hereTy, *nIt))
+                    {
+                        // eg SomeClass & (class & ~SomeClass)
+                        // or SomeClass & (class & ~ParentClass)
+                        heres.classes.erase(hereTy);
+                        it = heres.ordering.erase(it);
+                        erasedHere = true;
+                        break;
+                    }
+
+                    // eg SomeClass & (class & ~Unrelated)
                     if (!isSubclass(*nIt, hereTy))
-                    {
                         nIt = negations.erase(nIt);
-                    }
                     else
-                    {
                         ++nIt;
-                    }
                 }
 
-                unionClasses(hereNegations, negations);
-                break;
+                if (!erasedHere)
+                {
+                    unionClasses(hereNegations, negations);
+                    ++it;
+                }
             }
             else if (hereTy == thereTy)
             {

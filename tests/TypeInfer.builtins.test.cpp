@@ -687,21 +687,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
         local _ = function(l0,...)
         end
         local _ = function()
-        _(_);
-        _ += select(_())
+            _(_);
+            _ += select(_())
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        // The argument count is the same, but the errors are currently cyclic type family instance ones.
-        // This isn't great, but the desired behavior here was that it didn't cause a crash and that is still true.
-        // The larger fix for this behavior will likely be integration of egraph-based normalization throughout the new solver.
+        // Counterintuitively, the parametr l0 is unconstrained and therefore it is valid to pass nil.
+        // The new solver therefore considers that parameter to be optional.
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK("Argument count mismatch. Function expects 1 argument, but none are specified" == toString(result.errors[0]));
     }
     else
     {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ("Argument count mismatch. Function '_' expects at least 1 argument, but none are specified", toString(result.errors[0]));
         CHECK_EQ("Argument count mismatch. Function 'select' expects 1 argument, but none are specified", toString(result.errors[1]));
     }

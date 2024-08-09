@@ -128,7 +128,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             return dest.addType(NegationType{a.ty});
         else if constexpr (std::is_same_v<T, TypeFunctionInstanceType>)
         {
-            TypeFunctionInstanceType clone{a.function, a.typeArguments, a.packArguments};
+            TypeFunctionInstanceType clone{a.function, a.typeArguments, a.packArguments, a.userFuncName, a.userFuncBody};
             return dest.addType(std::move(clone));
         }
         else

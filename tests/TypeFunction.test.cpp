@@ -217,8 +217,14 @@ TEST_CASE_FIXTURE(Fixture, "add_function_at_work")
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "add<number, string>");
     CHECK(toString(requireType("c")) == "add<string, number>");
-    CHECK(toString(result.errors[0]) == "Operator '+' could not be applied to operands of types number and string; there is no corresponding overload for __add");
-    CHECK(toString(result.errors[1]) == "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add");
+    CHECK(
+        toString(result.errors[0]) ==
+        "Operator '+' could not be applied to operands of types number and string; there is no corresponding overload for __add"
+    );
+    CHECK(
+        toString(result.errors[1]) ==
+        "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_function_at_work")
@@ -290,7 +296,8 @@ TEST_CASE_FIXTURE(Fixture, "internal_functions_raise_errors")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
-        toString(result.errors[0]) == "Operator '+' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __add"
+        toString(result.errors[0]) ==
+        "Operator '+' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __add"
     );
 }
 

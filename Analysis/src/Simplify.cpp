@@ -1144,7 +1144,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
                 return left;
 
             bool areDisjoint = true;
-            for (const auto& [name, leftProp]: lt->props)
+            for (const auto& [name, leftProp] : lt->props)
             {
                 if (rt->props.count(name))
                 {
@@ -1156,16 +1156,10 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
             if (areDisjoint)
             {
                 TableType::Props mergedProps = lt->props;
-                for (const auto& [name, rightProp]: rt->props)
+                for (const auto& [name, rightProp] : rt->props)
                     mergedProps[name] = rightProp;
 
-                return arena->addType(TableType{
-                    mergedProps,
-                    std::nullopt,
-                    TypeLevel{},
-                    lt->scope,
-                    TableState::Sealed
-                });
+                return arena->addType(TableType{mergedProps, std::nullopt, TypeLevel{}, lt->scope, TableState::Sealed});
             }
         }
 

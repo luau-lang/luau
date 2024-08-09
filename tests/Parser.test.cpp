@@ -2085,7 +2085,6 @@ TEST_CASE_FIXTURE(Fixture, "class_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "parse_variadics")
 {
-    //clang-format off
     AstStatBlock* stat = parseEx(R"(
         function foo(bar, ...: number): ...string
         end
@@ -2094,7 +2093,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_variadics")
         type Bar = () -> (number, ...boolean)
     )")
                              .root;
-    //clang-format on
 
     REQUIRE(stat);
     REQUIRE_EQ(stat->body.size, 3);
