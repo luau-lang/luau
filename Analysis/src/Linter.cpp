@@ -2657,9 +2657,7 @@ private:
             // Don't give the suggestion in this case, we don't want to slow people's code down.
             if (!errmsg->is<AstExprConstantString>())
                 return true;
-
-            AstExprConstantString* string = errmsg->as<AstExprConstantString>();
-
+            
             emitWarning(
                 *context,
                 LintWarning::Code_CollapseClauseToAssert,
