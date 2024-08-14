@@ -30,7 +30,7 @@ static double clock_period()
     mach_timebase_info_data_t result = {};
     mach_timebase_info(&result);
     return double(result.numer) / double(result.denom) * 1e-9;
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
     return 1e-9;
 #else
     return 1.0 / double(CLOCKS_PER_SEC);
