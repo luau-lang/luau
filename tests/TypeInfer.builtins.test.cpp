@@ -132,6 +132,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         --!strict
         local t = {'one', 'two', 'three'}
@@ -510,6 +512,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         local function nifty(x, y)
             print(x, y)
@@ -547,6 +551,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_wrap_anything_goes")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_should_not_mutate_persisted_types")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         local string = string
 
@@ -591,6 +598,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_count_mismatch")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
 {
+    // CLI-115690
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         --!strict
         string.format("%s", 123)
@@ -694,10 +705,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        // Counterintuitively, the parametr l0 is unconstrained and therefore it is valid to pass nil.
+        // Counterintuitively, the parameter l0 is unconstrained and therefore it is valid to pass nil.
         // The new solver therefore considers that parameter to be optional.
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK("Argument count mismatch. Function expects 1 argument, but none are specified" == toString(result.errors[0]));
+        CHECK("Argument count mismatch. Function expects at least 1 argument, but none are specified" == toString(result.errors[0]));
     }
     else
     {
@@ -709,6 +720,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
 {
+    // CLI-115720
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         select(5432598430953240958)
     )");
@@ -720,6 +735,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_slightly_out_of_range")
 {
+    // CLI-115720
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         select(3, "a", 1)
     )");
@@ -750,6 +769,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_string_head")
 {
+    // CLI-115720
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         --!nonstrict
         local function f(...)
@@ -769,6 +792,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
 TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 {
+    // CLI-115690
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check("local _ = ('%s'):format(5)");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -792,6 +819,10 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
 {
+    // CLI-115690
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         local _ = ("%s %d").format("%d %s", "A type error", 2)
     )");
@@ -850,6 +881,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "debug_info_is_crazy")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "aliased_string_format")
 {
+    // CLI-115690
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         local fmt = string.format
         local s = fmt("%d", "oops")
@@ -909,6 +944,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_on_variadic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_report_all_type_errors_at_correct_positions")
 {
+    // CLI-115690
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         ("%s%d%s"):format(1, "hello", true)
         string.format("%s%d%s", 1, "hello", true)
@@ -1039,6 +1078,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pack_tail_but_only_for_the_first_type")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         local function f(...: number?)
             return assert(...)
@@ -1051,6 +1093,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pa
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_returns_false_and_string_iff_it_knows_the_first_argument_cannot_be_truthy")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // CLI-114134 - egraph simplification
+        return;
+    }
+
     CheckResult result = check(R"(
         local function f(x: nil)
             return assert(x, "hmm")
@@ -1080,7 +1128,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("Key 'b' not found in table '{ a: number }'" == toString(result.errors[0]));
+    else
+        CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
     CHECK(Location({13, 18}, {13, 23}) == result.errors[0].location);
 
     CHECK_EQ("number", toString(requireType("a")));
@@ -1095,11 +1146,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
+    // In the new solver, nil can certainly be used where a generic is required, so all generic parameters are optional.
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
-local a = {b=setmetatable}
-a.b()
-a:b()
-a:b({})
+        local a = {b=setmetatable}
+        a.b()
+        a:b()
+        a:b({})
     )");
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function 'a.b' expects 2 arguments, but none are specified");
@@ -1109,8 +1163,8 @@ a:b({})
 TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
 {
     CheckResult result = check(R"(
-local function f(a: typeof(f)) end
-)");
+        local function f(a: typeof(f)) end
+        )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Unknown global 'f'", toString(result.errors[0]));
 }

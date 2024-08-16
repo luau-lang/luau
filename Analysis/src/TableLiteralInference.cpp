@@ -389,6 +389,10 @@ TypeId matchLiteralType(
                 TypeId tProp = follow(*propTy);
                 if (get<BlockedType>(tProp))
                     toBlock.push_back(tProp);
+
+                // Populate expected types for non-string keys declared with [] (the code below will handle the case where they are strings)
+                if (!item.key->as<AstExprConstantString>() && expectedTableTy->indexer)
+                    (*astExpectedTypes)[item.key] = expectedTableTy->indexer->indexType;
             }
             else
                 LUAU_ASSERT(!"Unexpected");

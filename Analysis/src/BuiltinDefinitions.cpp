@@ -374,9 +374,25 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (TableType* ttv = getMutable<TableType>(getGlobalBinding(globals, "table")))
     {
-        // tabTy is a generic table type which we can't express via declaration syntax yet
-        ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
-        ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            // CLI-114044 - The new solver does not yet support generic tables,
+            // which act, in an odd way, like generics that are constrained to
+            // the top table type.  We do the best we can by modelling these
+            // functions using unconstrained generics.  It's not quite right,
+            // but it'll be ok for now.
+            TypeId genericTy = arena.addType(GenericType{"T"});
+            TypePackId thePack = arena.addTypePack({genericTy});
+            TypeId idTy = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
+            ttv->props["freeze"] = makeProperty(idTy, "@luau/global/table.freeze");
+            ttv->props["clone"] = makeProperty(idTy, "@luau/global/table.clone");
+        }
+        else
+        {
+            // tabTy is a generic table type which we can't express via declaration syntax yet
+            ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
+            ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
+        }
 
         ttv->props["getn"].deprecated = true;
         ttv->props["getn"].deprecatedSuggestion = "#";

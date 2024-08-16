@@ -217,7 +217,7 @@ typedef struct global_State
     lua_ExecutionCallbacks ecb;
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
-    Table* udatamt[LUA_LUTAG_LIMIT]; // metatables for tagged userdata
+    Table* udatamt[LUA_UTAG_LIMIT]; // metatables for tagged userdata
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 

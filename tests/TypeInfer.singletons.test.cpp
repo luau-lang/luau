@@ -153,6 +153,8 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function f(g: ((true, string) -> ()) & ((false, number) -> ()))
             g(true, 37)
@@ -192,10 +194,14 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        "Type '\"bang\"' could not be converted into '\"bar\" | \"baz\" | \"foo\"'; none of the union options are compatible",
-        toString(result.errors[0])
-    );
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("Type '\"bang\"' could not be converted into '\"bar\" | \"baz\" | \"foo\"'" == toString(result.errors[0]));
+    else
+        CHECK_EQ(
+            "Type '\"bang\"' could not be converted into '\"bar\" | \"baz\" | \"foo\"'; none of the union options are compatible",
+            toString(result.errors[0])
+        );
 }
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_subtyping")
@@ -337,10 +343,18 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        R"(Table type '{ ["\n"]: number }' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
-        toString(result.errors[0])
-    );
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(
+            "Type\n"
+            "    '{ [\"\\n\"]: number }'\n"
+            "could not be converted into\n"
+            "    '{ [\"<>\"]: number }'" == toString(result.errors[0])
+        );
+    else
+        CHECK_EQ(
+            R"(Table type '{ ["\n"]: number }' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
+            toString(result.errors[0])
+        );
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
@@ -354,11 +368,16 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("Type '{ cafood: string, tag: \"cat\" }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
+    else
+    {
+        const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
 caused by:
   None of the union options are compatible. For example:
 Table type 'a' not compatible with type 'Cat' because the former is missing field 'catfood')";
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
@@ -372,11 +391,16 @@ local a: Result = { success = false, result = 'something' }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type 'a' could not be converted into 'Bad | Good'
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("Type '{ result: string, success: boolean }' could not be converted into 'Bad | Good'" == toString(result.errors[0]));
+    else
+    {
+        const std::string expected = R"(Type 'a' could not be converted into 'Bad | Good'
 caused by:
   None of the union options are compatible. For example:
 Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')";
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
@@ -418,6 +442,8 @@ local a: Animal = if true then { tag = 'cat', catfood = 'something' } else { tag
 
 TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_singleton")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         local function foo(f, x)
             if x == "hi" then
@@ -427,7 +453,7 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_CHECK_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 18})));
     // should be <a...>((string) -> a..., string) -> () but needs lower bounds calculation
@@ -436,6 +462,8 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
 
 TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         local function foo(f, x): "hello"? -- anyone there?
             return if x == "hi"

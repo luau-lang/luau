@@ -9,8 +9,6 @@
 #include <math.h>
 #include <ostream>
 
-LUAU_FASTFLAG(LuauDeclarationExtraPropData)
-
 using namespace Luau;
 
 struct JsonEncoderFixture
@@ -417,8 +415,6 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatTypeAlias")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareFunction")
 {
-    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
-
     AstStat* statement = expectParseStatement("declare function foo(x: number): string");
 
     std::string_view expected =
@@ -429,8 +425,6 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareFunction")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareFunction2")
 {
-    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
-
     AstStat* statement = expectParseStatement("declare function foo(x: number, ...: string): string");
 
     std::string_view expected =
@@ -441,8 +435,6 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareFunction2")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareClass")
 {
-    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
-
     AstStatBlock* root = expectParse(R"(
         declare class Foo
             prop: number

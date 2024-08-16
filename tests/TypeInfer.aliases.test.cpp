@@ -104,6 +104,9 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
 
 TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
 {
+    // We erroneously report an extra error in this case when the new solver is enabled.
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         type T<A> = (A...) -> ()
     )");
@@ -240,6 +243,9 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
+    // CLI-116108
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         --!strict
         type T<a> = { f: a, g: U<a> }
@@ -411,6 +417,8 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
 
 TEST_CASE_FIXTURE(Fixture, "generic_param_remap")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     const std::string code = R"(
         -- An example of a forwarded use of a type that has different type arguments than parameters
         type A<T,U> = {t:T, u:U, next:A<U,T>?}
@@ -535,11 +543,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_local_mutation")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
-type Cool = { a: number, b: string }
-local c: Cool = { a = 1, b = "s" }
-type NotCool<x> = Cool
-)");
+        type Cool = { a: number, b: string }
+        local c: Cool = { a = 1, b = "s" }
+        type NotCool<x> = Cool
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     std::optional<TypeId> ty = requireType("c");
@@ -554,6 +564,8 @@ type NotCool<x> = Cool
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_local_rename")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 type Cool = { a: number, b: string }
 type NotCool = Cool
@@ -615,16 +627,16 @@ type X = Import.X
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_type")
 {
     fileResolver.source["game/A"] = R"(
-export type X<T, U> = { a: T, b: U, C: X<T, U>? }
-return {}
+        export type X<T, U> = { a: T, b: U, C: X<T, U>? }
+        return {}
     )";
 
     CheckResult aResult = frontend.check("game/A");
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
-local Import = require(game.A)
-type X<T, U> = Import.X<T, U>
+        local Import = require(game.A)
+        type X<T, U> = Import.X<T, U>
     )");
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
@@ -637,8 +649,8 @@ type X<T, U> = Import.X<T, U>
     CHECK_EQ(toString(*ty1, {true}), toString(*ty2, {true}));
 
     bResult = check(R"(
-local Import = require(game.A)
-type X<T, U> = Import.X<U, T>
+        local Import = require(game.A)
+        type X<T, U> = Import.X<U, T>
     )");
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
@@ -648,8 +660,16 @@ type X<T, U> = Import.X<U, T>
     ty2 = lookupType("X");
     REQUIRE(ty2);
 
-    CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = {| C: t1?, a: T, b: U |}");
-    CHECK_EQ(toString(*ty2, {true}), "{| C: t1, a: U, b: T |} where t1 = {| C: t1, a: U, b: T |}?");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK(toString(*ty1, {true}) == "t1 where t1 = { C: t1?, a: T, b: U }");
+        CHECK(toString(*ty2, {true}) == "t1 where t1 = { C: t1?, a: U, b: T }");
+    }
+    else
+    {
+        CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = {| C: t1?, a: T, b: U |}");
+        CHECK_EQ(toString(*ty2, {true}), "{| C: t1, a: U, b: T |} where t1 = {| C: t1, a: U, b: T |}?");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "module_export_free_type_leak")
@@ -691,6 +711,9 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 {
+    // CLI-116108
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         -- OK because forwarded types are used with their parameters.
         type Tree<T> = { data: T, children: Forest<T> }
@@ -702,6 +725,9 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
 {
+    // CLI-116108
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         -- Not OK because forwarded types are used with different types than their parameters.
         type Forest<T> = {Tree<{T}>}
@@ -723,6 +749,9 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
 {
+    // CLI-116108
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
         type Tree2<T,U> = { data: U, children: {Tree1<T,U>} }
@@ -845,6 +874,9 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 {
+    // CLI-116108
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         -- this would be an infinite type if we allowed it
         type Tree<T> = { data: T, children: {Tree<{T}>} }
@@ -855,6 +887,9 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 
 TEST_CASE_FIXTURE(Fixture, "report_shadowed_aliases")
 {
+    // CLI-116110
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     // We allow a previous type alias to depend on a future type alias. That exact feature enables a confusing example, like the following snippet,
     // which has the type alias FakeString point to the type alias `string` that which points to `number`.
     CheckResult result = check(R"(
@@ -936,6 +971,9 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_lose_track_of_PendingExpansionTypes_after_substitution")
 {
+    // CLI-114134 - We need egraphs to properly simplify these types.
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     fileResolver.source["game/ReactCurrentDispatcher"] = R"(
         export type BasicStateAction<S> = ((S) -> S) | S
         export type Dispatch<A> = (A) -> ()

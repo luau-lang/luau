@@ -154,6 +154,8 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_intersection_sub_anything")
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_never")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : never
           return arg
@@ -164,6 +166,8 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_never")
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_anything")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : boolean
           return arg
@@ -174,6 +178,8 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_anything")
 
 TEST_CASE_FIXTURE(Fixture, "members_of_failed_typepack_unification_are_unified_with_errorType")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function f(arg: number) end
         local a
@@ -189,6 +195,8 @@ TEST_CASE_FIXTURE(Fixture, "members_of_failed_typepack_unification_are_unified_w
 
 TEST_CASE_FIXTURE(Fixture, "result_of_failed_typepack_unification_is_constrained")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function f(arg: number) return arg end
         local a

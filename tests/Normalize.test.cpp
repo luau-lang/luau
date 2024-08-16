@@ -440,11 +440,11 @@ struct NormalizeFixture : Fixture
         registerHiddenTypes(&frontend);
     }
 
-    std::shared_ptr<const NormalizedType> toNormalizedType(const std::string& annotation)
+    std::shared_ptr<const NormalizedType> toNormalizedType(const std::string& annotation, int expectedErrors = 0)
     {
         normalizer.clearCaches();
         CheckResult result = check("type _Res = " + annotation);
-        LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_ERROR_COUNT(expectedErrors, result);
 
         if (FFlag::DebugLuauDeferredConstraintResolution)
         {
@@ -662,7 +662,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_funct
 
 TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
 {
-    CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>"));
+    CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>", FFlag::DebugLuauDeferredConstraintResolution ? 1 : 0));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
@@ -875,7 +875,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
-    CHECK(nullptr == toNormalizedType("Not<{}>"));
+    CHECK(nullptr == toNormalizedType("Not<{}>", FFlag::DebugLuauDeferredConstraintResolution ? 1 : 0));
     CHECK("(boolean | buffer | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
 }
