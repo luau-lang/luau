@@ -29,7 +29,6 @@
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
-LUAU_FASTFLAG(LuauDeclarationExtraPropData);
 
 namespace Luau
 {
@@ -550,6 +549,13 @@ bool mustDeferIntersection(TypeId ty)
 }
 } // namespace
 
+enum RefinementsOpKind
+{
+    Intersect,
+    Refine,
+    None
+};
+
 void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement)
 {
     if (!refinement)
@@ -558,6 +564,23 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
     RefinementContext refinements;
     std::vector<ConstraintV> constraints;
     computeRefinement(scope, location, refinement, &refinements, /*sense*/ true, /*eq*/ false, &constraints);
+    auto flushConstraints = [this, &scope, &location](RefinementsOpKind kind, TypeId ty, std::vector<TypeId>& discriminants)
+    {
+        if (discriminants.empty())
+            return ty;
+        if (kind == RefinementsOpKind::None)
+        {
+            LUAU_ASSERT(false);
+            return ty;
+        }
+        std::vector<TypeId> args = {ty};
+        const TypeFunction& func = kind == RefinementsOpKind::Intersect ? builtinTypeFunctions().intersectFunc : builtinTypeFunctions().refineFunc;
+        LUAU_ASSERT(!func.name.empty());
+        args.insert(args.end(), discriminants.begin(), discriminants.end());
+        TypeId resultType = createTypeFunctionInstance(func, args, {}, scope, location);
+        discriminants.clear();
+        return resultType;
+    };
 
     for (auto& [def, partition] : refinements)
     {
@@ -566,40 +589,51 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
             TypeId ty = *defTy;
             if (partition.shouldAppendNilType)
                 ty = arena->addType(UnionType{{ty, builtinTypes->nilType}});
-
             // Intersect ty with every discriminant type. If either type is not
             // sufficiently solved, we queue the intersection up via an
             // IntersectConstraint.
-
+            // For each discriminant ty, we accumulated it onto ty, creating a longer and longer
+            // sequence of refine constraints. On every loop of this we called mustDeferIntersection.
+            // For sufficiently large types, we would blow the stack.
+            // Instead, we record all the discriminant types in sequence
+            // and then dispatch a single refine constraint with multiple arguments. This helps us avoid
+            // the potentially expensive check on mustDeferIntersection
+            std::vector<TypeId> discriminants;
+            RefinementsOpKind kind = RefinementsOpKind::None;
+            bool mustDefer = mustDeferIntersection(ty);
             for (TypeId dt : partition.discriminantTypes)
             {
-                if (mustDeferIntersection(ty) || mustDeferIntersection(dt))
+                mustDefer = mustDefer || mustDeferIntersection(dt);
+                if (mustDefer)
                 {
-                    TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().refineFunc, {ty, dt}, {}, scope, location);
+                    if (kind == RefinementsOpKind::Intersect)
+                        ty = flushConstraints(kind, ty, discriminants);
+                    kind = RefinementsOpKind::Refine;
 
-                    ty = resultType;
+                    discriminants.push_back(dt);
                 }
                 else
                 {
-                    switch (shouldSuppressErrors(normalizer, ty))
-                    {
-                    case ErrorSuppression::DoNotSuppress:
-                    {
-                        if (!get<NeverType>(follow(ty)))
-                            ty = makeIntersect(scope, location, ty, dt);
-                        break;
-                    }
-                    case ErrorSuppression::Suppress:
-                        ty = makeIntersect(scope, location, ty, dt);
-                        ty = makeUnion(scope, location, ty, builtinTypes->errorType);
-                        break;
-                    case ErrorSuppression::NormalizationFailed:
+                    ErrorSuppression status = shouldSuppressErrors(normalizer, ty);
+                    if (status == ErrorSuppression::NormalizationFailed)
                         reportError(location, NormalizationTooComplex{});
-                        ty = makeIntersect(scope, location, ty, dt);
-                        break;
+                    if (kind == RefinementsOpKind::Refine)
+                        ty = flushConstraints(kind, ty, discriminants);
+                    kind = RefinementsOpKind::Intersect;
+
+                    discriminants.push_back(dt);
+
+                    if (status == ErrorSuppression::Suppress)
+                    {
+                        ty = flushConstraints(kind, ty, discriminants);
+                        ty = makeUnion(scope, location, ty, builtinTypes->errorType);
                     }
                 }
             }
+
+            // Finalize - if there are any discriminants left, make one big constraint for refining them
+            if (kind != RefinementsOpKind::None)
+                ty = flushConstraints(kind, ty, discriminants);
 
             scope->rvalueRefinements[def] = ty;
         }
@@ -1532,17 +1566,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
                 ftv->hasSelf = true;
 
-                if (FFlag::LuauDeclarationExtraPropData)
-                {
-                    FunctionDefinition defn;
+                FunctionDefinition defn;
 
-                    defn.definitionModuleName = module->name;
-                    defn.definitionLocation = prop.location;
-                    // No data is preserved for varargLocation
-                    defn.originalNameLocation = prop.nameLocation;
+                defn.definitionModuleName = module->name;
+                defn.definitionLocation = prop.location;
+                // No data is preserved for varargLocation
+                defn.originalNameLocation = prop.nameLocation;
 
-                    ftv->definition = defn;
-                }
+                ftv->definition = defn;
             }
         }
 
@@ -1550,12 +1581,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
         if (props.count(propName) == 0)
         {
-            if (FFlag::LuauDeclarationExtraPropData)
-                props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
-            else
-                props[propName] = {propTy};
+            props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
         }
-        else if (FFlag::LuauDeclarationExtraPropData)
+        else
         {
             Luau::Property& prop = props[propName];
             TypeId currentTy = prop.type();
@@ -1577,31 +1605,6 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
                 prop.readTy = intersection;
                 prop.writeTy = intersection;
-            }
-            else
-            {
-                reportError(declaredClass->location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
-            }
-        }
-        else
-        {
-            TypeId currentTy = props[propName].type();
-
-            // We special-case this logic to keep the intersection flat; otherwise we
-            // would create a ton of nested intersection types.
-            if (const IntersectionType* itv = get<IntersectionType>(currentTy))
-            {
-                std::vector<TypeId> options = itv->parts;
-                options.push_back(propTy);
-                TypeId newItv = arena->addType(IntersectionType{std::move(options)});
-
-                props[propName] = {newItv};
-            }
-            else if (get<FunctionType>(currentTy))
-            {
-                TypeId intersection = arena->addType(IntersectionType{{currentTy, propTy}});
-
-                props[propName] = {intersection};
             }
             else
             {
@@ -1641,13 +1644,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
 
     FunctionDefinition defn;
 
-    if (FFlag::LuauDeclarationExtraPropData)
-    {
-        defn.definitionModuleName = module->name;
-        defn.definitionLocation = global->location;
-        defn.varargLocation = global->vararg ? std::make_optional(global->varargLocation) : std::nullopt;
-        defn.originalNameLocation = global->nameLocation;
-    }
+    defn.definitionModuleName = module->name;
+    defn.definitionLocation = global->location;
+    defn.varargLocation = global->vararg ? std::make_optional(global->varargLocation) : std::nullopt;
+    defn.originalNameLocation = global->nameLocation;
 
     TypeId fnType = arena->addType(FunctionType{TypeLevel{}, funScope.get(), std::move(genericTys), std::move(genericTps), paramPack, retPack, defn});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
@@ -1989,7 +1989,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
     Inference result;
 
     if (auto group = expr->as<AstExprGroup>())
-        result = check(scope, group->expr, expectedType, forceSingleton);
+        result = check(scope, group->expr, expectedType, forceSingleton, generalize);
     else if (auto stringExpr = expr->as<AstExprConstantString>())
         result = check(scope, stringExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNumber>())
@@ -2188,6 +2188,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexExpr* in
 {
     if (auto constantString = indexExpr->index->as<AstExprConstantString>())
     {
+        module->astTypes[indexExpr->index] = builtinTypes->stringType;
         const RefinementKey* key = dfg->getRefinementKey(indexExpr);
         return checkIndexName(scope, key, indexExpr->expr, constantString->value.data, indexExpr->location);
     }
@@ -3005,7 +3006,13 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
                     }
                     else if (p.typePack)
                     {
-                        packParameters.push_back(resolveTypePack(scope, p.typePack, /* inTypeArguments */ true));
+                        TypePackId tp = resolveTypePack(scope, p.typePack, /*inTypeArguments*/ true);
+
+                        // If we need more regular types, we can use single element type packs to fill those in
+                        if (parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
+                            parameters.push_back(*first(tp));
+                        else
+                            packParameters.push_back(tp);
                     }
                     else
                     {

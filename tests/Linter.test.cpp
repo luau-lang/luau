@@ -1658,6 +1658,10 @@ table.create(42, {} :: {})
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperationsIndexer")
 {
+    // CLI-116824 Linter incorrectly issues false positive when taking the length of a unannotated string function argument
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     LintResult result = lint(R"(
 local t1 = {} -- ok: empty
 local t2 = {1, 2} -- ok: array

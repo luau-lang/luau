@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauDeclarationExtraPropData)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("DefinitionTests");
@@ -346,8 +344,6 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
 
 TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_referenced_types")
 {
-    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
-
     loadDefinition(R"(
         declare class MyClass
             function myMethod(self)

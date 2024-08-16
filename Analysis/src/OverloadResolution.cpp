@@ -231,14 +231,17 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             // is ok.
 
             const size_t firstUnsatisfiedArgument = args->head.size();
-            const auto [requiredHead, _requiredTail] = flatten(fn->argTypes);
+            const auto [requiredHead, requiredTail] = flatten(fn->argTypes);
+
+            bool isVariadic = requiredTail && Luau::isVariadic(*requiredTail);
 
             // If too many arguments were supplied, this overload
             // definitely does not match.
             if (args->head.size() > requiredHead.size())
             {
                 auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
+
+                TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
 
                 return {Analysis::ArityMismatch, {error}};
             }
@@ -250,7 +253,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 if (!subtyping.isSubtype(builtinTypes->nilType, requiredHead[i]).isSubtype)
                 {
                     auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                    TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
+                    TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
 
                     return {Analysis::ArityMismatch, {error}};
                 }

@@ -575,12 +575,12 @@ local b: Y<(), ()>
 TEST_CASE_FIXTURE(Fixture, "type_alias_backwards_compatible")
 {
     CheckResult result = check(R"(
-type X<T> = () -> T
-type Y<T, U> = (T) -> U
+        type X<T> = () -> T
+        type Y<T, U> = (T) -> U
 
-type A = X<(number)>
-type B = Y<(number), (boolean)>
-type C = Y<(number), boolean>
+        type A = X<(number)>
+        type B = Y<(number), (boolean)>
+        type C = Y<(number), boolean>
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -787,48 +787,69 @@ local d: Y<number, string, ...boolean, ...() -> ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
-type Y<T = T> = { a: T }
-local a: Y = { a = 2 }
+        type Y<T = T> = { a: T }
+        local a: Y = { a = 2 }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+}
 
-    result = check(R"(
-type Y<T... = T...> = { a: (T...) -> () }
-local a: Y<>
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors2")
+{
+    CheckResult result = check(R"(
+        type Y<T... = T...> = { a: (T...) -> () }
+        local a: Y<>
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+}
 
-    result = check(R"(
-type Y<T = string, U... = ...string> = { a: (T) -> U... }
-local a: Y<...number>
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
+    CheckResult result = check(R"(
+        type Y<T = string, U... = ...string> = { a: (T) -> U... }
+        local a: Y<...number>
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), "Generic type 'Y<T, U...>' expects at least 1 type argument, but none are specified");
+}
 
-    result = check(R"(
-type Packed<T> = (T) -> T
-local a: Packed
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors4")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
+    CheckResult result = check(R"(
+        type Packed<T> = (T) -> T
+        local a: Packed
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
+}
 
-    result = check(R"(
-type Y<T, U = T, V> = { a: T }
-local a: Y<number>
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors5")
+{
+    CheckResult result = check(R"(
+        type Y<T, U = T, V> = { a: T }
+        local a: Y<number>
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
 
-    result = check(R"(
-type Y<T..., U... = T..., V...> = { a: T }
-local a: Y<...number>
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors6")
+{
+    CheckResult result = check(R"(
+        type Y<T..., U... = T..., V...> = { a: T }
+        local a: Y<...number>
     )");
 
     LUAU_REQUIRE_ERRORS(result);
@@ -929,13 +950,27 @@ a = b
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        const std::string expected = 
+            "Type\n"
+            "    '() -> (number, ...boolean)'\n"
+            "could not be converted into\n"
+            "    '() -> (number, ...string)'; at returns().tail().variadic(), boolean is not a subtype of string";
+
+        CHECK(expected == toString(result.errors[0]));
+    }
+    else
+    {
+        const std::string expected = R"(Type
     '() -> (number, ...boolean)'
 could not be converted into
     '() -> (number, ...string)'
 caused by:
   Type 'boolean' could not be converted into 'string')";
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
 }
 
 // TODO: File a Jira about this
@@ -1030,6 +1065,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function foo(...: string): number
             return 1

@@ -73,18 +73,27 @@ TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
     CHECK_EQ(*requireType("p"), *builtinTypes->stringType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
+TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")
 {
     CheckResult result = check(R"(
-local x: number = 9999
-function x:y(z: number)
-    local s: string = z
-end
-)");
+        local x: number = 9999
+        function x:y(z: number)
+            local s: string = z
+        end
+    )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
-    CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("Expected type table, got 'number' instead" == toString(result.errors[0]));
+        CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors[1]));
+    }
+    else
+    {
+        CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
+        CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
+    }
 }
 
 TEST_CASE("singleton_types")

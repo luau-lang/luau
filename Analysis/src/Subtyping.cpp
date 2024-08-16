@@ -627,6 +627,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p);
     else if (auto p = get2<SingletonType, SingletonType>(subTy, superTy))
         result = isCovariantWith(env, p);
+    else if (auto p = get2<FunctionType, PrimitiveType>(subTy, superTy))
+    {
+        auto [subFunction, superPrimitive] = p;
+        result.isSubtype = superPrimitive->type == PrimitiveType::Function;
+    }
     else if (auto p = get2<FunctionType, FunctionType>(subTy, superTy))
         result = isCovariantWith(env, p);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))

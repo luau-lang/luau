@@ -17,7 +17,6 @@ LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
-LUAU_FASTFLAG(LuauDeclarationExtraPropData);
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctions);
 
 namespace
@@ -1918,8 +1917,6 @@ function func():end
 
 TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 {
-    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
-
     AstStatBlock* stat = parseEx(R"(
         declare foo: number
         declare function bar(x: number): string
@@ -1957,8 +1954,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 
 TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 {
-    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
-
     AstStatBlock* stat = parseEx(R"(
         declare class Foo
             prop: number

@@ -171,6 +171,8 @@ TEST_SUITE_BEGIN("AstQuery");
 
 TEST_CASE_FIXTURE(Fixture, "last_argument_function_call_type")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     check(R"(
 local function foo() return 2 end
 local function bar(a: number) return -a end

@@ -19,7 +19,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
 LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
-LUAU_FASTFLAGVARIABLE(LuauDeclarationExtraPropData, false)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions, false)
 
 namespace Luau
@@ -938,15 +937,9 @@ AstStat* Parser::parseTypeFunction(const Location& start)
 
 AstDeclaredClassProp Parser::parseDeclaredClassMethod()
 {
-    Location start;
-
-    if (FFlag::LuauDeclarationExtraPropData)
-        start = lexer.current().location;
+    Location start = lexer.current().location;
 
     nextLexeme();
-
-    if (!FFlag::LuauDeclarationExtraPropData)
-        start = lexer.current().location;
 
     Name fnName = parseName("function name");
 
@@ -972,7 +965,7 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
     expectMatchAndConsume(')', matchParen);
 
     AstTypeList retTypes = parseOptionalReturnType().value_or(AstTypeList{copy<AstType*>(nullptr, 0), nullptr});
-    Location end = FFlag::LuauDeclarationExtraPropData ? lexer.previousLocation() : lexer.current().location;
+    Location end = lexer.previousLocation();
 
     TempVector<AstType*> vars(scratchType);
     TempVector<std::optional<AstArgumentName>> varNames(scratchOptArgName);
@@ -980,10 +973,7 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
     if (args.size() == 0 || args[0].name.name != "self" || args[0].annotation != nullptr)
     {
         return AstDeclaredClassProp{
-            fnName.name,
-            FFlag::LuauDeclarationExtraPropData ? fnName.location : Location{},
-            reportTypeError(Location(start, end), {}, "'self' must be present as the unannotated first parameter"),
-            true
+            fnName.name, fnName.location, reportTypeError(Location(start, end), {}, "'self' must be present as the unannotated first parameter"), true
         };
     }
 
@@ -1005,13 +995,7 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
         Location(start, end), generics, genericPacks, AstTypeList{copy(vars), varargAnnotation}, copy(varNames), retTypes
     );
 
-    return AstDeclaredClassProp{
-        fnName.name,
-        FFlag::LuauDeclarationExtraPropData ? fnName.location : Location{},
-        fnType,
-        true,
-        FFlag::LuauDeclarationExtraPropData ? Location(start, end) : Location{}
-    };
+    return AstDeclaredClassProp{fnName.name, fnName.location, fnType, true, Location(start, end)};
 }
 
 AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*>& attributes)
@@ -1067,34 +1051,19 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
         if (vararg && !varargAnnotation)
             return reportStatError(Location(start, end), {}, {}, "All declaration parameters must be annotated");
 
-        if (FFlag::LuauDeclarationExtraPropData)
-            return allocator.alloc<AstStatDeclareFunction>(
-                Location(start, end),
-                attributes,
-                globalName.name,
-                globalName.location,
-                generics,
-                genericPacks,
-                AstTypeList{copy(vars), varargAnnotation},
-                copy(varNames),
-                vararg,
-                varargLocation,
-                retTypes
-            );
-        else
-            return allocator.alloc<AstStatDeclareFunction>(
-                Location(start, end),
-                attributes,
-                globalName.name,
-                Location{},
-                generics,
-                genericPacks,
-                AstTypeList{copy(vars), varargAnnotation},
-                copy(varNames),
-                false,
-                Location{},
-                retTypes
-            );
+        return allocator.alloc<AstStatDeclareFunction>(
+            Location(start, end),
+            attributes,
+            globalName.name,
+            globalName.location,
+            generics,
+            genericPacks,
+            AstTypeList{copy(vars), varargAnnotation},
+            copy(varNames),
+            vararg,
+            varargLocation,
+            retTypes
+        );
     }
     else if (AstName(lexer.current().name) == "class")
     {
@@ -1124,42 +1093,27 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 const Lexeme begin = lexer.current();
                 nextLexeme(); // [
 
-                if (FFlag::LuauDeclarationExtraPropData)
+                const Location nameBegin = lexer.current().location;
+                std::optional<AstArray<char>> chars = parseCharArray();
+
+                const Location nameEnd = lexer.previousLocation();
+
+                expectMatchAndConsume(']', begin);
+                expectAndConsume(':', "property type annotation");
+                AstType* type = parseType();
+
+                // since AstName contains a char*, it can't contain null
+                bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
+
+                if (chars && !containsNull)
                 {
-                    const Location nameBegin = lexer.current().location;
-                    std::optional<AstArray<char>> chars = parseCharArray();
-
-                    const Location nameEnd = lexer.previousLocation();
-
-                    expectMatchAndConsume(']', begin);
-                    expectAndConsume(':', "property type annotation");
-                    AstType* type = parseType();
-
-                    // since AstName contains a char*, it can't contain null
-                    bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
-
-                    if (chars && !containsNull)
-                        props.push_back(AstDeclaredClassProp{
-                            AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
-                        });
-                    else
-                        report(begin.location, "String literal contains malformed escape sequence or \\0");
+                    props.push_back(AstDeclaredClassProp{
+                        AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
+                    });
                 }
                 else
                 {
-                    std::optional<AstArray<char>> chars = parseCharArray();
-
-                    expectMatchAndConsume(']', begin);
-                    expectAndConsume(':', "property type annotation");
-                    AstType* type = parseType();
-
-                    // since AstName contains a char*, it can't contain null
-                    bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
-
-                    if (chars && !containsNull)
-                        props.push_back(AstDeclaredClassProp{AstName(chars->data), Location{}, type, false});
-                    else
-                        report(begin.location, "String literal contains malformed escape sequence or \\0");
+                    report(begin.location, "String literal contains malformed escape sequence or \\0");
                 }
             }
             else if (lexer.current().type == '[')
@@ -1178,7 +1132,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                     indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt);
                 }
             }
-            else if (FFlag::LuauDeclarationExtraPropData)
+            else
             {
                 Location propStart = lexer.current().location;
                 Name propName = parseName("property name");
@@ -1186,13 +1140,6 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 AstType* propType = parseType();
                 props.push_back(AstDeclaredClassProp{propName.name, propName.location, propType, false, Location(propStart, lexer.previousLocation())}
                 );
-            }
-            else
-            {
-                Name propName = parseName("property name");
-                expectAndConsume(':', "property type annotation");
-                AstType* propType = parseType();
-                props.push_back(AstDeclaredClassProp{propName.name, Location{}, propType, false});
             }
         }
 
@@ -1206,9 +1153,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
         expectAndConsume(':', "global variable declaration");
 
         AstType* type = parseType(/* in declaration context */ true);
-        return allocator.alloc<AstStatDeclareGlobal>(
-            Location(start, type->location), globalName->name, FFlag::LuauDeclarationExtraPropData ? globalName->location : Location{}, type
-        );
+        return allocator.alloc<AstStatDeclareGlobal>(Location(start, type->location), globalName->name, globalName->location, type);
     }
     else
     {

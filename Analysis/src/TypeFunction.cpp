@@ -659,12 +659,9 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (normTy->shouldSuppressErrors())
         return {ctx->builtins->numberType, false, {}, {}};
 
-    // if we have an uninhabited type (like `never`), we can never observe that the operator didn't work.
-    if (inhabited == NormalizationResult::False)
-        return {ctx->builtins->neverType, false, {}, {}};
-
+    // # always returns a number, even if its operand is never.
     // if we're checking the length of a string, that works!
-    if (normTy->isSubtypeOfString())
+    if (inhabited == NormalizationResult::False || normTy->isSubtypeOfString())
         return {ctx->builtins->numberType, false, {}, {}};
 
     // we use the normalized operand here in case there was an intersection or union.
@@ -1576,86 +1573,116 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     NotNull<TypeFunctionContext> ctx
 )
 {
-    if (typeParams.size() != 2 || !packParams.empty())
+    if (typeParams.size() < 2 || !packParams.empty())
     {
         ctx->ice->ice("refine type function: encountered a type function instance without the required argument structure");
         LUAU_ASSERT(false);
     }
 
     TypeId targetTy = follow(typeParams.at(0));
-    TypeId discriminantTy = follow(typeParams.at(1));
+    std::vector<TypeId> discriminantTypes;
+    for (size_t i = 1; i < typeParams.size(); i++)
+        discriminantTypes.push_back(follow(typeParams.at(i)));
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(targetTy, ctx->solver))
         return {std::nullopt, false, {targetTy}, {}};
-    else if (isPending(discriminantTy, ctx->solver))
-        return {std::nullopt, false, {discriminantTy}, {}};
-
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver)
+    else
     {
-        std::optional<TypeId> targetMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, targetTy);
-        std::optional<TypeId> discriminantMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, discriminantTy);
-
-        if (!targetMaybeGeneralized)
-            return {std::nullopt, false, {targetTy}, {}};
-        else if (!discriminantMaybeGeneralized)
-            return {std::nullopt, false, {discriminantTy}, {}};
-
-        targetTy = *targetMaybeGeneralized;
-        discriminantTy = *discriminantMaybeGeneralized;
+        for (auto t : discriminantTypes)
+        {
+            if (isPending(t, ctx->solver))
+                return {std::nullopt, false, {t}, {}};
+        }
     }
-
-    // we need a more complex check for blocking on the discriminant in particular
-    FindRefinementBlockers frb;
-    frb.traverse(discriminantTy);
-
-    if (!frb.found.empty())
-        return {std::nullopt, false, {frb.found.begin(), frb.found.end()}, {}};
-
-    /* HACK: Refinements sometimes produce a type T & ~any under the assumption
-     * that ~any is the same as any.  This is so so weird, but refinements needs
-     * some way to say "I may refine this, but I'm not sure."
-     *
-     * It does this by refining on a blocked type and deferring the decision
-     * until it is unblocked.
-     *
-     * Refinements also get negated, so we wind up with types like T & ~*blocked*
-     *
-     * We need to treat T & ~any as T in this case.
-     */
-
-    if (auto nt = get<NegationType>(discriminantTy))
-        if (get<AnyType>(follow(nt->ty)))
-            return {targetTy, false, {}, {}};
-
-    // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
-    // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
-    if (get<TableType>(targetTy))
+    // Refine a target type and a discriminant one at a time.
+    // Returns result : TypeId, toBlockOn : vector<TypeId>
+    auto stepRefine = [&ctx](TypeId target, TypeId discriminant) -> std::pair<TypeId, std::vector<TypeId>>
     {
-        SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, targetTy, discriminantTy);
-        if (!result.blockedTypes.empty())
-            return {std::nullopt, false, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+        std::vector<TypeId> toBlock;
+        if (ctx->solver)
+        {
+            std::optional<TypeId> targetMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, target);
+            std::optional<TypeId> discriminantMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, discriminant);
 
-        return {result.result, false, {}, {}};
+            if (!targetMaybeGeneralized)
+                return std::pair<TypeId, std::vector<TypeId>>{nullptr, {target}};
+            else if (!discriminantMaybeGeneralized)
+                return std::pair<TypeId, std::vector<TypeId>>{nullptr, {discriminant}};
+
+            target = *targetMaybeGeneralized;
+            discriminant = *discriminantMaybeGeneralized;
+        }
+
+        // we need a more complex check for blocking on the discriminant in particular
+        FindRefinementBlockers frb;
+        frb.traverse(discriminant);
+
+        if (!frb.found.empty())
+            return {nullptr, {frb.found.begin(), frb.found.end()}};
+
+        /* HACK: Refinements sometimes produce a type T & ~any under the assumption
+         * that ~any is the same as any.  This is so so weird, but refinements needs
+         * some way to say "I may refine this, but I'm not sure."
+         *
+         * It does this by refining on a blocked type and deferring the decision
+         * until it is unblocked.
+         *
+         * Refinements also get negated, so we wind up with types like T & ~*blocked*
+         *
+         * We need to treat T & ~any as T in this case.
+         */
+        if (auto nt = get<NegationType>(discriminant))
+            if (get<AnyType>(follow(nt->ty)))
+                return {target, {}};
+
+        // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
+        // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
+        if (get<TableType>(target))
+        {
+            SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+            if (!result.blockedTypes.empty())
+                return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+
+            return {result.result, {}};
+        }
+
+        // In the general case, we'll still use normalization though.
+        TypeId intersection = ctx->arena->addType(IntersectionType{{target, discriminant}});
+        std::shared_ptr<const NormalizedType> normIntersection = ctx->normalizer->normalize(intersection);
+        std::shared_ptr<const NormalizedType> normType = ctx->normalizer->normalize(target);
+
+        // if the intersection failed to normalize, we can't reduce, but know nothing about inhabitance.
+        if (!normIntersection || !normType)
+            return {nullptr, {}};
+
+        TypeId resultTy = ctx->normalizer->typeFromNormal(*normIntersection);
+        // include the error type if the target type is error-suppressing and the intersection we computed is not
+        if (normType->shouldSuppressErrors() && !normIntersection->shouldSuppressErrors())
+            resultTy = ctx->arena->addType(UnionType{{resultTy, ctx->builtins->errorType}});
+
+        return {resultTy, {}};
+    };
+
+    // refine target with each discriminant type in sequence (reverse of insertion order)
+    // If we cannot proceed, block. If all discriminant types refine successfully, return
+    // the result
+    TypeId target = targetTy;
+    while (!discriminantTypes.empty())
+    {
+        TypeId discriminant = discriminantTypes.back();
+        auto [refined, blocked] = stepRefine(target, discriminant);
+
+        if (blocked.empty() && refined == nullptr)
+            return {std::nullopt, false, {}, {}};
+
+        if (!blocked.empty())
+            return {std::nullopt, false, blocked, {}};
+
+        target = refined;
+        discriminantTypes.pop_back();
     }
-
-    // In the general case, we'll still use normalization though.
-    TypeId intersection = ctx->arena->addType(IntersectionType{{targetTy, discriminantTy}});
-    std::shared_ptr<const NormalizedType> normIntersection = ctx->normalizer->normalize(intersection);
-    std::shared_ptr<const NormalizedType> normType = ctx->normalizer->normalize(targetTy);
-
-    // if the intersection failed to normalize, we can't reduce, but know nothing about inhabitance.
-    if (!normIntersection || !normType)
-        return {std::nullopt, false, {}, {}};
-
-    TypeId resultTy = ctx->normalizer->typeFromNormal(*normIntersection);
-
-    // include the error type if the target type is error-suppressing and the intersection we computed is not
-    if (normType->shouldSuppressErrors() && !normIntersection->shouldSuppressErrors())
-        resultTy = ctx->arena->addType(UnionType{{resultTy, ctx->builtins->errorType}});
-
-    return {resultTy, false, {}, {}};
+    return {target, false, {}, {}};
 }
 
 TypeFunctionReductionResult<TypeId> singletonTypeFunction(

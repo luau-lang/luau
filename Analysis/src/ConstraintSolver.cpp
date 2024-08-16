@@ -1271,6 +1271,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     if (occursCheckPassed && c.callSite)
         (*c.astOverloadResolvedTypes)[c.callSite] = inferredTy;
+    else if (!occursCheckPassed)
+        reportError(OccursCheckFailed{}, constraint->location);
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
     queuer.traverse(overloadToUse);
@@ -1279,6 +1281,14 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     unblock(c.result, constraint->location);
 
     return true;
+}
+
+static AstExpr* unwrapGroup(AstExpr* expr)
+{
+    while (auto group = expr->as<AstExprGroup>())
+        expr = group->expr;
+
+    return expr;
 }
 
 bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint)
@@ -1354,7 +1364,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     {
         const TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         const TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
-        const AstExpr* expr = c.callSite->args.data[i];
+        const AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
         (*c.astExpectedTypes)[expr] = expectedArgTy;
 
@@ -1697,7 +1707,10 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
     {
         const Property* prop = lookupClassProp(lhsClass, propName);
         if (!prop || !prop->writeTy.has_value())
+        {
+            bind(constraint, c.propType, builtinTypes->anyType);
             return true;
+        }
 
         bind(constraint, c.propType, *prop->writeTy);
         unify(constraint, rhsType, *prop->writeTy);

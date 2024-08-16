@@ -11,7 +11,6 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256);
-LUAU_FASTFLAG(LuauReusableSubstitutions)
 
 namespace Luau
 {
@@ -148,8 +147,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
 }
 
 Tarjan::Tarjan()
-    : typeToIndex(nullptr, FFlag::LuauReusableSubstitutions ? FInt::LuauTarjanPreallocationSize : 0)
-    , packToIndex(nullptr, FFlag::LuauReusableSubstitutions ? FInt::LuauTarjanPreallocationSize : 0)
+    : typeToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
+    , packToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
 {
     nodes.reserve(FInt::LuauTarjanPreallocationSize);
     stack.reserve(FInt::LuauTarjanPreallocationSize);
@@ -452,28 +451,17 @@ TarjanResult Tarjan::visitRoot(TypePackId tp)
 
 void Tarjan::clearTarjan(const TxnLog* log)
 {
-    if (FFlag::LuauReusableSubstitutions)
-    {
-        typeToIndex.clear(~0u);
-        packToIndex.clear(~0u);
-    }
-    else
-    {
-        typeToIndex.clear();
-        packToIndex.clear();
-    }
+    typeToIndex.clear(~0u);
+    packToIndex.clear(~0u);
 
     nodes.clear();
 
     stack.clear();
 
-    if (FFlag::LuauReusableSubstitutions)
-    {
-        childCount = 0;
-        // childLimit setting stays the same
+    childCount = 0;
+    // childLimit setting stays the same
 
-        this->log = log;
-    }
+    this->log = log;
 
     edgesTy.clear();
     edgesTp.clear();
@@ -629,8 +617,6 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
 void Substitution::resetState(const TxnLog* log, TypeArena* arena)
 {
-    LUAU_ASSERT(FFlag::LuauReusableSubstitutions);
-
     clearTarjan(log);
 
     this->arena = arena;
