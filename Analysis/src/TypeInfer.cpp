@@ -34,8 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
-LUAU_FASTFLAGVARIABLE(LuauReusableSubstitutions, false)
-LUAU_FASTFLAG(LuauDeclarationExtraPropData)
 
 namespace Luau
 {
@@ -1756,28 +1754,22 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass&
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
                 ftv->hasSelf = true;
 
-                if (FFlag::LuauDeclarationExtraPropData)
-                {
-                    FunctionDefinition defn;
+                FunctionDefinition defn;
 
-                    defn.definitionModuleName = currentModule->name;
-                    defn.definitionLocation = prop.location;
-                    // No data is preserved for varargLocation
-                    defn.originalNameLocation = prop.nameLocation;
+                defn.definitionModuleName = currentModule->name;
+                defn.definitionLocation = prop.location;
+                // No data is preserved for varargLocation
+                defn.originalNameLocation = prop.nameLocation;
 
-                    ftv->definition = defn;
-                }
+                ftv->definition = defn;
             }
         }
 
         if (assignTo.count(propName) == 0)
         {
-            if (FFlag::LuauDeclarationExtraPropData)
-                assignTo[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
-            else
-                assignTo[propName] = {propTy};
+            assignTo[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
         }
-        else if (FFlag::LuauDeclarationExtraPropData)
+        else
         {
             Luau::Property& prop = assignTo[propName];
             TypeId currentTy = prop.type();
@@ -1799,31 +1791,6 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass&
 
                 prop.readTy = intersection;
                 prop.writeTy = intersection;
-            }
-            else
-            {
-                reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
-            }
-        }
-        else
-        {
-            TypeId currentTy = assignTo[propName].type();
-
-            // We special-case this logic to keep the intersection flat; otherwise we
-            // would create a ton of nested intersection types.
-            if (const IntersectionType* itv = get<IntersectionType>(currentTy))
-            {
-                std::vector<TypeId> options = itv->parts;
-                options.push_back(propTy);
-                TypeId newItv = addType(IntersectionType{std::move(options)});
-
-                assignTo[propName] = {newItv};
-            }
-            else if (get<FunctionType>(currentTy))
-            {
-                TypeId intersection = addType(IntersectionType{{currentTy, propTy}});
-
-                assignTo[propName] = {intersection};
             }
             else
             {
@@ -1870,13 +1837,10 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
 
     FunctionDefinition defn;
 
-    if (FFlag::LuauDeclarationExtraPropData)
-    {
-        defn.definitionModuleName = currentModule->name;
-        defn.definitionLocation = global.location;
-        defn.varargLocation = global.vararg ? std::make_optional(global.varargLocation) : std::nullopt;
-        defn.originalNameLocation = global.nameLocation;
-    }
+    defn.definitionModuleName = currentModule->name;
+    defn.definitionLocation = global.location;
+    defn.varargLocation = global.vararg ? std::make_optional(global.varargLocation) : std::nullopt;
+    defn.originalNameLocation = global.nameLocation;
 
     TypeId fnType = addType(FunctionType{funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack, defn});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
@@ -4991,24 +4955,12 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
 
     std::optional<TypeId> instantiated;
 
-    if (FFlag::LuauReusableSubstitutions)
-    {
-        reusableInstantiation.resetState(log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr);
+    reusableInstantiation.resetState(log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr);
 
-        if (instantiationChildLimit)
-            reusableInstantiation.childLimit = *instantiationChildLimit;
+    if (instantiationChildLimit)
+        reusableInstantiation.childLimit = *instantiationChildLimit;
 
-        instantiated = reusableInstantiation.substitute(ty);
-    }
-    else
-    {
-        Instantiation instantiation{log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr};
-
-        if (instantiationChildLimit)
-            instantiation.childLimit = *instantiationChildLimit;
-
-        instantiated = instantiation.substitute(ty);
-    }
+    instantiated = reusableInstantiation.substitute(ty);
 
     if (instantiated.has_value())
         return *instantiated;

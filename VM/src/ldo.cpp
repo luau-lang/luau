@@ -17,6 +17,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauErrorResumeCleanupArgs, false)
+
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -426,9 +428,13 @@ static void resume_handle(lua_State* L, void* ud)
     resume_continue(L);
 }
 
-static int resume_error(lua_State* L, const char* msg)
+static int resume_error(lua_State* L, const char* msg, int narg)
 {
-    L->top = L->ci->base;
+    if (FFlag::LuauErrorResumeCleanupArgs)
+        L->top -= narg;
+    else
+        L->top = L->ci->base;
+
     setsvalue(L, L->top, luaS_new(L, msg));
     incr_top(L);
     return LUA_ERRRUN;
@@ -455,11 +461,11 @@ int lua_resume(lua_State* L, lua_State* from, int nargs)
 {
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
-        return resume_error(L, "cannot resume non-suspended coroutine");
+        return resume_error(L, "cannot resume non-suspended coroutine", nargs);
 
     L->nCcalls = from ? from->nCcalls : 0;
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        return resume_error(L, "C stack overflow");
+        return resume_error(L, "C stack overflow", nargs);
 
     L->baseCcalls = ++L->nCcalls;
     L->isactive = true;
@@ -484,11 +490,11 @@ int lua_resumeerror(lua_State* L, lua_State* from)
 {
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
-        return resume_error(L, "cannot resume non-suspended coroutine");
+        return resume_error(L, "cannot resume non-suspended coroutine", 1);
 
     L->nCcalls = from ? from->nCcalls : 0;
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        return resume_error(L, "C stack overflow");
+        return resume_error(L, "C stack overflow", 1);
 
     L->baseCcalls = ++L->nCcalls;
     L->isactive = true;

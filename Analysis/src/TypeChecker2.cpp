@@ -1445,37 +1445,40 @@ struct TypeChecker2
         else
             LUAU_ASSERT(!"Generating the best possible error from this function call resolution was inexhaustive?");
 
-        if (resolver.arityMismatches.size() > 1 || resolver.nonviableOverloads.size() > 1)
+        if (resolver.nonviableOverloads.size() <= 1 && resolver.arityMismatches.size() <= 1)
+            return;
+
+        std::string s = "Available overloads: ";
+
+        std::vector<TypeId> overloads;
+        if (resolver.nonviableOverloads.empty())
         {
-            std::string s = "Available overloads: ";
-
-            std::vector<TypeId> overloads;
-            if (resolver.nonviableOverloads.empty())
+            for (const auto& [ty, p] : resolver.resolution)
             {
-                for (const auto& [ty, p] : resolver.resolution)
-                {
-                    if (p.first == OverloadResolver::TypeIsNotAFunction)
-                        continue;
+                if (p.first == OverloadResolver::TypeIsNotAFunction)
+                    continue;
 
-                    overloads.push_back(ty);
-                }
+                overloads.push_back(ty);
             }
-            else
-            {
-                for (const auto& [ty, _] : resolver.nonviableOverloads)
-                    overloads.push_back(ty);
-            }
-
-            for (size_t i = 0; i < overloads.size(); ++i)
-            {
-                if (i > 0)
-                    s += (i == overloads.size() - 1) ? "; and " : "; ";
-
-                s += toString(overloads[i]);
-            }
-
-            reportError(ExtraInformation{std::move(s)}, call->func->location);
         }
+        else
+        {
+            for (const auto& [ty, _] : resolver.nonviableOverloads)
+                overloads.push_back(ty);
+        }
+
+        if (overloads.size() <= 1)
+            return;
+
+        for (size_t i = 0; i < overloads.size(); ++i)
+        {
+            if (i > 0)
+                s += (i == overloads.size() - 1) ? "; and " : "; ";
+
+            s += toString(overloads[i]);
+        }
+
+        reportError(ExtraInformation{std::move(s)}, call->func->location);
     }
 
     void visit(AstExprCall* call)
@@ -1756,7 +1759,7 @@ struct TypeChecker2
                 if (get<TypeFunctionInstanceType>(follow(retTy)))
                 {
                     TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
-                    if (result.shouldRecommendAnnotation)
+                    if (result.shouldRecommendAnnotation && !get<UnknownType>(result.guessedReturnType))
                         reportError(
                             ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
                             fn->location
@@ -1837,6 +1840,17 @@ struct TypeChecker2
 
             if (nty && nty->shouldSuppressErrors())
                 return;
+
+            switch (normalizer.isInhabited(nty.get()))
+            {
+                case NormalizationResult::True:
+                    break;
+                case NormalizationResult::False:
+                    return;
+                case NormalizationResult::HitLimits:
+                    reportError(NormalizationTooComplex{}, expr->location);
+                    return;
+            }
 
             if (!hasLength(operandType, seen, &recursionCount))
             {

@@ -56,12 +56,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require")
         return {hooty=hooty}
     )";
 
-    fileResolver.source["game/B"] = R"(
-        local Hooty = require(game.A)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        fileResolver.source["game/B"] = R"(
+            local Hooty = require(game.A)
 
-        local h -- free!
-        local i = Hooty.hooty(h)
-    )";
+            local h = 4
+            local i = Hooty.hooty(h)
+        )";
+    }
+    else
+    {
+        fileResolver.source["game/B"] = R"(
+            local Hooty = require(game.A)
+
+            local h -- free!
+            local i = Hooty.hooty(h)
+        )";
+    }
 
     CheckResult aResult = frontend.check("game/A");
     dumpErrors(aResult);

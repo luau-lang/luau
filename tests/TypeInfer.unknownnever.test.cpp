@@ -121,11 +121,11 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable"
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Function only returns 2 values, but 3 are required here", toString(result.errors[0]));
+        CHECK("Function only returns 2 values, but 3 are required here" == toString(result.errors[0]));
 
-        CHECK_EQ("string", toString(requireType("x")));
-        CHECK_EQ("never", toString(requireType("y")));
-        CHECK_EQ("*error-type*", toString(requireType("z")));
+        CHECK("string" == toString(requireType("x")));
+        CHECK("never" == toString(requireType("y")));
+        CHECK("nil" == toString(requireType("z")));
     }
     else
     {
@@ -335,8 +335,20 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("mul")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+
+        // CLI-114134 Egraph-based simplification.
+        // CLI-116549 x ~= nil : false when x : nil
+        CHECK("<a>(nil, a) -> and<boolean, mul<nil & ~nil, a>>" == toString(requireType("mul")));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("mul")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "compare_never")

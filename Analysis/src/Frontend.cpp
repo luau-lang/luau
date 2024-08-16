@@ -37,7 +37,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTFLAGVARIABLE(LuauCancelFromProgress, false)
 LUAU_FASTFLAGVARIABLE(LuauStoreCommentsForDefinitionFiles, false)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
@@ -745,15 +744,8 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
         if (progress)
         {
-            if (FFlag::LuauCancelFromProgress)
-            {
-                if (!progress(buildQueueItems.size() - remaining, buildQueueItems.size()))
-                    cancelled = true;
-            }
-            else
-            {
-                progress(buildQueueItems.size() - remaining, buildQueueItems.size());
-            }
+            if (!progress(buildQueueItems.size() - remaining, buildQueueItems.size()))
+                cancelled = true;
         }
 
         // Items cannot be submitted while holding the lock
