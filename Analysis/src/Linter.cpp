@@ -2587,6 +2587,89 @@ private:
     }
 };
 
+// Recommend collapsing `if/if not COND then error(STR) end` to `assert(COND, STR)`
+class LintCollapseClauseToAssert : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintCollapseClauseToAssert pass{&context};
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    LintCollapseClauseToAssert(LintContext* context)
+        : context(context)
+    {
+    }
+
+    bool visit(AstStatIf* stat) override
+    {
+        if (stat->elsebody)
+            return true;
+
+        if (!stat->thenbody)
+            return true;
+
+        // Clause contains more than just an `error()`
+        if (stat->thenbody->body.size > 1)
+            return true;
+
+        Luau::AstArray<Luau::AstStat*>& contents = stat->thenbody->body;
+
+        // Avoid nullptr-dereference if there's a syntax error
+        if (contents.size < 1)
+            return true;
+
+        Luau::AstStat* body = contents.data[0];
+
+        if (!body->is<AstStatExpr>())
+            return true;
+
+        AstStatExpr* expr = body->as<AstStatExpr>();
+        
+        if (!expr->expr->is<AstExprCall>())
+            return true;
+
+        AstExprCall* call = expr->expr->as<AstExprCall>();
+
+        if (!call->func->is<AstExprGlobal>())
+            return true;
+
+        AstExprGlobal* global = call->func->as<AstExprGlobal>();
+
+        if (global->name == "error")
+        {
+            // `assert` does not have a 'level' parameter +
+            // `error` requires at-least 1 argument
+            if (call->args.size > 1 || call->args.size == 0)
+                return true;
+
+            AstExpr* errmsg = call->args.data[0];
+
+            // The `if`-clause allows the VM to occasionally (and, in this case, almost always) 
+            // avoid resolving any string operations, but `assert` (like all functions)
+            // forces it to resolve it's arguments every time they are called, regardless
+            // of if the condition actually fails.
+            // https://devforum.roblox.com/t/1289175
+            // Don't give the suggestion in this case, we don't want to slow people's code down.
+            if (!errmsg->is<AstExprConstantString>())
+                return true;
+            
+            emitWarning(
+                *context,
+                LintWarning::Code_CollapseClauseToAssert,
+                stat->location,
+                "`if`-clause can be collapsed to an `assert`"
+            );
+        }
+
+        return true;
+    }
+};
+
 class LintDuplicateCondition : AstVisitor
 {
 public:
@@ -3388,6 +3471,9 @@ std::vector<LintWarning> lint(
 
     if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence))
         LintComparisonPrecedence::process(context);
+
+    if (context.warningEnabled(LintWarning::Code_CollapseClauseToAssert))
+        LintCollapseClauseToAssert::process(context);
 
     if (FFlag::LuauNativeAttribute && FFlag::LintRedundantNativeAttribute && context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
     {
