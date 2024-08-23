@@ -11,8 +11,7 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-LUAU_FASTFLAG(LuauCodegenMathSign)
+LUAU_FASTFLAGVARIABLE(LuauCodegenArmNumToVecFix, false)
 
 namespace Luau
 {
@@ -233,25 +232,6 @@ static bool emitBuiltin(AssemblyBuilderA64& build, IrFunction& function, IrRegAl
             build.str(d0, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
             build.str(temp, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, tt)));
         }
-        return true;
-    }
-    case LBF_MATH_SIGN:
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
-        CODEGEN_ASSERT(nresults == 1);
-        build.ldr(d0, mem(rBase, arg * sizeof(TValue) + offsetof(TValue, value.n)));
-        build.fcmpz(d0);
-        build.fmov(d0, 0.0);
-        build.fmov(d1, 1.0);
-        build.fcsel(d0, d1, d0, getConditionFP(IrCondition::Greater));
-        build.fmov(d1, -1.0);
-        build.fcsel(d0, d1, d0, getConditionFP(IrCondition::Less));
-        build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
-
-        RegisterA64 temp = regs.allocTemp(KindA64::w);
-        build.mov(temp, LUA_TNUMBER);
-        build.str(temp, mem(rBase, res * sizeof(TValue) + offsetof(TValue, tt)));
-
         return true;
     }
 
@@ -701,8 +681,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::SIGN_NUM:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenMathSign);
-
         inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a});
 
         RegisterA64 temp = tempDouble(inst.a);
@@ -1143,7 +1121,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
         {
             RegisterA64 tempd = tempDouble(inst.a);
-            RegisterA64 temps = castReg(KindA64::s, tempd);
+            RegisterA64 temps = FFlag::LuauCodegenArmNumToVecFix ? regs.allocTemp(KindA64::s) : castReg(KindA64::s, tempd);
 
             build.fcvt(temps, tempd);
             build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
@@ -1194,87 +1172,53 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::FASTCALL:
         regs.spill(build, index);
 
-        if (FFlag::LuauCodegenFastcall3)
-            error |= !emitBuiltin(build, function, regs, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d));
-        else
-            error |= !emitBuiltin(build, function, regs, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.f));
-
+        error |= !emitBuiltin(build, function, regs, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d));
         break;
     case IrCmd::INVOKE_FASTCALL:
     {
-        if (FFlag::LuauCodegenFastcall3)
+        // We might need a temporary and we have to preserve it over the spill
+        RegisterA64 temp = regs.allocTemp(KindA64::q);
+        regs.spill(build, index, {temp});
+
+        build.mov(x0, rState);
+        build.add(x1, rBase, uint16_t(vmRegOp(inst.b) * sizeof(TValue)));
+        build.add(x2, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
+        build.mov(w3, intOp(inst.g)); // nresults
+
+        // 'E' argument can only be produced by LOP_FASTCALL3 lowering
+        if (inst.e.kind != IrOpKind::Undef)
         {
-            // We might need a temporary and we have to preserve it over the spill
-            RegisterA64 temp = regs.allocTemp(KindA64::q);
-            regs.spill(build, index, {temp});
+            CODEGEN_ASSERT(intOp(inst.f) == 3);
 
-            build.mov(x0, rState);
-            build.add(x1, rBase, uint16_t(vmRegOp(inst.b) * sizeof(TValue)));
-            build.add(x2, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
-            build.mov(w3, intOp(inst.g)); // nresults
+            build.ldr(x4, mem(rState, offsetof(lua_State, top)));
 
-            // 'E' argument can only be produced by LOP_FASTCALL3 lowering
-            if (inst.e.kind != IrOpKind::Undef)
-            {
-                CODEGEN_ASSERT(intOp(inst.f) == 3);
+            build.ldr(temp, mem(rBase, vmRegOp(inst.d) * sizeof(TValue)));
+            build.str(temp, mem(x4, 0));
 
-                build.ldr(x4, mem(rState, offsetof(lua_State, top)));
-
-                build.ldr(temp, mem(rBase, vmRegOp(inst.d) * sizeof(TValue)));
-                build.str(temp, mem(x4, 0));
-
-                build.ldr(temp, mem(rBase, vmRegOp(inst.e) * sizeof(TValue)));
-                build.str(temp, mem(x4, sizeof(TValue)));
-            }
-            else
-            {
-                if (inst.d.kind == IrOpKind::VmReg)
-                    build.add(x4, rBase, uint16_t(vmRegOp(inst.d) * sizeof(TValue)));
-                else if (inst.d.kind == IrOpKind::VmConst)
-                    emitAddOffset(build, x4, rConstants, vmConstOp(inst.d) * sizeof(TValue));
-                else
-                    CODEGEN_ASSERT(inst.d.kind == IrOpKind::Undef);
-            }
-
-            // nparams
-            if (intOp(inst.f) == LUA_MULTRET)
-            {
-                // L->top - (ra + 1)
-                build.ldr(x5, mem(rState, offsetof(lua_State, top)));
-                build.sub(x5, x5, rBase);
-                build.sub(x5, x5, uint16_t((vmRegOp(inst.b) + 1) * sizeof(TValue)));
-                build.lsr(x5, x5, kTValueSizeLog2);
-            }
-            else
-                build.mov(w5, intOp(inst.f));
+            build.ldr(temp, mem(rBase, vmRegOp(inst.e) * sizeof(TValue)));
+            build.str(temp, mem(x4, sizeof(TValue)));
         }
         else
         {
-            regs.spill(build, index);
-            build.mov(x0, rState);
-            build.add(x1, rBase, uint16_t(vmRegOp(inst.b) * sizeof(TValue)));
-            build.add(x2, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
-            build.mov(w3, intOp(inst.f)); // nresults
-
             if (inst.d.kind == IrOpKind::VmReg)
                 build.add(x4, rBase, uint16_t(vmRegOp(inst.d) * sizeof(TValue)));
             else if (inst.d.kind == IrOpKind::VmConst)
                 emitAddOffset(build, x4, rConstants, vmConstOp(inst.d) * sizeof(TValue));
             else
                 CODEGEN_ASSERT(inst.d.kind == IrOpKind::Undef);
-
-            // nparams
-            if (intOp(inst.e) == LUA_MULTRET)
-            {
-                // L->top - (ra + 1)
-                build.ldr(x5, mem(rState, offsetof(lua_State, top)));
-                build.sub(x5, x5, rBase);
-                build.sub(x5, x5, uint16_t((vmRegOp(inst.b) + 1) * sizeof(TValue)));
-                build.lsr(x5, x5, kTValueSizeLog2);
-            }
-            else
-                build.mov(w5, intOp(inst.e));
         }
+
+        // nparams
+        if (intOp(inst.f) == LUA_MULTRET)
+        {
+            // L->top - (ra + 1)
+            build.ldr(x5, mem(rState, offsetof(lua_State, top)));
+            build.sub(x5, x5, rBase);
+            build.sub(x5, x5, uint16_t((vmRegOp(inst.b) + 1) * sizeof(TValue)));
+            build.lsr(x5, x5, kTValueSizeLog2);
+        }
+        else
+            build.mov(w5, intOp(inst.f));
 
         build.ldr(x6, mem(rNativeContext, offsetof(NativeContext, luauF_table) + uintOp(inst.a) * sizeof(luau_FastFunction)));
         build.blr(x6);

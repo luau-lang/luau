@@ -15,9 +15,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-LUAU_FASTFLAG(LuauCodegenMathSign)
-
 namespace Luau
 {
 namespace CodeGen
@@ -596,8 +593,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     case IrCmd::SIGN_NUM:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenMathSign);
-
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
 
         ScopedRegX64 tmp0{regs, SizeX64::xmmword};
@@ -1038,10 +1033,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     case IrCmd::FASTCALL:
     {
-        if (FFlag::LuauCodegenFastcall3)
-            emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d));
-        else
-            emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.f));
+        emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d));
         break;
     }
     case IrCmd::INVOKE_FASTCALL:
@@ -1052,7 +1044,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         ScopedRegX64 argsAlt{regs};
 
         // 'E' argument can only be produced by LOP_FASTCALL3
-        if (FFlag::LuauCodegenFastcall3 && inst.e.kind != IrOpKind::Undef)
+        if (inst.e.kind != IrOpKind::Undef)
         {
             CODEGEN_ASSERT(intOp(inst.f) == 3);
 
@@ -1079,8 +1071,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         int ra = vmRegOp(inst.b);
         int arg = vmRegOp(inst.c);
-        int nparams = intOp(FFlag::LuauCodegenFastcall3 ? inst.f : inst.e);
-        int nresults = intOp(FFlag::LuauCodegenFastcall3 ? inst.g : inst.f);
+        int nparams = intOp(inst.f);
+        int nresults = intOp(inst.g);
 
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::qword, rState);
@@ -1088,7 +1080,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callWrap.addArgument(SizeX64::qword, luauRegAddress(arg));
         callWrap.addArgument(SizeX64::dword, nresults);
 
-        if (FFlag::LuauCodegenFastcall3 && inst.e.kind != IrOpKind::Undef)
+        if (inst.e.kind != IrOpKind::Undef)
             callWrap.addArgument(SizeX64::qword, argsAlt);
         else
             callWrap.addArgument(SizeX64::qword, args);

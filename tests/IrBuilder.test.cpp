@@ -13,8 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-LUAU_FASTFLAG(LuauCodegenMathSign)
 
 using namespace Luau::CodeGen;
 
@@ -334,8 +332,6 @@ TEST_SUITE_BEGIN("ConstantFolding");
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Numeric")
 {
-    ScopedFastFlag luauCodegenMathSign{FFlag::LuauCodegenMathSign, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -2631,8 +2627,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FastCallEffects1")
 {
-    ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -2656,8 +2650,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FastCallEffects2")
 {
-    ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -2852,8 +2844,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "ExplicitUseOfRegisterInVarargSequence")
 {
-    ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp exit = build.block(IrBlockKind::Internal);
 

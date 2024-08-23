@@ -142,6 +142,8 @@ TEST_CASE_FIXTURE(Fixture, "properties_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "properties_can_be_instantiated_polytypes")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         local t: { m: (number)->number } = { m = function(x:number) return x+1 end }
         local function id<a>(x:a):a return x end
@@ -256,8 +258,10 @@ TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions_errors")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
+TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types_old_solver")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         type T = { id: <a>(a) -> a }
         local x: T = { id = function<a>(x:a):a return x end }
@@ -267,8 +271,23 @@ TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types_new_solver")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        type T = { read id: <a>(a) -> a }
+        local x: T = { id = function<a>(x:a):a return x end }
+        local y: string = x.id("hi")
+        local z: number = x.id(37)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "generic_factories")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         type T<a> = { id: (a) -> a }
         type Factory = { build: <a>() -> T<a> }
@@ -290,6 +309,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_factories")
 
 TEST_CASE_FIXTURE(Fixture, "factories_of_generics")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         type T = { id: <a>(a) -> a }
         type Factory = { build: () -> T }
@@ -445,7 +466,14 @@ TEST_CASE_FIXTURE(Fixture, "dont_leak_generic_types")
         local b: boolean = f(true)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_leak_inferred_generic_types")
@@ -461,7 +489,14 @@ TEST_CASE_FIXTURE(Fixture, "dont_leak_inferred_generic_types")
             local y: number = id(37)
         end
     )");
-    LUAU_REQUIRE_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_substitute_bound_types")
@@ -737,17 +772,19 @@ return exports
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names")
+TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names_old_solver")
 {
-    CheckResult result = check(R"(
-local function f<T, U...>(a: T, ...: U...) end
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
 
-f(1, 2, 3)
+    CheckResult result = check(R"(
+        local function f<T, U...>(a: T, ...: U...) end
+
+        f(1, 2, 3)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    auto ty = findTypeAtPosition(Position(3, 0));
+    auto ty = findTypeAtPosition(Position(3, 8));
     REQUIRE(ty);
     ToStringOptions opts;
     opts.functionTypeArguments = true;
@@ -756,6 +793,8 @@ f(1, 2, 3)
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_types")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 type C = () -> ()
 type D = <T>() -> ()
@@ -771,6 +810,8 @@ local d: D = c
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 type C = () -> ()
 type D = <T...>() -> ()
@@ -845,6 +886,8 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -863,6 +906,8 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification2")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -881,6 +926,8 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification3")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -899,6 +946,8 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_few")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 function test(a: number)
     return 1
@@ -916,6 +965,8 @@ wrapper(test)
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
 function test2(a: number, b: string)
     return 1
@@ -1370,6 +1421,8 @@ TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics3")
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         function foo<X>(f, x: X)
             return f(x)
@@ -1381,6 +1434,8 @@ TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_gen
 
 TEST_CASE_FIXTURE(Fixture, "do_not_always_instantiate_generic_intersection_types")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
         --!strict
         type Array<T> = { [number]: T }
@@ -1415,6 +1470,7 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "higher_rank_polymorphism_should_not_accept_instantiated_arguments")
 {
     ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
         {FFlag::LuauInstantiateInSubtyping, true},
     };
 
@@ -1481,6 +1537,8 @@ TEST_CASE_FIXTURE(Fixture, "missing_generic_type_parameter")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
 

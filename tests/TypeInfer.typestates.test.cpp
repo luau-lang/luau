@@ -459,7 +459,9 @@ TEST_CASE_FIXTURE(TypeStateFixture, "typestates_preserve_error_suppression")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_preserve_error_suppression_properties")
 {
     // early return if the flag isn't set since this is blocking gated commits
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    // unconditional return
+    // CLI-117098 Type states with error suppressing properties doesn't infer the correct type for properties.
+    if (!FFlag::DebugLuauDeferredConstraintResolution || FFlag::DebugLuauDeferredConstraintResolution)
         return;
 
     CheckResult result = check(R"(

@@ -28,7 +28,7 @@ OverloadResolver::OverloadResolver(
     , scope(scope)
     , ice(reporter)
     , limits(limits)
-    , subtyping({builtinTypes, arena, normalizer, ice, scope})
+    , subtyping({builtinTypes, arena, normalizer, ice})
     , callLoc(callLocation)
 {
 }
@@ -41,7 +41,7 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(T
         {
             Subtyping::Variance variance = subtyping.variance;
             subtyping.variance = Subtyping::Variance::Contravariant;
-            SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes);
+            SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
             subtyping.variance = variance;
 
             if (r.isSubtype)
@@ -92,7 +92,7 @@ void OverloadResolver::resolve(TypeId fnTy, const TypePack* args, AstExpr* selfE
 
 std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location, TypeId subTy, TypeId superTy)
 {
-    auto r = subtyping.isSubtype(subTy, superTy);
+    auto r = subtyping.isSubtype(subTy, superTy, scope);
     ErrorVec errors;
 
     if (r.normalizationTooComplex)
@@ -121,7 +121,7 @@ std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location
 
 std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location, TypePackId subTy, TypePackId superTy)
 {
-    auto r = subtyping.isSubtype(subTy, superTy);
+    auto r = subtyping.isSubtype(subTy, superTy, scope);
     ErrorVec errors;
 
     if (r.normalizationTooComplex)
@@ -206,7 +206,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
     TypePackId typ = arena->addTypePack(*args);
 
     TypeId prospectiveFunction = arena->addType(FunctionType{typ, builtinTypes->anyTypePack});
-    SubtypingResult sr = subtyping.isSubtype(fnTy, prospectiveFunction);
+    SubtypingResult sr = subtyping.isSubtype(fnTy, prospectiveFunction, scope);
 
     if (sr.isSubtype)
         return {Analysis::Ok, {}};
@@ -250,7 +250,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             // nil, then this overload does not match.
             for (size_t i = firstUnsatisfiedArgument; i < requiredHead.size(); ++i)
             {
-                if (!subtyping.isSubtype(builtinTypes->nilType, requiredHead[i]).isSubtype)
+                if (!subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
                 {
                     auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
                     TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};

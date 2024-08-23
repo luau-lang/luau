@@ -182,7 +182,7 @@ struct NonStrictTypeChecker
         , arena(arena)
         , module(module)
         , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
-        , subtyping{builtinTypes, arena, NotNull(&normalizer), ice, NotNull{module->getModuleScope().get()}}
+        , subtyping{builtinTypes, arena, NotNull(&normalizer), ice}
         , dfg(dfg)
         , limits(limits)
     {
@@ -531,7 +531,7 @@ struct NonStrictTypeChecker
     NonStrictContext visit(AstExprCall* call)
     {
         NonStrictContext fresh{};
-        TypeId* originalCallTy = module->astOriginalCallTypes.find(call);
+        TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
         if (!originalCallTy)
             return fresh;
 
@@ -699,6 +699,7 @@ struct NonStrictTypeChecker
     // If this fragment of the ast will run time error, return the type that causes this
     std::optional<TypeId> willRunTimeError(AstExpr* fragment, const NonStrictContext& context)
     {
+        NotNull<Scope> scope{Luau::findScopeAtPosition(*module, fragment->location.end).get()};
         DefId def = dfg->getDef(fragment);
         std::vector<DefId> defs;
         collectOperands(def, &defs);
@@ -708,7 +709,7 @@ struct NonStrictTypeChecker
             {
 
                 TypeId actualType = lookupType(fragment);
-                SubtypingResult r = subtyping.isSubtype(actualType, *contextTy);
+                SubtypingResult r = subtyping.isSubtype(actualType, *contextTy, scope);
                 if (r.normalizationTooComplex)
                     reportError(NormalizationTooComplex{}, fragment->location);
                 if (r.isSubtype)
@@ -721,6 +722,7 @@ struct NonStrictTypeChecker
 
     std::optional<TypeId> willRunTimeErrorFunctionDefinition(AstLocal* fragment, const NonStrictContext& context)
     {
+        NotNull<Scope> scope{Luau::findScopeAtPosition(*module, fragment->location.end).get()};
         DefId def = dfg->getDef(fragment);
         std::vector<DefId> defs;
         collectOperands(def, &defs);
@@ -728,8 +730,8 @@ struct NonStrictTypeChecker
         {
             if (std::optional<TypeId> contextTy = context.find(def))
             {
-                SubtypingResult r1 = subtyping.isSubtype(builtinTypes->unknownType, *contextTy);
-                SubtypingResult r2 = subtyping.isSubtype(*contextTy, builtinTypes->unknownType);
+                SubtypingResult r1 = subtyping.isSubtype(builtinTypes->unknownType, *contextTy, scope);
+                SubtypingResult r2 = subtyping.isSubtype(*contextTy, builtinTypes->unknownType, scope);
                 if (r1.normalizationTooComplex || r2.normalizationTooComplex)
                     reportError(NormalizationTooComplex{}, fragment->location);
                 bool isUnknown = r1.isSubtype && r2.isSubtype;
@@ -747,7 +749,7 @@ private:
         if (!cachedResult)
             cachedResult = arena->addType(NegationType{baseType});
         return cachedResult;
-    };
+    }
 };
 
 void checkNonStrict(

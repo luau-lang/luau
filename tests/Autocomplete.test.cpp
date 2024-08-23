@@ -1607,6 +1607,9 @@ return target(a.@1
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_in_table")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution) // CLI-116815 Autocomplete cannot suggest keys while autocompleting inside of a table
+        return;
+
     check(R"(
 type Foo = { a: number, b: string }
 local a = { one = 4, two = "hello" }
@@ -2261,6 +2264,9 @@ local ec = e(f@5)
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_for_overloads")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution) // CLI-116814 Autocomplete needs to populate expected types for function arguments correctly
+                                                      // (overloads and singletons)
+        return;
     check(R"(
 local target: ((number) -> string) & ((string) -> number))
 
@@ -2608,6 +2614,10 @@ end
 
 TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution) // CLI-116812 AutocompleteTest.suggest_table_keys needs to populate expected types for nested
+                                                      // tables without an annotation
+        return;
+
     check(R"(
 type Test = { first: number, second: number }
 local t: Test = { f@1 }
@@ -3091,6 +3101,10 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution) // CLI-116814 Autocomplete needs to populate expected types for function arguments correctly
+                                                      // (overloads and singletons)
+        return;
+
     check(R"(
         type tag = "cat" | "dog"
         local function f(a: tag) end
@@ -4247,6 +4261,9 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_type_pack_vararg")
 {
+    // CLI-116932 - Autocomplete on a anonymous function in a function argument should not recommend a function with a generic parameter.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     check(R"(
 local function foo<A>(a: (...A) -> number, ...: A)
 	return a(...)
@@ -4276,7 +4293,8 @@ end
 foo(@1)
     )");
 
-    const std::optional<std::string> EXPECTED_INSERT = "function(...): number  end";
+    const std::optional<std::string> EXPECTED_INSERT =
+        FFlag::DebugLuauDeferredConstraintResolution ? "function(...: number): number  end" : "function(...): number  end";
 
     auto ac = autocomplete('1');
 

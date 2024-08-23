@@ -11,8 +11,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenFastcall3, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1101,8 +1099,6 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             }
             case LOP_FASTCALL3:
             {
-                CODEGEN_ASSERT(FFlag::LuauCodegenFastcall3);
-
                 int bfid = LUAU_INSN_A(*pc);
                 int skip = LUAU_INSN_C(*pc);
                 int aux = pc[1];

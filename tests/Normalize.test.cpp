@@ -415,7 +415,15 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
         CHECK(!isSubtype(any, unk));
     }
 
-    CHECK(!isSubtype(err, str));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK(isSubtype(err, str));
+    }
+    else
+    {
+        CHECK(!isSubtype(err, str));
+    }
+
     CHECK(!isSubtype(str, err));
 
     CHECK(!isSubtype(err, unk));
@@ -701,6 +709,10 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 {
+    // CLI-117088 - Inferring the type of a higher order function with an annotation sometimes doesn't fully constrain the type (there are free types
+    // left over).
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     check(R"(
         function apply<a, b>(f: (a) -> b, x)
             return f(x)

@@ -15,15 +15,28 @@ TEST_SUITE_BEGIN("VisitType");
 
 TEST_CASE_FIXTURE(Fixture, "throw_when_limit_is_exceeded")
 {
-    ScopedFastInt sfi{FInt::LuauVisitRecursionLimit, 3};
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CheckResult result = check(R"(
+            local t : {a: {b: {c: {d: {e: boolean}}}}}
+        )");
+        ScopedFastInt sfi{FInt::LuauVisitRecursionLimit, 3};
+        TypeId tType = requireType("t");
 
-    CheckResult result = check(R"(
-        local t : {a: {b: {c: {d: {e: boolean}}}}}
-    )");
+        CHECK_THROWS_AS(toString(tType), RecursionLimitException);
+    }
+    else
+    {
+        ScopedFastInt sfi{FInt::LuauVisitRecursionLimit, 3};
 
-    TypeId tType = requireType("t");
+        CheckResult result = check(R"(
+            local t : {a: {b: {c: {d: {e: boolean}}}}}
+        )");
 
-    CHECK_THROWS_AS(toString(tType), RecursionLimitException);
+        TypeId tType = requireType("t");
+
+        CHECK_THROWS_AS(toString(tType), RecursionLimitException);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_throw_when_limit_is_high_enough")
