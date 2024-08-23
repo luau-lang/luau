@@ -701,8 +701,8 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
-    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
     // `len` must return a `number`.
@@ -790,8 +790,8 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
-    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
     if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
@@ -1138,8 +1138,8 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
-    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
     return {ctx->builtins->stringType, false, {}, {}};
@@ -1392,8 +1392,8 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
-    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
     return {ctx->builtins->booleanType, false, {}, {}};
@@ -1536,8 +1536,8 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
-    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
     return {ctx->builtins->booleanType, false, {}, {}};

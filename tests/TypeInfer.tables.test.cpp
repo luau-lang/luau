@@ -15,9 +15,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauInstantiateInSubtyping);
-LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
+LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
 
@@ -4792,6 +4793,43 @@ end
 )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
+{
+    ScopedFastFlag sff{FFlag::LuauAcceptIndexingTableUnionsIntersections, true};
+
+    CheckResult result = check(R"(
+        local test = if true then { "meow", "woof" } else { 4, 81 }
+        local test2 = test[1]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // unfortunate type duplication in the union
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("number | string | string" == toString(requireType("test2")));
+    else
+        CHECK("number | string" == toString(requireType("test2")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table2")
+{
+    ScopedFastFlag sff{FFlag::LuauAcceptIndexingTableUnionsIntersections, true};
+
+    CheckResult result = check(R"(
+        local test = if true then {} else {}
+        local test2 = test[1]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // unfortunate type duplication in the union
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("unknown | unknown" == toString(requireType("test2")));
+    else
+        CHECK("any" == toString(requireType("test2")));
 }
 
 TEST_SUITE_END();

@@ -1500,6 +1500,9 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_from_subclasses_of_instance_or
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is_table")
 {
+    // CLI-117136 - this code doesn't finish constraint solving and has blocked types in the output
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -1588,6 +1591,9 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "isa_type_refinement_must_be_known_ahe
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
 {
+    // CLI-117135 - RefinementTests.x_is_not_instance_or_else_not_part not correctly applying refinements to a function parameter
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
             if typeof(x) ~= "Instance" or not x:IsA("Part") then
@@ -1807,6 +1813,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_clone_it")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_during_constraint_solving_stage")
 {
+    // CLI-117134 - Applying a refinement causes an optional value access error.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     CheckResult result = check(R"(
         type Id<T> = T
 

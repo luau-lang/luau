@@ -252,8 +252,14 @@ struct TypeChecker2
     Subtyping _subtyping;
     NotNull<Subtyping> subtyping;
 
-    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
-        const SourceModule* sourceModule, Module* module)
+    TypeChecker2(
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<UnifierSharedState> unifierState,
+        NotNull<TypeCheckLimits> limits,
+        DcrLogger* logger,
+        const SourceModule* sourceModule,
+        Module* module
+    )
         : builtinTypes(builtinTypes)
         , logger(logger)
         , limits(limits)
@@ -261,8 +267,7 @@ struct TypeChecker2
         , sourceModule(sourceModule)
         , module(module)
         , normalizer{&module->internalTypes, builtinTypes, unifierState, /* cacheInhabitance */ true}
-        , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{unifierState->iceHandler},
-              NotNull{module->getModuleScope().get()}}
+        , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{unifierState->iceHandler}}
         , subtyping(&_subtyping)
     {
     }
@@ -1255,8 +1260,9 @@ struct TypeChecker2
 #if defined(LUAU_ENABLE_ASSERT)
         TypeId actualType = lookupType(expr);
         TypeId expectedType = builtinTypes->nilType;
+        NotNull<Scope> scope{findInnermostScope(expr->location)};
 
-        SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
+        SubtypingResult r = subtyping->isSubtype(actualType, expectedType, scope);
         LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
 #endif
     }
@@ -1267,8 +1273,9 @@ struct TypeChecker2
 
         const TypeId bestType = expr->value ? builtinTypes->trueType : builtinTypes->falseType;
         const TypeId inferredType = lookupType(expr);
+        NotNull<Scope> scope{findInnermostScope(expr->location)};
 
-        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
         if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
             reportError(TypeMismatch{inferredType, bestType}, expr->location);
     }
@@ -1278,8 +1285,9 @@ struct TypeChecker2
 #if defined(LUAU_ENABLE_ASSERT)
         const TypeId bestType = builtinTypes->numberType;
         const TypeId inferredType = lookupType(expr);
+        NotNull<Scope> scope{findInnermostScope(expr->location)};
 
-        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
         LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
 #endif
     }
@@ -1290,8 +1298,9 @@ struct TypeChecker2
 
         const TypeId bestType = module->internalTypes.addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
         const TypeId inferredType = lookupType(expr);
+        NotNull<Scope> scope{findInnermostScope(expr->location)};
 
-        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
         if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
             reportError(TypeMismatch{inferredType, bestType}, expr->location);
     }
@@ -1320,7 +1329,7 @@ struct TypeChecker2
         std::vector<AstExpr*> argExprs;
         argExprs.reserve(call->args.size + 1);
 
-        TypeId* originalCallTy = module->astOriginalCallTypes.find(call);
+        TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
         TypeId* selectedOverloadTy = module->astOverloadResolvedTypes.find(call);
         if (!originalCallTy)
             return;
@@ -1347,7 +1356,8 @@ struct TypeChecker2
 
         if (selectedOverloadTy)
         {
-            SubtypingResult result = subtyping->isSubtype(*originalCallTy, *selectedOverloadTy);
+            NotNull<Scope> scope{findInnermostScope(call->location)};
+            SubtypingResult result = subtyping->isSubtype(*originalCallTy, *selectedOverloadTy, scope);
             if (result.isSubtype)
                 fnTy = follow(*selectedOverloadTy);
 
@@ -1622,12 +1632,17 @@ struct TypeChecker2
                 reportError(OptionalValueAccess{exprType}, indexExpr->location);
             }
         }
-        else if (auto exprIntersection = get<IntersectionType>(exprType))
+        else if (auto ut = get<UnionType>(exprType))
         {
-            for (TypeId part : exprIntersection)
-            {
-                (void)part;
-            }
+            // if all of the types are a table type, the union must be a table, and so we shouldn't error.
+            if (!std::all_of(begin(ut), end(ut), getTableType))
+                reportError(NotATable{exprType}, indexExpr->location);
+        }
+        else if (auto it = get<IntersectionType>(exprType))
+        {
+            // if any of the types are a table type, the intersection must be a table, and so we shouldn't error.
+            if (!std::any_of(begin(it), end(it), getTableType))
+                reportError(NotATable{exprType}, indexExpr->location);
         }
         else if (get<NeverType>(exprType) || isErrorSuppressing(indexExpr->location, exprType))
         {
@@ -2726,7 +2741,8 @@ struct TypeChecker2
 
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location)
     {
-        SubtypingResult r = subtyping->isSubtype(subTy, superTy);
+        NotNull<Scope> scope{findInnermostScope(location)};
+        SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
         if (r.normalizationTooComplex)
             reportError(NormalizationTooComplex{}, location);
@@ -2739,7 +2755,8 @@ struct TypeChecker2
 
     bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location)
     {
-        SubtypingResult r = subtyping->isSubtype(subTy, superTy);
+        NotNull<Scope> scope{findInnermostScope(location)};
+        SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
         if (r.normalizationTooComplex)
             reportError(NormalizationTooComplex{}, location);

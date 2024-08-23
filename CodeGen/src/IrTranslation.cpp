@@ -13,8 +13,6 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-
 namespace Luau
 {
 namespace CodeGen
@@ -767,7 +765,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
             builtinArgs = build.constDouble(protok.value.n);
     }
 
-    IrOp builtinArg3 = FFlag::LuauCodegenFastcall3 ? (customParams ? customArg3 : build.vmReg(ra + 3)) : IrOp{};
+    IrOp builtinArg3 = customParams ? customArg3 : build.vmReg(ra + 3);
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -793,7 +791,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
             return build.undef();
         }
     }
-    else if (FFlag::LuauCodegenFastcall3)
+    else
     {
         IrOp arg3 = customParams ? customArg3 : build.undef();
 
@@ -809,21 +807,6 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
             arg3,
             build.constInt(nparams),
             build.constInt(nresults)
-        );
-        build.inst(IrCmd::CHECK_FASTCALL_RES, res, fallback);
-
-        if (nresults == LUA_MULTRET)
-            build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), res);
-        else if (nparams == LUA_MULTRET)
-            build.inst(IrCmd::ADJUST_STACK_TO_TOP);
-    }
-    else
-    {
-        // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
-        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + getOpLength(opcode)));
-
-        IrOp res = build.inst(
-            IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams), build.constInt(nresults)
         );
         build.inst(IrCmd::CHECK_FASTCALL_RES, res, fallback);
 

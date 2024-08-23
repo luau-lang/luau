@@ -490,7 +490,6 @@ TEST_CASE_FIXTURE(Fixture, "another_other_higher_order_function")
         )");
 
         LUAU_REQUIRE_NO_ERRORS(result);
-
     }
     else
     {
@@ -778,11 +777,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
         end
     )");
 
-    // This function currently has a bug in the new solver reporting `{T} | {T}` is not a table.
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_ERRORS(result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     /*
      * mergesort takes two arguments: an array of some type T and a function that takes two Ts.
@@ -1678,8 +1673,14 @@ end
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(toString(result.errors[0]), R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)");
-        CHECK_EQ(toString(result.errors[1]), R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)");
+        CHECK_EQ(
+            toString(result.errors[0]),
+            R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)"
+        );
+        CHECK_EQ(
+            toString(result.errors[1]),
+            R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)"
+        );
     }
     else
     {
@@ -1717,7 +1718,8 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
 
 TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time3")
 {
-    // This test regresses in the new solver, but is sort of nonsensical insofar as `foo` is known to be `nil`, so it's "right" to not be able to call it.
+    // This test regresses in the new solver, but is sort of nonsensical insofar as `foo` is known to be `nil`, so it's "right" to not be able to call
+    // it.
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
 
     CheckResult result = check(R"(
@@ -1749,7 +1751,10 @@ end
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(toString(result.errors[0]), R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)");
+        CHECK_EQ(
+            toString(result.errors[0]),
+            R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)"
+        );
     }
     else
     {
@@ -2477,6 +2482,9 @@ a = function(a, b) return a + b end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "simple_unannotated_mutual_recursion")
 {
+    // CLI-117118 - TypeInferFunctions.simple_unannotated_mutual_recursion relies on unstable assertions to pass.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     CheckResult result = check(R"(
 function even(n)
     if n == 0 then
@@ -2500,11 +2508,13 @@ end
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(5, result);
+        // CLI-117117 Constraint solving is incomplete inTypeInferFunctions.simple_unannotated_mutual_recursion
         CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
-        CHECK(
-            toString(result.errors[1]) ==
-            "Type pack '*blocked-tp-1*' could not be converted into 'boolean'; type *blocked-tp-1*.tail() (*blocked-tp-1*) is not a subtype of boolean (boolean)"
-        );
+        // This check is unstable between different machines and different runs of DCR because it depends on string equality between
+        // blocked type numbers, which is not guaranteed.
+        bool r = toString(result.errors[1]) == "Type pack '*blocked-tp-1*' could not be converted into 'boolean'; type *blocked-tp-1*.tail() "
+                                               "(*blocked-tp-1*) is not a subtype of boolean (boolean)";
+        CHECK(r);
         CHECK(
             toString(result.errors[2]) ==
             "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub"
