@@ -3429,9 +3429,9 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<Built
     // Subtyping under DCR is not implemented using unification!
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}, scope};
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}};
 
-        return subtyping.isSubtype(subTy, superTy).isSubtype;
+        return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
     }
     else
     {
@@ -3451,9 +3451,9 @@ bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, N
     // Subtyping under DCR is not implemented using unification!
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}, scope};
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}};
 
-        return subtyping.isSubtype(subPack, superPack).isSubtype;
+        return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
     }
     else
     {

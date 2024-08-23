@@ -1793,7 +1793,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
 
-    module->astOriginalCallTypes[call] = fnType;
+    module->astOriginalCallTypes[call->func] = fnType;
 
     Checkpoint argBeginCheckpoint = checkpoint(this);
 

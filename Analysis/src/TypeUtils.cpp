@@ -301,6 +301,8 @@ TypePack extendTypePack(
 
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope);
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                result.tail = newPack.tail;
             size_t overridesIndex = 0;
             while (result.head.size() < length)
             {

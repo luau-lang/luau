@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-
 namespace Luau
 {
 namespace CodeGen
@@ -458,8 +456,6 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), undef()), pc, i);
         break;
     case LOP_FASTCALL3:
-        CODEGEN_ASSERT(FFlag::LuauCodegenFastcall3);
-
         handleFastcallFallback(translateFastCallN(*this, pc, i, true, 3, vmReg(pc[1] & 0xff), vmReg((pc[1] >> 8) & 0xff)), pc, i);
         break;
     case LOP_FORNPREP:

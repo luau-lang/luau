@@ -45,8 +45,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode, false)
 LUAU_FASTFLAGVARIABLE(LuauSourceModuleUpdatedWithSelectedMode, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
 
-LUAU_FASTFLAG(StudioReportLuauAny)
+LUAU_FASTFLAG(StudioReportLuauAny2)
 
 namespace Luau
 {
@@ -511,7 +512,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         if (item.name == name)
             checkResult.lintResult = item.module->lintResult;
 
-        if (FFlag::StudioReportLuauAny && item.options.retainFullTypeGraphs)
+        if (FFlag::StudioReportLuauAny2 && item.options.retainFullTypeGraphs)
         {
             if (item.module)
             {
@@ -1040,6 +1041,9 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         item.stats.timeCheck += duration;
         item.stats.filesStrict += 1;
 
+        if (DFFlag::LuauRunCustomModuleChecks && item.options.customModuleCheck)
+            item.options.customModuleCheck(sourceModule, *moduleForAutocomplete);
+
         item.module = moduleForAutocomplete;
         return;
     }
@@ -1057,8 +1061,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     item.stats.filesStrict += mode == Mode::Strict;
     item.stats.filesNonstrict += mode == Mode::Nonstrict;
 
-    if (module == nullptr)
-        throw InternalCompilerError("Frontend::check produced a nullptr module for " + item.name, item.name);
+    if (DFFlag::LuauRunCustomModuleChecks && item.options.customModuleCheck)
+        item.options.customModuleCheck(sourceModule, *module);
 
     if (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::NoCheck)
         module->errors.clear();

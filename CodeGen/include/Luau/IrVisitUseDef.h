@@ -4,8 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-
 namespace Luau
 {
 namespace CodeGen
@@ -113,47 +111,16 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         break;
 
     case IrCmd::FASTCALL:
-        if (FFlag::LuauCodegenFastcall3)
-        {
-            visitor.use(inst.c);
+        visitor.use(inst.c);
 
-            if (int nresults = function.intOp(inst.d); nresults != -1)
-                visitor.defRange(vmRegOp(inst.b), nresults);
-        }
-        else
-        {
-            if (int count = function.intOp(inst.e); count != -1)
-            {
-                if (count >= 3)
-                {
-                    CODEGEN_ASSERT(inst.d.kind == IrOpKind::VmReg && vmRegOp(inst.d) == vmRegOp(inst.c) + 1);
-
-                    visitor.useRange(vmRegOp(inst.c), count);
-                }
-                else
-                {
-                    if (count >= 1)
-                        visitor.use(inst.c);
-
-                    if (count >= 2)
-                        visitor.maybeUse(inst.d); // Argument can also be a VmConst
-                }
-            }
-            else
-            {
-                visitor.useVarargs(vmRegOp(inst.c));
-            }
-
-            // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
-            if (int count = function.intOp(inst.f); count != -1)
-                visitor.defRange(vmRegOp(inst.b), count);
-        }
+        if (int nresults = function.intOp(inst.d); nresults != -1)
+            visitor.defRange(vmRegOp(inst.b), nresults);
         break;
     case IrCmd::INVOKE_FASTCALL:
-        if (int count = function.intOp(FFlag::LuauCodegenFastcall3 ? inst.f : inst.e); count != -1)
+        if (int count = function.intOp(inst.f); count != -1)
         {
             // Only LOP_FASTCALL3 lowering is allowed to have third optional argument
-            if (count >= 3 && (!FFlag::LuauCodegenFastcall3 || inst.e.kind == IrOpKind::Undef))
+            if (count >= 3 && inst.e.kind == IrOpKind::Undef)
             {
                 CODEGEN_ASSERT(inst.d.kind == IrOpKind::VmReg && vmRegOp(inst.d) == vmRegOp(inst.c) + 1);
 
@@ -167,7 +134,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
                 if (count >= 2)
                     visitor.maybeUse(inst.d); // Argument can also be a VmConst
 
-                if (FFlag::LuauCodegenFastcall3 && count >= 3)
+                if (count >= 3)
                     visitor.maybeUse(inst.e); // Argument can also be a VmConst
             }
         }
@@ -177,7 +144,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         }
 
         // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
-        if (int count = function.intOp(FFlag::LuauCodegenFastcall3 ? inst.g : inst.f); count != -1)
+        if (int count = function.intOp(inst.g); count != -1)
             visitor.defRange(vmRegOp(inst.b), count);
         break;
     case IrCmd::FORGLOOP:

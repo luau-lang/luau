@@ -164,4 +164,23 @@ do
 	assert(larget[vector(-0, 0, 0)] == 42)
 end
 
+local function numvectemporary()
+  local proptab = {}
+
+  proptab.vec3compsum = function(vec: vector)
+    local num = vec.X + vec.Y
+    local tmp = vec / num
+    local num2 = num * 2
+    return tmp, num2
+  end
+
+  local a, b = proptab.vec3compsum(vector(2, 6, 0))
+
+  assert(a.X == 0.25)
+  assert(a.Y == 0.75)
+  assert(b == 16)
+end
+
+numvectemporary()
+
 return 'OK'

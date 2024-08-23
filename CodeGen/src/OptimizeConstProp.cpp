@@ -18,8 +18,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-LUAU_FASTFLAG(LuauCodegenMathSign)
 
 namespace Luau
 {
@@ -1119,7 +1117,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         LuauBuiltinFunction bfid = LuauBuiltinFunction(function.uintOp(inst.a));
         int firstReturnReg = vmRegOp(inst.b);
-        int nresults = function.intOp(FFlag::LuauCodegenFastcall3 ? inst.d : inst.f);
+        int nresults = function.intOp(inst.d);
 
         // TODO: FASTCALL is more restrictive than INVOKE_FASTCALL; we should either determine the exact semantics, or rework it
         handleBuiltinEffects(state, bfid, firstReturnReg, nresults);
@@ -1133,19 +1131,13 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (nresults > 1)
                 state.updateTag(IrOp{IrOpKind::VmReg, uint8_t(firstReturnReg + 1)}, LUA_TNUMBER);
             break;
-        case LBF_MATH_SIGN:
-            CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
-            state.updateTag(IrOp{IrOpKind::VmReg, uint8_t(firstReturnReg)}, LUA_TNUMBER);
-            break;
         default:
             break;
         }
         break;
     }
     case IrCmd::INVOKE_FASTCALL:
-        handleBuiltinEffects(
-            state, LuauBuiltinFunction(function.uintOp(inst.a)), vmRegOp(inst.b), function.intOp(FFlag::LuauCodegenFastcall3 ? inst.g : inst.f)
-        );
+        handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), vmRegOp(inst.b), function.intOp(inst.g));
         break;
 
         // These instructions don't have an effect on register/memory state we are tracking

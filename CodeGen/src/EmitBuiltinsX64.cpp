@@ -12,8 +12,6 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCodegenMathSign)
-
 namespace Luau
 {
 namespace CodeGen
@@ -57,36 +55,6 @@ static void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, 
     }
 }
 
-static void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg)
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
-
-    ScopedRegX64 tmp0{regs, SizeX64::xmmword};
-    ScopedRegX64 tmp1{regs, SizeX64::xmmword};
-    ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-    ScopedRegX64 tmp3{regs, SizeX64::xmmword};
-
-    build.vmovsd(tmp0.reg, luauRegValue(arg));
-    build.vxorpd(tmp1.reg, tmp1.reg, tmp1.reg);
-
-    // Set tmp2 to -1 if arg < 0, else 0
-    build.vcmpltsd(tmp2.reg, tmp0.reg, tmp1.reg);
-    build.vmovsd(tmp3.reg, build.f64(-1));
-    build.vandpd(tmp2.reg, tmp2.reg, tmp3.reg);
-
-    // Set mask bit to 1 if 0 < arg, else 0
-    build.vcmpltsd(tmp0.reg, tmp1.reg, tmp0.reg);
-
-    // Result = (mask-bit == 1) ? 1.0 : tmp2
-    // If arg < 0 then tmp2 is -1 and mask-bit is 0, result is -1
-    // If arg == 0 then tmp2 is 0 and mask-bit is 0, result is 0
-    // If arg > 0 then tmp2 is 0 and mask-bit is 1, result is 1
-    build.vblendvpd(tmp0.reg, tmp2.reg, build.f64x2(1, 1), tmp0.reg);
-
-    build.vmovsd(luauRegValue(ra), tmp0.reg);
-    build.mov(luauRegTag(ra), LUA_TNUMBER);
-}
-
 void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, int nresults)
 {
     switch (bfid)
@@ -97,10 +65,6 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
     case LBF_MATH_MODF:
         CODEGEN_ASSERT(nresults == 1 || nresults == 2);
         return emitBuiltinMathModf(regs, build, ra, arg, nresults);
-    case LBF_MATH_SIGN:
-        CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
-        CODEGEN_ASSERT(nresults == 1);
-        return emitBuiltinMathSign(regs, build, ra, arg);
     default:
         CODEGEN_ASSERT(!"Missing x64 lowering");
     }

@@ -35,6 +35,7 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauNativeAttribute)
 LUAU_FASTFLAG(LuauPreserveLudataRenaming)
+LUAU_FASTFLAG(LuauCodegenArmNumToVecFix)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -809,6 +810,8 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
+    ScopedFastFlag luauCodegenArmNumToVecFix{FFlag::LuauCodegenArmNumToVecFix, true};
+
     lua_CompileOptions copts = defaultOptions();
     Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
 

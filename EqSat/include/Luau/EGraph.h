@@ -5,7 +5,6 @@
 #include "Luau/Id.h"
 #include "Luau/Language.h"
 #include "Luau/UnionFind.h"
-#include "Luau/VecDeque.h"
 
 #include <optional>
 #include <unordered_map>
@@ -145,7 +144,7 @@ private:
     /// The hashcons 𝐻 is a map from e-nodes to e-class ids.
     std::unordered_map<L, Id, typename L::Hash> hashcons;
 
-    VecDeque<std::pair<L, Id>> worklist;
+    std::vector<std::pair<L, Id>> worklist;
 
 private:
     void canonicalize(L& enode)
@@ -183,7 +182,7 @@ private:
         for (Id operand : enode.operands())
             get(operand).parents.push_back({enode, id});
 
-        worklist.push_back({enode, id});
+        worklist.emplace_back(enode, id);
         hashcons.insert_or_assign(enode, id);
 
         return id;

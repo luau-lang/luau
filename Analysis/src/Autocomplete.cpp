@@ -144,9 +144,9 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&iceReporter}, scope};
+        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&iceReporter}};
 
-        return subtyping.isSubtype(subTy, superTy).isSubtype;
+        return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
     }
     else
     {

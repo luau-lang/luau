@@ -38,7 +38,7 @@
 
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(StudioReportLuauAny, false);
+LUAU_FASTFLAGVARIABLE(StudioReportLuauAny2, false);
 LUAU_FASTINTVARIABLE(LuauAnySummaryRecursionLimit, 300);
 
 LUAU_FASTFLAG(DebugLuauMagicTypes);
@@ -211,14 +211,17 @@ void AnyTypeSummary::visit(const Scope* scope, AstStatLocal* local, const Module
             if (!maybeRequire)
                 continue;
 
-            if (isAnyCast(scope, local->values.data[posn], module, builtinTypes))
+            if (std::min(local->values.size - 1, posn) < head.size())
             {
-                TelemetryTypePair types;
+                if (isAnyCast(scope, local->values.data[posn], module, builtinTypes))
+                {
+                    TelemetryTypePair types;
 
-                types.inferredType = toString(head[std::min(local->values.size - 1, posn)]);
+                    types.inferredType = toString(head[std::min(local->values.size - 1, posn)]);
 
-                TypeInfo ti{Pattern::Casts, toString(ctxNode), types};
-                typeInfo.push_back(ti);
+                    TypeInfo ti{Pattern::Casts, toString(ctxNode), types};
+                    typeInfo.push_back(ti);
+                }
             }
         }
         else
@@ -292,7 +295,7 @@ void AnyTypeSummary::visit(const Scope* scope, AstStatAssign* assign, const Modu
             types.annotatedType = toString(tp);
 
             auto loc = std::min(assign->vars.size - 1, posn);
-            if (head.size() >= assign->vars.size)
+            if (head.size() >= assign->vars.size && posn < head.size())
             {
                 types.inferredType = toString(head[posn]);
             }

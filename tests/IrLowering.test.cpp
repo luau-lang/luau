@@ -17,7 +17,6 @@
 
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
 LUAU_FASTFLAG(LuauCompileFastcall3)
-LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
@@ -425,8 +424,6 @@ bb_5:
 
 TEST_CASE("DseInitialStackState2")
 {
-    ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a)
@@ -945,7 +942,7 @@ bb_bytecode_0:
 
 TEST_CASE("FastcallTypeInferThroughLocal")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -997,7 +994,7 @@ bb_bytecode_1:
 
 TEST_CASE("FastcallTypeInferThroughUpvalue")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1127,7 +1124,7 @@ bb_bytecode_4:
 
 TEST_CASE("ArgumentTypeRefinement")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1436,7 +1433,7 @@ bb_2:
 
 TEST_CASE("UnaryTypeResolve")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
 
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(

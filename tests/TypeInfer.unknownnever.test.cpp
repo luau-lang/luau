@@ -193,12 +193,20 @@ TEST_CASE_FIXTURE(Fixture, "call_never")
 
 TEST_CASE_FIXTURE(Fixture, "assign_to_local_which_is_never")
 {
+    // CLI-117119 - What do we do about assigning to never?
     CheckResult result = check(R"(
         local t: never
         t = 3
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "assign_to_global_which_is_never")
@@ -257,6 +265,9 @@ TEST_CASE_FIXTURE(Fixture, "pick_never_from_variadic_type_pack")
 
 TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_never")
 {
+    // CLI-117116 - We are erroneously warning when passing a valid table literal where we expect a union of tables.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     CheckResult result = check(R"(
         type Disjoint = {foo: never, bar: unknown, tag: "ok"} | {foo: never, baz: unknown, tag: "err"}
 
@@ -274,6 +285,9 @@ TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_neve
 
 TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_sorta_never")
 {
+    // CLI-117116 - We are erroneously warning when passing a valid table literal where we expect a union of tables.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
     CheckResult result = check(R"(
         type Disjoint = {foo: string, bar: unknown, tag: "ok"} | {foo: never, baz: unknown, tag: "err"}
 

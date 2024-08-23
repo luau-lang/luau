@@ -8,7 +8,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -636,7 +637,12 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // this is a cyclic union of number arrays, so it _is_ a table, even if it's a nonsense type.
+    // no need to generate a NotATable error here.
+    if (FFlag::LuauAcceptIndexingTableUnionsIntersections)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")

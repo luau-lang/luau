@@ -8,9 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenFastcall3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenMathSign, false)
-
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
 static const int kMinMaxUnrolledParams = 5;
@@ -38,33 +35,6 @@ static IrOp builtinLoadDouble(IrBuilder& build, IrOp arg)
 }
 
 // Wrapper code for all builtins with a fixed signature and manual assembly lowering of the body
-
-// (number, ...) -> number
-static BuiltinImplResult translateBuiltinNumberToNumber(
-    IrBuilder& build,
-    LuauBuiltinFunction bfid,
-    int nparams,
-    int ra,
-    int arg,
-    IrOp args,
-    int nresults,
-    int pcpos
-)
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
-
-    if (nparams < 1 || nresults > 1)
-        return {BuiltinImplType::None, -1};
-
-    builtinCheckDouble(build, build.vmReg(arg), pcpos);
-
-    if (FFlag::LuauCodegenFastcall3)
-        build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), build.constInt(1));
-    else
-        build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(1));
-
-    return {BuiltinImplType::Full, 1};
-}
 
 static BuiltinImplResult translateBuiltinNumberToNumberLibm(
     IrBuilder& build,
@@ -142,18 +112,7 @@ static BuiltinImplResult translateBuiltinNumberTo2Number(
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
 
-    if (FFlag::LuauCodegenFastcall3)
-        build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), build.constInt(nresults == 1 ? 1 : 2));
-    else
-        build.inst(
-            IrCmd::FASTCALL,
-            build.constUint(bfid),
-            build.vmReg(ra),
-            build.vmReg(arg),
-            build.undef(),
-            build.constInt(1),
-            build.constInt(nresults == 1 ? 1 : 2)
-        );
+    build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), build.constInt(nresults == 1 ? 1 : 2));
 
     return {BuiltinImplType::Full, 2};
 }
@@ -250,10 +209,10 @@ static BuiltinImplResult translateBuiltinMathMinMax(
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
 
-    if (FFlag::LuauCodegenFastcall3 && nparams >= 3)
+    if (nparams >= 3)
         builtinCheckDouble(build, arg3, pcpos);
 
-    for (int i = (FFlag::LuauCodegenFastcall3 ? 4 : 3); i <= nparams; ++i)
+    for (int i = 4; i <= nparams; ++i)
         builtinCheckDouble(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
 
     IrOp varg1 = builtinLoadDouble(build, build.vmReg(arg));
@@ -261,13 +220,13 @@ static BuiltinImplResult translateBuiltinMathMinMax(
 
     IrOp res = build.inst(cmd, varg2, varg1); // Swapped arguments are required for consistency with VM builtins
 
-    if (FFlag::LuauCodegenFastcall3 && nparams >= 3)
+    if (nparams >= 3)
     {
         IrOp arg = builtinLoadDouble(build, arg3);
         res = build.inst(cmd, arg, res);
     }
 
-    for (int i = (FFlag::LuauCodegenFastcall3 ? 4 : 3); i <= nparams; ++i)
+    for (int i = 4; i <= nparams; ++i)
     {
         IrOp arg = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + (i - 2)));
         res = build.inst(cmd, arg, res);
@@ -302,10 +261,10 @@ static BuiltinImplResult translateBuiltinMathClamp(
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
-    builtinCheckDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(vmRegOp(args) + 1), pcpos);
+    builtinCheckDouble(build, arg3, pcpos);
 
     IrOp min = builtinLoadDouble(build, args);
-    IrOp max = builtinLoadDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(vmRegOp(args) + 1));
+    IrOp max = builtinLoadDouble(build, arg3);
 
     build.inst(IrCmd::JUMP_CMP_NUM, min, max, build.cond(IrCondition::NotLessEqual), fallback, block);
     build.beginBlock(block);
@@ -386,10 +345,10 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
 
-    if (FFlag::LuauCodegenFastcall3 && nparams >= 3)
+    if (nparams >= 3)
         builtinCheckDouble(build, arg3, pcpos);
 
-    for (int i = (FFlag::LuauCodegenFastcall3 ? 4 : 3); i <= nparams; ++i)
+    for (int i = 4; i <= nparams; ++i)
         builtinCheckDouble(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
 
     IrOp va = builtinLoadDouble(build, build.vmReg(arg));
@@ -400,7 +359,7 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
 
     IrOp res = build.inst(cmd, vaui, vbui);
 
-    if (FFlag::LuauCodegenFastcall3 && nparams >= 3)
+    if (nparams >= 3)
     {
         IrOp vc = builtinLoadDouble(build, arg3);
         IrOp arg = build.inst(IrCmd::NUM_TO_UINT, vc);
@@ -408,7 +367,7 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
         res = build.inst(cmd, res, arg);
     }
 
-    for (int i = (FFlag::LuauCodegenFastcall3 ? 4 : 3); i <= nparams; ++i)
+    for (int i = 4; i <= nparams; ++i)
     {
         IrOp vc = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + (i - 2)));
         IrOp arg = build.inst(IrCmd::NUM_TO_UINT, vc);
@@ -599,8 +558,8 @@ static BuiltinImplResult translateBuiltinBit32Extract(
     {
         IrOp f = build.inst(IrCmd::NUM_TO_INT, vb);
 
-        builtinCheckDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(args.index + 1), pcpos);
-        IrOp vc = builtinLoadDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(args.index + 1));
+        builtinCheckDouble(build, arg3, pcpos);
+        IrOp vc = builtinLoadDouble(build, arg3);
         IrOp w = build.inst(IrCmd::NUM_TO_INT, vc);
 
         IrOp block1 = build.block(IrBlockKind::Internal);
@@ -705,11 +664,11 @@ static BuiltinImplResult translateBuiltinBit32Replace(
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
-    builtinCheckDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(args.index + 1), pcpos);
+    builtinCheckDouble(build, arg3, pcpos);
 
     IrOp va = builtinLoadDouble(build, build.vmReg(arg));
     IrOp vb = builtinLoadDouble(build, args);
-    IrOp vc = builtinLoadDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(args.index + 1));
+    IrOp vc = builtinLoadDouble(build, arg3);
 
     IrOp n = build.inst(IrCmd::NUM_TO_UINT, va);
     IrOp v = build.inst(IrCmd::NUM_TO_UINT, vb);
@@ -734,8 +693,8 @@ static BuiltinImplResult translateBuiltinBit32Replace(
     }
     else
     {
-        builtinCheckDouble(build, FFlag::LuauCodegenFastcall3 ? build.vmReg(vmRegOp(args) + 2) : build.vmReg(args.index + 2), pcpos);
-        IrOp vd = builtinLoadDouble(build, FFlag::LuauCodegenFastcall3 ? build.vmReg(vmRegOp(args) + 2) : build.vmReg(args.index + 2));
+        builtinCheckDouble(build, build.vmReg(vmRegOp(args) + 2), pcpos);
+        IrOp vd = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + 2));
         IrOp w = build.inst(IrCmd::NUM_TO_INT, vd);
 
         IrOp block1 = build.block(IrBlockKind::Internal);
@@ -781,11 +740,11 @@ static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, i
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
-    builtinCheckDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(vmRegOp(args) + 1), pcpos);
+    builtinCheckDouble(build, arg3, pcpos);
 
     IrOp x = builtinLoadDouble(build, build.vmReg(arg));
     IrOp y = builtinLoadDouble(build, args);
-    IrOp z = builtinLoadDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(vmRegOp(args) + 1));
+    IrOp z = builtinLoadDouble(build, arg3);
 
     build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), x, y, z);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
@@ -863,7 +822,7 @@ static void translateBufferArgsAndCheckBounds(
     builtinCheckDouble(build, args, pcpos);
 
     if (nparams == 3)
-        builtinCheckDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(vmRegOp(args) + 1), pcpos);
+        builtinCheckDouble(build, arg3, pcpos);
 
     buf = build.inst(IrCmd::LOAD_POINTER, build.vmReg(arg));
 
@@ -920,7 +879,7 @@ static BuiltinImplResult translateBuiltinBufferWrite(
     IrOp buf, intIndex;
     translateBufferArgsAndCheckBounds(build, nparams, arg, args, arg3, size, pcpos, buf, intIndex);
 
-    IrOp numValue = builtinLoadDouble(build, FFlag::LuauCodegenFastcall3 ? arg3 : build.vmReg(vmRegOp(args) + 1));
+    IrOp numValue = builtinLoadDouble(build, arg3);
     build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue));
 
     return {BuiltinImplType::Full, 0};
@@ -982,10 +941,7 @@ BuiltinImplResult translateBuiltin(
     case LBF_MATH_LOG10:
         return translateBuiltinNumberToNumberLibm(build, LuauBuiltinFunction(bfid), nparams, ra, arg, nresults, pcpos);
     case LBF_MATH_SIGN:
-        if (FFlag::LuauCodegenMathSign)
-            return translateBuiltinMathUnary(build, IrCmd::SIGN_NUM, nparams, ra, arg, nresults, pcpos);
-        else
-            return translateBuiltinNumberToNumber(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinMathUnary(build, IrCmd::SIGN_NUM, nparams, ra, arg, nresults, pcpos);
     case LBF_MATH_POW:
     case LBF_MATH_FMOD:
     case LBF_MATH_ATAN2:
