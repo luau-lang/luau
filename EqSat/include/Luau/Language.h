@@ -7,7 +7,6 @@
 #include "Luau/Variant.h"
 
 #include <array>
-#include <algorithm>
 #include <type_traits>
 #include <utility>
 
@@ -232,12 +231,6 @@ struct Language final
         : v(std::forward<T>(t))
     {
     }
-
-    Language(const Language&) noexcept = default;
-    Language& operator=(const Language&) noexcept = default;
-
-    Language(Language&&) noexcept = default;
-    Language& operator=(Language&&) noexcept = default;
 
     int index() const noexcept
     {
