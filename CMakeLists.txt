@@ -14,6 +14,7 @@ option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
 
 cmake_policy(SET CMP0054 NEW)
+cmake_policy(SET CMP0057 NEW)
 cmake_policy(SET CMP0091 NEW)
 
 if(LUAU_STATIC_CRT)
