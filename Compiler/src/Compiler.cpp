@@ -26,9 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileUserdataInfo, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileFastcall3, false)
-
 LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
@@ -469,33 +466,19 @@ struct Compiler
     {
         LUAU_ASSERT(!expr->self);
         LUAU_ASSERT(expr->args.size >= 1);
-
-        if (FFlag::LuauCompileFastcall3)
-            LUAU_ASSERT(expr->args.size <= 3);
-        else
-            LUAU_ASSERT(expr->args.size <= 2 || (bfid == LBF_BIT32_EXTRACTK && expr->args.size == 3));
-
+        LUAU_ASSERT(expr->args.size <= 3);
         LUAU_ASSERT(bfid == LBF_BIT32_EXTRACTK ? bfK >= 0 : bfK < 0);
 
         LuauOpcode opc = LOP_NOP;
 
-        if (FFlag::LuauCompileFastcall3)
-        {
-            if (expr->args.size == 1)
-                opc = LOP_FASTCALL1;
-            else if (bfK >= 0 || (expr->args.size == 2 && isConstant(expr->args.data[1])))
-                opc = LOP_FASTCALL2K;
-            else if (expr->args.size == 2)
-                opc = LOP_FASTCALL2;
-            else
-                opc = LOP_FASTCALL3;
-        }
+        if (expr->args.size == 1)
+            opc = LOP_FASTCALL1;
+        else if (bfK >= 0 || (expr->args.size == 2 && isConstant(expr->args.data[1])))
+            opc = LOP_FASTCALL2K;
+        else if (expr->args.size == 2)
+            opc = LOP_FASTCALL2;
         else
-        {
-            opc = expr->args.size == 1                                                     ? LOP_FASTCALL1
-                  : (bfK >= 0 || (expr->args.size == 2 && isConstant(expr->args.data[1]))) ? LOP_FASTCALL2K
-                                                                                           : LOP_FASTCALL2;
-        }
+            opc = LOP_FASTCALL3;
 
         uint32_t args[3] = {};
 
@@ -524,7 +507,7 @@ struct Compiler
 
         bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
 
-        if (FFlag::LuauCompileFastcall3 && opc == LOP_FASTCALL3)
+        if (opc == LOP_FASTCALL3)
         {
             LUAU_ASSERT(bfK < 0);
             bytecode.emitAux(args[1] | (args[2] << 8));
@@ -886,7 +869,7 @@ struct Compiler
         unsigned maxFastcallArgs = 2;
 
         // Fastcall with 3 arguments is only used if it can help save one or more move instructions
-        if (FFlag::LuauCompileFastcall3 && bfid >= 0 && expr->args.size == 3)
+        if (bfid >= 0 && expr->args.size == 3)
         {
             for (size_t i = 0; i < expr->args.size; ++i)
             {
@@ -899,7 +882,7 @@ struct Compiler
         }
 
         // Optimization: for 1/2/3 argument fast calls use specialized opcodes
-        if (bfid >= 0 && expr->args.size >= 1 && expr->args.size <= (FFlag::LuauCompileFastcall3 ? maxFastcallArgs : 2u))
+        if (bfid >= 0 && expr->args.size >= 1 && expr->args.size <= maxFastcallArgs)
         {
             if (!isExprMultRet(expr->args.data[expr->args.size - 1]))
             {
@@ -4231,20 +4214,17 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         predictTableShapes(compiler.tableShapes, root);
     }
 
-    if (FFlag::LuauCompileUserdataInfo)
+    if (const char* const* ptr = options.userdataTypes)
     {
-        if (const char* const* ptr = options.userdataTypes)
+        for (; *ptr; ++ptr)
         {
-            for (; *ptr; ++ptr)
-            {
-                // Type will only resolve to an AstName if it is actually mentioned in the source
-                if (AstName name = names.get(*ptr); name.value)
-                    compiler.userdataTypes[name] = bytecode.addUserdataType(name.value);
-            }
-
-            if (uintptr_t(ptr - options.userdataTypes) > (LBC_TYPE_TAGGED_USERDATA_END - LBC_TYPE_TAGGED_USERDATA_BASE))
-                CompileError::raise(root->location, "Exceeded userdata type limit in the compilation options");
+            // Type will only resolve to an AstName if it is actually mentioned in the source
+            if (AstName name = names.get(*ptr); name.value)
+                compiler.userdataTypes[name] = bytecode.addUserdataType(name.value);
         }
+
+        if (uintptr_t(ptr - options.userdataTypes) > (LBC_TYPE_TAGGED_USERDATA_END - LBC_TYPE_TAGGED_USERDATA_BASE))
+            CompileError::raise(root->location, "Exceeded userdata type limit in the compilation options");
     }
 
     // computes type information for all functions based on type annotations

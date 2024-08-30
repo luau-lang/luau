@@ -11,8 +11,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauFixBindingForGlobalPos, false);
+LUAU_FASTFLAG(LuauSolverV2)
 
 namespace Luau
 {
@@ -327,7 +326,7 @@ static std::optional<AstStatLocal*> findBindingLocalStatement(const SourceModule
 {
     // Bindings coming from global sources (e.g., definition files) have a zero position.
     // They cannot be defined from a local statement
-    if (FFlag::LuauFixBindingForGlobalPos && binding.location == Location{{0, 0}, {0, 0}})
+    if (binding.location == Location{{0, 0}, {0, 0}})
         return std::nullopt;
 
     std::vector<AstNode*> nodes = findAstAncestryOfPosition(source, binding.location.begin);
@@ -531,7 +530,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())
                     {
-                        if (FFlag::DebugLuauDeferredConstraintResolution)
+                        if (FFlag::LuauSolverV2)
                         {
                             if (auto ty = propIt->second.readTy)
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
@@ -544,7 +543,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
                     {
-                        if (FFlag::DebugLuauDeferredConstraintResolution)
+                        if (FFlag::LuauSolverV2)
                         {
                             if (auto ty = propIt->second.readTy)
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);

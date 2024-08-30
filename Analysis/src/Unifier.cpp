@@ -19,7 +19,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauUnifierShouldNotCopyError, false)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart, false)
@@ -405,7 +405,7 @@ Unifier::Unifier(NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Loc
     LUAU_ASSERT(sharedState.iceHandler);
 
     // Unifier is not usable when this flag is enabled! Please consider using Subtyping instead.
-    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(!FFlag::LuauSolverV2);
 }
 
 void Unifier::tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection, const LiteralProperties* literalProperties)
@@ -1646,7 +1646,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level)
         {
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 return freshType(NotNull{types}, builtinTypes, scope);
             else
                 return types->freshType(scope, level);

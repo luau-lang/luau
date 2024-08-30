@@ -136,7 +136,7 @@ def main():
 
     failList = loadFailList()
 
-    flags = ["true", "DebugLuauDeferredConstraintResolution"]
+    flags = ["true", "LuauSolverV2"]
 
     commandLine = [args.path, "--reporters=xml", "--fflags=" + ",".join(flags)]
 

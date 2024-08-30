@@ -692,7 +692,7 @@ bool AnyTypeSummary::containsAny(TypeId typ)
     {
         for (auto& [_name, prop] : ty->props)
         {
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 if (auto newT = follow(prop.readTy))
                 {

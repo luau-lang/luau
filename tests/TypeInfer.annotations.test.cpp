@@ -7,7 +7,7 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 
 using namespace Luau;
@@ -78,7 +78,7 @@ TEST_CASE_FIXTURE(Fixture, "assignment_cannot_transform_a_table_property_type")
 
 TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_the_type")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         function f(x)
@@ -94,7 +94,7 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_
 
 TEST_CASE_FIXTURE(Fixture, "assignments_to_annotated_parameters_are_checked")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         function f(x: string)
@@ -264,7 +264,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         a = "foo"
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK("string?" == toString(requireType("a")));
         CHECK("nil" == toString(requireType("b")));

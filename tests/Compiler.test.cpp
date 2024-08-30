@@ -22,9 +22,6 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 
-LUAU_FASTFLAG(LuauCompileUserdataInfo)
-LUAU_FASTFLAG(LuauCompileFastcall3)
-
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
@@ -3330,8 +3327,6 @@ RETURN R0 0
 
 TEST_CASE("DebugTypes")
 {
-    ScopedFastFlag luauCompileUserdataInfo{FFlag::LuauCompileUserdataInfo, true};
-
     const char* source = R"(
 local up: number = 2
 
@@ -3591,8 +3586,6 @@ RETURN R1 -1
 
 TEST_CASE("Fastcall3")
 {
-    ScopedFastFlag luauCompileFastcall3{FFlag::LuauCompileFastcall3, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local a, b, c = ...
@@ -4898,8 +4891,6 @@ L0: RETURN R0 -1
 
 TEST_CASE("VectorFastCall3")
 {
-    ScopedFastFlag luauCompileFastcall3{FFlag::LuauCompileFastcall3, true};
-
     const char* source = R"(
 local a, b, c = ...
 return Vector3.new(a, b, c)

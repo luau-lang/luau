@@ -6,7 +6,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
@@ -191,7 +191,7 @@ private:
 
     Property shallowClone(const Property& p)
     {
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
         {
             std::optional<TypeId> cloneReadTy;
             if (auto ty = p.readTy)

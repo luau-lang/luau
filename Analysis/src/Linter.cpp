@@ -14,7 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauAttribute)
 LUAU_FASTFLAG(LuauNativeAttribute)
@@ -1971,7 +1971,7 @@ private:
 
     bool visit(AstTypeTable* node) override
     {
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
         {
             struct Rec
             {

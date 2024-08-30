@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 namespace Luau
 {
@@ -153,7 +153,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         const auto& it = tableType->props.find(name);
         if (it != tableType->props.end())
         {
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 switch (context)
                 {
@@ -301,7 +301,7 @@ TypePack extendTypePack(
 
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope);
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 result.tail = newPack.tail;
             size_t overridesIndex = 0;
             while (result.head.size() < length)
@@ -313,7 +313,7 @@ TypePack extendTypePack(
                 }
                 else
                 {
-                    if (FFlag::DebugLuauDeferredConstraintResolution)
+                    if (FFlag::LuauSolverV2)
                     {
                         FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType};
                         t = arena.addType(ft);
@@ -426,7 +426,7 @@ TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
     std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
 
     if (!normType)

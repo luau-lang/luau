@@ -4,7 +4,7 @@
 #include "Fixture.h"
 #include "doctest.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 using namespace Luau;
 

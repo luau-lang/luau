@@ -6,7 +6,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -46,7 +46,7 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "string_singleton_function_call")
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -153,7 +153,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         function f(g: ((true, string) -> ()) & ((false, number) -> ()))
@@ -162,7 +162,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ("None of the overloads for function that accept 2 arguments are compatible.", toString(result.errors[0]));
         CHECK_EQ("Available overloads: (true, string) -> (); and (false, number) -> ()", toString(result.errors[1]));
@@ -195,7 +195,7 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("Type '\"bang\"' could not be converted into '\"bar\" | \"baz\" | \"foo\"'" == toString(result.errors[0]));
     else
         CHECK_EQ(
@@ -256,7 +256,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
         REQUIRE(tm);
@@ -343,7 +343,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK(
             "Type\n"
             "    '{ [\"\\n\"]: number }'\n"
@@ -368,7 +368,7 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("Type '{ cafood: string, tag: \"cat\" }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
     else
     {
@@ -391,7 +391,7 @@ local a: Result = { success = false, result = 'something' }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("Type '{ result: string, success: boolean }' could not be converted into 'Bad | Good'" == toString(result.errors[0]));
     else
     {
@@ -406,7 +406,7 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
     };
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}
@@ -442,7 +442,7 @@ local a: Animal = if true then { tag = 'cat', catfood = 'something' } else { tag
 
 TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_singleton")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local function foo(f, x)
@@ -462,7 +462,7 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
 
 TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local function foo(f, x): "hello"? -- anyone there?
@@ -488,7 +488,7 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(R"("foo")", toString(requireType("copy")));
     else
         CHECK_EQ("string", toString(requireType("copy")));
@@ -613,7 +613,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
         print(kind == "Bar") -- type of equality refines to `false`
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);

@@ -8,7 +8,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
@@ -62,7 +62,7 @@ struct SimplifyFixture : Fixture
     TypeId anotherChildClassTy = nullptr;
     TypeId unrelatedClassTy = nullptr;
 
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     SimplifyFixture()
     {

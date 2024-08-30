@@ -14,7 +14,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAGVARIABLE(LuauSkipEmptyInstantiations, false);
 
 namespace Luau
@@ -220,7 +220,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     ScopePtr moduleScope = getModuleScope();
 
     TypePackId returnType = moduleScope->returnType;
-    std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
+    std::optional<TypePackId> varargPack = FFlag::LuauSolverV2 ? std::nullopt : moduleScope->varargPack;
 
     TxnLog log;
     ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};

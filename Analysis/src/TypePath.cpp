@@ -13,7 +13,7 @@
 #include <sstream>
 #include <type_traits>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -29,7 +29,7 @@ namespace TypePath
 Property::Property(std::string name)
     : name(std::move(name))
 {
-    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(!FFlag::LuauSolverV2);
 }
 
 Property Property::read(std::string name)
@@ -156,21 +156,21 @@ Path PathBuilder::build()
 
 PathBuilder& PathBuilder::readProp(std::string name)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
     components.push_back(Property{std::move(name), true});
     return *this;
 }
 
 PathBuilder& PathBuilder::writeProp(std::string name)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
     components.push_back(Property{std::move(name), false});
     return *this;
 }
 
 PathBuilder& PathBuilder::prop(std::string name)
 {
-    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(!FFlag::LuauSolverV2);
     components.push_back(Property{std::move(name)});
     return *this;
 }
@@ -343,7 +343,7 @@ struct TraversalState
         if (prop)
         {
             std::optional<TypeId> maybeType;
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 maybeType = property.isRead ? prop->readTy : prop->writeTy;
             else
                 maybeType = prop->type();
@@ -540,7 +540,7 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
         if constexpr (std::is_same_v<T, TypePath::Property>)
         {
             result << '[';
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 if (c.isRead)
                     result << "read ";

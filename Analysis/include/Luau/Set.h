@@ -4,7 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 namespace Luau
 {

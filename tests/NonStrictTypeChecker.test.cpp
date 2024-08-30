@@ -67,7 +67,7 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrict(const std::string& code)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::DebugLuauDeferredConstraintResolution, true},
+            {FFlag::LuauSolverV2, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -77,7 +77,7 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrictModule(const std::string& moduleName)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::DebugLuauDeferredConstraintResolution, true},
+            {FFlag::LuauSolverV2, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);

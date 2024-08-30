@@ -7,9 +7,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCompileUserdataInfo)
-LUAU_FASTFLAG(LuauCompileFastcall3)
-
 namespace Luau
 {
 
@@ -334,8 +331,6 @@ unsigned int BytecodeBuilder::addStringTableEntry(StringRef value)
 
 const char* BytecodeBuilder::tryGetUserdataTypeName(LuauBytecodeType type) const
 {
-    LUAU_ASSERT(FFlag::LuauCompileUserdataInfo);
-
     unsigned index = unsigned((type & ~LBC_TYPE_OPTIONAL_BIT) - LBC_TYPE_TAGGED_USERDATA_BASE);
 
     if (index < userdataTypes.size())
@@ -575,8 +570,6 @@ void BytecodeBuilder::pushUpvalTypeInfo(LuauBytecodeType type)
 
 uint32_t BytecodeBuilder::addUserdataType(const char* name)
 {
-    LUAU_ASSERT(FFlag::LuauCompileUserdataInfo);
-
     UserdataType ty;
 
     ty.name = name;
@@ -587,8 +580,6 @@ uint32_t BytecodeBuilder::addUserdataType(const char* name)
 
 void BytecodeBuilder::useUserdataType(uint32_t index)
 {
-    LUAU_ASSERT(FFlag::LuauCompileUserdataInfo);
-
     userdataTypes[index].used = true;
 }
 
@@ -673,13 +664,10 @@ void BytecodeBuilder::finalize()
 {
     LUAU_ASSERT(bytecode.empty());
 
-    if (FFlag::LuauCompileUserdataInfo)
+    for (auto& ty : userdataTypes)
     {
-        for (auto& ty : userdataTypes)
-        {
-            if (ty.used)
-                ty.nameRef = addStringTableEntry(StringRef({ty.name.c_str(), ty.name.length()}));
-        }
+        if (ty.used)
+            ty.nameRef = addStringTableEntry(StringRef({ty.name.c_str(), ty.name.length()}));
     }
 
     // preallocate space for bytecode blob
@@ -705,7 +693,6 @@ void BytecodeBuilder::finalize()
 
     writeStringTable(bytecode);
 
-    if (FFlag::LuauCompileUserdataInfo)
     {
         // Write the mapping between used type name indices and their name
         for (uint32_t i = 0; i < uint32_t(userdataTypes.size()); i++)
@@ -1232,19 +1219,12 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
-    // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
-    if (FFlag::LuauCompileFastcall3)
-        return 6;
-
     return LBC_VERSION_TARGET;
 }
 
 uint8_t BytecodeBuilder::getTypeEncodingVersion()
 {
-    if (FFlag::LuauCompileUserdataInfo)
-        return LBC_TYPE_VERSION_TARGET;
-
-    return 2;
+    return LBC_TYPE_VERSION_TARGET;
 }
 
 #ifdef LUAU_ASSERTENABLED
@@ -1617,8 +1597,6 @@ void BytecodeBuilder::validateInstructions() const
             break;
 
         case LOP_FASTCALL3:
-            LUAU_ASSERT(FFlag::LuauCompileFastcall3);
-
             VREG(LUAU_INSN_B(insn));
             VJUMP(LUAU_INSN_C(insn));
             LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
@@ -2240,8 +2218,6 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_FASTCALL3:
-        LUAU_ASSERT(FFlag::LuauCompileFastcall3);
-
         formatAppend(result, "FASTCALL3 %d R%d R%d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code & 0xff, (*code >> 8) & 0xff, targetLabel);
         code++;
         break;
@@ -2373,74 +2349,38 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
     {
         const std::string& typeinfo = functions.back().typeinfo;
 
-        if (FFlag::LuauCompileUserdataInfo)
+        // Arguments start from third byte in function typeinfo string
+        for (uint8_t i = 2; i < typeinfo.size(); ++i)
         {
-            // Arguments start from third byte in function typeinfo string
-            for (uint8_t i = 2; i < typeinfo.size(); ++i)
-            {
-                uint8_t et = typeinfo[i];
+            uint8_t et = typeinfo[i];
 
-                const char* userdata = tryGetUserdataTypeName(LuauBytecodeType(et));
-                const char* name = userdata ? userdata : getBaseTypeString(et);
-                const char* optional = (et & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+            const char* userdata = tryGetUserdataTypeName(LuauBytecodeType(et));
+            const char* name = userdata ? userdata : getBaseTypeString(et);
+            const char* optional = (et & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
 
-                formatAppend(result, "R%d: %s%s [argument]\n", i - 2, name, optional);
-            }
-
-            for (size_t i = 0; i < typedUpvals.size(); ++i)
-            {
-                const TypedUpval& l = typedUpvals[i];
-
-                const char* userdata = tryGetUserdataTypeName(l.type);
-                const char* name = userdata ? userdata : getBaseTypeString(l.type);
-                const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
-
-                formatAppend(result, "U%d: %s%s\n", int(i), name, optional);
-            }
-
-            for (size_t i = 0; i < typedLocals.size(); ++i)
-            {
-                const TypedLocal& l = typedLocals[i];
-
-                const char* userdata = tryGetUserdataTypeName(l.type);
-                const char* name = userdata ? userdata : getBaseTypeString(l.type);
-                const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
-
-                formatAppend(result, "R%d: %s%s from %d to %d\n", l.reg, name, optional, l.startpc, l.endpc);
-            }
+            formatAppend(result, "R%d: %s%s [argument]\n", i - 2, name, optional);
         }
-        else
+
+        for (size_t i = 0; i < typedUpvals.size(); ++i)
         {
-            // Arguments start from third byte in function typeinfo string
-            for (uint8_t i = 2; i < typeinfo.size(); ++i)
-            {
-                uint8_t et = typeinfo[i];
+            const TypedUpval& l = typedUpvals[i];
 
-                const char* base = getBaseTypeString(et);
-                const char* optional = (et & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+            const char* userdata = tryGetUserdataTypeName(l.type);
+            const char* name = userdata ? userdata : getBaseTypeString(l.type);
+            const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
 
-                formatAppend(result, "R%d: %s%s [argument]\n", i - 2, base, optional);
-            }
+            formatAppend(result, "U%d: %s%s\n", int(i), name, optional);
+        }
 
-            for (size_t i = 0; i < typedUpvals.size(); ++i)
-            {
-                const TypedUpval& l = typedUpvals[i];
+        for (size_t i = 0; i < typedLocals.size(); ++i)
+        {
+            const TypedLocal& l = typedLocals[i];
 
-                const char* base = getBaseTypeString(l.type);
-                const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+            const char* userdata = tryGetUserdataTypeName(l.type);
+            const char* name = userdata ? userdata : getBaseTypeString(l.type);
+            const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
 
-                formatAppend(result, "U%d: %s%s\n", int(i), base, optional);
-            }
-
-            for (size_t i = 0; i < typedLocals.size(); ++i)
-            {
-                const TypedLocal& l = typedLocals[i];
-
-                const char* base = getBaseTypeString(l.type);
-                const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
-
-                formatAppend(result, "R%d: %s%s from %d to %d\n", l.reg, base, optional, l.startpc, l.endpc);
-            }
+            formatAppend(result, "R%d: %s%s from %d to %d\n", l.reg, name, optional, l.startpc, l.endpc);
         }
     }
 
