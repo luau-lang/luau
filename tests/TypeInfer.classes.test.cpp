@@ -13,7 +13,7 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 TEST_SUITE_BEGIN("TypeInferClasses");
 
@@ -128,7 +128,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_infer_that_a_parameter_must_be_a_particu
 
 TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         function makeClone(o)
@@ -156,7 +156,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_t
 
 TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class_using_new_solver")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         function makeClone(o)
@@ -235,7 +235,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
 TEST_CASE_FIXTURE(ClassFixture, "cannot_unify_class_instance_with_primitive")
 {
     // This is allowed in the new solver
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local v = Vector2.New(0, 5)
@@ -397,7 +397,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_class_unification_reports_sane_errors_for
         foo(a)
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK("Type 'Vector2' could not be converted into '{ Y: number, w: number, x: number }'" == toString(result.errors[0]));
@@ -454,7 +454,7 @@ b(a)
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors.at(0)));
     }
@@ -472,7 +472,7 @@ Type 'number' could not be converted into 'string')";
 TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")
 {
     // CLI-116433
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
 local i = ChildClass.New()
@@ -545,7 +545,7 @@ local b: B = a
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK(toString(result.errors.at(0)) == "Type 'A' could not be converted into 'B'; at [read \"x\"], ChildClass is not exactly BaseClass");
     else
     {
@@ -559,7 +559,7 @@ Type 'ChildClass' could not be converted into 'BaseClass' in an invariant contex
 
 TEST_CASE_FIXTURE(ClassFixture, "optional_class_casts_work_in_new_solver")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type A = { x: ChildClass }
@@ -664,7 +664,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local y = x[true]
         )");
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
             CHECK(
                 "Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0))
             );
@@ -679,7 +679,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             x[true] = 42
         )");
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
             CHECK(
                 "Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0))
             );
@@ -696,7 +696,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             x.key = "string value"
         )");
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
         {
             // Disabled for now.  CLI-115686
         }
@@ -724,7 +724,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local x : IndexableNumericKeyClass
             x["key"] = 1
         )");
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
             CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
@@ -749,7 +749,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local x : IndexableNumericKeyClass
             local y = x["key"]
         )");
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
             CHECK(toString(result.errors.at(0)) == "Key 'key' not found in class 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
@@ -766,7 +766,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
 
 TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     TypeArena& arena = frontend.globals.globalTypes;
 

@@ -15,17 +15,17 @@
 using namespace Luau;
 using namespace Luau::TypePath;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
 
 struct TypePathFixture : Fixture
 {
-    ScopedFastFlag sff1{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff1{FFlag::LuauSolverV2, true};
 };
 
 struct TypePathBuiltinsFixture : BuiltinsFixture
 {
-    ScopedFastFlag sff1{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff1{FFlag::LuauSolverV2, true};
 };
 
 TEST_SUITE_BEGIN("TypePathManipulation");
@@ -522,7 +522,7 @@ TEST_SUITE_BEGIN("TypePathToString");
 TEST_CASE("field")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
     };
 
     CHECK(toString(PathBuilder().prop("foo").build()) == R"(["foo"])");
@@ -551,7 +551,7 @@ TEST_CASE("empty_path")
 TEST_CASE("prop")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
     };
 
     Path p = PathBuilder().prop("foo").build();
@@ -592,7 +592,7 @@ TEST_CASE("fields")
 
 TEST_CASE("chained")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CHECK(
         PathBuilder().index(0).readProp("foo").mt().readProp("bar").args().index(1).build() ==

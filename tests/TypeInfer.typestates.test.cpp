@@ -3,7 +3,7 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 using namespace Luau;
 
@@ -11,7 +11,7 @@ namespace
 {
 struct TypeStateFixture : BuiltinsFixture
 {
-    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
 };
 } // namespace
 
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         // `y` is annotated `string | number` which is explicitly not compatible with `string?`
         // as such, we produce an error here for that mismatch.
@@ -392,7 +392,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_future_assignments")
 {
     // early return if the flag isn't set since this is blocking gated commits
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -461,7 +461,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_preserve_error_suppression_proper
     // early return if the flag isn't set since this is blocking gated commits
     // unconditional return
     // CLI-117098 Type states with error suppressing properties doesn't infer the correct type for properties.
-    if (!FFlag::DebugLuauDeferredConstraintResolution || FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2 || FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -477,7 +477,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_preserve_error_suppression_proper
 TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_do_not_apply_to_the_initial_local_definition")
 {
     // early return if the flag isn't set since this is blocking gated commits
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -495,7 +495,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_do_not_apply_to_the_initial_local
 
 TEST_CASE_FIXTURE(Fixture, "typestate_globals")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare foo: string | number
@@ -512,7 +512,7 @@ TEST_CASE_FIXTURE(Fixture, "typestate_globals")
 
 TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         x = 5

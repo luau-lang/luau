@@ -15,9 +15,6 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCompileUserdataInfo)
-LUAU_FASTFLAG(LuauCompileFastcall3)
-
 static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
     Luau::CodeGen::AssemblyOptions options;
@@ -942,8 +939,6 @@ bb_bytecode_0:
 
 TEST_CASE("FastcallTypeInferThroughLocal")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -994,8 +989,6 @@ bb_bytecode_1:
 
 TEST_CASE("FastcallTypeInferThroughUpvalue")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1124,8 +1117,6 @@ bb_bytecode_4:
 
 TEST_CASE("ArgumentTypeRefinement")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1433,8 +1424,6 @@ bb_2:
 
 TEST_CASE("UnaryTypeResolve")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileFastcall3, true}};
-
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
 local function foo(a, b: vector, c)
@@ -1634,36 +1623,11 @@ end
     );
 }
 
-// Temporary test, when we don't compile new typeinfo, but support loading it
-TEST_CASE("CustomUserdataTypesTemp")
-{
-    // This test requires runtime component to be present
-    if (!Luau::CodeGen::isSupported())
-        return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, false}};
-
-    CHECK_EQ(
-        "\n" + getCodegenHeader(R"(
-local function foo(v: vec2, x: mat3)
-    return v.X * x
-end
-)"),
-        R"(
-; function foo(v, x) line 2
-; R0: userdata [argument 'v']
-; R1: userdata [argument 'x']
-)"
-    );
-}
-
 TEST_CASE("CustomUserdataTypes")
 {
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
@@ -1684,8 +1648,6 @@ TEST_CASE("CustomUserdataPropertyAccess")
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1723,8 +1685,6 @@ TEST_CASE("CustomUserdataPropertyAccess2")
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1764,8 +1724,6 @@ TEST_CASE("CustomUserdataNamecall1")
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1814,8 +1772,6 @@ TEST_CASE("CustomUserdataNamecall2")
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1868,8 +1824,6 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1904,8 +1858,6 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1938,8 +1890,6 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow3")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1971,8 +1921,6 @@ TEST_CASE("CustomUserdataMetamethod")
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
-
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(

@@ -19,7 +19,7 @@
 #include <stdexcept>
 #include <string>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -83,10 +83,10 @@ struct FindCyclicTypes final : TypeVisitor
         if (!visited.insert(ty))
             return false;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
         {
             // TODO: Replace these if statements with assert()s when we
-            // delete FFlag::DebugLuauDeferredConstraintResolution.
+            // delete FFlag::LuauSolverV2.
             //
             // When the old solver is used, these pointers are always
             // unused. When the new solver is used, they are never null.
@@ -411,7 +411,7 @@ struct TypeStringifier
 
     void stringify(const std::string& name, const Property& prop)
     {
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
             return _newStringify(name, prop);
 
         emitKey(name);
@@ -473,7 +473,7 @@ struct TypeStringifier
 
         // TODO: ftv.lowerBound and ftv.upperBound should always be non-nil when
         // the new solver is used. This can be replaced with an assert.
-        if (FFlag::DebugLuauDeferredConstraintResolution && ftv.lowerBound && ftv.upperBound)
+        if (FFlag::LuauSolverV2 && ftv.lowerBound && ftv.upperBound)
         {
             const TypeId lowerBound = follow(ftv.lowerBound);
             const TypeId upperBound = follow(ftv.upperBound);
@@ -511,7 +511,7 @@ struct TypeStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 state.emitLevel(ftv.scope);
             else
                 state.emit(ftv.level);
@@ -540,7 +540,7 @@ struct TypeStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 state.emitLevel(gtv.scope);
             else
                 state.emit(gtv.level);
@@ -643,7 +643,7 @@ struct TypeStringifier
             state.emit(">");
         }
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
         {
             if (ftv.isCheckedFunction)
                 state.emit("@checked ");
@@ -726,10 +726,10 @@ struct TypeStringifier
 
         std::string openbrace = "@@@";
         std::string closedbrace = "@@@?!";
-        switch (state.opts.hideTableKind ? (FFlag::DebugLuauDeferredConstraintResolution ? TableState::Sealed : TableState::Unsealed) : ttv.state)
+        switch (state.opts.hideTableKind ? (FFlag::LuauSolverV2 ? TableState::Sealed : TableState::Unsealed) : ttv.state)
         {
         case TableState::Sealed:
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 openbrace = "{";
                 closedbrace = "}";
@@ -742,7 +742,7 @@ struct TypeStringifier
             }
             break;
         case TableState::Unsealed:
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 state.result.invalid = true;
                 openbrace = "{|";
@@ -1200,7 +1200,7 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 state.emitLevel(pack.scope);
             else
                 state.emit(pack.level);
@@ -1219,7 +1219,7 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
                 state.emitLevel(pack.scope);
             else
                 state.emit(pack.level);

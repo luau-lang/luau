@@ -10,10 +10,12 @@
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/Subtyping.h"
 
 #include <algorithm>
 
@@ -23,7 +25,8 @@
  * about a function that takes any number of values, but where each value must have some specific type.
  */
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAGVARIABLE(LuauDCRMagicFunctionTypeChecker, false);
 
 namespace Luau
 {
@@ -181,6 +184,14 @@ void attachDcrMagicRefinement(TypeId ty, DcrMagicRefinement fn)
         LUAU_ASSERT(!"Got a non functional type");
 }
 
+void attachDcrMagicFunctionTypeCheck(TypeId ty, DcrMagicFunctionTypeCheck fn)
+{
+    if (auto ftv = getMutable<FunctionType>(ty))
+        ftv->dcrMagicTypeCheck = fn;
+    else
+        LUAU_ASSERT(!"Got a non functional type");
+}
+
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol)
 {
     return {
@@ -260,7 +271,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         builtinTypeFunctions().addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
@@ -305,7 +316,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     // getmetatable : <MT>({ @metatable MT, {+ +} }) -> MT
     addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         TypeId genericT = arena.addType(GenericType{"T"});
         TypeId tMetaMT = arena.addType(MetatableType{genericT, genericMT});
@@ -354,7 +365,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     attachMagicFunction(getGlobalBinding(globals, "assert"), magicFunctionAssert);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
         TypeId genericT = arena.addType(GenericType{"T"});
@@ -374,7 +385,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (TableType* ttv = getMutable<TableType>(getGlobalBinding(globals, "table")))
     {
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::LuauSolverV2)
         {
             // CLI-114044 - The new solver does not yet support generic tables,
             // which act, in an odd way, like generics that are constrained to
@@ -517,7 +528,7 @@ static bool dcrMagicFunctionFormat(MagicFunctionCallContext context)
 
     size_t paramOffset = 1;
 
-    // unify the prefix one argument at a time
+    // unify the prefix one argument at a time - needed if any of the involved types are free
     for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
     {
         context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
@@ -530,10 +541,50 @@ static bool dcrMagicFunctionFormat(MagicFunctionCallContext context)
     if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
         context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
 
+    // This is invoked at solve time, so we just need to provide a type for the result of :/.format
     TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
     asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
 
     return true;
+}
+
+static void dcrMagicFunctionTypeCheckFormat(MagicFunctionTypeCheckContext context)
+{
+    AstExprConstantString* fmt = nullptr;
+    if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+    {
+        if (auto group = index->expr->as<AstExprGroup>())
+            fmt = group->expr->as<AstExprConstantString>();
+        else
+            fmt = index->expr->as<AstExprConstantString>();
+    }
+
+    if (!context.callSite->self && context.callSite->args.size > 0)
+        fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+    if (!fmt)
+        return;
+
+    std::vector<TypeId> expected = parseFormatString(context.builtinTypes, fmt->value.data, fmt->value.size);
+    const auto& [params, tail] = flatten(context.arguments);
+
+    size_t paramOffset = 1;
+    // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
+    bool calledWithSelf = expected.size() == context.callSite->args.size;
+    // unify the prefix one argument at a time
+    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+    {
+        TypeId actualTy = params[i + paramOffset];
+        TypeId expectedTy = expected[i];
+        Location location = context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
+        // use subtyping instead here
+        SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
+        if (!result.isSubtype)
+        {
+            Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+        }
+    }
 }
 
 static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
@@ -869,7 +920,7 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
     const TypePackId oneStringPack = arena->addTypePack({stringType});
     const TypePackId anyTypePack = builtinTypes->anyTypePack;
 
-    const TypePackId variadicTailPack = FFlag::DebugLuauDeferredConstraintResolution ? builtinTypes->unknownTypePack : anyTypePack;
+    const TypePackId variadicTailPack = FFlag::LuauSolverV2 ? builtinTypes->unknownTypePack : anyTypePack;
     const TypePackId emptyPack = arena->addTypePack({});
     const TypePackId stringVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{stringType}});
     const TypePackId numberVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{numberType}});
@@ -880,6 +931,8 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
     formatFTV.isCheckedFunction = true;
     const TypeId formatFn = arena->addType(formatFTV);
     attachDcrMagicFunction(formatFn, dcrMagicFunctionFormat);
+    if (FFlag::LuauDCRMagicFunctionTypeChecker)
+        attachDcrMagicFunctionTypeCheck(formatFn, dcrMagicFunctionTypeCheckFormat);
 
 
     const TypeId stringToStringType = makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ true);

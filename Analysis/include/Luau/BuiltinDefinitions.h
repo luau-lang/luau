@@ -13,6 +13,7 @@ struct Frontend;
 struct GlobalTypes;
 struct TypeChecker;
 struct TypeArena;
+struct Subtyping;
 
 void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeCheckForAutocomplete = false);
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types);
@@ -65,7 +66,7 @@ TypeId makeFunction( // Polymorphic
 void attachMagicFunction(TypeId ty, MagicFunction fn);
 void attachDcrMagicFunction(TypeId ty, DcrMagicFunction fn);
 void attachDcrMagicRefinement(TypeId ty, DcrMagicRefinement fn);
-
+void attachDcrMagicFunctionTypeCheck(TypeId ty, DcrMagicFunctionTypeCheck fn);
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol = std::nullopt);
 void assignPropDocumentationSymbols(TableType::Props& props, const std::string& baseName);
 

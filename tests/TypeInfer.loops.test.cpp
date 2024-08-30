@@ -14,7 +14,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauOkWithIteratingOverTableProperties)
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
@@ -32,7 +32,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         // Luau cannot see that the loop must always run at least once, so we
         // think that q could be nil.
@@ -45,10 +45,10 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
 {
     // This test may block CI if forced to run outside of DCR.
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     CheckResult result = check(R"(
 
 type Iterable = typeof(setmetatable(
@@ -72,7 +72,7 @@ for a, b in t do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -93,7 +93,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967_alt")
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -114,7 +114,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967_alt")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         // It's possible for the loop body to execute 0 times.
         CHECK("number?" == toString(requireType("x")));
@@ -140,7 +140,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK("number?" == toString(requireType("n")));
         CHECK("string?" == toString(requireType("s")));
@@ -155,7 +155,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
     // CLI-116494 The generics K and V are leaking out of the next() function somehow.
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local n
@@ -222,7 +222,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         function no_iter() end
@@ -267,7 +267,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     TypeId p = requireType("p");
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ("*error-type*?", toString(p));
     else
         CHECK_EQ("*error-type*", toString(p));
@@ -276,7 +276,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 {
     // We report a spuriouus duplicate error here.
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local bad_iter = 5
@@ -293,7 +293,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")
 {
     // Spurious duplicate errors
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local function hasDivisors(value: number, table)
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
 {
     // CLI-116496
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         function prime_iter(state, index)
@@ -419,7 +419,7 @@ TEST_CASE_FIXTURE(Fixture, "while_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("number?" == toString(requireType("i")));
     else
         CHECK_EQ(*builtinTypes->numberType, *requireType("i"));
@@ -436,7 +436,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("string?" == toString(requireType("i")));
     else
         CHECK_EQ(*builtinTypes->stringType, *requireType("i"));
@@ -478,7 +478,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_fr
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         auto err = get<TypeMismatch>(result.errors[0]);
@@ -535,7 +535,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "properly_infer_iteratee_is_a_free_table")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         // In the new solver, we infer iter: unknown and so we warn on use of its properties.
         LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -585,7 +585,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_produces_integral_indices")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("number?" == toString(requireType("key")));
     else
         REQUIRE_EQ("number", toString(requireType("key")));
@@ -696,7 +696,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
@@ -753,7 +753,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 
     // The old solver just infers the wrong type here.
     // The right type for `key` is `number?`
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         TypeId keyTy = requireType("key");
         CHECK("number?" == toString(keyTy));
@@ -765,7 +765,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     CheckResult result = check(R"(
         local t: {string} = {}
@@ -783,7 +783,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
         {FFlag::LuauOkWithIteratingOverTableProperties, true}
     };
 
@@ -810,7 +810,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 {
     // CLI-116499 Free types persisting until typechecking time.
-    if (1 || !FFlag::DebugLuauDeferredConstraintResolution)
+    if (1 || !FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -826,7 +826,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 {
     // CLI-116500
-    if (1 || !FFlag::DebugLuauDeferredConstraintResolution)
+    if (1 || !FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -848,7 +848,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
 {
     // CLI-116500
-    if (1 || !FFlag::DebugLuauDeferredConstraintResolution)
+    if (1 || !FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -865,7 +865,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
 {
     // CLI-116500
-    if (1 || !FFlag::DebugLuauDeferredConstraintResolution)
+    if (1 || !FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -916,7 +916,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
 {
     // CLI-116500
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1051,7 +1051,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_fragmented_keys")
 TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_xpath_candidates")
 {
     // CLI-116500
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1071,7 +1071,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_xpath_candidates")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1084,7 +1084,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("never?" == toString(requireType("ans"))); // CLI-114134 egraph simplification.  Should just be nil.
     else
         CHECK(toString(requireType("ans")) == "never");
@@ -1093,7 +1093,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 {
     // CLI-116498 - Sometimes you can iterate over tables with no indexer.
-    ScopedFastFlag sff0{FFlag::DebugLuauDeferredConstraintResolution, false};
+    ScopedFastFlag sff0{FFlag::LuauSolverV2, false};
 
     ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
 
@@ -1151,7 +1151,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_should_not_retroactively_add_an_indexe
         print(prices.wwwww)
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         // We regress a little here: The old solver would typecheck the first
         // access to prices.wwwww on a table that had no indexer, and the second
@@ -1186,7 +1186,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_array_of_singletons")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERRORS(result);
@@ -1210,7 +1210,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iter_mm_results_are_lvalue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_no_iter_mm")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local t = setmetatable({1, 2, 3}, {})
@@ -1228,7 +1228,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_no_iter_mm")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type Iterable<T...> = typeof(setmetatable({}, {} :: {

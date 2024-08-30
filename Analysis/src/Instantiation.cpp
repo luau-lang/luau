@@ -10,7 +10,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 namespace Luau
 {
@@ -157,7 +157,7 @@ TypeId ReplaceGenerics::clean(TypeId ty)
         clone.definitionLocation = ttv->definitionLocation;
         return addType(std::move(clone));
     }
-    else if (FFlag::DebugLuauDeferredConstraintResolution)
+    else if (FFlag::LuauSolverV2)
     {
         TypeId res = freshType(NotNull{arena}, builtinTypes, scope);
         getMutable<FreeType>(res)->level = level;

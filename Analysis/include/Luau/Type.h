@@ -34,6 +34,8 @@ using ScopePtr = std::shared_ptr<Scope>;
 
 struct TypeFunction;
 struct Constraint;
+struct Subtyping;
+struct TypeChecker2;
 
 /**
  * There are three kinds of type variables:
@@ -289,7 +291,6 @@ struct MagicFunctionCallContext
 };
 
 using DcrMagicFunction = std::function<bool(MagicFunctionCallContext)>;
-
 struct MagicRefinementContext
 {
     NotNull<Scope> scope;
@@ -297,8 +298,17 @@ struct MagicRefinementContext
     std::vector<std::optional<TypeId>> discriminantTypes;
 };
 
-using DcrMagicRefinement = void (*)(const MagicRefinementContext&);
+struct MagicFunctionTypeCheckContext
+{
+    NotNull<TypeChecker2> typechecker;
+    NotNull<BuiltinTypes> builtinTypes;
+    const class AstExprCall* callSite;
+    TypePackId arguments;
+    NotNull<Scope> checkScope;
+};
 
+using DcrMagicRefinement = void (*)(const MagicRefinementContext&);
+using DcrMagicFunctionTypeCheck = std::function<void(const MagicFunctionTypeCheckContext&)>;
 struct FunctionType
 {
     // Global monomorphic function
@@ -359,6 +369,14 @@ struct FunctionType
     MagicFunction magicFunction = nullptr;
     DcrMagicFunction dcrMagicFunction = nullptr;
     DcrMagicRefinement dcrMagicRefinement = nullptr;
+
+    // Callback to allow custom typechecking of builtin function calls whose argument types
+    // will only be resolved after constraint solving. For example, the arguments to string.format
+    // have types that can only be decided after parsing the format string and unifying
+    // with the passed in values, but the correctness of the call can only be decided after
+    // all the types have been finalized.
+    DcrMagicFunctionTypeCheck dcrMagicTypeCheck = nullptr;
+
     bool hasSelf;
     // `hasNoFreeOrGenericTypes` should be true if and only if the type does not have any free or generic types present inside it.
     // this flag is used as an optimization to exit early from procedures that manipulate free or generic types.

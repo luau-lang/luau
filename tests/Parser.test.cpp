@@ -15,7 +15,7 @@ LUAU_FASTFLAG(LuauLexerLookaheadRemembersBraceType);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctions);
 
@@ -1192,7 +1192,7 @@ until false
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection_local_function")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
     };
 
     try
@@ -1229,7 +1229,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection_failsafe_earlier")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
     };
 
     try
@@ -2597,7 +2597,7 @@ TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
     };
 
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
     };
 
     checkRecovery("function foo(a, b. c) return a + b end", "function foo(a, b) return a + b end", 1);
@@ -2841,7 +2841,7 @@ TEST_CASE_FIXTURE(Fixture, "AstName_comparison")
 TEST_CASE_FIXTURE(Fixture, "generic_type_list_recovery")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false},
+        {FFlag::LuauSolverV2, false},
     };
 
     try

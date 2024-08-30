@@ -14,7 +14,7 @@ using namespace Luau;
 
 using Pattern = AnyTypeSummary::Pattern;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(StudioReportLuauAny2)
@@ -35,7 +35,7 @@ TEST_SUITE_BEGIN("AnyTypeSummaryTest");
 TEST_CASE_FIXTURE(ATSFixture, "var_typepack_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -56,7 +56,7 @@ type A = (number, string) -> ...any
 TEST_CASE_FIXTURE(ATSFixture, "export_alias")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -77,7 +77,7 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
 TEST_CASE_FIXTURE(ATSFixture, "typepacks")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -103,7 +103,7 @@ end
 TEST_CASE_FIXTURE(ATSFixture, "typepacks_no_ret")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -128,7 +128,7 @@ end
 TEST_CASE_FIXTURE(ATSFixture, "var_typepack_any_gen_table")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -149,7 +149,7 @@ type Pair<T> = {first: T, second: any}
 TEST_CASE_FIXTURE(ATSFixture, "assign_uneq")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -173,7 +173,7 @@ local x, y, z = greetings("Dibri") -- mismatch
 TEST_CASE_FIXTURE(ATSFixture, "var_typepack_any_gen")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -195,7 +195,7 @@ type Pair<T> = (boolean, T) -> ...any
 TEST_CASE_FIXTURE(ATSFixture, "typeof_any_in_func")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -219,7 +219,7 @@ TEST_CASE_FIXTURE(ATSFixture, "typeof_any_in_func")
 TEST_CASE_FIXTURE(ATSFixture, "generic_types")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -249,7 +249,7 @@ foo(addNumbers)
 TEST_CASE_FIXTURE(ATSFixture, "no_annot")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -268,7 +268,7 @@ local character = script.Parent
 TEST_CASE_FIXTURE(ATSFixture, "if_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -302,7 +302,7 @@ end
 TEST_CASE_FIXTURE(ATSFixture, "variadic_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -327,7 +327,7 @@ TEST_CASE_FIXTURE(ATSFixture, "variadic_any")
 TEST_CASE_FIXTURE(ATSFixture, "type_alias_intersection")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -351,7 +351,7 @@ TEST_CASE_FIXTURE(ATSFixture, "type_alias_intersection")
 TEST_CASE_FIXTURE(ATSFixture, "var_func_arg")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -379,7 +379,7 @@ TEST_CASE_FIXTURE(ATSFixture, "var_func_arg")
 TEST_CASE_FIXTURE(ATSFixture, "var_func_apps")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -404,7 +404,7 @@ TEST_CASE_FIXTURE(ATSFixture, "var_func_apps")
 TEST_CASE_FIXTURE(ATSFixture, "CannotExtendTable")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -431,7 +431,7 @@ end
 TEST_CASE_FIXTURE(ATSFixture, "unknown_symbol")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -455,7 +455,7 @@ end
 TEST_CASE_FIXTURE(ATSFixture, "racing_3_short")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -496,7 +496,7 @@ initialize()
 TEST_CASE_FIXTURE(ATSFixture, "racing_collision_2")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -579,7 +579,7 @@ initialize()
 TEST_CASE_FIXTURE(ATSFixture, "racing_spawning_1")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -651,7 +651,7 @@ initialize()
 TEST_CASE_FIXTURE(ATSFixture, "mutually_recursive_generic")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -676,7 +676,7 @@ TEST_CASE_FIXTURE(ATSFixture, "mutually_recursive_generic")
 TEST_CASE_FIXTURE(ATSFixture, "explicit_pack")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -698,7 +698,7 @@ type Bar = Foo<(number, any)>
 TEST_CASE_FIXTURE(ATSFixture, "local_val")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -719,7 +719,7 @@ local a, b, c = 1 :: any
 TEST_CASE_FIXTURE(ATSFixture, "var_any_local")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -743,7 +743,7 @@ local x: number, y: any, z, h: nil = 1, nil
 TEST_CASE_FIXTURE(ATSFixture, "table_uses_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -766,7 +766,7 @@ TEST_CASE_FIXTURE(ATSFixture, "table_uses_any")
 TEST_CASE_FIXTURE(ATSFixture, "typeof_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -789,7 +789,7 @@ TEST_CASE_FIXTURE(ATSFixture, "typeof_any")
 TEST_CASE_FIXTURE(ATSFixture, "table_type_assigned")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -813,7 +813,7 @@ TEST_CASE_FIXTURE(ATSFixture, "table_type_assigned")
 TEST_CASE_FIXTURE(ATSFixture, "simple_func_wo_ret")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -835,7 +835,7 @@ TEST_CASE_FIXTURE(ATSFixture, "simple_func_wo_ret")
 TEST_CASE_FIXTURE(ATSFixture, "simple_func_w_ret")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -858,7 +858,7 @@ TEST_CASE_FIXTURE(ATSFixture, "simple_func_w_ret")
 TEST_CASE_FIXTURE(ATSFixture, "nested_local")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -882,7 +882,7 @@ TEST_CASE_FIXTURE(ATSFixture, "nested_local")
 TEST_CASE_FIXTURE(ATSFixture, "generic_func")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -905,7 +905,7 @@ TEST_CASE_FIXTURE(ATSFixture, "generic_func")
 TEST_CASE_FIXTURE(ATSFixture, "type_alias_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -927,7 +927,7 @@ TEST_CASE_FIXTURE(ATSFixture, "type_alias_any")
 TEST_CASE_FIXTURE(ATSFixture, "multi_module_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 
@@ -960,7 +960,7 @@ TEST_CASE_FIXTURE(ATSFixture, "multi_module_any")
 TEST_CASE_FIXTURE(ATSFixture, "cast_on_cyclic_req")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
     };
 

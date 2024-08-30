@@ -14,6 +14,7 @@ inline bool isFlagExperimental(const char* flag)
         "LuauInstantiateInSubtyping",      // requires some fixes to lua-apps code
         "LuauFixIndexerSubtypingOrdering", // requires some small fixes to lua-apps code since this fixes a false negative
         "StudioReportLuauAny2",             // takes telemetry data for usage of any types 
+        "LuauSolverV2",
         // makes sure we always have at least one entry
         nullptr,
     };

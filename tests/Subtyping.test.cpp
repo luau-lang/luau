@@ -15,7 +15,7 @@
 
 #include <initializer_list>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 using namespace Luau;
 
@@ -67,7 +67,7 @@ struct SubtypeFixture : Fixture
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
 
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     ScopePtr rootScope{new Scope(builtinTypes->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -837,28 +837,28 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { read x: number }")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", Property::readonly(builtinTypes->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { write x: number }")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", Property::writeonly(builtinTypes->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: \"hello\" } <: { read x: string }")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CHECK_IS_SUBTYPE(tbl({{"x", helloType}}), tbl({{"x", Property::readonly(builtinTypes->stringType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: string } <: { write x: string }")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->stringType}}), tbl({{"x", Property::writeonly(builtinTypes->stringType)}}));
 }

@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -142,7 +142,7 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
     UnifierSharedState unifierState(&iceReporter);
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&iceReporter}};
 
@@ -293,7 +293,7 @@ static void autocompleteProps(
             {
                 Luau::TypeId type;
 
-                if (FFlag::DebugLuauDeferredConstraintResolution)
+                if (FFlag::LuauSolverV2)
                 {
                     if (auto ty = prop.readTy)
                         type = follow(*ty);
@@ -1964,7 +1964,7 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
         return {};
 
     ModulePtr module;
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         module = frontend.moduleResolver.getModule(moduleName);
     else
         module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
@@ -1974,7 +1974,7 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
 
     NotNull<BuiltinTypes> builtinTypes = frontend.builtinTypes;
     Scope* globalScope;
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         globalScope = frontend.globals.globalScope.get();
     else
         globalScope = frontend.globalsForAutocomplete.globalScope.get();
