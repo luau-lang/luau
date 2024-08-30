@@ -12,7 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8);
 
 namespace Luau
@@ -1398,7 +1398,7 @@ TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
 
     TypeSimplifier s{builtinTypes, arena};
 
@@ -1413,7 +1413,7 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, std::set<TypeId> parts)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
 
     TypeSimplifier s{builtinTypes, arena};
 
@@ -1424,7 +1424,7 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyUnion(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
 
     TypeSimplifier s{builtinTypes, arena};
 

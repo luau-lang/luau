@@ -10,7 +10,7 @@
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 namespace Luau
 {
@@ -139,7 +139,7 @@ DataFlowGraph DataFlowGraphBuilder::build(AstStatBlock* block, NotNull<InternalE
 {
     LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
 
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(FFlag::LuauSolverV2);
 
     DataFlowGraphBuilder builder;
     builder.handle = handle;

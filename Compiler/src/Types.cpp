@@ -3,8 +3,6 @@
 
 #include "Luau/BytecodeBuilder.h"
 
-LUAU_FASTFLAG(LuauCompileUserdataInfo)
-
 namespace Luau
 {
 
@@ -70,13 +68,10 @@ static LuauBytecodeType getType(
         if (LuauBytecodeType prim = getPrimitiveType(ref->name); prim != LBC_TYPE_INVALID)
             return prim;
 
-        if (FFlag::LuauCompileUserdataInfo)
+        if (const uint8_t* userdataIndex = userdataTypes.find(ref->name))
         {
-            if (const uint8_t* userdataIndex = userdataTypes.find(ref->name))
-            {
-                bytecode.useUserdataType(*userdataIndex);
-                return LuauBytecodeType(LBC_TYPE_TAGGED_USERDATA_BASE + *userdataIndex);
-            }
+            bytecode.useUserdataType(*userdataIndex);
+            return LuauBytecodeType(LBC_TYPE_TAGGED_USERDATA_BASE + *userdataIndex);
         }
 
         // not primitive or alias or generic => host-provided, we assume userdata for now

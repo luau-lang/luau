@@ -14,7 +14,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -29,7 +29,7 @@ struct GeneralizationFixture
     DenseHashSet<TypeId> generalizedTypes_{nullptr};
     NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     std::pair<TypeId, FreeType*> freshType()
     {

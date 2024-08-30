@@ -22,7 +22,7 @@
 
 static const char* mainModuleName = "MainModule";
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
@@ -204,7 +204,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         // if AST is available, check how lint and typecheck handle error nodes
         if (result.root)
         {
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 Mode mode = sourceModule->mode ? *sourceModule->mode : Mode::Strict;
                 ModulePtr module = Luau::check(
@@ -371,7 +371,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
     if (!module->hasModuleScope())
         return std::nullopt;
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
     else
         return lookupName(module->getModuleScope(), name);

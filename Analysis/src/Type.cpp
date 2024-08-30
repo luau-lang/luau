@@ -752,7 +752,7 @@ TypeId Property::type() const
 void Property::setType(TypeId ty)
 {
     readTy = ty;
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         writeTy = ty;
 }
 

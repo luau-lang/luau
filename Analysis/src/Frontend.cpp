@@ -38,7 +38,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauStoreCommentsForDefinitionFiles, false)
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes, false)
@@ -473,7 +473,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
     FrontendOptions frontendOptions = optionOverride.value_or(options);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         frontendOptions.forAutocomplete = false;
 
     if (std::optional<CheckResult> result = getCheckResult(name, true, frontendOptions.forAutocomplete))
@@ -547,7 +547,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 )
 {
     FrontendOptions frontendOptions = optionOverride.value_or(options);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         frontendOptions.forAutocomplete = false;
 
     // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
@@ -781,7 +781,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
 std::optional<CheckResult> Frontend::getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete)
 {
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         forAutocomplete = false;
 
     auto it = sourceNodes.find(name);
@@ -1064,7 +1064,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     if (DFFlag::LuauRunCustomModuleChecks && item.options.customModuleCheck)
         item.options.customModuleCheck(sourceModule, *module);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::NoCheck)
+    if (FFlag::LuauSolverV2 && mode == Mode::NoCheck)
         module->errors.clear();
 
     if (item.options.runLintChecks)
@@ -1531,7 +1531,7 @@ ModulePtr Frontend::check(
     TypeCheckLimits typeCheckLimits
 )
 {
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         auto prepareModuleScopeWrap = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope)
         {

@@ -9,7 +9,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -172,7 +172,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK("(A & B) -> { y: number }" == toString(requireType("f")));
     else
         CHECK("(A & B) -> {| y: number |} & {| y: number |}" == toString(requireType("f")));
@@ -191,7 +191,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ("(A & B) -> string", toString(requireType("f")));
     else
         CHECK_EQ("(A & B) -> string & string", toString(requireType("f")));
@@ -210,7 +210,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ("(A & B) -> never", toString(requireType("f")));
     else
         CHECK_EQ("(A & B) -> number & string", toString(requireType("f")));
@@ -333,7 +333,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
     ScopedFastFlag dcr{
-        FFlag::DebugLuauDeferredConstraintResolution, false
+        FFlag::LuauSolverV2, false
     }; // CLI-116476 Subtyping between type alias and an equivalent but not named type isn't working.
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
@@ -348,7 +348,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
@@ -372,7 +372,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
 {
-    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, false}; // CLI-
+    ScopedFastFlag dcr{FFlag::LuauSolverV2, false}; // CLI-
     // After normalization, previous 'table_intersection_write_sealed_indirect' is identical to this one
     CheckResult result = check(R"(
     type XY = { x: (number) -> number, y: (string) -> string }
@@ -430,7 +430,7 @@ Type 'number' could not be converted into 'X')";
         R"(Type 'number' could not be converted into 'X & Y & Z'; type number (number) is not a subtype of X & Y & Z[0] (X)
 	type number (number) is not a subtype of X & Y & Z[1] (Y)
 	type number (number) is not a subtype of X & Y & Z[2] (Z))";
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(dcrExprected, toString(result.errors[0]));
     else
         CHECK_EQ(expected, toString(result.errors[0]));
@@ -450,7 +450,7 @@ end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ(
             R"(Type pack 'X & Y & Z' could not be converted into 'number'; type X & Y & Z[0][0] (X) is not a subtype of number[0] (number)
@@ -503,7 +503,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_bool_and_false")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ(
             R"(Type 'boolean & false' could not be converted into 'true'; type boolean & false[0] (boolean) is not a subtype of true (true)
@@ -528,7 +528,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // TODO: odd stringification of `false & (boolean & false)`.)
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(
             R"(Type 'boolean & false & false' could not be converted into 'true'; type boolean & false & false[0] (false) is not a subtype of true (true)
 	type boolean & false & false[1] (boolean) is not a subtype of true (true)
@@ -550,7 +550,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
             local z : (number) -> number = x -- Not OK
         end
     )");
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         const std::string expected1 = R"(Type
@@ -582,7 +582,7 @@ could not be converted into
 TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 {
     ScopedFastFlag dcr{
-        FFlag::DebugLuauDeferredConstraintResolution, false
+        FFlag::LuauSolverV2, false
     }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
     CheckResult result = check(R"(
         function f(x: ((number) -> number) & ((string) -> string))
@@ -610,7 +610,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected =
-        (FFlag::DebugLuauDeferredConstraintResolution)
+        (FFlag::LuauSolverV2)
             ? R"(Type '{ p: number?, q: number?, r: number? } & { p: number?, q: string? }' could not be converted into '{ p: nil }'; type { p: number?, q: number?, r: number? } & { p: number?, q: string? }[0][read "p"][0] (number) is not exactly { p: nil }[read "p"] (nil)
 	type { p: number?, q: number?, r: number? } & { p: number?, q: string? }[1][read "p"][0] (number) is not exactly { p: nil }[read "p"] (nil))"
             :
@@ -630,7 +630,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ(
@@ -678,7 +678,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ(
@@ -726,7 +726,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
             end
         end
     )");
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
@@ -753,7 +753,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
     )");
 
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -778,7 +778,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
             end
         end
     )");
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ(
@@ -812,7 +812,7 @@ could not be converted into
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
 {
     ScopedFastFlag dcr{
-        FFlag::DebugLuauDeferredConstraintResolution, false
+        FFlag::LuauSolverV2, false
     }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
     CheckResult result = check(R"(
         function f<a...,b...>()
@@ -834,7 +834,7 @@ could not be converted into
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 {
     ScopedFastFlag dcr{
-        FFlag::DebugLuauDeferredConstraintResolution, false
+        FFlag::LuauSolverV2, false
     }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
     CheckResult result = check(R"(
         function f<a...,b...>()
@@ -864,7 +864,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
     end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ(
@@ -907,7 +907,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_arguments")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         const std::string expected1 = R"(Type
@@ -940,7 +940,7 @@ could not be converted into
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_variadics")
 {
     ScopedFastFlag dcr{
-        FFlag::DebugLuauDeferredConstraintResolution, false
+        FFlag::LuauSolverV2, false
     }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
     CheckResult result = check(R"(
         function f(x : ((string?) -> (string | number)) & ((number?) -> ...number))
@@ -968,7 +968,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -993,7 +993,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1018,7 +1018,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_3")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1045,7 +1045,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ(
             R"(Type
@@ -1071,10 +1071,10 @@ could not be converted into
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 {
     // CLI-117121 - Intersection of types are not compatible with the equivalent alias
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return;
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CheckResult result = check(R"(
             function f(a: string?, b: string?)
@@ -1164,7 +1164,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CheckResult result = check(R"(
             local x = setmetatable({ a = 5 }, { p = 5 })
@@ -1230,7 +1230,7 @@ TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1247,7 +1247,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1293,7 +1293,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 {
-    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type A = {
@@ -1316,7 +1316,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 {
-    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type A = {

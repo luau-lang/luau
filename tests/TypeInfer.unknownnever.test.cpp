@@ -6,7 +6,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -118,7 +118,7 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable"
         local x, y, z = f()
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK("Function only returns 2 values, but 3 are required here" == toString(result.errors[0]));
@@ -149,7 +149,7 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable2
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ("string", toString(requireType("x1")));
         CHECK_EQ("never", toString(requireType("x2")));
@@ -199,7 +199,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_to_local_which_is_never")
         t = 3
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
     }
@@ -266,7 +266,7 @@ TEST_CASE_FIXTURE(Fixture, "pick_never_from_variadic_type_pack")
 TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_never")
 {
     // CLI-117116 - We are erroneously warning when passing a valid table literal where we expect a union of tables.
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return;
     CheckResult result = check(R"(
         type Disjoint = {foo: never, bar: unknown, tag: "ok"} | {foo: never, baz: unknown, tag: "err"}
@@ -286,7 +286,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_neve
 TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_sorta_never")
 {
     // CLI-117116 - We are erroneously warning when passing a valid table literal where we expect a union of tables.
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         return;
     CheckResult result = check(R"(
         type Disjoint = {foo: string, bar: unknown, tag: "ok"} | {foo: never, baz: unknown, tag: "err"}
@@ -335,7 +335,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ("(nil, unknown) -> boolean", toString(requireType("ord")));
     else
         CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
@@ -349,7 +349,7 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
@@ -379,7 +379,7 @@ TEST_CASE_FIXTURE(Fixture, "compare_never")
 
 TEST_CASE_FIXTURE(Fixture, "lti_error_at_declaration_for_never_normalizations")
 {
-    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local function num(x: number) end
@@ -403,7 +403,7 @@ TEST_CASE_FIXTURE(Fixture, "lti_error_at_declaration_for_never_normalizations")
 
 TEST_CASE_FIXTURE(Fixture, "lti_permit_explicit_never_annotation")
 {
-    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local function num(x: number) end

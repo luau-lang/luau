@@ -11,12 +11,12 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 struct DataFlowGraphFixture
 {
     // Only needed to fix the operator== reflexivity of an empty Symbol.
-    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
+    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
 
     InternalErrorReporter handle;
 

@@ -24,16 +24,16 @@ LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 static bool fixReduceStackPressure()
 {
-    return FFlag::LuauFixReduceStackPressure || FFlag::DebugLuauDeferredConstraintResolution;
+    return FFlag::LuauFixReduceStackPressure || FFlag::LuauSolverV2;
 }
 
 static bool fixCyclicTablesBlowingStack()
 {
-    return FFlag::LuauFixCyclicTablesBlowingStack || FFlag::DebugLuauDeferredConstraintResolution;
+    return FFlag::LuauFixCyclicTablesBlowingStack || FFlag::LuauSolverV2;
 }
 
 namespace Luau
@@ -42,7 +42,7 @@ namespace Luau
 // helper to make `FFlag::LuauNormalizeAwayUninhabitableTables` not explicitly required when DCR is enabled.
 static bool normalizeAwayUninhabitableTables()
 {
-    return FFlag::LuauNormalizeAwayUninhabitableTables || FFlag::DebugLuauDeferredConstraintResolution;
+    return FFlag::LuauNormalizeAwayUninhabitableTables || FFlag::LuauSolverV2;
 }
 
 static bool shouldEarlyExit(NormalizationResult res)
@@ -553,7 +553,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
     {
         for (const auto& [_, prop] : ttv->props)
         {
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 // A table enclosing a read property whose type is uninhabitable is also itself uninhabitable,
                 // but not its write property. That just means the write property doesn't exist, and so is readonly.
@@ -2583,7 +2583,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         {
             const auto& [_name, tprop] = *tfound;
             // TODO: variance issues here, which can't be fixed until we have read/write property types
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 if (hprop.readTy.has_value())
                 {
@@ -3249,7 +3249,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
             // this is a noop since an intersection with `unknown` is trivial.
             return NormalizationResult::True;
         }
-        else if ((FFlag::LuauNormalizeNotUnknownIntersection || FFlag::DebugLuauDeferredConstraintResolution) && get<UnknownType>(t))
+        else if ((FFlag::LuauNormalizeNotUnknownIntersection || FFlag::LuauSolverV2) && get<UnknownType>(t))
         {
             // if we're intersecting with `~unknown`, this is equivalent to intersecting with `never`
             // this means we should clear the type entirely.
@@ -3389,7 +3389,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     if (!get<NeverType>(norm.buffers))
         result.push_back(builtinTypes->bufferType);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
@@ -3427,7 +3427,7 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<Built
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
 
     // Subtyping under DCR is not implemented using unification!
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}};
 
@@ -3449,7 +3449,7 @@ bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, N
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
 
     // Subtyping under DCR is not implemented using unification!
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}};
 
@@ -3466,7 +3466,7 @@ bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, N
 
 bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
-    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(!FFlag::LuauSolverV2);
 
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
@@ -3486,7 +3486,7 @@ bool isConsistentSubtype(
     InternalErrorReporter& ice
 )
 {
-    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+    LUAU_ASSERT(!FFlag::LuauSolverV2);
 
     UnifierSharedState sharedState{&ice};
     TypeArena arena;

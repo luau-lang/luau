@@ -2,7 +2,7 @@
 #include "ConstraintGeneratorFixture.h"
 #include "ScopedFlags.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 namespace Luau
 {
@@ -10,7 +10,7 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
-    , forceTheFlag{FFlag::DebugLuauDeferredConstraintResolution, true}
+    , forceTheFlag{FFlag::LuauSolverV2, true}
 {
     mainModule->name = "MainModule";
     mainModule->humanReadableName = "MainModule";

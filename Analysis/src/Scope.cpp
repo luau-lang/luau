@@ -2,7 +2,7 @@
 
 #include "Luau/Scope.h"
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 namespace Luau
 {
@@ -184,7 +184,7 @@ std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bo
 // Updates the `this` scope with the assignments from the `childScope` including ones that doesn't exist in `this`.
 void Scope::inheritAssignments(const ScopePtr& childScope)
 {
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::LuauSolverV2)
         return;
 
     for (const auto& [k, a] : childScope->lvalueTypes)
@@ -194,7 +194,7 @@ void Scope::inheritAssignments(const ScopePtr& childScope)
 // Updates the `this` scope with the refinements from the `childScope` excluding ones that doesn't exist in `this`.
 void Scope::inheritRefinements(const ScopePtr& childScope)
 {
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauSolverV2)
     {
         for (const auto& [k, a] : childScope->rvalueRefinements)
         {

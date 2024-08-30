@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSolverV2);
 
 namespace Luau
 {
@@ -254,7 +254,7 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
 
-            if (FFlag::DebugLuauDeferredConstraintResolution)
+            if (FFlag::LuauSolverV2)
             {
                 if (!get<NeverType>(t.lowerBound))
                     visitChild(t.lowerBound, index, "[lowerBound]");
