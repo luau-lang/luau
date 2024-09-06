@@ -1897,7 +1897,30 @@ bool computeKeysOf(TypeId ty, Set<std::string>& result, DenseHashSet<TypeId>& se
         return res;
     }
 
-    // this should not be reachable since the type should be a valid tables part from normalization.
+    if (auto classTy = get<ClassType>(ty))
+    {
+        for (auto [key, _] : classTy->props)
+            result.insert(key);
+
+        bool res = true;
+        if (classTy->metatable && !isRaw)
+        {
+            // findMetatableEntry demands the ability to emit errors, so we must give it
+            // the necessary state to do that, even if we intend to just eat the errors.
+            ErrorVec dummy;
+
+            std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, ty, "__index", Location{});
+            if (mmType)
+                res = res && computeKeysOf(*mmType, result, seen, isRaw, ctx);
+        }
+
+        if (classTy->parent)
+            res = res && computeKeysOf(follow(*classTy->parent), result, seen, isRaw, ctx);
+
+        return res;
+    }
+
+    // this should not be reachable since the type should be a valid tables or classes part from normalization.
     LUAU_ASSERT(false);
     return false;
 }
@@ -1941,34 +1964,32 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
     {
         LUAU_ASSERT(!normTy->hasTables());
 
+        // seen set for key computation for classes
+        DenseHashSet<TypeId> seen{{}};
+
         auto classesIter = normTy->classes.ordering.begin();
         auto classesIterEnd = normTy->classes.ordering.end();
-        LUAU_ASSERT(classesIter != classesIterEnd); // should be guaranteed by the `hasClasses` check
+        LUAU_ASSERT(classesIter != classesIterEnd); // should be guaranteed by the `hasClasses` check earlier
 
-        auto classTy = get<ClassType>(*classesIter);
-        if (!classTy)
-        {
-            LUAU_ASSERT(false); // this should not be possible according to normalization's spec
-            return {std::nullopt, true, {}, {}};
-        }
-
-        for (auto [key, _] : classTy->props)
-            keys.insert(key);
+        // collect all the properties from the first class type
+        if (!computeKeysOf(*classesIter, keys, seen, isRaw, ctx))
+            return {ctx->builtins->stringType, false, {}, {}}; // if it failed, we have a top type!
 
         // we need to look at each class to remove any keys that are not common amongst them all
         while (++classesIter != classesIterEnd)
         {
-            auto classTy = get<ClassType>(*classesIter);
-            if (!classTy)
-            {
-                LUAU_ASSERT(false); // this should not be possible according to normalization's spec
-                return {std::nullopt, true, {}, {}};
-            }
+            seen.clear(); // we'll reuse the same seen set
+
+            Set<std::string> localKeys{{}};
+
+            // we can skip to the next class if this one is a top type
+            if (!computeKeysOf(*classesIter, localKeys, seen, isRaw, ctx))
+                continue;
 
             for (auto key : keys)
             {
                 // remove any keys that are not present in each class
-                if (classTy->props.find(key) == classTy->props.end())
+                if (!localKeys.contains(key))
                     keys.erase(key);
             }
         }
@@ -2221,6 +2242,19 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
                 // Search for all instances of indexer in class->props and class->indexer
                 if (searchPropsAndIndexer(ty, classTy->props, classTy->indexer, properties, ctx))
                     continue; // Indexer was found in this class, so we can move on to the next
+
+                auto parent = classTy->parent;
+                bool foundInParent = false;
+                while (parent && !foundInParent)
+                {
+                    auto parentClass = get<ClassType>(follow(*parent));
+                    foundInParent = searchPropsAndIndexer(ty, parentClass->props, parentClass->indexer, properties, ctx);
+                    parent = parentClass->parent;
+                }
+
+                // we move on to the next type if any of the parents we went through had the property.
+                if (foundInParent)
+                    continue;
 
                 // If code reaches here,that means the property not found -> check in the metatable's __index
 

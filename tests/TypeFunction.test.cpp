@@ -619,6 +619,20 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_common_subset_if_union_of_d
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_with_parent_classes_too")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        type KeysOfMyObject = keyof<ChildClass>
+
+        local function ok(idx: KeysOfMyObject): "BaseField" | "BaseMethod" | "Method" | "Touched" return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(ClassFixture, "binary_type_function_works_with_default_argument")
 {
     if (!FFlag::LuauSolverV2)
@@ -1026,6 +1040,20 @@ TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes")
 
     CheckResult result = check(R"(
         type KeysOfMyObject = index<BaseClass, "BaseField">
+
+        local function ok(idx: KeysOfMyObject): number return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes_with_parents")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        type KeysOfMyObject = index<ChildClass, "BaseField">
 
         local function ok(idx: KeysOfMyObject): number return idx end
     )");
