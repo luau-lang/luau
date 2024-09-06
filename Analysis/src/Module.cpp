@@ -15,7 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauSkipEmptyInstantiations, false);
 
 namespace Luau
 {
@@ -122,7 +121,7 @@ struct ClonePublicInterface : Substitution
 
         if (FunctionType* ftv = getMutable<FunctionType>(result))
         {
-            if (FFlag::LuauSkipEmptyInstantiations && ftv->generics.empty() && ftv->genericPacks.empty())
+            if (ftv->generics.empty() && ftv->genericPacks.empty())
             {
                 GenericTypeFinder marker;
                 marker.traverse(result);
