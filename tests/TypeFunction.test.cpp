@@ -388,6 +388,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
     CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_single_entry_no_uniontype")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        local tbl_A = { abc = "value" }
+        local tbl_B = { a1 = nil, ["a2"] = nil }
+
+        type keyof_A = keyof<typeof(tbl_A)>
+        type keyof_B = keyof<typeof(tbl_B)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireTypeAlias("keyof_A")) == "\"abc\"");
+    CHECK(toString(requireTypeAlias("keyof_B")) == "\"a1\" | \"a2\"");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontable_part")
 {
     if (!FFlag::LuauSolverV2)
