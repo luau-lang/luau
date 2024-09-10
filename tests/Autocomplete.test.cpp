@@ -650,6 +650,48 @@ TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_within_a_broken_co
     CHECK_EQ(ac.context, AutocompleteContext::Unknown);
 }
 
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_freetable_shows_nullopt_writeTy_outsideOfFuncScope_fix")
+{
+    TypeArena arena;
+    frontend.globals.globalScope->exportedTypeBindings["FreeTable"] = TypeFun{{}, arena.addType(TableType{TableState::Free, TypeLevel{}})};
+
+    // This fix only works for the new type solver.
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult check1 = check(R"(
+local tbl_A = {} :: FreeTable
+tbl_A.abc = 1
+
+print(tbl_A.notWritingTo)
+
+function test(a)
+    a.@3
+    if (a.propertyTest) then return true end
+    return false
+end
+
+test({@2})
+
+tbl_A.@1
+)");
+
+    //auto test1 = toString(requireType("tbl_A"));
+    //auto test2 = requireType("tbl_A");
+
+    auto ac1 = autocomplete('1');
+
+    auto ac2 = autocomplete('2');
+    //auto ac3 = autocomplete('3');
+
+    // tbl_A indexing, the main problem that is to fix.
+    CHECK_EQ(ac1.entryMap.count("abc"), 1);
+    CHECK_EQ(ac1.entryMap.count("notWritingTo"), 0);
+
+    // when within function({})
+    CHECK_EQ(ac2.entryMap.count("propertyTest"), 1);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_middle_keywords")
 {
     check(R"(

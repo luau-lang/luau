@@ -303,6 +303,29 @@ static void autocompleteProps(
                 else
                     type = follow(prop.type());
 
+
+                // If a "TableType" is a "Free State"
+                // Somehow readTy only properties get added into it
+                // This part removes them if writeTy is empty
+                //
+                // This gets rid of unassigned properties in the autocomplete.
+                if (FFlag::LuauSolverV2)
+                {
+                    if (auto tblTy = get<TableType>(rootTy))
+                    {
+                        // This probably won't assure for nested tables?
+                        if (tblTy->state == TableState::Free)
+                        {
+                            // If this property was never written to.
+                            if (prop.writeTy == std::nullopt)
+                            {
+                                continue; // Skip this
+                            }
+                        }
+                    }
+                }
+
+
                 TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
                                                   ? TypeCorrectKind::Correct
                                                   : checkTypeCorrectKind(module, typeArena, builtinTypes, nodes.back(), {{}, {}}, type);
