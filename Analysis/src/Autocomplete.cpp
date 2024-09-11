@@ -199,6 +199,8 @@ static TypeCorrectKind checkTypeCorrectKind(
     {
         for (TypeId id : itv->parts)
         {
+            id = follow(id);
+
             if (const FunctionType* ftv = get<FunctionType>(id); ftv && checkFunctionType(ftv))
             {
                 return TypeCorrectKind::CorrectFunctionResult;
