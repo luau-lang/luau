@@ -843,7 +843,7 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
 
     if (FFlag::LuauSolverV2)
     {
-        CHECK("<a>(a, 'b) -> ()" == toString(requireType("foo")));
+        CHECK("<a>(a, unknown) -> ()" == toString(requireType("foo")));
     }
     else
         CHECK("<a, b>(a, b) -> ()" == toString(requireType("foo")));

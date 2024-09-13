@@ -133,7 +133,12 @@ static int lua_vector_cross(lua_State* L)
     const float* a = luaL_checkvector(L, 1);
     const float* b = luaL_checkvector(L, 2);
 
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0], 0.0f);
+#else
     lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
+#endif
+
     return 1;
 }
 
@@ -144,15 +149,25 @@ static int lua_vector_index(lua_State* L)
 
     if (strcmp(name, "Magnitude") == 0)
     {
+#if LUA_VECTOR_SIZE == 4
+        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]));
+#else
         lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+#endif
         return 1;
     }
 
     if (strcmp(name, "Unit") == 0)
     {
+#if LUA_VECTOR_SIZE == 4
+        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+
+        lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt, v[3] * invSqrt);
+#else
         float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 
         lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt);
+#endif
         return 1;
     }
 

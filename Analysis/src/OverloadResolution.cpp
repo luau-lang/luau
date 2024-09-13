@@ -107,6 +107,7 @@ std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location
         case ErrorSuppression::NormalizationFailed:
             errors.emplace_back(location, NormalizationTooComplex{});
             // intentionally fallthrough here since we couldn't prove this was error-suppressing
+            [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
             errors.emplace_back(location, TypeMismatch{superTy, subTy});
             break;
@@ -136,6 +137,7 @@ std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location
         case ErrorSuppression::NormalizationFailed:
             errors.emplace_back(location, NormalizationTooComplex{});
             // intentionally fallthrough here since we couldn't prove this was error-suppressing
+            [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
             errors.emplace_back(location, TypePackMismatch{superTy, subTy});
             break;
@@ -301,6 +303,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 case ErrorSuppression::NormalizationFailed:
                     errors.emplace_back(argLocation, NormalizationTooComplex{});
                     // intentionally fallthrough here since we couldn't prove this was error-suppressing
+                    [[fallthrough]];
                 case ErrorSuppression::DoNotSuppress:
                     // TODO extract location from the SubtypingResult path and argExprs
                     switch (reason.variance)

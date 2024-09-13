@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauDCRMagicFunctionTypeChecker);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -793,8 +792,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
 TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 {
-    ScopedFastFlag sff{FFlag::LuauDCRMagicFunctionTypeChecker, true};
-
     CheckResult result = check("local _ = ('%s'):format(5)");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -807,7 +804,6 @@ TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 {
-    ScopedFastFlag sff{FFlag::LuauDCRMagicFunctionTypeChecker, true};
     CheckResult result = check(R"(
         local _ = ("%s"):format("%d", "hello")
     )");
@@ -819,7 +815,6 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
 {
-    ScopedFastFlag sff{FFlag::LuauDCRMagicFunctionTypeChecker, true};
     CheckResult result = check(R"(
         local _ = ("%s %d").format("%d %s", "A type error", 2)
     )");
@@ -878,7 +873,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "debug_info_is_crazy")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "aliased_string_format")
 {
-    ScopedFastFlag sff{FFlag::LuauDCRMagicFunctionTypeChecker, true};
     CheckResult result = check(R"(
         local fmt = string.format
         local s = fmt("%d", "oops")
@@ -938,7 +932,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_on_variadic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_report_all_type_errors_at_correct_positions")
 {
-    ScopedFastFlag sff{FFlag::LuauDCRMagicFunctionTypeChecker, true};
     CheckResult result = check(R"(
         ("%s%d%s"):format(1, "hello", true)
         string.format("%s%d%s", 1, "hello", true)

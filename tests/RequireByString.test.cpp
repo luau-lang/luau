@@ -436,6 +436,12 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
     assertOutputContainsAll({"true", "result from other_dependency"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAliasPointingToDirectory")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/directory_alias_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true", "result from subdirectory_dependency"});
+}
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasThatDoesNotExist")
 {

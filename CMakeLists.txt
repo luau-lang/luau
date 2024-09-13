@@ -111,6 +111,7 @@ if(MSVC)
     list(APPEND LUAU_OPTIONS "/we4388") # Also signed/unsigned mismatch
 else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
+    list(APPEND LUAU_OPTIONS -Wimplicit-fallthrough)
     list(APPEND LUAU_OPTIONS -Wsign-compare) # This looks to be included in -Wall for GCC but not clang
 endif()
 

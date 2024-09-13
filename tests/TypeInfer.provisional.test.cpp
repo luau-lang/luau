@@ -1310,9 +1310,7 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
     if (FFlag::LuauSolverV2)
     {
         LUAU_CHECK_ERROR_COUNT(2, result);
-
-        // The second argument should be unknown.  CLI-111111
-        CHECK("<T>({T}, 'b) -> number" == toString(requireType("find_first")));
+        CHECK("<T>({T}, unknown) -> number" == toString(requireType("find_first")));
     }
     else
     {
