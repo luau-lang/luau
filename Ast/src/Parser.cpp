@@ -784,6 +784,7 @@ AstStat* Parser::parseAttributeStat()
             AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
             return parseDeclaration(expr->location, attributes);
         }
+        [[fallthrough]];
     default:
         return reportStatError(
             lexer.current().location,

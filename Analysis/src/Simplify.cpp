@@ -141,6 +141,7 @@ Relation combine(Relation a, Relation b)
         case Relation::Superset:
             return Relation::Intersects;
         }
+        break;
     case Relation::Coincident:
         switch (b)
         {
@@ -155,6 +156,7 @@ Relation combine(Relation a, Relation b)
         case Relation::Superset:
             return Relation::Intersects;
         }
+        break;
     case Relation::Superset:
         switch (b)
         {
@@ -169,6 +171,7 @@ Relation combine(Relation a, Relation b)
         case Relation::Superset:
             return Relation::Superset;
         }
+        break;
     case Relation::Subset:
         switch (b)
         {
@@ -183,6 +186,7 @@ Relation combine(Relation a, Relation b)
         case Relation::Superset:
             return Relation::Intersects;
         }
+        break;
     case Relation::Intersects:
         switch (b)
         {
@@ -197,6 +201,7 @@ Relation combine(Relation a, Relation b)
         case Relation::Superset:
             return Relation::Intersects;
         }
+        break;
     }
 
     LUAU_UNREACHABLE();

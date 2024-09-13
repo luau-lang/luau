@@ -99,6 +99,7 @@ struct Fixture
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
+    ScopedFastFlag sff_LuauDCRMagicFunctionTypeChecker;
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;

@@ -204,7 +204,18 @@ void RequireResolver::substituteAliasIfPresent(std::string& path)
 {
     if (path.size() < 1 || path[0] != '@')
         return;
-    std::string potentialAlias = path.substr(1, path.find_first_of("\\/"));
+
+    // To ignore the '@' alias prefix when processing the alias
+    const size_t aliasStartPos = 1;
+
+    // If a directory separator was found, the length of the alias is the
+    // distance between the start of the alias and the separator. Otherwise,
+    // the whole string after the alias symbol is the alias.
+    size_t aliasLen = path.find_first_of("\\/");
+    if (aliasLen != std::string::npos)
+        aliasLen -= aliasStartPos;
+
+    const std::string potentialAlias = path.substr(aliasStartPos, aliasLen);
 
     // Not worth searching when potentialAlias cannot be an alias
     if (!Luau::isValidAlias(potentialAlias))

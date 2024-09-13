@@ -20,6 +20,19 @@
 #define LUAU_DEBUGBREAK() __builtin_trap()
 #endif
 
+// LUAU_FALLTHROUGH is a C++11-compatible alternative to [[fallthrough]] for use in the VM library
+#if defined(__clang__) && defined(__has_warning)
+#if __has_feature(cxx_attributes) && __has_warning("-Wimplicit-fallthrough")
+#define LUAU_FALLTHROUGH [[clang::fallthrough]]
+#else
+#define LUAU_FALLTHROUGH
+#endif
+#elif defined(__GNUC__) && __GNUC__ >= 7
+#define LUAU_FALLTHROUGH [[gnu::fallthrough]]
+#else
+#define LUAU_FALLTHROUGH
+#endif
+
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #define LUAU_BIG_ENDIAN
 #endif

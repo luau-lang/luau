@@ -7,6 +7,7 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
@@ -1419,10 +1420,19 @@ TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics3")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "quantify_functions_with_no_generics")
+{
+    CheckResult result = check(R"(
+        function foo(f, x)
+            return f(x)
+        end
+    )");
+
+    CHECK("<a, b...>((a) -> (b...), a) -> (b...)" == toString(requireType("foo")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-
     CheckResult result = check(R"(
         function foo<X>(f, x: X)
             return f(x)
@@ -1430,6 +1440,17 @@ TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_gen
     )");
 
     CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_extra_quantification_for_generic_functions")
+{
+    CheckResult result = check(R"(
+        function foo<X, Y>(f : (X) -> Y, x: X)
+            return f(x)
+        end
+    )");
+
+    CHECK("<X, Y>((X) -> Y, X) -> Y" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "do_not_always_instantiate_generic_intersection_types")
@@ -1533,6 +1554,19 @@ TEST_CASE_FIXTURE(Fixture, "missing_generic_type_parameter")
 
     REQUIRE(get<UnknownSymbol>(result.errors[0]));
     REQUIRE(get<UnknownSymbol>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_implicit_explicit_name_clash")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    auto result = check(R"(
+        function apply<a>(func, argument: a)
+            return func(argument)
+        end
+    )");
+
+    CHECK("<a, b...>((a) -> (b...), a) -> (b...)" == toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")

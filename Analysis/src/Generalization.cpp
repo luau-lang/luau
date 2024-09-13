@@ -887,9 +887,6 @@ std::optional<TypeId> generalize(
     if (ty->owningArena != arena || ty->persistent)
         return ty;
 
-    if (const FunctionType* ft = get<FunctionType>(ty); ft && (!ft->generics.empty() || !ft->genericPacks.empty()))
-        return ty;
-
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
@@ -912,8 +909,17 @@ std::optional<TypeId> generalize(
     FunctionType* ftv = getMutable<FunctionType>(ty);
     if (ftv)
     {
-        ftv->generics = std::move(gen.generics);
-        ftv->genericPacks = std::move(gen.genericPacks);
+        // If we're generalizing a function type, add any of the newly inferred
+        // generics to the list of existing generic types.
+        for (const auto g : std::move(gen.generics))
+        {
+            ftv->generics.push_back(g);
+        }
+        // Ditto for generic packs.
+        for (const auto gp : std::move(gen.genericPacks))
+        {
+            ftv->genericPacks.push_back(gp);
+        }
     }
 
     return ty;

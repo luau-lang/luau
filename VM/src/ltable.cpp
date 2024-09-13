@@ -659,7 +659,7 @@ const TValue* luaH_get(Table* t, const TValue* key)
         luai_num2int(k, n);
         if (luai_numeq(cast_num(k), nvalue(key))) // index is int?
             return luaH_getnum(t, k);             // use specialized version
-                                                  // else go through
+        LUAU_FALLTHROUGH;                         // else go through
     }
     default:
     {

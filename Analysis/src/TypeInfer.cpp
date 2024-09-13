@@ -2751,7 +2751,7 @@ TypeId TypeChecker::checkRelationalOperation(
         if (lhsIsAny || rhsIsAny)
             return booleanType;
 
-        // Fallthrough here is intentional
+        [[fallthrough]];
     }
     case AstExprBinary::CompareLt:
     case AstExprBinary::CompareGt:
