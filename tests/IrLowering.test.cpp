@@ -937,6 +937,7 @@ bb_bytecode_0:
     );
 }
 
+#if LUA_VECTOR_SIZE == 3
 TEST_CASE("FastcallTypeInferThroughLocal")
 {
     CHECK_EQ(
@@ -1045,6 +1046,7 @@ bb_bytecode_1:
 )"
     );
 }
+#endif
 
 TEST_CASE("LoadAndMoveTypePropagation")
 {
@@ -1115,6 +1117,7 @@ bb_bytecode_4:
     );
 }
 
+#if LUA_VECTOR_SIZE == 3
 TEST_CASE("ArgumentTypeRefinement")
 {
     CHECK_EQ(
@@ -1152,6 +1155,7 @@ bb_bytecode_0:
 )"
     );
 }
+#endif
 
 TEST_CASE("InlineFunctionType")
 {
@@ -1422,6 +1426,7 @@ bb_2:
     );
 }
 
+#if LUA_VECTOR_SIZE == 3
 TEST_CASE("UnaryTypeResolve")
 {
     CHECK_EQ(
@@ -1443,6 +1448,7 @@ end
 )"
     );
 }
+#endif
 
 TEST_CASE("ForInManualAnnotation")
 {

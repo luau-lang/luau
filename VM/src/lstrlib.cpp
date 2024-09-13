@@ -552,9 +552,9 @@ init: // using goto's to optimize tail recursion
                     }
                     break;
                 }
-                case '+': // 1 or more repetitions
-                    s++;  // 1 match already done
-                          // go through
+                case '+':             // 1 or more repetitions
+                    s++;              // 1 match already done
+                    LUAU_FALLTHROUGH; // go through
                 case '*': // 0 or more repetitions
                     s = max_expand(ms, s, p, ep);
                     break;
@@ -1480,7 +1480,8 @@ static int str_pack(lua_State* L)
             break;
         }
         case Kpadding:
-            luaL_addchar(&b, LUAL_PACKPADBYTE); // FALLTHROUGH
+            luaL_addchar(&b, LUAL_PACKPADBYTE);
+            LUAU_FALLTHROUGH;
         case Kpaddalign:
         case Knop:
             arg--; // undo increment

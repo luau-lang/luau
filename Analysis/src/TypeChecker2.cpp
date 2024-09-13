@@ -1378,7 +1378,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
             break;
         case ErrorSuppression::NormalizationFailed:
             reportError(NormalizationTooComplex{}, call->func->location);
-            // fallthrough intentional
+            [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
             reportError(OptionalValueAccess{fnTy}, call->func->location);
         }
@@ -1582,7 +1582,7 @@ TypeId TypeChecker2::stripFromNilAndReport(TypeId ty, const Location& location)
             break;
         case ErrorSuppression::NormalizationFailed:
             reportError(NormalizationTooComplex{}, location);
-            // fallthrough intentional
+            [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
             reportError(OptionalValueAccess{ty}, location);
         }
@@ -1666,7 +1666,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
             break;
         case ErrorSuppression::NormalizationFailed:
             reportError(NormalizationTooComplex{}, indexExpr->location);
-            // fallthrough intentional
+            [[fallthrough]];
         case ErrorSuppression::DoNotSuppress:
             reportError(OptionalValueAccess{exprType}, indexExpr->location);
         }
@@ -2723,6 +2723,7 @@ void TypeChecker2::explainError(TypeId subTy, TypeId superTy, Location location,
         return;
     case ErrorSuppression::NormalizationFailed:
         reportError(NormalizationTooComplex{}, location);
+        break;
     case ErrorSuppression::DoNotSuppress:
         break;
     }
@@ -2741,6 +2742,7 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
         return;
     case ErrorSuppression::NormalizationFailed:
         reportError(NormalizationTooComplex{}, location);
+        break;
     case ErrorSuppression::DoNotSuppress:
         break;
     }

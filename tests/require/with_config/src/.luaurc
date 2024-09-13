@@ -1,6 +1,7 @@
 {
     "paths": ["../ProjectLuauLibraries"],
     "aliases": {
-        "dep": "dependency"
+        "dep": "dependency",
+        "subdir": "subdirectory"
     }
 }
