@@ -927,6 +927,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
     CHECK_EQ("string", toString(tpm->givenTp));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        local PlayerData = {
+            Coins = 0,
+            Level = 1,
+            Exp = 0,
+            MaxExp = 100
+        }
+
+        type Keys = index<typeof(PlayerData), keyof<typeof(PlayerData)>>
+
+        -- This function makes it think that there's going to be a pending expansion
+        local function UpdateData(key: Keys, value)
+            PlayerData[key] = value
+        end
+
+        UpdateData("Coins", 2)
+    )");
+
+    // Should not crash!
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
 {
     if (!FFlag::LuauSolverV2)
