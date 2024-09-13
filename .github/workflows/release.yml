@@ -35,7 +35,6 @@ jobs:
         name: luau-${{matrix.os.name}}
         path: Release\luau*.exe
         overwrite: true
-
   web:
     runs-on: ubuntu-latest
     steps:
