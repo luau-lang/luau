@@ -2207,13 +2207,6 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
 
     TypeId indexerTy = follow(typeParams.at(1));
 
-    // Whether the type is still pending.
-    // 
-    // TODO: A generalized sanity check function for all type functions?
-    // But it should be optional for customization
-    // for functions that specifically need type function
-    // This here fixes a stack overflow.
-    // https://github.com/luau-lang/luau/issues/1406
     if (isPending(indexerTy, ctx->solver))
     {
         return {std::nullopt, false, {indexerTy}, {}};
