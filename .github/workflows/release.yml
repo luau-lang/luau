@@ -28,13 +28,13 @@ jobs:
       with:
         name: luau-${{matrix.os.name}}
         path: luau*
-	overwrite: true
+        overwrite: true
     - uses: actions/upload-artifact@v4
       if: matrix.os.name == 'windows'
       with:
         name: luau-${{matrix.os.name}}
         path: Release\luau*.exe
-	overwrite: true
+        overwrite: true
 
   web:
     runs-on: ubuntu-latest
@@ -58,4 +58,4 @@ jobs:
       with:
         name: Luau.Web.js
         path: Luau.Web.js
-	overwrite: true
+        overwrite: true
