@@ -1422,8 +1422,13 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
     // This is probably the only thing that makes this not insane to do.
     if (auto refCount = unresolvedConstraints.find(c.freeType); refCount && *refCount > 1)
     {
-        block(c.freeType, constraint);
-        return false;
+        // canMutate here is used to check if the freeType is owned by the same constraint
+        if (canMutate(c.freeType, constraint) == false)
+        {
+            // if it isn't owned by the same constraint, then we can block it
+            block(c.freeType, constraint);
+            return false;
+        }
     }
 
     TypeId bindTo = c.primitiveType;
