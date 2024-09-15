@@ -953,6 +953,36 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
     // Should not crash!
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_andGeneralTypeFunction_dependency_issue1")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    // Explanation https://devforum.roblox.com/t/new-type-solver-beta/3155804/97
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local PlayerData = {
+            Coins = 0,
+            Level = 1,
+            Exp = 0,
+            MaxExp = 100
+        }
+
+        type Keys = keyof<typeof(PlayerData)>
+
+        -- This function makes it think that there's going to be a pending expansion
+        local function UpdateData(key: Keys, value)
+            PlayerData[key] = value
+        end
+
+        UpdateData("Coins", 2)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
 {
     if (!FFlag::LuauSolverV2)

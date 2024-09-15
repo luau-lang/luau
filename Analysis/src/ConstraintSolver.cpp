@@ -305,7 +305,7 @@ struct InstantiationQueuer : TypeOnceVisitor
 
     bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
-        solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        solver->pushConstraintAfter(scope, location, ReduceConstraint{ty}, *solver->currentConstraintRef, true);
         return true;
     }
 
@@ -425,6 +425,11 @@ void ConstraintSolver::run()
             {
                 snapshot = logger->prepareStepSnapshot(rootScope, c, force, unsolvedConstraints);
             }
+
+            // Set current constraint
+            // This is used for pushing new Constraints with "pushConstraintAfter"
+            currentConstraintRef = c.get();
+            curUnsolvedConstraintPushOffset = 0; // Reset
 
             bool success = tryDispatch(c, force);
 
@@ -926,7 +931,9 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     // Adding ReduceConstraint on type function for the constraint solver
     if (auto typeFn = get<TypeFunctionInstanceType>(follow(tf->type)))
-        pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
+        pushConstraintAfter(
+            NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type}, *constraint.get()
+        );
 
     // If there are no parameters to the type function we can just use the type
     // directly.
@@ -2848,6 +2855,47 @@ NotNull<Constraint> ConstraintSolver::pushConstraint(NotNull<Scope> scope, const
     NotNull<Constraint> borrow = NotNull(c.get());
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.push_back(borrow);
+
+    return borrow;
+}
+
+NotNull<Constraint> ConstraintSolver::pushConstraintAfter(
+    NotNull<Scope> scope,
+    const Location& location,
+    ConstraintV cv,
+    const Constraint& afterConstraint,
+    bool b_isFromRecursive // optional
+)
+{
+    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(scope, location, std::move(cv));
+    NotNull<Constraint> borrow = NotNull(c.get());
+
+    // Get the location of the constraint from the unsolvedConstraints.
+    auto it = std::find(unsolvedConstraints.begin(), unsolvedConstraints.end(), NotNull(&afterConstraint));
+    // If not at the end
+    if (it != unsolvedConstraints.end())
+    {
+        // Increment index by 1, to insert after found constraint.
+        it += 1;
+
+        if (b_isFromRecursive)
+        {
+            // Increment based on offset
+            // Because they get inserted like so C, B, A
+            // And we want A, B, C
+            // for some reason I have to +1 this as well to work
+            it += curUnsolvedConstraintPushOffset + 1;
+
+            // Increase offset
+            // This resets every dispatch.
+            curUnsolvedConstraintPushOffset += 1;
+        }
+    }
+    else
+        LUAU_ASSERT("The provided \"afterConstraint\" was not found in \"unsolvedConstraints\".");
+
+    solverConstraints.push_back(std::move(c));
+    unsolvedConstraints.insert(it, borrow);
 
     return borrow;
 }
