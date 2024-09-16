@@ -96,6 +96,24 @@ TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")
     }
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_types_issue_IfThenElseIf_union_simplification")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+local v1: string?
+
+local stringButItIsHere = "Windows"
+
+v1 = if true then stringButItIsHere
+elseif false then "Something"
+else "Other"
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE("singleton_types")
 {
     BuiltinsFixture a;
