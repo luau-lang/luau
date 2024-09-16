@@ -690,6 +690,85 @@ TEST_CASE_FIXTURE(ClassFixture, "vector2_multiply_is_overloaded")
     CHECK("mul<Vector2, string>" == toString(requireType("v4")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_used_as_table_indexer_assignProp_no_error")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult check1 = check(R"(
+--!strict
+
+type NumberTable = {
+    One: number,
+    Two: number,
+    Three: number
+}
+
+type Indexables = "One" | "Two" | "Three" | typeof(5)
+
+type Test = {
+    TestKey: number,
+    [Indexables | "Four"]: number
+}
+
+local tbl = {} :: Test 
+
+-- This was just used to compare it with index
+-- type TestIndex = index<typeof(tbl), "Three">
+
+tbl["Three"] = 3;
+tbl.Three = 3;
+tbl.Four = 4;
+tbl.TestKey = 5;
+)");
+
+    // It should be possible to do "tbl.Three" without erroring.
+    LUAU_REQUIRE_NO_ERRORS(check1);
+
+    // auto test1 = requireTypeAlias("TestIndex");
+    // auto test2 = requireType("tbl");
+
+    // TODO: This doesn't include the autocomplete fix
+    // That has to be still made.
+    // It is supposed to include the indexes from the UnionType
+    // but it is possible to have more than just that
+    // It's also to note that strings may not be the only indexable things
+    // auto ac = autocomplete('1');
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_used_as_table_indexer_assignProp_no_error")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult check1 = check(R"(
+--!strict
+
+type NumberTable = {
+    One: number,
+    Two: number,
+    Three: number
+}
+
+type Indexables = keyof<NumberTable>
+
+type Test = {
+    TestKey: number,
+    [Indexables | "Four"]: number
+}
+
+local tbl = {} :: Test 
+
+tbl["Three"] = 3;
+tbl.Three = 3;
+tbl.Four = 4;
+tbl.TestKey = 5;
+)");
+
+    // It should be possible to do "tbl.Three" without erroring.
+    LUAU_REQUIRE_NO_ERRORS(check1);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
 {
     if (!FFlag::LuauSolverV2)

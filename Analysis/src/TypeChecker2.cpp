@@ -3015,6 +3015,60 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
             if (isPrim(indexType, PrimitiveType::String))
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
             // If the indexer looks like { [any] : _} - the prop lookup should be allowed!
+            else if (auto indexTy = get<UnionType>(indexType))
+            {
+                // If the Indexer is a UnionType
+                // TODO: This is looping everytime, on every request, through everything?
+                // That doesn't sound good. But I am not sure if the other parts do that as well.
+                auto visitOption = [&](TypeId& option, const std::string& prop) -> PropertyType
+                {
+                    if (auto tySingleton = get<SingletonType>(option))
+                        if (auto ty = get<StringSingleton>(tySingleton))
+                            if (ty->value == prop)
+                                return {NormalizationResult::True, {tt->indexer->indexResultType}};
+
+                    // If all fails
+                    return {NormalizationResult::False, {}};
+                };
+
+                auto visitUnionOptions = [&](UnionType unionTy, const std::string& prop) -> PropertyType
+                {
+                    for (TypeId option : unionTy.options)
+                    {
+                        option = follow(option);
+
+                        // No recurse
+                        if (get<UnionType>(option))
+                            return {NormalizationResult::False, {}};
+
+                        PropertyType result = visitOption(option, prop);
+                        if (result.present == NormalizationResult::False)
+                            continue; // Continue searching if it failed
+
+                        // Otherwise return
+                        return result;
+                    }
+
+                    // If all fails
+                    return {NormalizationResult::False, {}};
+                };
+
+                for (TypeId option : indexTy->options)
+                {
+                    option = follow(option);
+
+                    if (auto unionTy = get<UnionType>(option))
+                    {
+                        PropertyType result = visitUnionOptions(*unionTy, prop);
+                        if (result.present == NormalizationResult::False)
+                            continue; // Continue searching if it failed
+                        else
+                            return result; // Otherwise return
+                    }
+
+                    return visitOption(option, prop);
+                }
+            }
             else if (get<AnyType>(indexType) || get<UnknownType>(indexType))
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
         }
