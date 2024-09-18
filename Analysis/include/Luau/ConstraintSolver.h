@@ -98,6 +98,9 @@ struct ConstraintSolver
     DenseHashSet<TypeId> generalizedTypes_{nullptr};
     const NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
+    // The current Constraint that is being processed, can be nullptr.
+    const Constraint* currentConstraintRef;
+
     // Recorded errors that take place within the solver.
     ErrorVec errors;
 

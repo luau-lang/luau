@@ -284,6 +284,252 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
     }
 }
 
+struct TypeFinder : TypeOnceVisitor
+{
+    TypeId tyToFind;
+    bool hasFoundType = false;
+
+    // SOLID Principle for telling that we found the type.
+    void makeFound(TypeId ty)
+    {
+        hasFoundType = true;
+    }
+
+    // Reset the boolean
+    // so we don't tell that we found a type we didn't actually find.
+    void reset()
+    {
+        hasFoundType = false;
+    }
+
+    bool visit(TypeId ty) override
+    {
+        ty = follow(ty);
+
+        if (ty == tyToFind)
+            makeFound(ty); // If we found the type
+
+        return true;
+    }
+
+    // Override for IntersectionTypes
+    bool visit(TypeId ty, const IntersectionType& iTy) override
+    {
+        for (TypeId part : iTy.parts)
+        {
+            part = follow(part);
+
+            if (part == tyToFind)
+                makeFound(part); // If we found the type
+        }
+
+        return visit(ty);
+    }
+
+    bool isMatch(TypeId ty)
+    {
+        reset();
+
+        if (ty == tyToFind)
+            makeFound(ty);
+        else
+            traverse(ty);
+
+        if (hasFoundType == true)
+            return true;
+        else
+            return false;
+    }
+};
+
+// A way to find a type, such as a dependency through Constraints
+struct ConstraintTypeFinder
+{
+    // TODO: Standardize Constraint Visitors?
+
+    TypeId tyToFind;
+    TypeFinder typeFinder{};
+
+    explicit ConstraintTypeFinder(TypeId tyToFind)
+        : tyToFind(tyToFind)
+    {
+        typeFinder.tyToFind = tyToFind;
+    }
+
+    bool visit(AssignIndexConstraint c)
+    {
+        if (typeFinder.isMatch(c.indexType))
+            return true;
+        if (typeFinder.isMatch(c.lhsType))
+            return true;
+        if (typeFinder.isMatch(c.propType))
+            return true;
+        if (typeFinder.isMatch(c.rhsType))
+            return true;
+
+        return false;
+    }
+    bool visit(AssignPropConstraint c)
+    {
+        if (typeFinder.isMatch(c.lhsType))
+            return true;
+        if (typeFinder.isMatch(c.propType))
+            return true;
+        if (typeFinder.isMatch(c.rhsType))
+            return true;
+
+        return false;
+    }
+    bool visit(EqualityConstraint c)
+    {
+        if (typeFinder.isMatch(c.assignmentType))
+            return true;
+        if (typeFinder.isMatch(c.resultType))
+            return true;
+
+        return false;
+    }
+    bool visit(FunctionCallConstraint c)
+    {
+        if (typeFinder.isMatch(c.fn))
+            return true;
+        // argPacks not included
+
+        return false;
+    }
+    bool visit(FunctionCheckConstraint c)
+    {
+        if (typeFinder.isMatch(c.fn))
+            return true;
+        // argsPacks not included
+
+        return false;
+    }
+    bool visit(GeneralizationConstraint c)
+    {
+        if (typeFinder.isMatch(c.generalizedType))
+            return true;
+        if (typeFinder.isMatch(c.sourceType))
+            return true;
+        for (auto ty : c.interiorTypes)
+        {
+            if (typeFinder.isMatch(ty))
+                return true;
+        }
+
+        return false;
+    }
+    bool visit(IterableConstraint c)
+    {
+        for (auto ty : c.variables)
+        {
+            if (typeFinder.isMatch(ty))
+                return true;
+        }
+
+        return false;
+    }
+    bool visit(NameConstraint c)
+    {
+        if (typeFinder.isMatch(c.namedType))
+            return true;
+
+        for (auto ty : c.typeParameters)
+        {
+            if (typeFinder.isMatch(ty))
+                return true;
+        }
+
+        return false;
+    }
+    bool visit(PackSubtypeConstraint c)
+    {
+        // ?
+        return false;
+    }
+    bool visit(PrimitiveTypeConstraint c)
+    {
+        if (typeFinder.isMatch(c.freeType))
+            return true;
+        if (typeFinder.isMatch(c.primitiveType))
+            return true;
+        // expectedType needed?
+
+        return false;
+    }
+    bool visit(ReduceConstraint c)
+    {
+        if (typeFinder.isMatch(c.ty))
+            return true;
+
+        return false;
+    }
+    bool visit(ReducePackConstraint c)
+    {
+        // ?
+        return false;
+    }
+    bool visit(SubtypeConstraint c)
+    {
+        if (typeFinder.isMatch(c.subType))
+            return true;
+        if (typeFinder.isMatch(c.superType))
+            return true;
+
+        return false;
+    }
+    bool visit(TypeAliasExpansionConstraint c)
+    {
+        if (typeFinder.isMatch(c.target))
+            return true;
+
+        return false;
+    }
+    bool visit(UnpackConstraint c)
+    {
+        // ?
+        return false;
+    }
+
+
+    // Returns true if it found the type.
+    bool traverseAndFind(ConstraintV cV)
+    {
+        if (auto c = get_if<AssignIndexConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<AssignPropConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<EqualityConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<FunctionCallConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<FunctionCheckConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<GeneralizationConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<IterableConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<NameConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<PackSubtypeConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<PrimitiveTypeConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<ReduceConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<ReducePackConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<SubtypeConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<TypeAliasExpansionConstraint>(&cV))
+            return visit(*c);
+        else if (auto c = get_if<UnpackConstraint>(&cV))
+            return visit(*c);
+
+        return false;
+    }
+};
+
 struct InstantiationQueuer : TypeOnceVisitor
 {
     ConstraintSolver* solver;
@@ -305,7 +551,27 @@ struct InstantiationQueuer : TypeOnceVisitor
 
     bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
-        solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        auto newConstraint = solver->pushConstraint(scope, location, ReduceConstraint{ty});
+
+        if (solver->currentConstraintRef)
+        {
+            // Block the things that depend on the Pending Expansion that is being expanded
+            // On the resolution of the new Reduction Constraint
+            if (auto currentC = get_if<TypeAliasExpansionConstraint>(&solver->currentConstraintRef->c))
+            {
+                auto cFinder = ConstraintTypeFinder(currentC->target);
+
+                for (auto constraint : solver->constraints)
+                {
+                    if (solver->currentConstraintRef == constraint || newConstraint == constraint)
+                        continue;
+
+                    if (cFinder.traverseAndFind(constraint.get()->c))
+                        solver->block(static_cast<NotNull<const Constraint>>(newConstraint), constraint);
+                }
+            }
+        }
+
         return true;
     }
 
@@ -425,6 +691,9 @@ void ConstraintSolver::run()
             {
                 snapshot = logger->prepareStepSnapshot(rootScope, c, force, unsolvedConstraints);
             }
+
+            // Set current Constraint
+            currentConstraintRef = c.get();
 
             bool success = tryDispatch(c, force);
 
