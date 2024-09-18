@@ -28,6 +28,7 @@
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverMoreDetails, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false);
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500);
@@ -418,12 +419,24 @@ void ConstraintSolver::run()
             if (limits.cancellationToken && limits.cancellationToken->requested())
                 throwUserCancelError();
 
-            std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
+            std::string constraintDumpStr = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
             StepSnapshot snapshot;
 
             if (logger)
             {
                 snapshot = logger->prepareStepSnapshot(rootScope, c, force, unsolvedConstraints);
+            }
+
+            // More Debugging Info
+            if (FFlag::DebugLuauLogSolver && FFlag::DebugLuauLogSolverMoreDetails)
+            {
+                printf(
+                    "\n" "\033[0;38;2;255;255;0m\033[48;2;20;20;20m" "tryDispatch:%s" "\033[K\033[39m" "\n"
+                    "\t%s" "\033[0m" "\n\n",
+
+                    (force ? " \033[7;38;2;50;50;0m!! Forced\033[27m" : ""),
+                    constraintDumpStr.c_str()
+                );
             }
 
             bool success = tryDispatch(c, force);
@@ -460,7 +473,7 @@ void ConstraintSolver::run()
                 {
                     if (force)
                         printf("Force ");
-                    printf("Dispatched\n\t%s\n", saveMe.c_str());
+                    printf("Dispatched\n\t%s\n", constraintDumpStr.c_str());
 
                     if (force)
                     {
