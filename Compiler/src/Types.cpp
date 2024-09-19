@@ -681,6 +681,7 @@ struct TypeMapVisitor : AstVisitor
             case LBF_TYPE:
             case LBF_STRING_CHAR:
             case LBF_TYPEOF:
+            case LBF_BIT32_TOHEX:
             case LBF_STRING_SUB:
             case LBF_TOSTRING:
                 recordResolvedType(node, &builtinTypes.stringType);

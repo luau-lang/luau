@@ -444,6 +444,11 @@ static void applyBuiltinCall(int bfid, BytecodeTypes& types)
         types.result = LBC_TYPE_NUMBER;
         types.a = LBC_TYPE_NUMBER;
         break;
+    case LBF_BIT32_TOHEX:
+        types.result = LBC_TYPE_STRING;
+        types.a = LBC_TYPE_NUMBER;
+        types.b = LBC_TYPE_NUMBER;
+        break;
     case LBF_BUFFER_READI8:
     case LBF_BUFFER_READU8:
         types.result = LBC_TYPE_NUMBER;

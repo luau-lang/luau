@@ -168,6 +168,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BIT32_COUNTRZ;
         if (builtin.method == "byteswap")
             return LBF_BIT32_BYTESWAP;
+        if (builtin.method == "tohex")
+            return LBF_BIT32_TOHEX;
     }
 
     if (builtin.object == "string")
@@ -445,6 +447,7 @@ BuiltinInfo getBuiltinInfo(int bfid)
         return {1, 1};
 
     case LBF_BIT32_BYTESWAP:
+    case LBF_BIT32_TOHEX:
         return {1, 1, BuiltinInfo::Flag_NoneSafe};
 
     case LBF_BUFFER_READI8:

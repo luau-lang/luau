@@ -15,6 +15,7 @@
 #define mask(n) (~((ALLONES << 1) << ((n)-1)))
 
 typedef unsigned b_uint;
+typedef signed b_int;
 
 static b_uint andaux(lua_State* L)
 {
@@ -219,6 +220,31 @@ static int b_swap(lua_State* L)
     return 1;
 }
 
+static int b_tohex(lua_State* L)
+{
+    const unsigned digitsBoundary = 8;
+
+    b_uint b = luaL_checkunsigned(L, 1);
+    b_int n = lua_isnone(L, 2) ? digitsBoundary : (b_int)luaL_checkinteger(L, 2);
+    const char* hexdigits = "0123456789abcdef";
+    char buf[digitsBoundary];
+    int i;
+    if (n < 0)
+    {
+        n = -n;
+        hexdigits = "0123456789ABCDEF";
+    }
+    if (n > digitsBoundary)
+        n = digitsBoundary;
+    for (i = (int)n; --i >= 0;)
+    {
+        buf[i] = hexdigits[b & 15];
+        b >>= 4;
+    }
+    lua_pushlstring(L, buf, (size_t)n);
+    return 1;
+}
+
 static const luaL_Reg bitlib[] = {
     {"arshift", b_arshift},
     {"band", b_and},
@@ -235,6 +261,7 @@ static const luaL_Reg bitlib[] = {
     {"countlz", b_countlz},
     {"countrz", b_countrz},
     {"byteswap", b_swap},
+    {"tohex", b_tohex},
     {NULL, NULL},
 };
 

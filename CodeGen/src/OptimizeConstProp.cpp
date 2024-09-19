@@ -523,6 +523,7 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_TONUMBER:
     case LBF_TOSTRING:
     case LBF_BIT32_BYTESWAP:
+    case LBF_BIT32_TOHEX:
     case LBF_BUFFER_READI8:
     case LBF_BUFFER_READU8:
     case LBF_BUFFER_WRITEU8:

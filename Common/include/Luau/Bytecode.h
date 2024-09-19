@@ -586,6 +586,9 @@ enum LuauBuiltinFunction
     // bit32.byteswap(n)
     LBF_BIT32_BYTESWAP,
 
+    // bit32.tohex(n, n)
+    LBF_BIT32_TOHEX,
+
     // buffer.
     LBF_BUFFER_READI8,
     LBF_BUFFER_READU8,
