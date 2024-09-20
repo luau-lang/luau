@@ -939,14 +939,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
             Exp = 0,
             MaxExp = 100
         }
-
         type Keys = index<typeof(PlayerData), keyof<typeof(PlayerData)>>
-
         -- This function makes it think that there's going to be a pending expansion
         local function UpdateData(key: Keys, value)
             PlayerData[key] = value
         end
-
         UpdateData("Coins", 2)
     )");
 

@@ -21,10 +21,11 @@ LUAU_FASTFLAGVARIABLE(LuauNormalizeNotUnknownIntersection, false);
 LUAU_FASTFLAGVARIABLE(LuauFixReduceStackPressure, false);
 LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 
-// This could theoretically be 2000 on amd64, but x86 requires this.
-LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(LuauSolverV2);
+
+LUAU_FASTFLAGVARIABLE(LuauUseNormalizeIntersectionLimit, false)
+LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 
 static bool fixReduceStackPressure()
 {
@@ -3033,6 +3034,14 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     {
         clearNormal(here);
         return unionNormals(here, there, ignoreSmallerTyvars);
+    }
+
+    if (FFlag::LuauUseNormalizeIntersectionLimit)
+    {
+        // Limit based on worst-case expansion of the table intersection
+        // This restriction can be relaxed when table intersection simplification is improved
+        if (here.tables.size() * there.tables.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
+            return NormalizationResult::HitLimits;
     }
 
     here.booleans = intersectionOfBools(here.booleans, there.booleans);

@@ -2949,216 +2949,243 @@ void ConstraintGenerator::checkFunctionBody(const ScopePtr& scope, AstExprFuncti
         addConstraint(scope, fn->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, scope->returnType});
 }
 
+TypeId ConstraintGenerator::resolveReferenceType(
+    const ScopePtr& scope,
+    AstType* ty,
+    AstTypeReference* ref,
+    bool inTypeArguments,
+    bool replaceErrorWithFresh
+)
+{
+    TypeId result = nullptr;
+
+    if (FFlag::DebugLuauMagicTypes)
+    {
+        if (ref->name == "_luau_ice")
+            ice->ice("_luau_ice encountered", ty->location);
+        else if (ref->name == "_luau_print")
+        {
+            if (ref->parameters.size != 1 || !ref->parameters.data[0].type)
+            {
+                reportError(ty->location, GenericError{"_luau_print requires one generic parameter"});
+                module->astResolvedTypes[ty] = builtinTypes->errorRecoveryType();
+                return builtinTypes->errorRecoveryType();
+            }
+            else
+                return resolveType(scope, ref->parameters.data[0].type, inTypeArguments);
+        }
+    }
+
+    std::optional<TypeFun> alias;
+
+    if (ref->prefix.has_value())
+    {
+        alias = scope->lookupImportedType(ref->prefix->value, ref->name.value);
+    }
+    else
+    {
+        alias = scope->lookupType(ref->name.value);
+    }
+
+    if (alias.has_value())
+    {
+        // If the alias is not generic, we don't need to set up a blocked
+        // type and an instantiation constraint.
+        if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty())
+        {
+            result = alias->type;
+        }
+        else
+        {
+            std::vector<TypeId> parameters;
+            std::vector<TypePackId> packParameters;
+
+            for (const AstTypeOrPack& p : ref->parameters)
+            {
+                // We do not enforce the ordering of types vs. type packs here;
+                // that is done in the parser.
+                if (p.type)
+                {
+                    parameters.push_back(resolveType(scope, p.type, /* inTypeArguments */ true));
+                }
+                else if (p.typePack)
+                {
+                    TypePackId tp = resolveTypePack(scope, p.typePack, /*inTypeArguments*/ true);
+
+                    // If we need more regular types, we can use single element type packs to fill those in
+                    if (parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
+                        parameters.push_back(*first(tp));
+                    else
+                        packParameters.push_back(tp);
+                }
+                else
+                {
+                    // This indicates a parser bug: one of these two pointers
+                    // should be set.
+                    LUAU_ASSERT(false);
+                }
+            }
+
+            result = arena->addType(PendingExpansionType{ref->prefix, ref->name, parameters, packParameters});
+
+            // If we're not in a type argument context, we need to create a constraint that expands this.
+            // The dispatching of the above constraint will queue up additional constraints for nested
+            // type function applications.
+            if (!inTypeArguments)
+                addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
+        }
+    }
+    else
+    {
+        result = builtinTypes->errorRecoveryType();
+        if (replaceErrorWithFresh)
+            result = freshType(scope);
+    }
+
+    return result;
+}
+
+TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty, AstTypeTable* tab, bool inTypeArguments, bool replaceErrorWithFresh)
+{
+    TableType::Props props;
+    std::optional<TableIndexer> indexer;
+
+    for (const AstTableProp& prop : tab->props)
+    {
+        TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
+
+        Property& p = props[prop.name.value];
+        p.typeLocation = prop.location;
+
+        switch (prop.access)
+        {
+        case AstTableAccess::ReadWrite:
+            p.readTy = propTy;
+            p.writeTy = propTy;
+            break;
+        case AstTableAccess::Read:
+            p.readTy = propTy;
+            break;
+        case AstTableAccess::Write:
+            reportError(*prop.accessLocation, GenericError{"write keyword is illegal here"});
+            p.readTy = propTy;
+            p.writeTy = propTy;
+            break;
+        default:
+            ice->ice("Unexpected property access " + std::to_string(int(prop.access)));
+            break;
+        }
+    }
+
+    if (AstTableIndexer* astIndexer = tab->indexer)
+    {
+        if (astIndexer->access == AstTableAccess::Read)
+            reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+        else if (astIndexer->access == AstTableAccess::Write)
+            reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+        else if (astIndexer->access == AstTableAccess::ReadWrite)
+        {
+            indexer = TableIndexer{
+                resolveType(scope, astIndexer->indexType, inTypeArguments),
+                resolveType(scope, astIndexer->resultType, inTypeArguments),
+            };
+        }
+        else
+            ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+    }
+
+    return arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
+}
+
+TypeId ConstraintGenerator::resolveFunctionType(
+    const ScopePtr& scope,
+    AstType* ty,
+    AstTypeFunction* fn,
+    bool inTypeArguments,
+    bool replaceErrorWithFresh
+)
+{
+    bool hasGenerics = fn->generics.size > 0 || fn->genericPacks.size > 0;
+    ScopePtr signatureScope = nullptr;
+
+    std::vector<TypeId> genericTypes;
+    std::vector<TypePackId> genericTypePacks;
+
+    // If we don't have generics, we do not need to generate a child scope
+    // for the generic bindings to live on.
+    if (hasGenerics)
+    {
+        signatureScope = childScope(fn, scope);
+
+        std::vector<std::pair<Name, GenericTypeDefinition>> genericDefinitions = createGenerics(signatureScope, fn->generics);
+        std::vector<std::pair<Name, GenericTypePackDefinition>> genericPackDefinitions = createGenericPacks(signatureScope, fn->genericPacks);
+
+        for (const auto& [name, g] : genericDefinitions)
+        {
+            genericTypes.push_back(g.ty);
+        }
+
+        for (const auto& [name, g] : genericPackDefinitions)
+        {
+            genericTypePacks.push_back(g.tp);
+        }
+    }
+    else
+    {
+        // To eliminate the need to branch on hasGenerics below, we say that
+        // the signature scope is the parent scope if we don't have
+        // generics.
+        signatureScope = scope;
+    }
+
+    TypePackId argTypes = resolveTypePack(signatureScope, fn->argTypes, inTypeArguments, replaceErrorWithFresh);
+    TypePackId returnTypes = resolveTypePack(signatureScope, fn->returnTypes, inTypeArguments, replaceErrorWithFresh);
+
+    // TODO: FunctionType needs a pointer to the scope so that we know
+    // how to quantify/instantiate it.
+    FunctionType ftv{TypeLevel{}, scope.get(), {}, {}, argTypes, returnTypes};
+    ftv.isCheckedFunction = fn->isCheckedFunction();
+
+    // This replicates the behavior of the appropriate FunctionType
+    // constructors.
+    ftv.generics = std::move(genericTypes);
+    ftv.genericPacks = std::move(genericTypePacks);
+
+    ftv.argNames.reserve(fn->argNames.size);
+    for (const auto& el : fn->argNames)
+    {
+        if (el)
+        {
+            const auto& [name, location] = *el;
+            ftv.argNames.push_back(FunctionArgument{name.value, location});
+        }
+        else
+        {
+            ftv.argNames.push_back(std::nullopt);
+        }
+    }
+
+    return arena->addType(std::move(ftv));
+}
+
 TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh)
 {
     TypeId result = nullptr;
 
     if (auto ref = ty->as<AstTypeReference>())
     {
-        if (FFlag::DebugLuauMagicTypes)
-        {
-            if (ref->name == "_luau_ice")
-                ice->ice("_luau_ice encountered", ty->location);
-            else if (ref->name == "_luau_print")
-            {
-                if (ref->parameters.size != 1 || !ref->parameters.data[0].type)
-                {
-                    reportError(ty->location, GenericError{"_luau_print requires one generic parameter"});
-                    module->astResolvedTypes[ty] = builtinTypes->errorRecoveryType();
-                    return builtinTypes->errorRecoveryType();
-                }
-                else
-                    return resolveType(scope, ref->parameters.data[0].type, inTypeArguments);
-            }
-        }
-
-        std::optional<TypeFun> alias;
-
-        if (ref->prefix.has_value())
-        {
-            alias = scope->lookupImportedType(ref->prefix->value, ref->name.value);
-        }
-        else
-        {
-            alias = scope->lookupType(ref->name.value);
-        }
-
-        if (alias.has_value())
-        {
-            // If the alias is not generic, we don't need to set up a blocked
-            // type and an instantiation constraint.
-            if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty())
-            {
-                result = alias->type;
-            }
-            else
-            {
-                std::vector<TypeId> parameters;
-                std::vector<TypePackId> packParameters;
-
-                for (const AstTypeOrPack& p : ref->parameters)
-                {
-                    // We do not enforce the ordering of types vs. type packs here;
-                    // that is done in the parser.
-                    if (p.type)
-                    {
-                        parameters.push_back(resolveType(scope, p.type, /* inTypeArguments */ true));
-                    }
-                    else if (p.typePack)
-                    {
-                        TypePackId tp = resolveTypePack(scope, p.typePack, /*inTypeArguments*/ true);
-
-                        // If we need more regular types, we can use single element type packs to fill those in
-                        if (parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
-                            parameters.push_back(*first(tp));
-                        else
-                            packParameters.push_back(tp);
-                    }
-                    else
-                    {
-                        // This indicates a parser bug: one of these two pointers
-                        // should be set.
-                        LUAU_ASSERT(false);
-                    }
-                }
-
-                result = arena->addType(PendingExpansionType{ref->prefix, ref->name, parameters, packParameters});
-
-                // If we're not in a type argument context, we need to create a constraint that expands this.
-                // The dispatching of the above constraint will queue up additional constraints for nested
-                // type function applications.
-                if (!inTypeArguments)
-                    addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
-            }
-        }
-        else
-        {
-            result = builtinTypes->errorRecoveryType();
-            if (replaceErrorWithFresh)
-                result = freshType(scope);
-        }
+        result = resolveReferenceType(scope, ty, ref, inTypeArguments, replaceErrorWithFresh);
     }
     else if (auto tab = ty->as<AstTypeTable>())
     {
-        TableType::Props props;
-        std::optional<TableIndexer> indexer;
-
-        for (const AstTableProp& prop : tab->props)
-        {
-            // TODO: Recursion limit.
-            TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
-
-            Property& p = props[prop.name.value];
-            p.typeLocation = prop.location;
-
-            switch (prop.access)
-            {
-            case AstTableAccess::ReadWrite:
-                p.readTy = propTy;
-                p.writeTy = propTy;
-                break;
-            case AstTableAccess::Read:
-                p.readTy = propTy;
-                break;
-            case AstTableAccess::Write:
-                reportError(*prop.accessLocation, GenericError{"write keyword is illegal here"});
-                p.readTy = propTy;
-                p.writeTy = propTy;
-                break;
-            default:
-                ice->ice("Unexpected property access " + std::to_string(int(prop.access)));
-                break;
-            }
-        }
-
-        if (AstTableIndexer* astIndexer = tab->indexer)
-        {
-            if (astIndexer->access == AstTableAccess::Read)
-                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-            else if (astIndexer->access == AstTableAccess::Write)
-                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-            else if (astIndexer->access == AstTableAccess::ReadWrite)
-            {
-                // TODO: Recursion limit.
-                indexer = TableIndexer{
-                    resolveType(scope, astIndexer->indexType, inTypeArguments),
-                    resolveType(scope, astIndexer->resultType, inTypeArguments),
-                };
-            }
-            else
-                ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
-        }
-
-        result = arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
+        result = resolveTableType(scope, ty, tab, inTypeArguments, replaceErrorWithFresh);
     }
     else if (auto fn = ty->as<AstTypeFunction>())
     {
-        // TODO: Recursion limit.
-        bool hasGenerics = fn->generics.size > 0 || fn->genericPacks.size > 0;
-        ScopePtr signatureScope = nullptr;
-
-        std::vector<TypeId> genericTypes;
-        std::vector<TypePackId> genericTypePacks;
-
-        // If we don't have generics, we do not need to generate a child scope
-        // for the generic bindings to live on.
-        if (hasGenerics)
-        {
-            signatureScope = childScope(fn, scope);
-
-            std::vector<std::pair<Name, GenericTypeDefinition>> genericDefinitions = createGenerics(signatureScope, fn->generics);
-            std::vector<std::pair<Name, GenericTypePackDefinition>> genericPackDefinitions = createGenericPacks(signatureScope, fn->genericPacks);
-
-            for (const auto& [name, g] : genericDefinitions)
-            {
-                genericTypes.push_back(g.ty);
-            }
-
-            for (const auto& [name, g] : genericPackDefinitions)
-            {
-                genericTypePacks.push_back(g.tp);
-            }
-        }
-        else
-        {
-            // To eliminate the need to branch on hasGenerics below, we say that
-            // the signature scope is the parent scope if we don't have
-            // generics.
-            signatureScope = scope;
-        }
-
-        TypePackId argTypes = resolveTypePack(signatureScope, fn->argTypes, inTypeArguments, replaceErrorWithFresh);
-        TypePackId returnTypes = resolveTypePack(signatureScope, fn->returnTypes, inTypeArguments, replaceErrorWithFresh);
-
-        // TODO: FunctionType needs a pointer to the scope so that we know
-        // how to quantify/instantiate it.
-        FunctionType ftv{TypeLevel{}, scope.get(), {}, {}, argTypes, returnTypes};
-        ftv.isCheckedFunction = fn->isCheckedFunction();
-
-        // This replicates the behavior of the appropriate FunctionType
-        // constructors.
-        ftv.generics = std::move(genericTypes);
-        ftv.genericPacks = std::move(genericTypePacks);
-
-        ftv.argNames.reserve(fn->argNames.size);
-        for (const auto& el : fn->argNames)
-        {
-            if (el)
-            {
-                const auto& [name, location] = *el;
-                ftv.argNames.push_back(FunctionArgument{name.value, location});
-            }
-            else
-            {
-                ftv.argNames.push_back(std::nullopt);
-            }
-        }
-
-        result = arena->addType(std::move(ftv));
+        result = resolveFunctionType(scope, ty, fn, inTypeArguments, replaceErrorWithFresh);
     }
     else if (auto tof = ty->as<AstTypeTypeof>())
     {
-        // TODO: Recursion limit.
         TypeId exprType = check(scope, tof->expr).ty;
         result = exprType;
     }
@@ -3167,7 +3194,6 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
         std::vector<TypeId> parts;
         for (AstType* part : unionAnnotation->types)
         {
-            // TODO: Recursion limit.
             parts.push_back(resolveType(scope, part, inTypeArguments));
         }
 
@@ -3178,7 +3204,6 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
         std::vector<TypeId> parts;
         for (AstType* part : intersectionAnnotation->types)
         {
-            // TODO: Recursion limit.
             parts.push_back(resolveType(scope, part, inTypeArguments));
         }
 

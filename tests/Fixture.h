@@ -98,8 +98,36 @@ struct Fixture
     TypeId requireTypeAlias(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
+    // TODO: Should this be in a container of some kind? Seems a little silly
+    // to have a bunch of flags sitting on the text fixture.
+
+    // We have a couple flags that are OK to set for all tests and, in some
+    // cases, cannot easily be flipped on or off on a per-test basis. For these
+    // we set them as part of constructing the test fixture.
+
+    /* From the original commit:
+     *
+     * > This enables arena freezing for all but two unit tests. Arena
+     * > freezing marks the `TypeArena`'s underlying memory as read-only,
+     * > raising an access violation whenever you mutate it. This is useful
+     * > for tracking down violations of Luau's memory model.
+     */
     ScopedFastFlag sff_DebugLuauFreezeArena;
+
+    /* Magic typechecker functions for the new solver are initialized when the
+     * typechecker frontend is initialized, which is done at the beginning of
+     * the test: we set this flag as part of the fixture as we always want to
+     * enable the magic functions for, say, `string.format`.
+     */
     ScopedFastFlag sff_LuauDCRMagicFunctionTypeChecker;
+
+    /* While the new solver is being rolled out we are using a monotonically
+     * increasing version number to track new changes, we just set it to a
+     * sufficiently high number in tests to ensure that any guards in prod
+     * code pass in tests (so we don't accidentally reintroduce a bug before
+     * it's unflagged).
+     */
+    ScopedFastInt sff_LuauTypeSolverRelease;
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
