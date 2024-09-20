@@ -23,17 +23,18 @@ jobs:
       run: cmake . -DCMAKE_BUILD_TYPE=Release
     - name: build
       run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI --config Release -j 2
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       if: matrix.os.name != 'windows'
       with:
         name: luau-${{matrix.os.name}}
         path: luau*
-    - uses: actions/upload-artifact@v2
+        overwrite: true
+    - uses: actions/upload-artifact@v4
       if: matrix.os.name == 'windows'
       with:
         name: luau-${{matrix.os.name}}
         path: Release\luau*.exe
-
+        overwrite: true
   web:
     runs-on: ubuntu-latest
     steps:
@@ -52,7 +53,8 @@ jobs:
         source emsdk/emsdk_env.sh
         emcmake cmake . -DLUAU_BUILD_WEB=ON -DCMAKE_BUILD_TYPE=Release
         make -j2 Luau.Web
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: Luau.Web.js
         path: Luau.Web.js
+        overwrite: true

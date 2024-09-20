@@ -2206,6 +2206,12 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
         return {std::nullopt, true, {}, {}};
 
     TypeId indexerTy = follow(typeParams.at(1));
+
+    if (isPending(indexerTy, ctx->solver))
+    {
+        return {std::nullopt, false, {indexerTy}, {}};
+    }
+
     std::shared_ptr<const NormalizedType> indexerNormTy = ctx->normalizer->normalize(indexerTy);
 
     // if the indexer failed to normalize, we can't reduce, but know nothing about inhabitance.
