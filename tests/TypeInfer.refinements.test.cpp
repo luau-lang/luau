@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauUseNormalizeIntersectionLimit)
 
 using namespace Luau;
 
@@ -2322,6 +2323,52 @@ script:connect(function(obj)
 	end
 end)
 )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(0.5))
+{
+    ScopedFastFlag LuauUseNormalizeIntersectionLimit{FFlag::LuauUseNormalizeIntersectionLimit, true};
+
+    CheckResult result = check(R"(
+--!strict
+type Dir = {
+    a: number?, b: number?, c: number?, d: number?, e: number?, f: number?,
+    g: number?, h: number?, i: number?, j: number?, k: number?, l: number?,
+    m: number?, n: number?, o: number?, p: number?, q: number?, r: number?,
+}
+
+local function test(dirs: {Dir})
+    for k, dir in dirs
+        local success, message = pcall(function()
+            assert(dir.a == nil or type(dir.a) == "number")
+            assert(dir.b == nil or type(dir.b) == "number")
+            assert(dir.c == nil or type(dir.c) == "number")
+            assert(dir.d == nil or type(dir.d) == "number")
+            assert(dir.e == nil or type(dir.e) == "number")
+            assert(dir.f == nil or type(dir.f) == "number")
+            assert(dir.g == nil or type(dir.g) == "number")
+            assert(dir.h == nil or type(dir.h) == "number")
+            assert(dir.i == nil or type(dir.i) == "number")
+            assert(dir.j == nil or type(dir.j) == "number")
+            assert(dir.k == nil or type(dir.k) == "number")
+            assert(dir.l == nil or type(dir.l) == "number")
+            assert(dir.m == nil or type(dir.m) == "number")
+            assert(dir.n == nil or type(dir.n) == "number")
+            assert(dir.o == nil or type(dir.o) == "number")
+            assert(dir.p == nil or type(dir.p) == "number")
+            assert(dir.q == nil or type(dir.q) == "number")
+            assert(dir.r == nil or type(dir.r) == "number")
+            assert(dir.t == nil or type(dir.t) == "number")
+            assert(dir.u == nil or type(dir.u) == "number")
+            assert(dir.v == nil or type(dir.v) == "number")
+            local checkpoint = dir
+
+            checkpoint.w = 1
+        end)
+        assert(success)
+    end
+end
+    )");
 }
 
 TEST_SUITE_END();

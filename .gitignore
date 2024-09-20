@@ -1,5 +1,6 @@
 /build/
 /build[.-]*/
+/out
 /cmake/
 /cmake[.-]*/
 /coverage/

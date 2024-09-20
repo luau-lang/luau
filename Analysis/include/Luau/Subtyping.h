@@ -96,6 +96,22 @@ struct SubtypingEnvironment
         DenseHashSet<TypeId> upperBound{nullptr};
     };
 
+    /* For nested subtyping relationship tests of mapped generic bounds, we keep the outer environment immutable */
+    SubtypingEnvironment* parent = nullptr;
+
+    /// Applies `mappedGenerics` to the given type.
+    /// This is used specifically to substitute for generics in type function instances.
+    std::optional<TypeId> applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
+
+    const TypeId* tryFindSubstitution(TypeId ty) const;
+    const SubtypingResult* tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const;
+
+    bool containsMappedType(TypeId ty) const;
+    bool containsMappedPack(TypePackId tp) const;
+
+    GenericBounds& getMappedTypeBounds(TypeId ty);
+    TypePackId* getMappedPackBounds(TypePackId tp);
+
     /*
      * When we encounter a generic over the course of a subtyping test, we need
      * to tentatively map that generic onto a type on the other side.
@@ -112,10 +128,6 @@ struct SubtypingEnvironment
     DenseHashMap<TypeId, TypeId> substitutions{nullptr};
 
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> ephemeralCache{{}};
-
-    /// Applies `mappedGenerics` to the given type.
-    /// This is used specifically to substitute for generics in type function instances.
-    std::optional<TypeId> applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
 };
 
 struct Subtyping

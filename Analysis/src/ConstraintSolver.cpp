@@ -27,10 +27,14 @@
 #include <algorithm>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false);
-LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false)
+LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
+
+// The default value here is 643 because the first release in which this was implemented is 644,
+// and actively we want new changes to be off by default until they're enabled consciously.
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSolverRelease, 643)
 
 namespace Luau
 {

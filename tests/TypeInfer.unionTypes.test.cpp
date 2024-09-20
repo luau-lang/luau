@@ -419,6 +419,9 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
 {
+
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     CheckResult result = check(R"(
         type A = {number}
         function f(a: A?)
@@ -426,8 +429,10 @@ TEST_CASE_FIXTURE(Fixture, "optional_length_error")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
+    // CLI-119936: This shouldn't double error but does under the new solver.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Operator '#' could not be applied to operand of type A?; there is no corresponding overload for __len", toString(result.errors[0]));
+    CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_missing_key_error_details")
@@ -638,8 +643,9 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     )");
 
     // this is a cyclic union of number arrays, so it _is_ a table, even if it's a nonsense type.
-    // no need to generate a NotATable error here.
-    if (FFlag::LuauAcceptIndexingTableUnionsIntersections)
+    // no need to generate a NotATable error here. The new solver automatically handles this and
+    // correctly reports no errors.
+    if (FFlag::LuauAcceptIndexingTableUnionsIntersections || FFlag::LuauSolverV2)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);

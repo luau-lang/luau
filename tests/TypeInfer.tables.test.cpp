@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2653,12 +2654,15 @@ local y = #x
 
 TEST_CASE_FIXTURE(Fixture, "length_operator_union_errors")
 {
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     CheckResult result = check(R"(
 local x: {number} | number | string
 local y = #x
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // CLI-119936: This shouldn't double error but does under the new solver.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable_index")
@@ -3261,21 +3265,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_must_be_callable")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
-    {
-        if (DFFlag::LuauImproveNonFunctionCallError)
-            CHECK("Cannot call a value of type a" == toString(result.errors[0]));
-        else
-            CHECK("Cannot call non-function { @metatable { __call: number }, {  } }" == toString(result.errors[0]));
-    }
-    else
+    if (!FFlag::LuauSolverV2)
     {
         TypeError e{
             Location{{5, 20}, {5, 21}},
             CannotCallNonFunction{builtinTypes->numberType},
         };
-
         CHECK(result.errors[0] == e);
+    }
+    else if (DFFlag::LuauImproveNonFunctionCallError)
+    {
+        CHECK("Cannot call a value of type a" == toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK("Cannot call non-function a" == toString(result.errors[0]));
     }
 }
 
@@ -4830,6 +4834,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table2")
         CHECK("unknown | unknown" == toString(requireType("test2")));
     else
         CHECK("any" == toString(requireType("test2")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "length_of_array_is_number")
+{
+    CheckResult result = check(R"(
+        local function TestFunc(ranges: {number}): number
+            if true then
+                ranges = {} :: {number}
+            end
+            local numRanges: number = #ranges
+            return numRanges
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

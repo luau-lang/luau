@@ -31,6 +31,7 @@
 #include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
 {
@@ -3012,11 +3013,20 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         if (tt->indexer)
         {
             TypeId indexType = follow(tt->indexer->indexType);
-            if (isPrim(indexType, PrimitiveType::String))
-                return {NormalizationResult::True, {tt->indexer->indexResultType}};
-            // If the indexer looks like { [any] : _} - the prop lookup should be allowed!
-            else if (get<AnyType>(indexType) || get<UnknownType>(indexType))
-                return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            if (DFInt::LuauTypeSolverRelease >= 644)
+            {
+                TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
+                if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice))
+                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            }
+            else
+            {
+                if (isPrim(indexType, PrimitiveType::String))
+                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
+                // If the indexer looks like { [any] : _} - the prop lookup should be allowed!
+                else if (get<AnyType>(indexType) || get<UnknownType>(indexType))
+                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            }
         }
 
 

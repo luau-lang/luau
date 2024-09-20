@@ -37,6 +37,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false);
 
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+
 namespace Luau
 {
 
@@ -669,8 +671,16 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
         return {ctx->builtins->numberType, false, {}, {}};
 
-    if (auto result = tryDistributeTypeFunctionApp(notTypeFunction, instance, typeParams, packParams, ctx))
-        return *result;
+    if (DFInt::LuauTypeSolverRelease >= 644)
+    {
+        if (auto result = tryDistributeTypeFunctionApp(lenTypeFunction, instance, typeParams, packParams, ctx))
+            return *result;
+    }
+    else
+    {
+        if (auto result = tryDistributeTypeFunctionApp(notTypeFunction, instance, typeParams, packParams, ctx))
+            return *result;
+    }
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -758,8 +768,16 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (normTy->isExactlyNumber())
         return {ctx->builtins->numberType, false, {}, {}};
 
-    if (auto result = tryDistributeTypeFunctionApp(notTypeFunction, instance, typeParams, packParams, ctx))
-        return *result;
+    if (DFInt::LuauTypeSolverRelease >= 644)
+    {
+        if (auto result = tryDistributeTypeFunctionApp(unmTypeFunction, instance, typeParams, packParams, ctx))
+            return *result;
+    }
+    else
+    {
+        if (auto result = tryDistributeTypeFunctionApp(notTypeFunction, instance, typeParams, packParams, ctx))
+            return *result;
+    }
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -2206,6 +2224,10 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
         return {std::nullopt, true, {}, {}};
 
     TypeId indexerTy = follow(typeParams.at(1));
+
+    if (isPending(indexerTy, ctx->solver))
+        return {std::nullopt, false, {indexerTy}, {}};
+
     std::shared_ptr<const NormalizedType> indexerNormTy = ctx->normalizer->normalize(indexerTy);
 
     // if the indexer failed to normalize, we can't reduce, but know nothing about inhabitance.

@@ -334,6 +334,27 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_alias_or_parens_is_indexer")
     CHECK_EQ("Cannot have more than one table indexer", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        type Target = "A" | "B"
+
+        type Test = {[Target]: number}
+
+        local test: Test = {}
+
+        test.A = 2
+        test.C = 4
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(8 == result.errors[0].location.begin.line);
+}
+
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
     CheckResult result = check(R"(
