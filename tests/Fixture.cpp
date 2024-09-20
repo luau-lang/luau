@@ -16,6 +16,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <string_view>
 #include <iostream>
@@ -27,6 +28,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAG(LuauDCRMagicFunctionTypeChecker);
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -152,8 +154,12 @@ const Config& TestConfigResolver::getConfig(const ModuleName& name) const
 
 Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     : sff_DebugLuauFreezeArena(FFlag::DebugLuauFreezeArena, freeze)
-    // In tests, we *always* want to register the extra magic functions for typechecking `string.format`.
     , sff_LuauDCRMagicFunctionTypeChecker(FFlag::LuauDCRMagicFunctionTypeChecker, true)
+    // The first value of LuauTypeSolverRelease was 643, so as long as this is
+    // some number greater than 900 (5 years worth of releases), all tests that
+    // run under the new solver will run against all of the changes guarded by
+    // this flag.
+    , sff_LuauTypeSolverRelease(DFInt::LuauTypeSolverRelease, std::numeric_limits<int>::max())
     , frontend(
           &fileResolver,
           &configResolver,

@@ -13,7 +13,12 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauAutocompleteNewSolverLimit)
+
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+LUAU_FASTINT(LuauTypeInferIterationLimit)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -144,6 +149,12 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 
     if (FFlag::LuauSolverV2)
     {
+        if (FFlag::LuauAutocompleteNewSolverLimit)
+        {
+            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
+        }
+
         Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&iceReporter}};
 
         return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
@@ -199,6 +210,9 @@ static TypeCorrectKind checkTypeCorrectKind(
     {
         for (TypeId id : itv->parts)
         {
+            if (DFInt::LuauTypeSolverRelease >= 644)
+                id = follow(id);
+
             if (const FunctionType* ftv = get<FunctionType>(id); ftv && checkFunctionType(ftv))
             {
                 return TypeCorrectKind::CorrectFunctionResult;

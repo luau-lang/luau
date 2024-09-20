@@ -321,6 +321,11 @@ private:
      */
     void checkFunctionBody(const ScopePtr& scope, AstExprFunction* fn);
 
+    // Specializations of 'resolveType' below
+    TypeId resolveReferenceType(const ScopePtr& scope, AstType* ty, AstTypeReference* ref, bool inTypeArguments, bool replaceErrorWithFresh);
+    TypeId resolveTableType(const ScopePtr& scope, AstType* ty, AstTypeTable* tab, bool inTypeArguments, bool replaceErrorWithFresh);
+    TypeId resolveFunctionType(const ScopePtr& scope, AstType* ty, AstTypeFunction* fn, bool inTypeArguments, bool replaceErrorWithFresh);
+
     /**
      * Resolves a type from its AST annotation.
      * @param scope the scope that the type annotation appears within.

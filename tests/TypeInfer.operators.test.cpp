@@ -1576,7 +1576,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
         end
 )");
 
-    if (FFlag::LuauRemoveBadRelationalOperatorWarning)
+    // There is a flag to gate turning this off, and this warning is not
+    // implemented in the new solver, so assert there are no errors.
+    if (FFlag::LuauRemoveBadRelationalOperatorWarning || FFlag::LuauSolverV2)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);
