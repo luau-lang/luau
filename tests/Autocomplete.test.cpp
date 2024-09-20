@@ -3823,7 +3823,11 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
     ScopedFastFlag luauAutocompleteNewSolverLimit{FFlag::LuauAutocompleteNewSolverLimit, true};
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
 
+#if defined(LUAU_ENABLE_ASAN)
+    const int parts = 50;
+#else
     const int parts = 100;
+#endif
     std::string source;
 
     source += "function f()\n";
