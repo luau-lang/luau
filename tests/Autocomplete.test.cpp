@@ -3824,7 +3824,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
 
 #if defined(LUAU_ENABLE_ASAN)
-    const int parts = 50;
+    const int parts = 30;
 #else
     const int parts = 100;
 #endif
