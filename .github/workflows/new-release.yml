@@ -38,7 +38,7 @@ jobs:
     - name: configure
       run: cmake . -DCMAKE_BUILD_TYPE=Release
     - name: build
-      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI --config Release -j 2
+      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI Luau.Ast.CLI --config Release -j 2
     - name: pack
       if: matrix.os.name != 'windows'
       run: zip luau-${{matrix.os.name}}.zip luau*
