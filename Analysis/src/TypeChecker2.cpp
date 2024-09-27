@@ -31,6 +31,7 @@
 #include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
@@ -306,7 +307,7 @@ TypeChecker2::TypeChecker2(
     , sourceModule(sourceModule)
     , module(module)
     , normalizer{&module->internalTypes, builtinTypes, unifierState, /* cacheInhabitance */ true}
-    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{unifierState->iceHandler}}
+    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{unifierState->iceHandler}}
     , subtyping(&_subtyping)
 {
 }
@@ -484,13 +485,16 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         return instance;
     seenTypeFunctionInstances.insert(instance);
 
-    ErrorVec errors = reduceTypeFunctions(
-                          instance,
-                          location,
-                          TypeFunctionContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits},
-                          true
-    )
-                          .errors;
+    ErrorVec errors =
+        reduceTypeFunctions(
+            instance,
+            location,
+            TypeFunctionContext{
+                NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, ice, limits
+            },
+            true
+        )
+            .errors;
     if (!isErrorSuppressing(location, instance))
         reportErrors(std::move(errors));
     return instance;
@@ -1194,8 +1198,8 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 void TypeChecker2::visit(AstStatTypeFunction* stat)
 {
     // TODO: add type checking for user-defined type functions
-
-    reportError(TypeError{stat->location, GenericError{"This syntax is not supported"}});
+    if (!FFlag::LuauUserDefinedTypeFunctions)
+        reportError(TypeError{stat->location, GenericError{"This syntax is not supported"}});
 }
 
 void TypeChecker2::visit(AstTypeList types)
@@ -1446,6 +1450,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         builtinTypes,
         NotNull{&module->internalTypes},
         NotNull{&normalizer},
+        NotNull{&typeFunctionRuntime},
         NotNull{stack.back()},
         ice,
         limits,

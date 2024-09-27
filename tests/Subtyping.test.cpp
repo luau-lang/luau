@@ -66,6 +66,7 @@ struct SubtypeFixture : Fixture
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    TypeFunctionRuntime typeFunctionRuntime;
 
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
@@ -77,7 +78,7 @@ struct SubtypeFixture : Fixture
 
     Subtyping mkSubtyping()
     {
-        return Subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&iceReporter}};
+        return Subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}};
     }
 
     TypePackId pack(std::initializer_list<TypeId> tys)

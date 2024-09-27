@@ -19,7 +19,8 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2, false)
 LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
 LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions, false)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax, false)
+LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing, false)
 
 namespace Luau
 {
@@ -211,6 +212,15 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     scratchExpr.reserve(16);
     scratchLocal.reserve(16);
     scratchBinding.reserve(16);
+
+    if (FFlag::LuauAllowFragmentParsing)
+    {
+        if (options.parseFragment)
+        {
+            localMap = options.parseFragment->localMap;
+            localStack = options.parseFragment->localStack;
+        }
+    }
 }
 
 bool Parser::blockFollow(const Lexeme& l)
@@ -891,7 +901,7 @@ AstStat* Parser::parseReturn()
 AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
 {
     // parsing a type function
-    if (FFlag::LuauUserDefinedTypeFunctions)
+    if (FFlag::LuauUserDefinedTypeFunctionsSyntax)
     {
         if (lexer.current().type == Lexeme::ReservedFunction)
             return parseTypeFunction(start);

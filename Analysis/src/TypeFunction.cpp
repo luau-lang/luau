@@ -2,7 +2,9 @@
 
 #include "Luau/TypeFunction.h"
 
+#include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
+#include "Luau/Compiler.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Instantiation.h"
@@ -12,17 +14,25 @@
 #include "Luau/Set.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunctionReductionGuesser.h"
+#include "Luau/TypeFunctionRuntime.h"
+#include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
 
+#include "lua.h"
+#include "lualib.h"
+
 #include <iterator>
+#include <memory>
+#include <unordered_map>
 
 // used to control emitting CodeTooComplex warnings on type function reduction
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
@@ -35,7 +45,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 // when this value is set to a negative value, guessing will be totally disabled.
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
-LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions, false)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -166,7 +177,7 @@ struct TypeFunctionReducer
         return SkipTestResult::Okay;
     }
 
-    SkipTestResult testForSkippability(TypePackId ty)
+    SkipTestResult testForSkippability(TypePackId ty) const
     {
         ty = follow(ty);
 
@@ -214,15 +225,18 @@ struct TypeFunctionReducer
         {
             irreducible.insert(subject);
 
+            if (reduction.error.has_value())
+                result.errors.emplace_back(location, UserDefinedTypeFunctionError{*reduction.error});
+
             if (reduction.uninhabited || force)
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is uninhabited\n", toString(subject, {true}).c_str());
 
                 if constexpr (std::is_same_v<T, TypeId>)
-                    result.errors.push_back(TypeError{location, UninhabitedTypeFunction{subject}});
+                    result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
                 else if constexpr (std::is_same_v<T, TypePackId>)
-                    result.errors.push_back(TypeError{location, UninhabitedTypePackFunction{subject}});
+                    result.errors.emplace_back(location, UninhabitedTypePackFunction{subject});
             }
             else if (!reduction.uninhabited && !force)
             {
@@ -243,7 +257,7 @@ struct TypeFunctionReducer
         }
     }
 
-    bool done()
+    bool done() const
     {
         return queuedTys.empty() && queuedTps.empty();
     }
@@ -422,7 +436,7 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
         ++iterationCount;
         if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
         {
-            reducer.result.errors.push_back(TypeError{location, CodeTooComplex{}});
+            reducer.result.errors.emplace_back(location, CodeTooComplex{});
             break;
         }
     }
@@ -506,7 +520,7 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
     size_t cartesianProductSize = 1;
 
     const UnionType* firstUnion = nullptr;
-    size_t unionIndex;
+    size_t unionIndex = 0;
 
     std::vector<TypeId> arguments = typeParams;
     for (size_t i = 0; i < arguments.size(); ++i)
@@ -572,6 +586,8 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
     return std::nullopt;
 }
 
+using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
+
 TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -585,9 +601,122 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
         return {std::nullopt, true, {}, {}};
     }
 
-    // TODO: implementation of user-defined type functions goes here
+    for (auto typeParam : typeParams)
+    {
+        TypeId ty = follow(typeParam);
 
-    return {std::nullopt, true, {}, {}};
+        // block if we need to
+        if (isPending(ty, ctx->solver))
+            return {std::nullopt, false, {ty}, {}};
+    }
+
+    AstName name = *ctx->userFuncName;
+    AstExprFunction* function = *ctx->userFuncBody;
+
+    // Construct ParseResult containing the type function
+    Allocator allocator;
+    AstNameTable names(allocator);
+
+    AstExprGlobal globalName{Location{}, name};
+    AstStatFunction typeFunction{Location{}, &globalName, function};
+    AstStat* stmtArray[] = {&typeFunction};
+    AstArray<AstStat*> stmts{stmtArray, 1};
+    AstStatBlock exec{Location{}, stmts};
+    ParseResult parseResult{&exec, 1};
+
+    BytecodeBuilder builder;
+    try
+    {
+        compileOrThrow(builder, parseResult, names);
+    }
+    catch (CompileError& e)
+    {
+        std::string errMsg = format("'%s' type function failed to compile with error message: %s", name.value, e.what());
+        return {std::nullopt, true, {}, {}, errMsg};
+    }
+
+    std::string bytecode = builder.getBytecode();
+
+    // Initialize Lua state
+    StateRef globalState(lua_newstate(typeFunctionAlloc, nullptr), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_setthreaddata(L, ctx.get());
+
+    setTypeFunctionEnvironment(L);
+
+    // Register type userdata
+    registerTypeUserData(L);
+
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    // Load bytecode into Luau state
+    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+        return {std::nullopt, true, {}, {}, error};
+
+    // Execute the loaded chunk to register the function in the global environment
+    if (auto error = checkResultForError(L, name.value, lua_pcall(L, 0, 0, 0)))
+        return {std::nullopt, true, {}, {}, error};
+
+    // Get type function from the global environment
+    lua_getglobal(L, name.value);
+    if (!lua_isfunction(L, -1))
+    {
+        std::string errMsg = format("Could not find '%s' type function in the global scope", name.value);
+
+        return {std::nullopt, true, {}, {}, errMsg};
+    }
+
+    // Push serialized arguments onto the stack
+
+    // Since there aren't any new class types being created in type functions, there isn't a deserialization function
+    // class types. Instead, we can keep this map and return the mapping as the "deserialized value"
+    std::unique_ptr<TypeFunctionRuntimeBuilderState> runtimeBuilder = std::make_unique<TypeFunctionRuntimeBuilderState>(ctx);
+    for (auto typeParam : typeParams)
+    {
+        TypeId ty = follow(typeParam);
+        // This is checked at the top of the function, and should still be true.
+        LUAU_ASSERT(!isPending(ty, ctx->solver));
+
+        TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
+        // Check if there were any errors while serializing
+        if (runtimeBuilder->errors.size() != 0)
+            return {std::nullopt, true, {}, {}, runtimeBuilder->errors.front()};
+
+        allocTypeUserData(L, serializedTy->type);
+    }
+
+    // Set up an interrupt handler for type functions to respect type checking limits and LSP cancellation requests.
+    lua_callbacks(L)->interrupt = [](lua_State* L, int gc)
+    {
+        auto ctx = static_cast<const TypeFunctionContext*>(lua_getthreaddata(lua_mainthread(L)));
+        if (ctx->limits->finishTime && TimeTrace::getClock() > *ctx->limits->finishTime)
+            ctx->solver->throwTimeLimitError();
+
+        if (ctx->limits->cancellationToken && ctx->limits->cancellationToken->requested())
+            ctx->solver->throwUserCancelError();
+    };
+
+    if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, int(typeParams.size()))))
+        return {std::nullopt, true, {}, {}, error};
+
+    // If the return value is not a type userdata, return with error message
+    if (!isTypeUserData(L, 1))
+        return {std::nullopt, true, {}, {}, format("'%s' type function: returned a non-type value", name.value)};
+
+    TypeFunctionTypeId retTypeFunctionTypeId = getTypeUserData(L, 1);
+
+    // No errors should be present here since we should've returned already if any were raised during serialization.
+    LUAU_ASSERT(runtimeBuilder->errors.size() == 0);
+
+    TypeId retTypeId = deserialize(retTypeFunctionTypeId, runtimeBuilder.get());
+
+    // At least 1 error occured while deserializing
+    if (runtimeBuilder->errors.size() > 0)
+        return {std::nullopt, true, {}, {}, runtimeBuilder->errors.front()};
+
+    return {retTypeId, false, {}, {}};
 }
 
 TypeFunctionReductionResult<TypeId> notTypeFunction(
@@ -711,7 +840,7 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
     if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
@@ -808,7 +937,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
     if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
@@ -818,7 +947,20 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
         return {std::nullopt, true, {}, {}};
 }
 
-NotNull<Constraint> TypeFunctionContext::pushConstraint(ConstraintV&& c)
+TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
+    : arena(cs->arena)
+    , builtins(cs->builtinTypes)
+    , scope(scope)
+    , normalizer(cs->normalizer)
+    , typeFunctionRuntime(cs->typeFunctionRuntime)
+    , ice(NotNull{&cs->iceReporter})
+    , limits(NotNull{&cs->limits})
+    , solver(cs.get())
+    , constraint(constraint.get())
+{
+}
+
+NotNull<Constraint> TypeFunctionContext::pushConstraint(ConstraintV&& c) const
 {
     LUAU_ASSERT(solver);
     NotNull<Constraint> newConstraint = solver->pushConstraint(scope, constraint ? constraint->location : Location{}, std::move(c));
@@ -921,12 +1063,16 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
     SolveResult solveResult;
 
     if (!reversed)
-        solveResult = solveFunctionCall(ctx->arena, ctx->builtins, ctx->normalizer, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack);
+        solveResult = solveFunctionCall(
+            ctx->arena, ctx->builtins, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack
+        );
     else
     {
         TypePack* p = getMutable<TypePack>(argPack);
         std::swap(p->head.front(), p->head.back());
-        solveResult = solveFunctionCall(ctx->arena, ctx->builtins, ctx->normalizer, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack);
+        solveResult = solveFunctionCall(
+            ctx->arena, ctx->builtins, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack
+        );
     }
 
     if (!solveResult.typePackId.has_value())
@@ -1156,7 +1302,7 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
     if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
@@ -1410,7 +1556,7 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
     if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
@@ -1554,7 +1700,7 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
     if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, true, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice};
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
     if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
         return {std::nullopt, true, {}, {}};
 
@@ -2004,7 +2150,7 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
             if (!computeKeysOf(*classesIter, localKeys, seen, isRaw, ctx))
                 continue;
 
-            for (auto key : keys)
+            for (auto& key : keys)
             {
                 // remove any keys that are not present in each class
                 if (!localKeys.contains(key))
@@ -2039,7 +2185,7 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
             if (!computeKeysOf(*tablesIter, localKeys, seen, isRaw, ctx))
                 continue;
 
-            for (auto key : keys)
+            for (auto& key : keys)
             {
                 // remove any keys that are not present in each table
                 if (!localKeys.contains(key))
@@ -2239,7 +2385,7 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
         return {std::nullopt, true, {}, {}};
 
     // indexer can be a union —> break them down into a vector
-    const std::vector<TypeId>* typesToFind;
+    const std::vector<TypeId>* typesToFind = nullptr;
     const std::vector<TypeId> singleType{indexerTy};
     if (auto unionTy = get<UnionType>(indexerTy))
         typesToFind = &unionTy->options;

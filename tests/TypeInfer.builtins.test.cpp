@@ -1427,4 +1427,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
     CHECK_EQ(toString(requireType("e")), "number?");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function StringSplit(input, separator)
+            string.find(input, separator)
+            if not separator then
+                separator = "%s+"
+            end
+        end
+    )"));
+}
+
 TEST_SUITE_END();

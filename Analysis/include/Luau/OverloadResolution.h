@@ -35,6 +35,7 @@ struct OverloadResolver
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> arena,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> scope,
         NotNull<InternalErrorReporter> reporter,
         NotNull<TypeCheckLimits> limits,
@@ -44,6 +45,7 @@ struct OverloadResolver
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<Scope> scope;
     NotNull<InternalErrorReporter> ice;
     NotNull<TypeCheckLimits> limits;
@@ -109,6 +111,7 @@ SolveResult solveFunctionCall(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Normalizer> normalizer,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter,
     NotNull<TypeCheckLimits> limits,
     NotNull<Scope> scope,

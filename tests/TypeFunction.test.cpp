@@ -1247,18 +1247,4 @@ TEST_CASE_FIXTURE(ClassFixture, "rawget_type_function_errors_w_classes")
     CHECK(toString(result.errors[0]) == "Property '\"BaseField\"' does not exist on type 'BaseClass'");
 }
 
-TEST_CASE_FIXTURE(Fixture, "user_defined_type_function_errors")
-{
-    if (!FFlag::LuauUserDefinedTypeFunctions)
-        return;
-
-    CheckResult result = check(R"(
-    type function foo()
-        return nil
-    end
-    )");
-    LUAU_CHECK_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == "This syntax is not supported");
-}
-
 TEST_SUITE_END();

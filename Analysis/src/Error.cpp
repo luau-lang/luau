@@ -793,6 +793,11 @@ struct ErrorConverter
         return "Encountered an unexpected type pack in subtyping: " + toString(e.tp);
     }
 
+    std::string operator()(const UserDefinedTypeFunctionError& e) const
+    {
+        return e.message;
+    }
+
     std::string operator()(const CannotAssignToNever& e) const
     {
         std::string result = "Cannot assign a value of type " + toString(e.rhsType) + " to a field of type never";
@@ -1175,6 +1180,11 @@ bool UnexpectedTypePackInSubtyping::operator==(const UnexpectedTypePackInSubtypi
     return tp == rhs.tp;
 }
 
+bool UserDefinedTypeFunctionError::operator==(const UserDefinedTypeFunctionError& rhs) const
+{
+    return message == rhs.message;
+}
+
 bool CannotAssignToNever::operator==(const CannotAssignToNever& rhs) const
 {
     if (cause.size() != rhs.cause.size())
@@ -1384,6 +1394,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.ty = clone(e.ty);
     else if constexpr (std::is_same_v<T, UnexpectedTypePackInSubtyping>)
         e.tp = clone(e.tp);
+    else if constexpr (std::is_same_v<T, UserDefinedTypeFunctionError>)
+    {
+    }
     else if constexpr (std::is_same_v<T, CannotAssignToNever>)
     {
         e.rhsType = clone(e.rhsType);

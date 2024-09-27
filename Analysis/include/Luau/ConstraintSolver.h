@@ -12,6 +12,7 @@
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/Variant.h"
 
@@ -62,6 +63,7 @@ struct ConstraintSolver
     NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // The entire set of constraints that the solver is trying to resolve.
     std::vector<NotNull<Constraint>> constraints;
     NotNull<Scope> rootScope;
@@ -111,6 +113,7 @@ struct ConstraintSolver
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
         ModuleName moduleName,
@@ -278,18 +281,18 @@ public:
     /**
      * @returns true if the TypeId is in a blocked state.
      */
-    bool isBlocked(TypeId ty);
+    bool isBlocked(TypeId ty) const;
 
     /**
      * @returns true if the TypePackId is in a blocked state.
      */
-    bool isBlocked(TypePackId tp);
+    bool isBlocked(TypePackId tp) const;
 
     /**
      * Returns whether the constraint is blocked on anything.
      * @param constraint the constraint to check.
      */
-    bool isBlocked(NotNull<const Constraint> constraint);
+    bool isBlocked(NotNull<const Constraint> constraint) const;
 
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
@@ -381,8 +384,8 @@ public:
 
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 
-    void throwTimeLimitError();
-    void throwUserCancelError();
+    void throwTimeLimitError() const;
+    void throwUserCancelError() const;
 
     ToStringOptions opts;
 };

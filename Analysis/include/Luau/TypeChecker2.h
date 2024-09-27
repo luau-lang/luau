@@ -83,6 +83,7 @@ struct TypeChecker2
     DenseHashSet<TypeId> seenTypeFunctionInstances{nullptr};
 
     Normalizer normalizer;
+    TypeFunctionRuntime typeFunctionRuntime;
     Subtyping _subtyping;
     NotNull<Subtyping> subtyping;
 

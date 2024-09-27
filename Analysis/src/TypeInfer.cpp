@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
-LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauAcceptIndexingTableUnionsIntersections, false)
 
 namespace Luau
@@ -1284,19 +1283,10 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             for (size_t i = 2; i < varTypes.size(); ++i)
                 unify(nilType, varTypes[i], scope, forin.location);
         }
-        else if (isNonstrictMode() || FFlag::LuauOkWithIteratingOverTableProperties)
+        else
         {
             for (TypeId var : varTypes)
                 unify(unknownType, var, scope, forin.location);
-        }
-        else
-        {
-            TypeId varTy = errorRecoveryType(loopScope);
-
-            for (TypeId var : varTypes)
-                unify(varTy, var, scope, forin.location);
-
-            reportError(firstValue->location, GenericError{"Cannot iterate over a table without indexer"});
         }
 
         return check(loopScope, *forin.body);

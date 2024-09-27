@@ -42,7 +42,9 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 void ConstraintGeneratorFixture::solve(const std::string& code)
 {
     generateConstraints(code);
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, {}};
+    ConstraintSolver cs{
+        NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, {}
+    };
     cs.run();
 }
 

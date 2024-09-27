@@ -1040,6 +1040,7 @@ struct TypeStringifier
             state.emit(tfitv.userFuncName->value);
         else
             state.emit(tfitv.function->name);
+
         state.emit("<");
 
         bool comma = false;

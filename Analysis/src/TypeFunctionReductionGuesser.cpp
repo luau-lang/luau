@@ -3,6 +3,7 @@
 
 #include "Luau/DenseHash.h"
 #include "Luau/Normalize.h"
+#include "Luau/ToString.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
