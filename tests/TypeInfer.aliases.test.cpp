@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -1169,8 +1170,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_adds_reduce_constraint_for_type_f
 
 TEST_CASE_FIXTURE(Fixture, "user_defined_type_function_errors")
 {
-    if (!FFlag::LuauUserDefinedTypeFunctions)
-        return;
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax, true};
+    ScopedFastFlag noUDTFimpl{FFlag::LuauUserDefinedTypeFunctions, false};
 
     CheckResult result = check(R"(
     type function foo()

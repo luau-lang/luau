@@ -34,8 +34,6 @@ void luaC_validate(lua_State* L);
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauNativeAttribute)
-LUAU_FASTFLAG(LuauPreserveLudataRenaming)
-LUAU_FASTFLAG(LuauCodegenArmNumToVecFix)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -825,8 +823,6 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
-    ScopedFastFlag luauCodegenArmNumToVecFix{FFlag::LuauCodegenArmNumToVecFix, true};
-
     lua_CompileOptions copts = defaultOptions();
     Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
 
@@ -2251,20 +2247,17 @@ TEST_CASE("LightuserdataApi")
 
     lua_pop(L, 1);
 
-    if (FFlag::LuauPreserveLudataRenaming)
-    {
-        // Still possible to rename the global lightuserdata name using a metatable
-        lua_pushlightuserdata(L, value);
-        CHECK(strcmp(luaL_typename(L, -1), "userdata") == 0);
+    // Still possible to rename the global lightuserdata name using a metatable
+    lua_pushlightuserdata(L, value);
+    CHECK(strcmp(luaL_typename(L, -1), "userdata") == 0);
 
-        lua_createtable(L, 0, 1);
-        lua_pushstring(L, "luserdata");
-        lua_setfield(L, -2, "__type");
-        lua_setmetatable(L, -2);
+    lua_createtable(L, 0, 1);
+    lua_pushstring(L, "luserdata");
+    lua_setfield(L, -2, "__type");
+    lua_setmetatable(L, -2);
 
-        CHECK(strcmp(luaL_typename(L, -1), "luserdata") == 0);
-        lua_pop(L, 1);
-    }
+    CHECK(strcmp(luaL_typename(L, -1), "luserdata") == 0);
+    lua_pop(L, 1);
 
     globalState.reset();
 }

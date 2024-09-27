@@ -149,13 +149,15 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 
     if (FFlag::LuauSolverV2)
     {
+        TypeFunctionRuntime typeFunctionRuntime; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
+
         if (FFlag::LuauAutocompleteNewSolverLimit)
         {
             unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
             unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
         }
 
-        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&iceReporter}};
+        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}};
 
         return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
     }

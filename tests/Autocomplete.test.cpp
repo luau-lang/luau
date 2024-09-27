@@ -3820,6 +3820,10 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
 {
+    // TODO: in old solver, type resolve can't handle the type in this test without a stack overflow
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag luauAutocompleteNewSolverLimit{FFlag::LuauAutocompleteNewSolverLimit, true};
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
 

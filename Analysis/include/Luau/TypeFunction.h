@@ -1,10 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/ConstraintSolver.h"
+#include "Luau/Constraint.h"
 #include "Luau/Error.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypeFwd.h"
 
 #include <functional>
@@ -16,7 +17,15 @@ namespace Luau
 
 struct TypeArena;
 struct TxnLog;
+struct ConstraintSolver;
 class Normalizer;
+
+struct TypeFunctionRuntime
+{
+    // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
+    TypedAllocator<TypeFunctionType> typeArena;
+    TypedAllocator<TypeFunctionTypePackVar> typePackArena;
+};
 
 struct TypeFunctionContext
 {
@@ -24,6 +33,7 @@ struct TypeFunctionContext
     NotNull<BuiltinTypes> builtins;
     NotNull<Scope> scope;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> ice;
     NotNull<TypeCheckLimits> limits;
 
@@ -35,23 +45,14 @@ struct TypeFunctionContext
     std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
     std::optional<AstExprFunction*> userFuncBody; // Body of the user-defined type function; only available for UDTFs
 
-    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
-        : arena(cs->arena)
-        , builtins(cs->builtinTypes)
-        , scope(scope)
-        , normalizer(cs->normalizer)
-        , ice(NotNull{&cs->iceReporter})
-        , limits(NotNull{&cs->limits})
-        , solver(cs.get())
-        , constraint(constraint.get())
-    {
-    }
+    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint);
 
     TypeFunctionContext(
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtins,
         NotNull<Scope> scope,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> ice,
         NotNull<TypeCheckLimits> limits
     )
@@ -59,6 +60,7 @@ struct TypeFunctionContext
         , builtins(builtins)
         , scope(scope)
         , normalizer(normalizer)
+        , typeFunctionRuntime(typeFunctionRuntime)
         , ice(ice)
         , limits(limits)
         , solver(nullptr)
@@ -66,7 +68,7 @@ struct TypeFunctionContext
     {
     }
 
-    NotNull<Constraint> pushConstraint(ConstraintV&& c);
+    NotNull<Constraint> pushConstraint(ConstraintV&& c) const;
 };
 
 /// Represents a reduction result, which may have successfully reduced the type,
@@ -88,6 +90,8 @@ struct TypeFunctionReductionResult
     /// Any type packs that need to be progressed or mutated before the
     /// reduction may proceed.
     std::vector<TypePackId> blockedPacks;
+    /// A runtime error message from user-defined type functions
+    std::optional<std::string> error;
 };
 
 template<typename T>

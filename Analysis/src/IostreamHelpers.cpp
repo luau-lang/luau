@@ -227,6 +227,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnexpectedTypeInSubtyping {  ty = '" + toString(err.ty) + "' }";
     else if constexpr (std::is_same_v<T, UnexpectedTypePackInSubtyping>)
         stream << "UnexpectedTypePackInSubtyping {  tp = '" + toString(err.tp) + "' }";
+    else if constexpr (std::is_same_v<T, UserDefinedTypeFunctionError>)
+        stream << "UserDefinedTypeFunctionError { " << err.message << " }";
     else if constexpr (std::is_same_v<T, CannotAssignToNever>)
     {
         stream << "CannotAssignToNever { rvalueType = '" << toString(err.rhsType) << "', reason = '" << err.reason << "', cause = { ";
