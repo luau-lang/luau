@@ -15,7 +15,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauOkWithIteratingOverTableProperties)
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
 
@@ -699,8 +698,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
     if (FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         local t = {}
         for _ in t do
@@ -784,7 +781,6 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, false},
-        {FFlag::LuauOkWithIteratingOverTableProperties, true}
     };
 
     CheckResult result = check(R"(
@@ -937,8 +933,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
 
 TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
 {
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         function print(x) end
 
@@ -1095,8 +1089,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
     // CLI-116498 - Sometimes you can iterate over tables with no indexer.
     ScopedFastFlag sff0{FFlag::LuauSolverV2, false};
 
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         local function f()
             local t = { p = 5, q = "hello" }
@@ -1118,8 +1110,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties_nonstrict")
 {
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local function f()

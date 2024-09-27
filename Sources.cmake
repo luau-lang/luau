@@ -182,6 +182,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
+    Analysis/include/Luau/FragmentAutocomplete.h
     Analysis/include/Luau/Frontend.h
     Analysis/include/Luau/Generalization.h
     Analysis/include/Luau/GlobalTypes.h
@@ -223,6 +224,8 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeFunction.h
     Analysis/include/Luau/TypeFunctionReductionGuesser.h
+    Analysis/include/Luau/TypeFunctionRuntime.h
+    Analysis/include/Luau/TypeFunctionRuntimeBuilder.h
     Analysis/include/Luau/TypeFwd.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypeOrPack.h
@@ -253,6 +256,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Differ.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
+    Analysis/src/FragmentAutocomplete.cpp
     Analysis/src/Frontend.cpp
     Analysis/src/Generalization.cpp
     Analysis/src/GlobalTypes.cpp
@@ -287,6 +291,8 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeFunction.cpp
     Analysis/src/TypeFunctionReductionGuesser.cpp
+    Analysis/src/TypeFunctionRuntime.cpp
+    Analysis/src/TypeFunctionRuntimeBuilder.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypeOrPack.cpp
     Analysis/src/TypePack.cpp
@@ -440,6 +446,7 @@ if(TARGET Luau.UnitTest)
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h
+	tests/FragmentAutocomplete.test.cpp
         tests/Frontend.test.cpp
         tests/Generalization.test.cpp
         tests/InsertionOrderedMap.test.cpp
@@ -474,6 +481,7 @@ if(TARGET Luau.UnitTest)
         tests/Transpiler.test.cpp
         tests/TxnLog.test.cpp
         tests/TypeFunction.test.cpp
+        tests/TypeFunction.user.test.cpp
         tests/TypeInfer.aliases.test.cpp
         tests/TypeInfer.annotations.test.cpp
         tests/TypeInfer.anyerror.test.cpp

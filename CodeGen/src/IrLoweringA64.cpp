@@ -11,8 +11,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenArmNumToVecFix, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1121,7 +1119,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
         {
             RegisterA64 tempd = tempDouble(inst.a);
-            RegisterA64 temps = FFlag::LuauCodegenArmNumToVecFix ? regs.allocTemp(KindA64::s) : castReg(KindA64::s, tempd);
+            RegisterA64 temps = regs.allocTemp(KindA64::s);
 
             build.fcvt(temps, tempd);
             build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);

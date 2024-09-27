@@ -3,6 +3,7 @@
 
 #include "Luau/StringUtils.h"
 
+#include <algorithm>
 #include <mutex>
 #include <string>
 

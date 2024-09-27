@@ -160,6 +160,7 @@ struct NonStrictTypeChecker
     NotNull<TypeArena> arena;
     Module* module;
     Normalizer normalizer;
+    TypeFunctionRuntime typeFunctionRuntime;
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
     DenseHashSet<TypeId> noTypeFunctionErrors{nullptr};
@@ -182,7 +183,7 @@ struct NonStrictTypeChecker
         , arena(arena)
         , module(module)
         , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
-        , subtyping{builtinTypes, arena, NotNull(&normalizer), ice}
+        , subtyping{builtinTypes, arena, NotNull(&normalizer), NotNull(&typeFunctionRuntime), ice}
         , dfg(dfg)
         , limits(limits)
     {
@@ -228,7 +229,12 @@ struct NonStrictTypeChecker
             return instance;
 
         ErrorVec errors =
-            reduceTypeFunctions(instance, location, TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
+            reduceTypeFunctions(
+                instance,
+                location,
+                TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, ice, limits},
+                true
+            )
                 .errors;
 
         if (errors.empty())

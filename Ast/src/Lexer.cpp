@@ -7,8 +7,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
-
 namespace Luau
 {
 
@@ -434,13 +432,11 @@ Lexeme Lexer::lookahead()
     lineOffset = currentLineOffset;
     lexeme = currentLexeme;
     prevLocation = currentPrevLocation;
-    if (FFlag::LuauLexerLookaheadRemembersBraceType)
-    {
-        if (braceStack.size() < currentBraceStackSize)
-            braceStack.push_back(currentBraceType);
-        else if (braceStack.size() > currentBraceStackSize)
-            braceStack.pop_back();
-    }
+
+    if (braceStack.size() < currentBraceStackSize)
+        braceStack.push_back(currentBraceType);
+    else if (braceStack.size() > currentBraceStackSize)
+        braceStack.pop_back();
 
     return result;
 }

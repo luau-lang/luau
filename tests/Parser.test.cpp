@@ -3,6 +3,7 @@
 
 #include "AstQueryDsl.h"
 #include "Fixture.h"
+#include "Luau/Common.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
@@ -11,13 +12,12 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLexerLookaheadRemembersBraceType);
-LUAU_FASTINT(LuauRecursionLimit);
-LUAU_FASTINT(LuauTypeLengthLimit);
-LUAU_FASTINT(LuauParseErrorLimit);
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions);
+LUAU_FASTINT(LuauRecursionLimit)
+LUAU_FASTINT(LuauTypeLengthLimit)
+LUAU_FASTINT(LuauParseErrorLimit)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax)
 
 namespace
 {
@@ -2380,7 +2380,7 @@ TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 
 TEST_CASE_FIXTURE(Fixture, "parse_user_defined_type_functions")
 {
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctions, true};
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax, true};
 
     AstStat* stat = parse(R"(
         type function foo()
@@ -3138,8 +3138,6 @@ TEST_CASE_FIXTURE(Fixture, "do_block_with_no_end")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_with_lookahead_involved")
 {
-    ScopedFastFlag sff{FFlag::LuauLexerLookaheadRemembersBraceType, true};
-
     ParseResult result = tryParse(R"(
         local x = `{ {y} }`
     )");
@@ -3149,8 +3147,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_with_lookahead_involved")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_with_lookahead_involved2")
 {
-    ScopedFastFlag sff{FFlag::LuauLexerLookaheadRemembersBraceType, true};
-
     ParseResult result = tryParse(R"(
         local x = `{ { y{} } }`
     )");

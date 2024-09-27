@@ -15,6 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
 {
@@ -131,10 +132,26 @@ struct ClonePublicInterface : Substitution
             }
 
             ftv->level = TypeLevel{0, 0};
+            if (FFlag::LuauSolverV2 && DFInt::LuauTypeSolverRelease >= 645)
+                ftv->scope = nullptr;
         }
         else if (TableType* ttv = getMutable<TableType>(result))
         {
             ttv->level = TypeLevel{0, 0};
+            if (FFlag::LuauSolverV2 && DFInt::LuauTypeSolverRelease >= 645)
+                ttv->scope = nullptr;
+        }
+
+        if (FFlag::LuauSolverV2 && DFInt::LuauTypeSolverRelease >= 645)
+        {
+            if (auto freety = getMutable<FreeType>(result))
+            {
+                freety->scope = nullptr;
+            }
+            else if (auto genericty = getMutable<GenericType>(result))
+            {
+                genericty->scope = nullptr;
+            }
         }
 
         return result;

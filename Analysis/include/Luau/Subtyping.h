@@ -135,6 +135,7 @@ struct Subtyping
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> iceReporter;
 
     TypeCheckLimits limits;
@@ -155,6 +156,7 @@ struct Subtyping
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> typeArena,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> iceReporter
     );
 

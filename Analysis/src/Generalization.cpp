@@ -9,6 +9,8 @@
 #include "Luau/TypePack.h"
 #include "Luau/VisitType.h"
 
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+
 namespace Luau
 {
 
@@ -871,6 +873,17 @@ struct TypeCacher : TypeOnceVisitor
         markUncacheable(tp);
         return false;
     }
+
+    bool visit(TypePackId tp, const BoundTypePack& btp) override {
+        if (DFInt::LuauTypeSolverRelease >= 645) {
+            traverse(btp.boundTo);
+            if (isUncacheable(btp.boundTo))
+                markUncacheable(tp);
+            return false;
+        }
+        return true;
+    }
+
 };
 
 std::optional<TypeId> generalize(

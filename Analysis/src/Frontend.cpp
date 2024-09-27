@@ -1383,6 +1383,7 @@ ModulePtr check(
     unifierState.counters.iterationLimit = limits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
     Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
+    TypeFunctionRuntime typeFunctionRuntime;
 
     ConstraintGenerator cg{
         result,
@@ -1402,6 +1403,7 @@ ModulePtr check(
 
     ConstraintSolver cs{
         NotNull{&normalizer},
+        NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
         result->name,

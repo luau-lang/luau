@@ -530,4 +530,82 @@ return l0
     CHECK(mod->scopes[3].second->importedModules["l1"] == "game/A");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_scope_is_nullptr_after_shallow_copy")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    frontend.options.retainFullTypeGraphs = false;
+
+    fileResolver.source["game/A"] = R"(
+-- Roughly taken from ReactTypes.lua
+type CoreBinding<T> = {}
+type BindingMap = {}
+export type Binding<T> = CoreBinding<T> & BindingMap
+
+return {}
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+local Types = require(game.A)
+type Binding<T> = Types.Binding<T>
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_free_variables_are_generialized_across_function_boundaries")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    fileResolver.source["game/A"] = R"(
+-- Roughly taken from react-shallow-renderer
+function createUpdater(renderer)
+    local updater = {
+        _renderer = renderer,
+    }
+
+    function updater.enqueueForceUpdate(publicInstance, callback, _callerName)
+        updater._renderer.render(
+            updater._renderer,
+            updater._renderer._element, 
+            updater._renderer._context
+        )
+    end
+
+    function updater.enqueueReplaceState(
+        publicInstance,
+        completeState,
+        callback,
+        _callerName
+    )
+        updater._renderer.render(
+            updater._renderer,
+            updater._renderer._element, 
+            updater._renderer._context
+        )
+    end
+
+    function updater.enqueueSetState(publicInstance, partialState, callback, _callerName)
+        local currentState = updater._renderer._newState or publicInstance.state
+        updater._renderer.render(
+            updater._renderer,
+            updater._renderer._element, 
+            updater._renderer._context
+        )
+    end
+
+    return updater
+end
+
+local ReactShallowRenderer = {}
+
+function ReactShallowRenderer:_reset()
+    self._updater = createUpdater(self)
+end
+
+return ReactShallowRenderer
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+local ReactShallowRenderer = require(game.A);
+    )"));
+}
+
 TEST_SUITE_END();
