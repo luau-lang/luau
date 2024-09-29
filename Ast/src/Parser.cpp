@@ -2714,10 +2714,6 @@ AstExpr* Parser::parseTableConstructor()
         {
             report(lexer.current().location, "Expected ',' after table constructor element");
         }
-        else if (lexer.current().type != '}')
-        {
-            break;
-        }
     }
 
     Location end = lexer.current().location;
