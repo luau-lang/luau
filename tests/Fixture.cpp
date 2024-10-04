@@ -598,6 +598,72 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 }
 
+static std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr)
+{
+    const AstExprIndexName* indexName = pathExpr.as<AstExprIndexName>();
+    if (!indexName)
+        return {};
+
+    std::vector<std::string_view> segments{indexName->index.value};
+
+    while (true)
+    {
+        if (AstExprIndexName* in = indexName->expr->as<AstExprIndexName>())
+        {
+            segments.push_back(in->index.value);
+            indexName = in;
+            continue;
+        }
+        else if (AstExprGlobal* indexNameAsGlobal = indexName->expr->as<AstExprGlobal>())
+        {
+            segments.push_back(indexNameAsGlobal->name.value);
+            break;
+        }
+        else if (AstExprLocal* indexNameAsLocal = indexName->expr->as<AstExprLocal>())
+        {
+            segments.push_back(indexNameAsLocal->local->name.value);
+            break;
+        }
+        else
+            return {};
+    }
+
+    std::reverse(segments.begin(), segments.end());
+    return segments;
+}
+
+std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments)
+{
+    if (segments.empty())
+        return std::nullopt;
+
+    std::vector<std::string_view> result;
+
+    auto it = segments.begin();
+
+    if (*it == "script" && !currentModuleName.empty())
+    {
+        result = split(currentModuleName, '/');
+        ++it;
+    }
+
+    for (; it != segments.end(); ++it)
+    {
+        if (result.size() > 1 && *it == "Parent")
+            result.pop_back();
+        else
+            result.push_back(*it);
+    }
+
+    return join(result, "/");
+}
+
+std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& pathExpr)
+{
+    std::vector<std::string_view> segments = parsePathExpr(pathExpr);
+    return pathExprToModuleName(currentModuleName, segments);
+}
+
 ModuleName fromString(std::string_view name)
 {
     return ModuleName(name);

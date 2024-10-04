@@ -20,8 +20,10 @@
 
 #include "doctest.h"
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <optional>
+#include <vector>
 
 namespace Luau
 {
@@ -158,6 +160,9 @@ struct BuiltinsFixture : Fixture
 {
     BuiltinsFixture(bool freeze = true, bool prepareAutocomplete = false);
 };
+
+std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);
+std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& pathExpr);
 
 ModuleName fromString(std::string_view name);
 

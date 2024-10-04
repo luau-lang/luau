@@ -915,9 +915,19 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     auto bindResult = [this, &c, constraint](TypeId result)
     {
-        LUAU_ASSERT(get<PendingExpansionType>(c.target));
-        shiftReferences(c.target, result);
-        bind(constraint, c.target, result);
+        if (DFInt::LuauTypeSolverRelease >= 646)
+        {
+            auto cTarget = follow(c.target);
+            LUAU_ASSERT(get<PendingExpansionType>(cTarget));
+            shiftReferences(cTarget, result);
+            bind(constraint, cTarget, result);
+        }
+        else
+        {
+            LUAU_ASSERT(get<PendingExpansionType>(c.target));
+            shiftReferences(c.target, result);
+            bind(constraint, c.target, result);
+        }
     };
 
     std::optional<TypeFun> tf = (petv->prefix) ? constraint->scope->lookupImportedType(petv->prefix->value, petv->name.value)
@@ -945,7 +955,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // Due to how pending expansion types and TypeFun's are created
     // If this check passes, we have created a cyclic / corecursive type alias
     // of size 0
-    TypeId lhs = c.target;
+    TypeId lhs = DFInt::LuauTypeSolverRelease >= 646 ? follow(c.target) : c.target;
     TypeId rhs = tf->type;
     if (occursCheck(lhs, rhs))
     {

@@ -154,13 +154,12 @@ private:
 
 struct NonStrictTypeChecker
 {
-
     NotNull<BuiltinTypes> builtinTypes;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     const NotNull<InternalErrorReporter> ice;
     NotNull<TypeArena> arena;
     Module* module;
     Normalizer normalizer;
-    TypeFunctionRuntime typeFunctionRuntime;
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
     DenseHashSet<TypeId> noTypeFunctionErrors{nullptr};
@@ -172,6 +171,7 @@ struct NonStrictTypeChecker
     NonStrictTypeChecker(
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtinTypes,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         const NotNull<InternalErrorReporter> ice,
         NotNull<UnifierSharedState> unifierState,
         NotNull<const DataFlowGraph> dfg,
@@ -179,11 +179,12 @@ struct NonStrictTypeChecker
         Module* module
     )
         : builtinTypes(builtinTypes)
+        , typeFunctionRuntime(typeFunctionRuntime)
         , ice(ice)
         , arena(arena)
         , module(module)
         , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
-        , subtyping{builtinTypes, arena, NotNull(&normalizer), NotNull(&typeFunctionRuntime), ice}
+        , subtyping{builtinTypes, arena, NotNull(&normalizer), typeFunctionRuntime, ice}
         , dfg(dfg)
         , limits(limits)
     {
@@ -228,14 +229,13 @@ struct NonStrictTypeChecker
         if (noTypeFunctionErrors.find(instance))
             return instance;
 
-        ErrorVec errors =
-            reduceTypeFunctions(
-                instance,
-                location,
-                TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, ice, limits},
-                true
-            )
-                .errors;
+        ErrorVec errors = reduceTypeFunctions(
+                              instance,
+                              location,
+                              TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits},
+                              true
+        )
+                              .errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -760,6 +760,7 @@ private:
 
 void checkNonStrict(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> ice,
     NotNull<UnifierSharedState> unifierState,
     NotNull<const DataFlowGraph> dfg,
@@ -770,7 +771,7 @@ void checkNonStrict(
 {
     LUAU_TIMETRACE_SCOPE("checkNonStrict", "Typechecking");
 
-    NonStrictTypeChecker typeChecker{NotNull{&module->internalTypes}, builtinTypes, ice, unifierState, dfg, limits, module};
+    NonStrictTypeChecker typeChecker{NotNull{&module->internalTypes}, builtinTypes, typeFunctionRuntime, ice, unifierState, dfg, limits, module};
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);

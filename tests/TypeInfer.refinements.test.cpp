@@ -2371,4 +2371,57 @@ end
     )");
 }
 
+TEST_CASE_FIXTURE(RefinementClassFixture, "typeof_instance_refinement")
+{
+    CheckResult result = check(R"(
+        local function f(x: Instance | Vector3)
+            if typeof(x) == "Instance" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Instance", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "typeof_instance_error")
+{
+    CheckResult result = check(R"(
+        local function f(x: Part)
+            if typeof(x) == "Instance" then
+                local foo : Folder = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "typeof_instance_isa_refinement")
+{
+    CheckResult result = check(R"(
+        local function f(x: Part | Folder | string)
+            if typeof(x) == "Instance" then
+                local foo = x
+                if foo:IsA("Folder") then
+                    local bar = foo
+                end
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("Folder", toString(requireTypeAtPosition({5, 32})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({8, 28})));
+}
+
 TEST_SUITE_END();

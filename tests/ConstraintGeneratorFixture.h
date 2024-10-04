@@ -20,7 +20,8 @@ struct ConstraintGeneratorFixture : Fixture
     DcrLogger logger;
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    TypeFunctionRuntime typeFunctionRuntime;
+    TypeCheckLimits limits;
+    TypeFunctionRuntime typeFunctionRuntime{NotNull{&ice}, NotNull{&limits}};
 
     std::unique_ptr<DataFlowGraph> dfg;
     std::unique_ptr<ConstraintGenerator> cg;

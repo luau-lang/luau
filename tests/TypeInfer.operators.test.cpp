@@ -17,7 +17,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveBadRelationalOperatorWarning)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -860,7 +859,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
     )");
 
     // If DCR is off and the flag to remove this check in the old solver is on, the expected behavior is no errors.
-    if (!FFlag::LuauSolverV2 && FFlag::LuauRemoveBadRelationalOperatorWarning)
+    if (!FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
         return;
@@ -1578,10 +1577,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
 
     // There is a flag to gate turning this off, and this warning is not
     // implemented in the new solver, so assert there are no errors.
-    if (FFlag::LuauRemoveBadRelationalOperatorWarning || FFlag::LuauSolverV2)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_infinite_expansion_of_free_type" * doctest::timeout(1.0))

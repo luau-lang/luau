@@ -20,6 +20,7 @@ public:
     {
         Cached,
         FileRead,
+        Ambiguous,
         NotFound
     };
 
@@ -46,10 +47,11 @@ private:
     bool isConfigFullyResolved = false;
 
     bool isRequireAllowed(std::string_view sourceChunkname);
-    bool shouldSearchPathsArray();
+    bool isPrefixValid();
 
     void resolveAndStoreDefaultPaths();
     ModuleStatus findModuleImpl();
+    bool isPathAmbiguous(const std::string& path);
 
     std::optional<std::string> getRequiringContextAbsolute();
     std::string getRequiringContextRelative();

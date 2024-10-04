@@ -127,6 +127,8 @@ static int lua_require(lua_State* L)
 
     if (resolvedRequire.status == RequireResolver::ModuleStatus::Cached)
         return finishrequire(L);
+    else if (resolvedRequire.status == RequireResolver::ModuleStatus::Ambiguous)
+        luaL_errorL(L, "require path could not be resolved to a unique file");
     else if (resolvedRequire.status == RequireResolver::ModuleStatus::NotFound)
         luaL_errorL(L, "error requiring module");
 

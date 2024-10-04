@@ -304,11 +304,6 @@ Error parseConfig(const std::string& contents, Config& config, bool compat)
                 config.globals.push_back(value);
                 return std::nullopt;
             }
-            else if (keys.size() == 1 && keys[0] == "paths")
-            {
-                config.paths.push_back(value);
-                return std::nullopt;
-            }
             else if (keys.size() == 2 && keys[0] == "aliases")
                 return parseAlias(config.aliases, keys[1], value);
             else if (compat && keys.size() == 2 && keys[0] == "language" && keys[1] == "mode")

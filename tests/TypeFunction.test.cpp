@@ -13,7 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
 struct TypeFunctionFixture : Fixture
@@ -1245,6 +1245,22 @@ TEST_CASE_FIXTURE(ClassFixture, "rawget_type_function_errors_w_classes")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Property '\"BaseField\"' does not exist on type 'BaseClass'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_len_type_function_follow")
+{
+    // Should not fail assertions
+    check(R"(
+        local _
+        _ = true
+        for l0=_,_,# _ do
+        end
+        for l0=_,_ do
+        if _ then
+        _ += _
+        end
+        end
+    )");
 }
 
 TEST_SUITE_END();

@@ -11,7 +11,6 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNormalizeNotUnknownIntersection)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 using namespace Luau;
 
@@ -970,8 +969,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_n
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_with_not_unknown")
 {
-    ScopedFastFlag sff{FFlag::LuauNormalizeNotUnknownIntersection, true};
-
     TypeId notUnknown = arena.addType(NegationType{builtinTypes->unknownType});
     TypeId type = arena.addType(IntersectionType{{builtinTypes->numberType, notUnknown}});
     std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(type);

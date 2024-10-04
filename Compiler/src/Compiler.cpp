@@ -3634,6 +3634,10 @@ struct Compiler
         {
             // do nothing
         }
+        else if (node->is<AstStatTypeFunction>())
+        {
+            // do nothing
+        }
         else
         {
             LUAU_ASSERT(!"Unknown statement type");

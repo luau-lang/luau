@@ -17,7 +17,7 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 
 namespace
 {
@@ -2380,7 +2380,7 @@ TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 
 TEST_CASE_FIXTURE(Fixture, "parse_user_defined_type_functions")
 {
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
 
     AstStat* stat = parse(R"(
         type function foo()
@@ -2392,6 +2392,38 @@ TEST_CASE_FIXTURE(Fixture, "parse_user_defined_type_functions")
     AstStatTypeFunction* f = stat->as<AstStatBlock>()->body.data[0]->as<AstStatTypeFunction>();
     REQUIRE(f != nullptr);
     REQUIRE(f->name == "foo");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_nested_type_function")
+{
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+
+    AstStat* stat = parse(R"(
+        local v1 = 1
+        type function foo()
+            local v2 = 2
+            local function bar()
+                v2 += 1
+                type function inner() end
+                v2 += 2
+            end
+            local function bar2()
+                v2 += 3
+            end
+        end
+        local function bar() v1 += 1 end
+    )");
+
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invalid_user_defined_type_functions")
+{
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+
+    matchParseError("export type function foo() end", "Type function cannot be exported");
+    matchParseError("local foo = 1; type function bar() print(foo) end", "Type function cannot reference outer local 'foo'");
+    matchParseError("type function foo() local v1 = 1; type function bar() print(v1) end end", "Type function cannot reference outer local 'v1'");
 }
 
 TEST_SUITE_END();
