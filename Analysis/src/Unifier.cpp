@@ -21,7 +21,6 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
-LUAU_FASTFLAGVARIABLE(LuauUnifierShouldNotCopyError, false)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart, false)
 
 namespace Luau
@@ -2974,10 +2973,7 @@ bool Unifier::occursCheck(TypePackId needle, TypePackId haystack, bool reversed)
     if (occurs)
     {
         reportError(location, OccursCheckFailed{});
-        if (FFlag::LuauUnifierShouldNotCopyError)
-            log.replace(needle, BoundTypePack{builtinTypes->errorRecoveryTypePack()});
-        else
-            log.replace(needle, *builtinTypes->errorRecoveryTypePack());
+        log.replace(needle, BoundTypePack{builtinTypes->errorRecoveryTypePack()});
     }
 
     return occurs;

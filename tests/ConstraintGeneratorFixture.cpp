@@ -25,6 +25,7 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
     cg = std::make_unique<ConstraintGenerator>(
         mainModule,
         NotNull{&normalizer},
+        NotNull{&typeFunctionRuntime},
         NotNull(&moduleResolver),
         builtinTypes,
         NotNull(&ice),

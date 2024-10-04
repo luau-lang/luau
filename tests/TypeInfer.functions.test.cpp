@@ -20,8 +20,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTINT(LuauTarjanChildLimit);
 
-LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
-
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
 TEST_CASE_FIXTURE(Fixture, "general_case_table_literal_blocks")
@@ -2340,20 +2338,10 @@ TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (DFFlag::LuauImproveNonFunctionCallError)
-    {
-        if (FFlag::LuauSolverV2)
-            CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number } & { y: string }");
-        else
-            CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type {| x: number |}");
-    }
+    if (FFlag::LuauSolverV2)
+        CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number } & { y: string }");
     else
-    {
-        if (FFlag::LuauSolverV2)
-            CHECK_EQ(toString(result.errors[0]), "Cannot call non-function { x: number } & { y: string }");
-        else
-            CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |}");
-    }
+        CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type {| x: number |}");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_with_call_metamethod")
@@ -2845,17 +2833,12 @@ TEST_CASE_FIXTURE(Fixture, "cannot_call_union_of_functions")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (DFFlag::LuauImproveNonFunctionCallError)
-    {
-        std::string expected = R"(Cannot call a value of the union type:
+    std::string expected = R"(Cannot call a value of the union type:
   | () -> ()
   | () -> () -> ()
 We are unable to determine the appropriate result type for such a call.)";
 
-        CHECK(expected == toString(result.errors[0]));
-    }
-    else
-        CHECK("Cannot call non-function (() -> () -> ()) | (() -> ())" == toString(result.errors[0]));
+    CHECK(expected == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")

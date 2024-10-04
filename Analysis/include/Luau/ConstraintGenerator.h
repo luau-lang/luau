@@ -28,6 +28,7 @@ struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
 
 struct DcrLogger;
+struct TypeFunctionRuntime;
 
 struct Inference
 {
@@ -108,6 +109,8 @@ struct ConstraintGenerator
 
     // Needed to be able to enable error-suppression preservation for immediate refinements.
     NotNull<Normalizer> normalizer;
+    // Needed to register all available type functions for execution at later stages.
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // Needed to resolve modules to make 'require' import types properly.
     NotNull<ModuleResolver> moduleResolver;
     // Occasionally constraint generation needs to produce an ICE.
@@ -125,6 +128,7 @@ struct ConstraintGenerator
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<ModuleResolver> moduleResolver,
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<InternalErrorReporter> ice,
@@ -223,7 +227,10 @@ private:
     );
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
+    LUAU_NOINLINE void checkAliases(const ScopePtr& scope, AstStatBlock* block);
+
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
+    ControlFlow visitBlockWithoutChildScope_DEPRECATED(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visit(const ScopePtr& scope, AstStat* stat);
     ControlFlow visit(const ScopePtr& scope, AstStatBlock* block);

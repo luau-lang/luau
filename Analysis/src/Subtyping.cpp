@@ -1455,8 +1455,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope)
 {
-    return isCovariantWith(env, subMt->table, superMt->table, scope)
-        .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
+    if (DFInt::LuauTypeSolverRelease >= 646)
+    {
+        return isCovariantWith(env, subMt->table, superMt->table, scope)
+            .withBothComponent(TypePath::TypeField::Table)
+            .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
+    }
+    else
+    {
+        return isCovariantWith(env, subMt->table, superMt->table, scope)
+            .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
+    }
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope)

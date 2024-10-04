@@ -32,7 +32,6 @@ struct Config
 
     std::vector<std::string> globals;
 
-    std::vector<std::string> paths;
     std::unordered_map<std::string, std::string> aliases;
 };
 

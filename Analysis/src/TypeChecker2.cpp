@@ -31,7 +31,7 @@
 #include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
@@ -268,6 +268,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
@@ -277,7 +278,7 @@ void check(
 {
     LUAU_TIMETRACE_SCOPE("check", "Typechecking");
 
-    TypeChecker2 typeChecker{builtinTypes, unifierState, limits, logger, &sourceModule, module};
+    TypeChecker2 typeChecker{builtinTypes, typeFunctionRuntime, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
 
@@ -294,6 +295,7 @@ void check(
 
 TypeChecker2::TypeChecker2(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
@@ -301,13 +303,14 @@ TypeChecker2::TypeChecker2(
     Module* module
 )
     : builtinTypes(builtinTypes)
+    , typeFunctionRuntime(typeFunctionRuntime)
     , logger(logger)
     , limits(limits)
     , ice(unifierState->iceHandler)
     , sourceModule(sourceModule)
     , module(module)
     , normalizer{&module->internalTypes, builtinTypes, unifierState, /* cacheInhabitance */ true}
-    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{unifierState->iceHandler}}
+    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
     , subtyping(&_subtyping)
 {
 }
@@ -489,9 +492,7 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         reduceTypeFunctions(
             instance,
             location,
-            TypeFunctionContext{
-                NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, ice, limits
-            },
+            TypeFunctionContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits},
             true
         )
             .errors;
@@ -1198,7 +1199,7 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 void TypeChecker2::visit(AstStatTypeFunction* stat)
 {
     // TODO: add type checking for user-defined type functions
-    if (!FFlag::LuauUserDefinedTypeFunctions)
+    if (!FFlag::LuauUserDefinedTypeFunctions2)
         reportError(TypeError{stat->location, GenericError{"This syntax is not supported"}});
 }
 
@@ -1450,7 +1451,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         builtinTypes,
         NotNull{&module->internalTypes},
         NotNull{&normalizer},
-        NotNull{&typeFunctionRuntime},
+        typeFunctionRuntime,
         NotNull{stack.back()},
         ice,
         limits,

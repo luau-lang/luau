@@ -613,20 +613,17 @@ struct TypeFunctionInstanceType
     std::vector<TypePackId> packArguments;
 
     std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
-    std::optional<AstExprFunction*> userFuncBody; // Body of the user-defined type function; only available for UDTFs
 
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
         std::vector<TypeId> typeArguments,
         std::vector<TypePackId> packArguments,
-        std::optional<AstName> userFuncName = std::nullopt,
-        std::optional<AstExprFunction*> userFuncBody = std::nullopt
+        std::optional<AstName> userFuncName = std::nullopt
     )
         : function(function)
         , typeArguments(typeArguments)
         , packArguments(packArguments)
         , userFuncName(userFuncName)
-        , userFuncBody(userFuncBody)
     {
     }
 
@@ -1158,6 +1155,10 @@ TypeId freshType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, S
 
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
+
+// A tag to mark a type which doesn't derive directly from the root type as overriding the return of `typeof`.
+// Any classes which derive from this type will have typeof return this type.
+static constexpr char kTypeofRootTag[] = "typeofRoot";
 
 void attachTag(TypeId ty, const std::string& tagName);
 void attachTag(Property& prop, const std::string& tagName);

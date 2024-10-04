@@ -18,8 +18,6 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauImproveNonFunctionCallError, false)
-
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
     std::optional<size_t> maximumCount,
@@ -408,35 +406,30 @@ struct ErrorConverter
 
     std::string operator()(const Luau::CannotCallNonFunction& e) const
     {
-        if (DFFlag::LuauImproveNonFunctionCallError)
+        if (auto unionTy = get<UnionType>(follow(e.ty)))
         {
-            if (auto unionTy = get<UnionType>(follow(e.ty)))
+            std::string err = "Cannot call a value of the union type:";
+
+            for (auto option : unionTy)
             {
-                std::string err = "Cannot call a value of the union type:";
+                option = follow(option);
 
-                for (auto option : unionTy)
+                if (get<FunctionType>(option) || findCallMetamethod(option))
                 {
-                    option = follow(option);
-
-                    if (get<FunctionType>(option) || findCallMetamethod(option))
-                    {
-                        err += "\n  | " + toString(option);
-                        continue;
-                    }
-
-                    // early-exit if we find something that isn't callable in the union.
-                    return "Cannot call a value of type " + toString(option) + " in union:\n  " + toString(e.ty);
+                    err += "\n  | " + toString(option);
+                    continue;
                 }
 
-                err += "\nWe are unable to determine the appropriate result type for such a call.";
-
-                return err;
+                // early-exit if we find something that isn't callable in the union.
+                return "Cannot call a value of type " + toString(option) + " in union:\n  " + toString(e.ty);
             }
 
-            return "Cannot call a value of type " + toString(e.ty);
+            err += "\nWe are unable to determine the appropriate result type for such a call.";
+
+            return err;
         }
 
-        return "Cannot call non-function " + toString(e.ty);
+        return "Cannot call a value of type " + toString(e.ty);
     }
     std::string operator()(const Luau::ExtraInformation& e) const
     {

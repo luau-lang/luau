@@ -308,6 +308,22 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireInitLua")
     assertOutputContainsAll({"true", "result from init.lua"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithFileAmbiguity")
+{
+    std::string ambiguousPath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/ambiguous_file_requirer";
+
+    runProtectedRequire(ambiguousPath);
+    assertOutputContainsAll({"false", "require path could not be resolved to a unique file"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithDirectoryAmbiguity")
+{
+    std::string ambiguousPath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/ambiguous_directory_requirer";
+
+    runProtectedRequire(ambiguousPath);
+    assertOutputContainsAll({"false", "require path could not be resolved to a unique file"});
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "CheckCacheAfterRequireLuau")
 {
     std::string relativePath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/module";
@@ -401,25 +417,11 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAbsolutePath")
     assertOutputContainsAll({"false", "cannot require an absolute path"});
 }
 
-TEST_CASE_FIXTURE(ReplWithPathFixture, "PathsArrayRelativePath")
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
 {
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/requirer";
+    std::string path = "an/unprefixed/path";
     runProtectedRequire(path);
-    assertOutputContainsAll({"true", "result from library"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "PathsArrayExplicitlyRelativePath")
-{
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/fail_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"false", "error requiring module"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "PathsArrayFromParent")
-{
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/global_library_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"true", "result from global_library"});
+    assertOutputContainsAll({"false", "require path must start with a valid prefix: ./, ../, or @"});
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")

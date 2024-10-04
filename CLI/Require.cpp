@@ -24,6 +24,9 @@ RequireResolver::RequireResolver(lua_State* L, std::string path)
 
     std::replace(pathToResolve.begin(), pathToResolve.end(), '\\', '/');
 
+    if (!isPrefixValid())
+        luaL_argerrorL(L, 1, "require path must start with a valid prefix: ./, ../, or @");
+
     substituteAliasIfPresent(pathToResolve);
 }
 
@@ -44,44 +47,14 @@ RequireResolver::ModuleStatus RequireResolver::findModule()
     // Put _MODULES table on stack for checking and saving to the cache
     luaL_findtable(L, LUA_REGISTRYINDEX, "_MODULES", 1);
 
-    RequireResolver::ModuleStatus moduleStatus = findModuleImpl();
-
-    if (moduleStatus != RequireResolver::ModuleStatus::NotFound)
-        return moduleStatus;
-
-    if (!shouldSearchPathsArray())
-        return moduleStatus;
-
-    if (!isConfigFullyResolved)
-        parseNextConfig();
-
-    // Index-based iteration because std::iterator may be invalidated if config.paths is reallocated
-    for (size_t i = 0; i < config.paths.size(); ++i)
-    {
-        // "placeholder" acts as a requiring file in the relevant directory
-        std::optional<std::string> absolutePathOpt = resolvePath(pathToResolve, joinPaths(config.paths[i], "placeholder"));
-
-        if (!absolutePathOpt)
-            luaL_errorL(L, "error requiring module");
-
-        chunkname = *absolutePathOpt;
-        absolutePath = *absolutePathOpt;
-
-        moduleStatus = findModuleImpl();
-
-        if (moduleStatus != RequireResolver::ModuleStatus::NotFound)
-            return moduleStatus;
-
-        // Before finishing the loop, parse more config files if there are any
-        if (i == config.paths.size() - 1 && !isConfigFullyResolved)
-            parseNextConfig(); // could reallocate config.paths when paths are parsed and added
-    }
-
-    return RequireResolver::ModuleStatus::NotFound;
+    return findModuleImpl();
 }
 
 RequireResolver::ModuleStatus RequireResolver::findModuleImpl()
 {
+    if (isPathAmbiguous(absolutePath))
+        return ModuleStatus::Ambiguous;
+
     static const std::array<const char*, 4> possibleSuffixes = {".luau", ".lua", "/init.luau", "/init.lua"};
 
     size_t unsuffixedAbsolutePathSize = absolutePath.size();
@@ -113,15 +86,34 @@ RequireResolver::ModuleStatus RequireResolver::findModuleImpl()
     return ModuleStatus::NotFound;
 }
 
+bool RequireResolver::isPathAmbiguous(const std::string& path)
+{
+    bool found = false;
+    for (const char* suffix : {".luau", ".lua"})
+    {
+        if (isFile(path + suffix))
+        {
+            if (found)
+                return true;
+            else
+                found = true;
+        }
+    }
+    if (isDirectory(path) && found)
+        return true;
+
+    return false;
+}
+
 bool RequireResolver::isRequireAllowed(std::string_view sourceChunkname)
 {
     LUAU_ASSERT(!sourceChunkname.empty());
     return (sourceChunkname[0] == '=' || sourceChunkname[0] == '@');
 }
 
-bool RequireResolver::shouldSearchPathsArray()
+bool RequireResolver::isPrefixValid()
 {
-    return !isAbsolutePath(pathToResolve) && !isExplicitlyRelative(pathToResolve);
+    return pathToResolve.compare(0, 2, "./") == 0 || pathToResolve.compare(0, 3, "../") == 0 || pathToResolve.compare(0, 1, "@") == 0;
 }
 
 void RequireResolver::resolveAndStoreDefaultPaths()
@@ -283,24 +275,10 @@ void RequireResolver::parseConfigInDirectory(const std::string& directory)
 {
     std::string configPath = joinPaths(directory, Luau::kConfigName);
 
-    size_t numPaths = config.paths.size();
-
     if (std::optional<std::string> contents = readFile(configPath))
     {
         std::optional<std::string> error = Luau::parseConfig(*contents, config);
         if (error)
             luaL_errorL(L, "error parsing %s (%s)", configPath.c_str(), (*error).c_str());
-    }
-
-    // Resolve any newly obtained relative paths in "paths" in relation to configPath
-    for (auto it = config.paths.begin() + numPaths; it != config.paths.end(); ++it)
-    {
-        if (!isAbsolutePath(*it))
-        {
-            if (std::optional<std::string> resolvedPath = resolvePath(*it, configPath))
-                *it = std::move(*resolvedPath);
-            else
-                luaL_errorL(L, "error requiring module");
-        }
     }
 }

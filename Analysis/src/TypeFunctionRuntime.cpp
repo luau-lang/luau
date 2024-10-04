@@ -13,8 +13,8 @@
 #include <set>
 #include <vector>
 
-// defined in TypeFunctionRuntimeBuilder.cpp
-LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit);
+LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
 {
@@ -63,21 +63,21 @@ std::optional<std::string> checkResultForError(lua_State* L, const char* typeFun
     }
 }
 
-static const TypeFunctionContext* getTypeFunctionContext(lua_State* L)
+static TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L)
 {
-    return static_cast<const TypeFunctionContext*>(lua_getthreaddata(lua_mainthread(L)));
+    return static_cast<TypeFunctionRuntime*>(lua_getthreaddata(lua_mainthread(L)));
 }
 
 TypeFunctionType* allocateTypeFunctionType(lua_State* L, TypeFunctionTypeVariant type)
 {
-    auto ctx = getTypeFunctionContext(L);
-    return ctx->typeFunctionRuntime->typeArena.allocate(std::move(type));
+    auto ctx = getTypeFunctionRuntime(L);
+    return ctx->typeArena.allocate(std::move(type));
 }
 
 TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunctionTypePackVariant type)
 {
-    auto ctx = getTypeFunctionContext(L);
-    return ctx->typeFunctionRuntime->typePackArena.allocate(std::move(type));
+    auto ctx = getTypeFunctionRuntime(L);
+    return ctx->typePackArena.allocate(std::move(type));
 }
 
 // Pushes a new type userdata onto the stack
@@ -678,7 +678,7 @@ static int writeTableProp(lua_State* L)
 }
 
 // Luau: `self:setindexer(key: type, value: type)`
-// Sets the indexer of the table
+// Sets the indexer of the table, if the key type is `never`, the indexer is removed
 static int setTableIndexer(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
@@ -693,8 +693,16 @@ static int setTableIndexer(lua_State* L)
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     TypeFunctionTypeId value = getTypeUserData(L, 3);
 
-    tftt->indexer = TypeFunctionTableIndexer{key, value};
+    if (DFInt::LuauTypeSolverRelease >= 646)
+    {
+        if (auto tfnt = get<TypeFunctionNeverType>(key))
+        {
+            tftt->indexer = std::nullopt;
+            return 0;
+        }
+    }
 
+    tftt->indexer = TypeFunctionTableIndexer{key, value};
     return 0;
 }
 
@@ -1353,7 +1361,7 @@ static int deepCopy(lua_State* L)
 
     TypeFunctionTypeId arg = getTypeUserData(L, 1);
 
-    TypeFunctionTypeId copy = deepClone(getTypeFunctionContext(L)->typeFunctionRuntime, arg);
+    TypeFunctionTypeId copy = deepClone(NotNull{getTypeFunctionRuntime(L)}, arg);
     allocTypeUserData(L, copy->type);
     return 1;
 }

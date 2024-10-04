@@ -149,7 +149,10 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 
     if (FFlag::LuauSolverV2)
     {
-        TypeFunctionRuntime typeFunctionRuntime; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
+        TypeCheckLimits limits;
+        TypeFunctionRuntime typeFunctionRuntime{
+            NotNull{&iceReporter}, NotNull{&limits}
+        }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
         if (FFlag::LuauAutocompleteNewSolverLimit)
         {

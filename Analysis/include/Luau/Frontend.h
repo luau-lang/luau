@@ -44,21 +44,6 @@ struct LoadDefinitionFileResult
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
 
-std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr);
-
-// Exported only for convenient testing.
-std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& expr);
-
-/** Try to convert an AST fragment into a ModuleName.
- * Returns std::nullopt if the expression cannot be resolved.  This will most likely happen in cases where
- * the import path involves some dynamic computation that we cannot see into at typechecking time.
- *
- * Unintuitively, weirdly-formulated modules (like game.Parent.Parent.Parent.Foo) will successfully produce a ModuleName
- * as long as it falls within the permitted syntax.  This is ok because we will fail to find the module and produce an
- * error when we try during typechecking.
- */
-std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& expr);
-
 struct SourceNode
 {
     bool hasDirtySourceModule() const
