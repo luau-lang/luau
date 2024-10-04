@@ -21,6 +21,7 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 
 using namespace Luau;
 
@@ -2794,6 +2795,16 @@ TEST_CASE("TypeAliasing")
     Luau::CompileOptions options;
     Luau::ParseOptions parseOptions;
     CHECK_NOTHROW(Luau::compileOrThrow(bcb, "type A = number local a: A = 1", options, parseOptions));
+}
+
+TEST_CASE("TypeFunction")
+{
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+
+    Luau::BytecodeBuilder bcb;
+    Luau::CompileOptions options;
+    Luau::ParseOptions parseOptions;
+    CHECK_NOTHROW(Luau::compileOrThrow(bcb, "type function a() return types.any end", options, parseOptions));
 }
 
 TEST_CASE("DebugLineInfo")

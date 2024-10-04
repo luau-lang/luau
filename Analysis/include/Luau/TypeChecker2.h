@@ -60,6 +60,7 @@ struct Reasonings
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> sharedState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
@@ -70,6 +71,7 @@ void check(
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DcrLogger* logger;
     const NotNull<TypeCheckLimits> limits;
     const NotNull<InternalErrorReporter> ice;
@@ -83,12 +85,12 @@ struct TypeChecker2
     DenseHashSet<TypeId> seenTypeFunctionInstances{nullptr};
 
     Normalizer normalizer;
-    TypeFunctionRuntime typeFunctionRuntime;
     Subtyping _subtyping;
     NotNull<Subtyping> subtyping;
 
     TypeChecker2(
         NotNull<BuiltinTypes> builtinTypes,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<UnifierSharedState> unifierState,
         NotNull<TypeCheckLimits> limits,
         DcrLogger* logger,

@@ -29,6 +29,7 @@
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease);
 
 namespace Luau
 {
@@ -191,6 +192,7 @@ bool hasFreeType(TypeId ty)
 ConstraintGenerator::ConstraintGenerator(
     ModulePtr module,
     NotNull<Normalizer> normalizer,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<ModuleResolver> moduleResolver,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> ice,
@@ -206,6 +208,7 @@ ConstraintGenerator::ConstraintGenerator(
     , rootScope(nullptr)
     , dfg(dfg)
     , normalizer(normalizer)
+    , typeFunctionRuntime(typeFunctionRuntime)
     , moduleResolver(moduleResolver)
     , ice(ice)
     , globalScope(globalScope)
@@ -237,7 +240,8 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 
     Checkpoint start = checkpoint(this);
 
-    ControlFlow cf = visitBlockWithoutChildScope(scope, block);
+    ControlFlow cf =
+        DFInt::LuauTypeSolverRelease >= 646 ? visitBlockWithoutChildScope(scope, block) : visitBlockWithoutChildScope_DEPRECATED(scope, block);
     if (cf == ControlFlow::None)
         addConstraint(scope, block->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, rootScope->returnType});
 
@@ -643,7 +647,133 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
         addConstraint(scope, location, c);
 }
 
+void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* block)
+{
+    std::unordered_map<Name, Location> aliasDefinitionLocations;
+
+    // In order to enable mutually-recursive type aliases, we need to
+    // populate the type bindings before we actually check any of the
+    // alias statements.
+    for (AstStat* stat : block->body)
+    {
+        if (auto alias = stat->as<AstStatTypeAlias>())
+        {
+            if (scope->exportedTypeBindings.count(alias->name.value) || scope->privateTypeBindings.count(alias->name.value))
+            {
+                auto it = aliasDefinitionLocations.find(alias->name.value);
+                LUAU_ASSERT(it != aliasDefinitionLocations.end());
+                reportError(alias->location, DuplicateTypeDefinition{alias->name.value, it->second});
+                continue;
+            }
+
+            // A type alias might have no name if the code is syntactically
+            // illegal. We mustn't prepopulate anything in this case.
+            if (alias->name == kParseNameError || alias->name == "typeof")
+                continue;
+
+            ScopePtr defnScope = childScope(alias, scope);
+
+            TypeId initialType = arena->addType(BlockedType{});
+            TypeFun initialFun{initialType};
+
+            for (const auto& [name, gen] : createGenerics(defnScope, alias->generics, /* useCache */ true))
+            {
+                initialFun.typeParams.push_back(gen);
+            }
+
+            for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks, /* useCache */ true))
+            {
+                initialFun.typePackParams.push_back(genPack);
+            }
+
+            if (alias->exported)
+                scope->exportedTypeBindings[alias->name.value] = std::move(initialFun);
+            else
+                scope->privateTypeBindings[alias->name.value] = std::move(initialFun);
+
+            astTypeAliasDefiningScopes[alias] = defnScope;
+            aliasDefinitionLocations[alias->name.value] = alias->location;
+        }
+        else if (auto function = stat->as<AstStatTypeFunction>())
+        {
+            // If a type function w/ same name has already been defined, error for having duplicates
+            if (scope->exportedTypeBindings.count(function->name.value) || scope->privateTypeBindings.count(function->name.value))
+            {
+                auto it = aliasDefinitionLocations.find(function->name.value);
+                LUAU_ASSERT(it != aliasDefinitionLocations.end());
+                reportError(function->location, DuplicateTypeDefinition{function->name.value, it->second});
+                continue;
+            }
+
+            if (scope->parent != globalScope)
+            {
+                reportError(function->location, GenericError{"Local user-defined functions are not supported yet"});
+                continue;
+            }
+
+            ScopePtr defnScope = childScope(function, scope);
+
+            // Create TypeFunctionInstanceType
+
+            std::vector<TypeId> typeParams;
+            typeParams.reserve(function->body->args.size);
+
+            std::vector<GenericTypeDefinition> quantifiedTypeParams;
+            quantifiedTypeParams.reserve(function->body->args.size);
+
+            for (size_t i = 0; i < function->body->args.size; i++)
+            {
+                std::string name = format("T%zu", i);
+                TypeId ty = arena->addType(GenericType{name});
+                typeParams.push_back(ty);
+
+                GenericTypeDefinition genericTy{ty};
+                quantifiedTypeParams.push_back(genericTy);
+            }
+
+            if (std::optional<std::string> error = typeFunctionRuntime->registerFunction(function))
+                reportError(function->location, GenericError{*error});
+
+            TypeId typeFunctionTy = arena->addType(TypeFunctionInstanceType{
+                NotNull{&builtinTypeFunctions().userFunc},
+                std::move(typeParams),
+                {},
+                function->name,
+            });
+
+            TypeFun typeFunction{std::move(quantifiedTypeParams), typeFunctionTy};
+
+            // Set type bindings and definition locations for this user-defined type function
+            scope->privateTypeBindings[function->name.value] = std::move(typeFunction);
+            aliasDefinitionLocations[function->name.value] = function->location;
+        }
+    }
+}
+
 ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
+{
+    RecursionCounter counter{&recursionCount};
+
+    if (recursionCount >= FInt::LuauCheckRecursionLimit)
+    {
+        reportCodeTooComplex(block->location);
+        return ControlFlow::None;
+    }
+
+    checkAliases(scope, block);
+
+    std::optional<ControlFlow> firstControlFlow;
+    for (AstStat* stat : block->body)
+    {
+        ControlFlow cf = visit(scope, stat);
+        if (cf != ControlFlow::None && !firstControlFlow)
+            firstControlFlow = cf;
+    }
+
+    return firstControlFlow.value_or(ControlFlow::None);
+}
+
+ControlFlow ConstraintGenerator::visitBlockWithoutChildScope_DEPRECATED(const ScopePtr& scope, AstStatBlock* block)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -709,6 +839,12 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
                 continue;
             }
 
+            if (scope->parent != globalScope)
+            {
+                reportError(function->location, GenericError{"Local user-defined functions are not supported yet"});
+                continue;
+            }
+
             ScopePtr defnScope = childScope(function, scope);
 
             // Create TypeFunctionInstanceType
@@ -729,12 +865,14 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
                 quantifiedTypeParams.push_back(genericTy);
             }
 
+            if (std::optional<std::string> error = typeFunctionRuntime->registerFunction(function))
+                reportError(function->location, GenericError{*error});
+
             TypeId typeFunctionTy = arena->addType(TypeFunctionInstanceType{
                 NotNull{&builtinTypeFunctions().userFunc},
                 std::move(typeParams),
                 {},
                 function->name,
-                function->body,
             });
 
             TypeFun typeFunction{std::move(quantifiedTypeParams), typeFunctionTy};
@@ -1091,7 +1229,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatRepeat* rep
 {
     ScopePtr repeatScope = childScope(repeat, scope);
 
-    visitBlockWithoutChildScope(repeatScope, repeat->body);
+    if (DFInt::LuauTypeSolverRelease >= 646)
+        visitBlockWithoutChildScope(repeatScope, repeat->body);
+    else
+        visitBlockWithoutChildScope_DEPRECATED(repeatScope, repeat->body);
 
     check(repeatScope, repeat->condition);
 
@@ -1265,7 +1406,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatBlock* bloc
 {
     ScopePtr innerScope = childScope(block, scope);
 
-    ControlFlow flow = visitBlockWithoutChildScope(innerScope, block);
+    ControlFlow flow = DFInt::LuauTypeSolverRelease >= 646 ? visitBlockWithoutChildScope(innerScope, block)
+                                                           : visitBlockWithoutChildScope_DEPRECATED(innerScope, block);
 
     // An AstStatBlock has linear control flow, i.e. one entry and one exit, so we can inherit
     // all the changes to the environment occurred by the statements in that block.
@@ -1456,7 +1598,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     TypeFun typeFunction = bindingIt->second;
 
     // Adding typeAliasExpansionConstraint on user-defined type function for the constraint solver
-    if (auto typeFunctionTy = get<TypeFunctionInstanceType>(typeFunction.type))
+    if (auto typeFunctionTy = get<TypeFunctionInstanceType>(DFInt::LuauTypeSolverRelease >= 646 ? follow(typeFunction.type) : typeFunction.type))
     {
         TypeId expansionTy = arena->addType(PendingExpansionType{{}, function->name, typeFunctionTy->typeArguments, typeFunctionTy->packArguments});
         addConstraint(scope, function->location, TypeAliasExpansionConstraint{/* target */ expansionTy});
@@ -2511,7 +2653,7 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
             TypeId ty = follow(typeFun->type);
 
             // We're only interested in the root class of any classes.
-            if (auto ctv = get<ClassType>(ty); ctv && ctv->parent == builtinTypes->classType)
+            if (auto ctv = get<ClassType>(ty); ctv && (ctv->parent == builtinTypes->classType || hasTag(ty, kTypeofRootTag)))
                 discriminantTy = ty;
         }
 
@@ -2944,7 +3086,8 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 void ConstraintGenerator::checkFunctionBody(const ScopePtr& scope, AstExprFunction* fn)
 {
     // If it is possible for execution to reach the end of the function, the return type must be compatible with ()
-    ControlFlow cf = visitBlockWithoutChildScope(scope, fn->body);
+    ControlFlow cf =
+        DFInt::LuauTypeSolverRelease >= 646 ? visitBlockWithoutChildScope(scope, fn->body) : visitBlockWithoutChildScope_DEPRECATED(scope, fn->body);
     if (cf == ControlFlow::None)
         addConstraint(scope, fn->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, scope->returnType});
 }

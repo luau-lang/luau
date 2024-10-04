@@ -12,7 +12,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 
 TEST_SUITE_BEGIN("TranspilerTests");
 
@@ -698,7 +698,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_type_functions")
 {
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
 
     std::string code = R"( type function foo(arg1, arg2) if arg1 == arg2 then return arg1 end return arg2 end )";
 

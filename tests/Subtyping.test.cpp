@@ -66,7 +66,8 @@ struct SubtypeFixture : Fixture
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    TypeFunctionRuntime typeFunctionRuntime;
+    TypeCheckLimits limits;
+    TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 

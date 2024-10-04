@@ -237,6 +237,23 @@ TEST_CASE_FIXTURE(ClassFixture, "metatables")
     SUBCASE("table")
     {
         TYPESOLVE_CODE(R"(
+            type Table = { foo: number }
+            type Metatable = { bar: number }
+            local tbl: Table = { foo = 123 }
+            local mt: Metatable = { bar = 456 }
+            local res = setmetatable(tbl, mt)
+        )");
+
+        // Tricky test setup because 'setmetatable' mutates the argument 'tbl' type
+        auto result = traverseForType(requireType("res"), Path(TypeField::Table), builtinTypes);
+        auto expected = lookupType("Table");
+        REQUIRE(expected);
+        CHECK(result == follow(*expected));
+    }
+
+    SUBCASE("metatable")
+    {
+        TYPESOLVE_CODE(R"(
             local mt = { foo = 123 }
             local tbl = setmetatable({}, mt)
         )");

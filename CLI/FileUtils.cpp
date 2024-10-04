@@ -57,12 +57,6 @@ bool isAbsolutePath(std::string_view path)
 #endif
 }
 
-bool isExplicitlyRelative(std::string_view path)
-{
-    return (path == ".") || (path == "..") || (path.size() >= 2 && path[0] == '.' && path[1] == '/') ||
-           (path.size() >= 3 && path[0] == '.' && path[1] == '.' && path[2] == '/');
-}
-
 std::optional<std::string> getCurrentWorkingDirectory()
 {
     // 2^17 - derived from the Windows path length limit
@@ -352,6 +346,20 @@ bool traverseDirectory(const std::string& path, const std::function<void(const s
     return traverseDirectoryRec(path, callback);
 }
 #endif
+
+bool isFile(const std::string& path)
+{
+#ifdef _WIN32
+    DWORD fileAttributes = GetFileAttributesW(fromUtf8(path).c_str());
+    if (fileAttributes == INVALID_FILE_ATTRIBUTES)
+        return false;
+    return (fileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+#else
+    struct stat st = {};
+    lstat(path.c_str(), &st);
+    return (st.st_mode & S_IFMT) == S_IFREG;
+#endif
+}
 
 bool isDirectory(const std::string& path)
 {

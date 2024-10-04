@@ -32,7 +32,6 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauAcceptIndexingTableUnionsIntersections, false)
 
 namespace Luau
@@ -2794,35 +2793,20 @@ TypeId TypeChecker::checkRelationalOperation(
         {
             reportErrors(state.errors);
 
-            if (FFlag::LuauRemoveBadRelationalOperatorWarning)
+            // The original version of this check also produced this error when we had a union type.
+            // However, the old solver does not readily have the ability to discern if the union is comparable.
+            // This is the case when the lhs is e.g. a union of singletons and the rhs is the combined type.
+            // The new solver has much more powerful logic for resolving relational operators, but for now,
+            // we need to be conservative in the old solver to deliver a reasonable developer experience.
+            if (!isEquality && state.errors.empty() && isBoolean(leftType))
             {
-                // The original version of this check also produced this error when we had a union type.
-                // However, the old solver does not readily have the ability to discern if the union is comparable.
-                // This is the case when the lhs is e.g. a union of singletons and the rhs is the combined type.
-                // The new solver has much more powerful logic for resolving relational operators, but for now,
-                // we need to be conservative in the old solver to deliver a reasonable developer experience.
-                if (!isEquality && state.errors.empty() && isBoolean(leftType))
-                {
-                    reportError(
-                        expr.location,
-                        GenericError{
-                            format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
-                        }
+                reportError(
+                    expr.location,
+                    GenericError{
+                    format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
+                }
                     );
                 }
-            }
-            else
-            {
-                if (!isEquality && state.errors.empty() && (get<UnionType>(leftType) || isBoolean(leftType)))
-                {
-                    reportError(
-                        expr.location,
-                        GenericError{
-                            format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
-                        }
-                    );
-                }
-            }
 
             return booleanType;
         }
@@ -6408,7 +6392,7 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
     }
 
     // We're only interested in the root class of any classes.
-    if (auto ctv = get<ClassType>(type); !ctv || ctv->parent != builtinTypes->classType)
+    if (auto ctv = get<ClassType>(type); !ctv || (ctv->parent != builtinTypes->classType && !hasTag(type, kTypeofRootTag)))
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 
     // This probably hints at breaking out type filtering functions from the predicate solver so that typeof is not tightly coupled with IsA.

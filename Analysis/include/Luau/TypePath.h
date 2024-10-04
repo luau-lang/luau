@@ -51,6 +51,8 @@ struct Index
 /// Represents fields of a type or pack that contain a type.
 enum class TypeField
 {
+    /// The table of a metatable type.
+    Table,
     /// The metatable of a type. This could be a metatable type, a primitive
     /// type, a class type, or perhaps even a string singleton type.
     Metatable,

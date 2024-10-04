@@ -46,7 +46,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions, false)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions2, false)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -375,7 +376,6 @@ struct TypeFunctionReducer
                 return;
 
             ctx.userFuncName = tfit->userFuncName;
-            ctx.userFuncBody = tfit->userFuncBody;
 
             TypeFunctionReductionResult<TypeId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleTypeFunctionReduction(subject, result);
@@ -414,6 +414,20 @@ struct TypeFunctionReducer
         else if (!queuedTps.empty())
             stepPack();
     }
+};
+
+struct LuauTempThreadPopper
+{
+    explicit LuauTempThreadPopper(lua_State* L)
+        : L(L)
+    {
+    }
+    ~LuauTempThreadPopper()
+    {
+        lua_pop(L, 1);
+    }
+
+    lua_State* L = nullptr;
 };
 
 static FunctionGraphReductionResult reduceFunctionsInternal(
@@ -586,8 +600,6 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
     return std::nullopt;
 }
 
-using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
-
 TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -595,10 +607,17 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     NotNull<TypeFunctionContext> ctx
 )
 {
-    if (!ctx->userFuncName || !ctx->userFuncBody)
+    if (!ctx->userFuncName)
     {
         ctx->ice->ice("all user-defined type functions must have an associated function definition");
         return {std::nullopt, true, {}, {}};
+    }
+
+    if (FFlag::LuauUserDefinedTypeFunctionNoEvaluation)
+    {
+        // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
+        if (!ctx->typeFunctionRuntime->allowEvaluation)
+            return {ctx->builtins->errorRecoveryType(), false, {}, {}};
     }
 
     for (auto typeParam : typeParams)
@@ -611,62 +630,18 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     }
 
     AstName name = *ctx->userFuncName;
-    AstExprFunction* function = *ctx->userFuncBody;
 
-    // Construct ParseResult containing the type function
-    Allocator allocator;
-    AstNameTable names(allocator);
+    lua_State* global = ctx->typeFunctionRuntime->state.get();
 
-    AstExprGlobal globalName{Location{}, name};
-    AstStatFunction typeFunction{Location{}, &globalName, function};
-    AstStat* stmtArray[] = {&typeFunction};
-    AstArray<AstStat*> stmts{stmtArray, 1};
-    AstStatBlock exec{Location{}, stmts};
-    ParseResult parseResult{&exec, 1};
+    if (global == nullptr)
+        return {std::nullopt, true, {}, {}, format("'%s' type function: cannot be evaluated in this context", name.value)};
 
-    BytecodeBuilder builder;
-    try
-    {
-        compileOrThrow(builder, parseResult, names);
-    }
-    catch (CompileError& e)
-    {
-        std::string errMsg = format("'%s' type function failed to compile with error message: %s", name.value, e.what());
-        return {std::nullopt, true, {}, {}, errMsg};
-    }
+    // Separate sandboxed thread for individual execution and private globals
+    lua_State* L = lua_newthread(global);
+    LuauTempThreadPopper popper(global);
 
-    std::string bytecode = builder.getBytecode();
-
-    // Initialize Lua state
-    StateRef globalState(lua_newstate(typeFunctionAlloc, nullptr), lua_close);
-    lua_State* L = globalState.get();
-
-    lua_setthreaddata(L, ctx.get());
-
-    setTypeFunctionEnvironment(L);
-
-    // Register type userdata
-    registerTypeUserData(L);
-
-    luaL_sandbox(L);
-    luaL_sandboxthread(L);
-
-    // Load bytecode into Luau state
-    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
-        return {std::nullopt, true, {}, {}, error};
-
-    // Execute the loaded chunk to register the function in the global environment
-    if (auto error = checkResultForError(L, name.value, lua_pcall(L, 0, 0, 0)))
-        return {std::nullopt, true, {}, {}, error};
-
-    // Get type function from the global environment
-    lua_getglobal(L, name.value);
-    if (!lua_isfunction(L, -1))
-    {
-        std::string errMsg = format("Could not find '%s' type function in the global scope", name.value);
-
-        return {std::nullopt, true, {}, {}, errMsg};
-    }
+    lua_getglobal(global, name.value);
+    lua_xmove(global, L, 1);
 
     // Push serialized arguments onto the stack
 
@@ -690,15 +665,15 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     // Set up an interrupt handler for type functions to respect type checking limits and LSP cancellation requests.
     lua_callbacks(L)->interrupt = [](lua_State* L, int gc)
     {
-        auto ctx = static_cast<const TypeFunctionContext*>(lua_getthreaddata(lua_mainthread(L)));
+        auto ctx = static_cast<const TypeFunctionRuntime*>(lua_getthreaddata(lua_mainthread(L)));
         if (ctx->limits->finishTime && TimeTrace::getClock() > *ctx->limits->finishTime)
-            ctx->solver->throwTimeLimitError();
+            throw TimeLimitError(ctx->ice->moduleName);
 
         if (ctx->limits->cancellationToken && ctx->limits->cancellationToken->requested())
-            ctx->solver->throwUserCancelError();
+            throw UserCancelError(ctx->ice->moduleName);
     };
 
-    if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, int(typeParams.size()))))
+    if (auto error = checkResultForError(L, name.value, lua_pcall(L, int(typeParams.size()), 1, 0)))
         return {std::nullopt, true, {}, {}, error};
 
     // If the return value is not a type userdata, return with error message
@@ -796,7 +771,8 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
         return {ctx->builtins->numberType, false, {}, {}};
 
     // we use the normalized operand here in case there was an intersection or union.
-    TypeId normalizedOperand = ctx->normalizer->typeFromNormal(*normTy);
+    TypeId normalizedOperand =
+        DFInt::LuauTypeSolverRelease >= 646 ? follow(ctx->normalizer->typeFromNormal(*normTy)) : ctx->normalizer->typeFromNormal(*normTy);
     if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
         return {ctx->builtins->numberType, false, {}, {}};
 
@@ -945,6 +921,108 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
         return {*ret, false, {}, {}};
     else
         return {std::nullopt, true, {}, {}};
+}
+
+void dummyStateClose(lua_State*) {}
+
+TypeFunctionRuntime::TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits)
+    : ice(ice)
+    , limits(limits)
+    , state(nullptr, dummyStateClose)
+{
+}
+
+TypeFunctionRuntime::~TypeFunctionRuntime() {}
+
+std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunction* function)
+{
+    if (FFlag::LuauUserDefinedTypeFunctionNoEvaluation)
+    {
+        // If evaluation is disabled, we do not generate additional error messages
+        if (!allowEvaluation)
+            return std::nullopt;
+    }
+
+    prepareState();
+
+    AstName name = function->name;
+
+    // Construct ParseResult containing the type function
+    Allocator allocator;
+    AstNameTable names(allocator);
+
+    AstExpr* exprFunction = function->body;
+    AstArray<AstExpr*> exprReturns{&exprFunction, 1};
+    AstStatReturn stmtReturn{Location{}, exprReturns};
+    AstStat* stmtArray[] = {&stmtReturn};
+    AstArray<AstStat*> stmts{stmtArray, 1};
+    AstStatBlock exec{Location{}, stmts};
+    ParseResult parseResult{&exec, 1};
+
+    BytecodeBuilder builder;
+    try
+    {
+        compileOrThrow(builder, parseResult, names);
+    }
+    catch (CompileError& e)
+    {
+        return format("'%s' type function failed to compile with error message: %s", name.value, e.what());
+    }
+
+    std::string bytecode = builder.getBytecode();
+
+    lua_State* global = state.get();
+
+    // Separate sandboxed thread for individual execution and private globals
+    lua_State* L = lua_newthread(global);
+    LuauTempThreadPopper popper(global);
+
+    // Create individual environment for the type function
+    luaL_sandboxthread(L);
+
+    // Do not allow global writes to that environment
+    lua_pushvalue(L, LUA_GLOBALSINDEX);
+    lua_setreadonly(L, -1, true);
+    lua_pop(L, 1);
+
+    // Load bytecode into Luau state
+    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+        return error;
+
+    // Execute the global function which should return our user-defined type function
+    if (auto error = checkResultForError(L, name.value, lua_resume(L, nullptr, 0)))
+        return error;
+
+    if (!lua_isfunction(L, -1))
+    {
+        lua_pop(L, 1);
+        return format("Could not find '%s' type function in the global scope", name.value);
+    }
+
+    // Store resulting function in the global environment
+    lua_xmove(L, global, 1);
+    lua_setglobal(global, name.value);
+
+    return std::nullopt;
+}
+
+void TypeFunctionRuntime::prepareState()
+{
+    if (state)
+        return;
+
+    state = StateRef(lua_newstate(typeFunctionAlloc, nullptr), lua_close);
+    lua_State* L = state.get();
+
+    lua_setthreaddata(L, this);
+
+    setTypeFunctionEnvironment(L);
+
+    // Register type userdata
+    registerTypeUserData(L);
+
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
 }
 
 TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)

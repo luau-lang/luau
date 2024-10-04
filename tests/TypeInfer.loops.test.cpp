@@ -16,8 +16,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
-
 TEST_SUITE_BEGIN("TypeInferLoops");
 
 TEST_CASE_FIXTURE(Fixture, "for_loop")
@@ -194,10 +192,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (DFFlag::LuauImproveNonFunctionCallError)
-        CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
-    else
-        CHECK_EQ("Cannot call non-function string", toString(result.errors[0]));
+    CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")

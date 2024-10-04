@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauDocumentationAtPosition)
+
 struct DocumentationSymbolFixture : BuiltinsFixture
 {
     std::optional<DocumentationSymbol> getDocSymbol(const std::string& source, Position position)
@@ -161,6 +163,44 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_overloaded_function_prop")
     );
 
     CHECK_EQ(symbol, "@test/global/Foo.new/overload/(string) -> number");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "string_metatable_method")
+{
+    ScopedFastFlag sff{FFlag::LuauDocumentationAtPosition, true};
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(
+        R"(
+        local x: string = "Foo"
+        x:rep(2)
+    )",
+        Position(2, 12)
+    );
+
+    CHECK_EQ(symbol, "@luau/global/string.rep");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "parent_class_method")
+{
+    ScopedFastFlag sff{FFlag::LuauDocumentationAtPosition, true};
+    loadDefinition(R"(
+        declare class Foo
+            function bar(self, x: string): number
+        end
+
+        declare class Bar extends Foo
+            function notbar(self, x: string): number
+        end
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(
+        R"(
+        local x: Bar = Bar.new()
+        x:bar("asdf")
+    )",
+        Position(2, 11)
+    );
+
+    CHECK_EQ(symbol, "@test/globaltype/Foo.bar");
 }
 
 TEST_SUITE_END();

@@ -16,8 +16,6 @@
 #include "Luau/Unifier.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
-LUAU_FASTFLAGVARIABLE(LuauNormalizeAwayUninhabitableTables, false)
-LUAU_FASTFLAGVARIABLE(LuauNormalizeNotUnknownIntersection, false);
 LUAU_FASTFLAGVARIABLE(LuauFixReduceStackPressure, false);
 LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 
@@ -39,12 +37,6 @@ static bool fixCyclicTablesBlowingStack()
 
 namespace Luau
 {
-
-// helper to make `FFlag::LuauNormalizeAwayUninhabitableTables` not explicitly required when DCR is enabled.
-static bool normalizeAwayUninhabitableTables()
-{
-    return FFlag::LuauNormalizeAwayUninhabitableTables || FFlag::LuauSolverV2;
-}
 
 static bool shouldEarlyExit(NormalizationResult res)
 {
@@ -1621,7 +1613,7 @@ void Normalizer::unionTablesWithTable(TypeIds& heres, TypeId there)
     // TODO: remove unions of tables where possible
 
     // we can always skip `never`
-    if (normalizeAwayUninhabitableTables() && get<NeverType>(there))
+    if (get<NeverType>(there))
         return;
 
     heres.insert(there);
@@ -2619,13 +2611,12 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                                 seenSet.erase(*tprop.readTy);
                             }
 
-                            if (normalizeAwayUninhabitableTables() && NormalizationResult::True != res)
+                            if (NormalizationResult::True != res)
                                 return {builtinTypes->neverType};
                         }
                         else
                         {
-                            if (normalizeAwayUninhabitableTables() &&
-                                NormalizationResult::False == isIntersectionInhabited(*hprop.readTy, *tprop.readTy))
+                            if (NormalizationResult::False == isIntersectionInhabited(*hprop.readTy, *tprop.readTy))
                                 return {builtinTypes->neverType};
                         }
 
@@ -3258,7 +3249,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
             // this is a noop since an intersection with `unknown` is trivial.
             return NormalizationResult::True;
         }
-        else if ((FFlag::LuauNormalizeNotUnknownIntersection || FFlag::LuauSolverV2) && get<UnknownType>(t))
+        else if (get<UnknownType>(t))
         {
             // if we're intersecting with `~unknown`, this is equivalent to intersecting with `never`
             // this means we should clear the type entirely.
@@ -3434,7 +3425,10 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<Built
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    TypeFunctionRuntime typeFunctionRuntime; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
+    TypeCheckLimits limits;
+    TypeFunctionRuntime typeFunctionRuntime{
+        NotNull{&ice}, NotNull{&limits}
+    }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
     // Subtyping under DCR is not implemented using unification!
     if (FFlag::LuauSolverV2)
@@ -3457,7 +3451,10 @@ bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, N
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    TypeFunctionRuntime typeFunctionRuntime; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
+    TypeCheckLimits limits;
+    TypeFunctionRuntime typeFunctionRuntime{
+        NotNull{&ice}, NotNull{&limits}
+    }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
     // Subtyping under DCR is not implemented using unification!
     if (FFlag::LuauSolverV2)

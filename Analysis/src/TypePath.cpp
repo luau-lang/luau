@@ -415,6 +415,14 @@ struct TraversalState
 
         switch (field)
         {
+        case TypePath::TypeField::Table:
+            if (auto mt = get<MetatableType>(current))
+            {
+                updateCurrent(mt->table);
+                return true;
+            }
+
+            return false;
         case TypePath::TypeField::Metatable:
             if (auto currentType = get<TypeId>(current))
             {
@@ -561,6 +569,9 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
 
             switch (c)
             {
+            case TypePath::TypeField::Table:
+                result << "table";
+                break;
             case TypePath::TypeField::Metatable:
                 result << "metatable";
                 break;

@@ -13,7 +13,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAttributeSyntax);
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -964,12 +964,11 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
         std::vector<TypeId>{builtinTypes->numberType}, // Type Function Arguments
         {},
         {AstName{"woohoo"}}, // Type Function Name
-        std::nullopt
     };
 
     Type tv{tftt};
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauUserDefinedTypeFunctions)
+    if (FFlag::LuauSolverV2 && FFlag::LuauUserDefinedTypeFunctions2)
         CHECK_EQ(toString(&tv, {}), "woohoo<number>");
 }
 
