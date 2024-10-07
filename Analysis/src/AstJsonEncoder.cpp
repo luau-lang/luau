@@ -1146,8 +1146,6 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("checked");
         case AstAttr::Type::Native:
             return writeString("native");
-        default:
-            return writeRaw("null");
         }
     }
 
