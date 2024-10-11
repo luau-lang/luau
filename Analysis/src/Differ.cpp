@@ -949,8 +949,10 @@ DifferResult diff(TypeId ty1, TypeId ty2)
 {
 #if defined(__GNUC__) && defined(__linux__)
 #pragma GCC diagnostic push
-#if !defined(__has_warning) || __has_warning("-Wmaybe-uninitialized")
+#if defined(__has_warning)
+#if __has_warning("-Wmaybe-uninitialized")
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #endif
 #endif
 
