@@ -947,12 +947,16 @@ std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator DifferEnvironment
 
 DifferResult diff(TypeId ty1, TypeId ty2)
 {
-
+#if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
     DifferEnvironment differEnv{ty1, ty2, std::nullopt, std::nullopt};
+#if defined(__GNUC__)
 #pragma GCC diagnostic pop
-    
+#endif
+ 
     return diffUsingEnv(differEnv, ty1, ty2);
 }
 
