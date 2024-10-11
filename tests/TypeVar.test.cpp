@@ -465,14 +465,17 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
+
 #pragma GCC diagnostic push
 
 #if !defined(__has_warning) || __has_warning("-Wmaybe-uninitialized")
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
+
     Type myAny{AnyType{}, /*presistent*/ true};
     myAny.documentationSymbol = "@global/any";
 #pragma GCC diagnostic pop
+
     TypeArena arena;
 
     TypeId futureAny = arena.addType(FreeType{TypeLevel{}});
