@@ -465,6 +465,8 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "maybe-uninitialized"
     Type myAny{AnyType{}, /*presistent*/ true};
     myAny.documentationSymbol = "@global/any";
 
@@ -477,6 +479,7 @@ TEST_CASE("content_reassignment")
     CHECK(!futureAny->persistent);
     CHECK(futureAny->documentationSymbol == "@global/any");
     CHECK(futureAny->owningArena == &arena);
+#pragma GCC diagnostic pop
 }
 
 TEST_SUITE_END();
