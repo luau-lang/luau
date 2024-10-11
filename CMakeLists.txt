@@ -124,7 +124,7 @@ endif()
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Some gcc versions treat var in `if (type var = val)` as unused
     # Some gcc versions treat variables used in constexpr if blocks as unused
-    list(APPEND LUAU_OPTIONS -Wno-unused)
+    # list(APPEND LUAU_OPTIONS -Wno-unused)
     # GCC has some bugs where we optional<string> is treated as uninitialized if it is on a structg
 endif()
 
