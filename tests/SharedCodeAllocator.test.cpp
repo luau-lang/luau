@@ -175,8 +175,17 @@ TEST_CASE("NativeModuleRefRefcounting")
     REQUIRE(modRefA->getRefcount() == 1);
     REQUIRE(modRefB->getRefcount() == 1);
 
+#ifdef defined(__linux__) && defined(__GNUC__)
+#else
     // NativeModuleRef self move assignment:
-    // deleted because of unecessary warnings
+    {
+        NativeModuleRef modRef1{modRefA};
+        modRef1 = std::move(modRef1);
+        REQUIRE(modRef1.get() == modRefA.get());
+        REQUIRE(modRefA->getRefcount() == 2);
+    }
+
+#endif
 
     REQUIRE(modRefA->getRefcount() == 1);
     REQUIRE(modRefB->getRefcount() == 1);
