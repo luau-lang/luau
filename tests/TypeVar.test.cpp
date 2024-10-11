@@ -466,7 +466,7 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 TEST_CASE("content_reassignment")
 {
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "maybe-uninitialized"
+#pragma GCC diagnostic ignored "-Wgimaybe-uninitialized"
     Type myAny{AnyType{}, /*presistent*/ true};
     myAny.documentationSymbol = "@global/any";
 
