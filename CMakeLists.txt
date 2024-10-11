@@ -114,6 +114,7 @@ else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
     list(APPEND LUAU_OPTIONS -Wimplicit-fallthrough)
     list(APPEND LUAU_OPTIONS -Wsign-compare) # This looks to be included in -Wall for GCC but not clang
+    list(APPEND LUAU_OPTIONS -Wno-maybe-uninitialized)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -125,7 +126,6 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Some gcc versions treat variables used in constexpr if blocks as unused
     list(APPEND LUAU_OPTIONS -Wno-unused)
     # GCC has some bugs where we optional<string> is treated as uninitialized if it is on a structg
-    list(APPEND LUAU_OPTIONS -Wno-maybe-uninitialized)
 endif()
 
 # Enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
