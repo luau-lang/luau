@@ -944,14 +944,17 @@ std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator DifferEnvironment
     return visitingStack.crend();
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+
 DifferResult diff(TypeId ty1, TypeId ty2)
 {
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
     DifferEnvironment differEnv{ty1, ty2, std::nullopt, std::nullopt};
+#pragma GCC diagnostic pop
+    
     return diffUsingEnv(differEnv, ty1, ty2);
 }
-#pragma GCC diagnostic pop      
 
 
 DifferResult diffWithSymbols(TypeId ty1, TypeId ty2, std::optional<std::string> symbol1, std::optional<std::string> symbol2)
