@@ -177,12 +177,13 @@ TEST_CASE("NativeModuleRefRefcounting")
 
     // NativeModuleRef self move assignment:
     {
-#pragma warning(push, 0)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wself-move"
         NativeModuleRef modRef1{modRefA};
         modRef1 = std::move(modRef1);
         REQUIRE(modRef1.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);
-#pragma warning(pop)
+#pragma GCC diagnostic pop
     }
 
     REQUIRE(modRefA->getRefcount() == 1);
