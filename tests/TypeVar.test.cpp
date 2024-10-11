@@ -465,9 +465,11 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
     Type myAny{AnyType{}, /*presistent*/ true};
     myAny.documentationSymbol = "@global/any";
-
+#pragma GCC diagnostic pop
     TypeArena arena;
 
     TypeId futureAny = arena.addType(FreeType{TypeLevel{}});
