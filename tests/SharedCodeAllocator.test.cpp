@@ -175,7 +175,7 @@ TEST_CASE("NativeModuleRefRefcounting")
     REQUIRE(modRefA->getRefcount() == 1);
     REQUIRE(modRefB->getRefcount() == 1);
 
-#ifdef defined(__linux__) && defined(__GNUC__)
+#if defined(__linux__) && defined(__GNUC__)
 #else
     // NativeModuleRef self move assignment:
     {
