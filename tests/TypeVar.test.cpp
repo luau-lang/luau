@@ -465,7 +465,7 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
-
+g
 #pragma GCC diagnostic push
 
 #if !defined(__has_warning) || __has_warning("-Wmaybe-uninitialized")
