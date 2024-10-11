@@ -346,13 +346,13 @@ void SharedCodeGenContextDeleter::operator()(const SharedCodeGenContext* codeGen
     return static_cast<BaseCodeGenContext*>(L->global->ecb.context);
 }
 
-static void onCloseState(lua_State* L) noexcept
+static void onCloseState(lua_State* L)
 {
     getCodeGenContext(L)->onCloseState();
     L->global->ecb = lua_ExecutionCallbacks{};
 }
 
-static void onDestroyFunction(lua_State* L, Proto* proto) noexcept
+static void onDestroyFunction(lua_State* L, Proto* proto)
 {
     getCodeGenContext(L)->onDestroyFunction(proto->execdata);
     proto->execdata = nullptr;

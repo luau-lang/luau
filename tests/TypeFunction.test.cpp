@@ -21,7 +21,7 @@ struct TypeFunctionFixture : Fixture
     TypeFunction swapFunction;
 
     TypeFunctionFixture()
-        : Fixture(true, false)
+        : Fixture(false)
     {
         swapFunction = TypeFunction{
             /* name */ "Swap",

@@ -504,6 +504,11 @@ void* luaM_new_(lua_State* L, size_t nsize, uint8_t memcat)
     g->totalbytes += nsize;
     g->memcatbytes[memcat] += nsize;
 
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, 0, nsize);
+    }
+
     return block;
 }
 
@@ -538,6 +543,11 @@ GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat)
 
     g->totalbytes += nsize;
     g->memcatbytes[memcat] += nsize;
+
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, 0, nsize);
+    }
 
     return (GCObject*)block;
 }
@@ -618,6 +628,12 @@ void* luaM_realloc_(lua_State* L, void* block, size_t osize, size_t nsize, uint8
     LUAU_ASSERT((nsize == 0) == (result == NULL));
     g->totalbytes = (g->totalbytes - osize) + nsize;
     g->memcatbytes[memcat] += nsize - osize;
+
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, osize, nsize);
+    }
+
     return result;
 }
 

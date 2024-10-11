@@ -16,24 +16,12 @@
 #include "Luau/Unifier.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
-LUAU_FASTFLAGVARIABLE(LuauFixReduceStackPressure, false);
-LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(LuauSolverV2);
 
 LUAU_FASTFLAGVARIABLE(LuauUseNormalizeIntersectionLimit, false)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
-
-static bool fixReduceStackPressure()
-{
-    return FFlag::LuauFixReduceStackPressure || FFlag::LuauSolverV2;
-}
-
-static bool fixCyclicTablesBlowingStack()
-{
-    return FFlag::LuauFixCyclicTablesBlowingStack || FFlag::LuauSolverV2;
-}
 
 namespace Luau
 {
@@ -2583,42 +2571,28 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                     if (tprop.readTy.has_value())
                     {
                         // if the intersection of the read types of a property is uninhabited, the whole table is `never`.
-                        if (fixReduceStackPressure())
+                        // We've seen these table prop elements before and we're about to ask if their intersection
+                        // is inhabited
+                        if (seenSet.contains(*hprop.readTy) && seenSet.contains(*tprop.readTy))
                         {
-                            // We've seen these table prop elements before and we're about to ask if their intersection
-                            // is inhabited
-                            if (fixCyclicTablesBlowingStack())
-                            {
-                                if (seenSet.contains(*hprop.readTy) && seenSet.contains(*tprop.readTy))
-                                {
-                                    seenSet.erase(*hprop.readTy);
-                                    seenSet.erase(*tprop.readTy);
-                                    return {builtinTypes->neverType};
-                                }
-                                else
-                                {
-                                    seenSet.insert(*hprop.readTy);
-                                    seenSet.insert(*tprop.readTy);
-                                }
-                            }
-
-                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy);
-
-                            // Cleanup
-                            if (fixCyclicTablesBlowingStack())
-                            {
-                                seenSet.erase(*hprop.readTy);
-                                seenSet.erase(*tprop.readTy);
-                            }
-
-                            if (NormalizationResult::True != res)
-                                return {builtinTypes->neverType};
+                            seenSet.erase(*hprop.readTy);
+                            seenSet.erase(*tprop.readTy);
+                            return {builtinTypes->neverType};
                         }
                         else
                         {
-                            if (NormalizationResult::False == isIntersectionInhabited(*hprop.readTy, *tprop.readTy))
-                                return {builtinTypes->neverType};
+                            seenSet.insert(*hprop.readTy);
+                            seenSet.insert(*tprop.readTy);
                         }
+
+                        NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy);
+
+                        // Cleanup
+                        seenSet.erase(*hprop.readTy);
+                        seenSet.erase(*tprop.readTy);
+
+                        if (NormalizationResult::True != res)
+                            return {builtinTypes->neverType};
 
                         TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
                         prop.readTy = ty;

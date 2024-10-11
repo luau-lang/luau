@@ -135,7 +135,7 @@ def add_argument_parsers(parser):
     interestness_parser.add_argument('--auto', dest='mode', action='store_const', const=InterestnessMode.AUTO,
         default=InterestnessMode.AUTO, help='Automatically figure out which one of --pass or --fail should be used')
     interestness_parser.add_argument('--fail', dest='mode', action='store_const', const=InterestnessMode.FAIL,
-        help='You want this if omitting --fflags=true causes tests to fail')
+        help='You want this if passing --fflags=true causes tests to fail')
     interestness_parser.add_argument('--pass', dest='mode', action='store_const', const=InterestnessMode.PASS,
         help='You want this if passing --fflags=true causes tests to pass')
     interestness_parser.add_argument('--timeout', dest='timeout', type=int, default=0, metavar='SECONDS',

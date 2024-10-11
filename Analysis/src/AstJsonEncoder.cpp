@@ -881,7 +881,7 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(name);
                 PROP(generics);
                 PROP(genericPacks);
-                PROP(type);
+                write("value", node->type);
                 PROP(exported);
             }
         );

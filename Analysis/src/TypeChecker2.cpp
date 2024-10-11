@@ -1625,8 +1625,11 @@ void TypeChecker2::indexExprMetatableHelper(AstExprIndexExpr* indexExpr, const M
         indexExprMetatableHelper(indexExpr, mtmt, exprType, indexType);
     else
     {
-        LUAU_ASSERT(tt || get<PrimitiveType>(follow(metaTable->table)));
-
+        if (!(DFInt::LuauTypeSolverRelease >= 647))
+        {
+            LUAU_ASSERT(tt || get<PrimitiveType>(follow(metaTable->table)));
+        }
+        // CLI-122161: We're not handling unions correctly (probably).
         reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
 }
