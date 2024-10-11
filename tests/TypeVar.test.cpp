@@ -464,7 +464,7 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 }
 
 
-#ifdef defined(__linux__) && defined(__GNUC__)g
+#if defined(__linux__) && defined(__GNUC__)
 #else
 
 TEST_CASE("content_reassignment")
