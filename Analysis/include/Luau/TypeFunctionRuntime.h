@@ -6,7 +6,7 @@
 
 #include <optional>
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <vector>
 
 using lua_State = struct lua_State;
@@ -182,7 +182,7 @@ struct TypeFunctionProperty
 struct TypeFunctionTableType
 {
     using Name = std::string;
-    using Props = std::unordered_map<Name, TypeFunctionProperty>;
+    using Props = std::map<Name, TypeFunctionProperty>;
 
     Props props;
 
@@ -195,7 +195,7 @@ struct TypeFunctionTableType
 struct TypeFunctionClassType
 {
     using Name = std::string;
-    using Props = std::unordered_map<Name, TypeFunctionProperty>;
+    using Props = std::map<Name, TypeFunctionProperty>;
 
     Props props;
 
@@ -260,6 +260,7 @@ bool isTypeUserData(lua_State* L, int idx);
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx);
 std::optional<TypeFunctionTypeId> optionalTypeUserData(lua_State* L, int idx);
 
+void registerTypesLibrary(lua_State* L);
 void registerTypeUserData(lua_State* L);
 
 void setTypeFunctionEnvironment(lua_State* L);

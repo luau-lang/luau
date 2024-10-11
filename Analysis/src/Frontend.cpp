@@ -44,9 +44,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode, false)
-LUAU_FASTFLAGVARIABLE(LuauSourceModuleUpdatedWithSelectedMode, false)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionNoEvaluation, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
+LUAU_FASTFLAGVARIABLE(LuauMoreThoroughCycleDetection, false)
 
 LUAU_FASTFLAG(StudioReportLuauAny2)
 
@@ -883,14 +883,18 @@ void Frontend::addBuildQueueItems(
         data.environmentScope = getModuleEnvironment(*sourceModule, data.config, frontendOptions.forAutocomplete);
         data.recordJsonLog = FFlag::DebugLuauLogSolverToJson;
 
-        Mode mode = sourceModule->mode.value_or(data.config.mode);
+        const Mode mode = sourceModule->mode.value_or(data.config.mode);
 
-        // in NoCheck mode we only need to compute the value of .cyclic for typeck
         // in the future we could replace toposort with an algorithm that can flag cyclic nodes by itself
         // however, for now getRequireCycles isn't expensive in practice on the cases we care about, and long term
         // all correct programs must be acyclic so this code triggers rarely
         if (cycleDetected)
-            data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get(), mode == Mode::NoCheck);
+        {
+            if (FFlag::LuauMoreThoroughCycleDetection)
+                data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get(), false);
+            else
+                data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get(), mode == Mode::NoCheck);
+        }
 
         data.options = frontendOptions;
 
@@ -922,8 +926,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     else
         mode = sourceModule.mode.value_or(config.mode);
 
-    if (FFlag::LuauSourceModuleUpdatedWithSelectedMode)
-        item.sourceModule->mode = {mode};
+    item.sourceModule->mode = {mode};
     ScopePtr environmentScope = item.environmentScope;
     double timestamp = getTimestamp();
     const std::vector<RequireCycle>& requireCycles = item.requireCycles;

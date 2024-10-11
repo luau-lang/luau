@@ -508,6 +508,9 @@ def runTest(subdir, filename, filepath):
     filepath = os.path.abspath(filepath)
 
     mainVm = os.path.abspath(arguments.vm)
+    if not os.path.isfile(mainVm):
+        print(f"{colored(Color.RED, 'ERROR')}: VM executable '{mainVm}' does not exist.")
+        sys.exit(1)
 
     # Process output will contain the test name and execution times
     mainOutput = getVmOutput(substituteArguments(mainVm, getExtraArguments(filepath)) + " " + filepath)
@@ -887,9 +890,11 @@ def run(args, argsubcb):
             analyzeResult('', mainResult, compareResults)
     else:
         all_files = [subdir + os.sep + filename for subdir, dirs, files in os.walk(arguments.folder) for filename in files]
+        if len(all_files) == 0:
+            print(f"{colored(Color.YELLOW, 'WARNING')}: No test files found in '{arguments.folder}'.")
         for filepath in sorted(all_files):
             subdir, filename = os.path.split(filepath)
-            if filename.endswith(".lua"):
+            if filename.endswith(".lua") or filename.endswith(".luau"):
                 if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
                     runTest(subdir, filename, filepath)
 
