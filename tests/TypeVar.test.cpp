@@ -463,10 +463,6 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
     CHECK(!isBoolean(&union_));
 }
 
-
-#if defined(__linux__) && defined(__GNUC__)
-#else
-
 TEST_CASE("content_reassignment")
 {
     Type myAny{AnyType{}, /*presistent*/ true};
@@ -482,9 +478,5 @@ TEST_CASE("content_reassignment")
     CHECK(futureAny->documentationSymbol == "@global/any");
     CHECK(futureAny->owningArena == &arena);
 }
-#endif
-
-
-
 
 TEST_SUITE_END();

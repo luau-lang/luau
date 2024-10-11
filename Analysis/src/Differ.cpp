@@ -13,6 +13,7 @@
 
 namespace Luau
 {
+
 std::string DiffPathNode::toString() const
 {
     switch (kind)
