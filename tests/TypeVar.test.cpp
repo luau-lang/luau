@@ -464,8 +464,9 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 }
 
 
-#ifdef defined(__linux__) && defined(__GNUC__)
+#ifdef defined(__linux__) && defined(__GNUC__)g
 #else
+
 TEST_CASE("content_reassignment")
 {
     Type myAny{AnyType{}, /*presistent*/ true};
