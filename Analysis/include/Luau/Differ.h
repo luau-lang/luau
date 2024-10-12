@@ -158,8 +158,8 @@ struct DifferEnvironment
 {
     TypeId rootLeft;
     TypeId rootRight;
-    std::optional<std::string> externalSymbolLeft = std::nullopt;
-    std::optional<std::string> externalSymbolRight = std::nullopt;
+    std::optional<std::string> externalSymbolLeft;
+    std::optional<std::string> externalSymbolRight;
     DenseHashMap<TypeId, TypeId> genericMatchedPairs;
     DenseHashMap<TypePackId, TypePackId> genericTpMatchedPairs;
 
