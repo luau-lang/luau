@@ -30,7 +30,7 @@ template<class BaseType>
 struct ACFixtureImpl : BaseType
 {
     ACFixtureImpl()
-        : BaseType(true, true)
+        : BaseType(true)
     {
     }
 

@@ -26,7 +26,6 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauDCRMagicFunctionTypeChecker, false);
 
 namespace Luau
 {
@@ -931,8 +930,7 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
     formatFTV.isCheckedFunction = true;
     const TypeId formatFn = arena->addType(formatFTV);
     attachDcrMagicFunction(formatFn, dcrMagicFunctionFormat);
-    if (FFlag::LuauDCRMagicFunctionTypeChecker)
-        attachDcrMagicFunctionTypeCheck(formatFn, dcrMagicFunctionTypeCheckFormat);
+    attachDcrMagicFunctionTypeCheck(formatFn, dcrMagicFunctionTypeCheckFormat);
 
 
     const TypeId stringToStringType = makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ true);

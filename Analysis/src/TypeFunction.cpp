@@ -48,6 +48,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions2, false)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
+LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -1018,8 +1019,10 @@ void TypeFunctionRuntime::prepareState()
 
     setTypeFunctionEnvironment(L);
 
-    // Register type userdata
     registerTypeUserData(L);
+
+    if (FFlag::LuauUserTypeFunFixRegister)
+        registerTypesLibrary(L);
 
     luaL_sandbox(L);
     luaL_sandboxthread(L);

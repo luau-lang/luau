@@ -4866,4 +4866,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
     );
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
+{
+
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    // This will have one (legitimate) error but previously would crash.
+    auto result = check(R"(
+        local function set(key, value)
+            local Message = {}
+            function Message.new(message)
+                local self = message or {}
+                setmetatable(self, Message)
+                return self
+            end
+            local self = Message.new(nil)
+            self[key] = value
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  } } }'",
+        toString(result.errors[0])
+    );
+}
+
 TEST_SUITE_END();
