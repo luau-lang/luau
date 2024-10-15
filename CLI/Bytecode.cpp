@@ -32,10 +32,12 @@ static Luau::CompileOptions copts()
 
 static void displayHelp(const char* argv0)
 {
+    printf("%s\n", LUAU_VERSION);
     printf("Usage: %s [options] [file list]\n", argv0);
     printf("\n");
     printf("Available options:\n");
     printf("  -h, --help: Display this usage message.\n");
+    printf("  -v, --version: Display Luau version.");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --fflags=<fflags>: flags to be enabled.\n");
@@ -51,6 +53,10 @@ static bool parseArgs(int argc, char** argv, std::string& summaryFile)
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
         {
             displayHelp(argv[0]);
+        }
+        else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0)
+        {
+            printf("%s\n", LUAU_VERSION);
         }
         else if (strncmp(argv[i], "-O", 2) == 0)
         {
