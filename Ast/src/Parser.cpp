@@ -188,9 +188,18 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     functionStack.reserve(8);
     functionStack.push_back(top);
 
-    nameSelf = names.addStatic("self");
-    nameNumber = names.addStatic("number");
-    nameError = names.addStatic(kParseNameError);
+    if (FFlag::LuauAllowFragmentParsing)
+    {
+        nameSelf = names.getOrAdd("self");
+        nameNumber = names.getOrAdd("number");
+        nameError = names.getOrAdd(kParseNameError);
+    }
+    else
+    {
+        nameSelf = names.addStatic("self");
+        nameNumber = names.addStatic("number");
+        nameError = names.addStatic(kParseNameError);
+    }
     nameNil = names.getOrAdd("nil"); // nil is a reserved keyword
 
     matchRecoveryStopOnToken.assign(Lexeme::Type::Reserved_END, 0);

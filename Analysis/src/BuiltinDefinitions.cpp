@@ -27,6 +27,8 @@
 
 LUAU_FASTFLAG(LuauSolverV2);
 
+LUAU_FASTFLAG(AutocompleteRequirePathSuggestions);
+
 namespace Luau
 {
 
@@ -413,8 +415,18 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         attachDcrMagicFunction(ttv->props["pack"].type(), dcrMagicFunctionPack);
     }
 
-    attachMagicFunction(getGlobalBinding(globals, "require"), magicFunctionRequire);
-    attachDcrMagicFunction(getGlobalBinding(globals, "require"), dcrMagicFunctionRequire);
+    if (FFlag::AutocompleteRequirePathSuggestions)
+    {
+        TypeId requireTy = getGlobalBinding(globals, "require");
+        attachTag(requireTy, kRequireTagName);
+        attachMagicFunction(requireTy, magicFunctionRequire);
+        attachDcrMagicFunction(requireTy, dcrMagicFunctionRequire);
+    }
+    else
+    {
+        attachMagicFunction(getGlobalBinding(globals, "require"), magicFunctionRequire);
+        attachDcrMagicFunction(getGlobalBinding(globals, "require"), dcrMagicFunctionRequire);
+    }
 }
 
 static std::vector<TypeId> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)

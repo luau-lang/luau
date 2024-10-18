@@ -26,10 +26,10 @@
 #include <algorithm>
 #include <memory>
 
-LUAU_FASTINT(LuauCheckRecursionLimit);
-LUAU_FASTFLAG(DebugLuauLogSolverToJson);
-LUAU_FASTFLAG(DebugLuauMagicTypes);
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease);
+LUAU_FASTINT(LuauCheckRecursionLimit)
+LUAU_FASTFLAG(DebugLuauLogSolverToJson)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
 {
@@ -2883,9 +2883,45 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
     {
         Unifier2 unifier{arena, builtinTypes, NotNull{scope.get()}, ice};
         std::vector<TypeId> toBlock;
-        matchLiteralType(
-            NotNull{&module->astTypes}, NotNull{&module->astExpectedTypes}, builtinTypes, arena, NotNull{&unifier}, *expectedType, ty, expr, toBlock
-        );
+        if (DFInt::LuauTypeSolverRelease >= 648)
+        {
+            // This logic is incomplete as we want to re-run this 
+            // _after_ blocked types have resolved, but this
+            // allows us to do some bidirectional inference.
+            toBlock = findBlockedTypesIn(expr, NotNull{&module->astTypes});
+            if (toBlock.empty())
+            {
+                matchLiteralType(
+                    NotNull{&module->astTypes},
+                    NotNull{&module->astExpectedTypes},
+                    builtinTypes,
+                    arena,
+                    NotNull{&unifier},
+                    *expectedType,
+                    ty,
+                    expr,
+                    toBlock
+                );
+                // The visitor we ran prior should ensure that there are no
+                // blocked types that we would encounter while matching on 
+                // this expression.
+                LUAU_ASSERT(toBlock.empty());
+            }
+        }
+        else
+        {
+            matchLiteralType(
+                NotNull{&module->astTypes},
+                NotNull{&module->astExpectedTypes},
+                builtinTypes,
+                arena,
+                NotNull{&unifier},
+                *expectedType,
+                ty,
+                expr,
+                toBlock
+            );
+        }
     }
 
     return Inference{ty};

@@ -39,6 +39,7 @@ enum class AutocompleteEntryKind
     Type,
     Module,
     GeneratedFunction,
+    RequirePath,
 };
 
 enum class ParenthesesRecommendation

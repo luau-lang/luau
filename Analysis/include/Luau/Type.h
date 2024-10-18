@@ -667,6 +667,11 @@ struct AnyType
 {
 };
 
+// A special, trivial type for the refinement system that is always eliminated from intersections.
+struct NoRefineType
+{
+};
+
 // `T | U`
 struct UnionType
 {
@@ -755,6 +760,7 @@ using TypeVariant = Unifiable::Variant<
     UnknownType,
     NeverType,
     NegationType,
+    NoRefineType,
     TypeFunctionInstanceType>;
 
 struct Type final
@@ -949,6 +955,7 @@ public:
     const TypeId unknownType;
     const TypeId neverType;
     const TypeId errorType;
+    const TypeId noRefineType;
     const TypeId falsyType;
     const TypeId truthyType;
 

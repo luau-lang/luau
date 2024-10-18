@@ -49,6 +49,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions2, false)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
+LUAU_FASTFLAG(LuauRemoveNotAnyHack)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -777,16 +778,8 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
         return {ctx->builtins->numberType, false, {}, {}};
 
-    if (DFInt::LuauTypeSolverRelease >= 644)
-    {
-        if (auto result = tryDistributeTypeFunctionApp(lenTypeFunction, instance, typeParams, packParams, ctx))
-            return *result;
-    }
-    else
-    {
-        if (auto result = tryDistributeTypeFunctionApp(notTypeFunction, instance, typeParams, packParams, ctx))
-            return *result;
-    }
+    if (auto result = tryDistributeTypeFunctionApp(lenTypeFunction, instance, typeParams, packParams, ctx))
+        return *result;
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -874,16 +867,8 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (normTy->isExactlyNumber())
         return {ctx->builtins->numberType, false, {}, {}};
 
-    if (DFInt::LuauTypeSolverRelease >= 644)
-    {
-        if (auto result = tryDistributeTypeFunctionApp(unmTypeFunction, instance, typeParams, packParams, ctx))
-            return *result;
-    }
-    else
-    {
-        if (auto result = tryDistributeTypeFunctionApp(notTypeFunction, instance, typeParams, packParams, ctx))
-            return *result;
-    }
+    if (auto result = tryDistributeTypeFunctionApp(unmTypeFunction, instance, typeParams, packParams, ctx))
+        return *result;
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -1810,7 +1795,6 @@ struct FindRefinementBlockers : TypeOnceVisitor
     }
 };
 
-
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -1878,8 +1862,18 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
          * We need to treat T & ~any as T in this case.
          */
         if (auto nt = get<NegationType>(discriminant))
-            if (get<AnyType>(follow(nt->ty)))
-                return {target, {}};
+        {
+            if (FFlag::LuauRemoveNotAnyHack)
+            {
+                if (get<NoRefineType>(follow(nt->ty)))
+                    return {target, {}};
+            }
+            else
+            {
+                if (get<AnyType>(follow(nt->ty)))
+                    return {target, {}};
+            }
+        }
 
         // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
         // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
@@ -2059,6 +2053,15 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
     for (auto ty : typeParams)
         types.emplace_back(follow(ty));
 
+    if (FFlag::LuauRemoveNotAnyHack)
+    {
+        // if we only have two parameters and one is `*no-refine*`, we're all done.
+        if (types.size() == 2 && get<NoRefineType>(types[1]))
+            return {types[0], false, {}, {}};
+        else if (types.size() == 2 && get<NoRefineType>(types[0]))
+            return {types[1], false, {}, {}};
+    }
+
     // check to see if the operand types are resolved enough, and wait to reduce if not
     // if any of them are `never`, the intersection will always be `never`, so we can reduce directly.
     for (auto ty : types)
@@ -2073,6 +2076,10 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
     TypeId resultTy = ctx->builtins->unknownType;
     for (auto ty : types)
     {
+        // skip any `*no-refine*` types.
+        if (FFlag::LuauRemoveNotAnyHack && get<NoRefineType>(ty))
+            continue;
+
         SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, resultTy, ty);
         if (!result.blockedTypes.empty())
             return {std::nullopt, false, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};

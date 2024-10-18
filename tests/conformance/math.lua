@@ -388,6 +388,20 @@ assert(math.pow(noinline(2), 2) == 4)
 assert(math.pow(noinline(4), 0.5) == 2)
 assert(math.pow(noinline(-2), 2) == 4)
 
+-- map
+assert(math.map(0, -1, 1, 0, 2) == 1)
+assert(math.map(1, 1, 4, 0, 2) == 0)
+assert(math.map(2.5, 1, 4, 0, 2) == 1)
+assert(math.map(4, 1, 4, 0, 2) == 2)
+assert(math.map(1, 1, 4, 2, 0) == 2)
+assert(math.map(2.5, 1, 4, 2, 0) == 1)
+assert(math.map(4, 1, 4, 2, 0) == 0)
+assert(math.map(1, 4, 1, 2, 0) == 0)
+assert(math.map(2.5, 4, 1, 2, 0) == 1)
+assert(math.map(4, 4, 1, 2, 0) == 2)
+assert(math.map(-8, 0, 4, 0, 2) == -4)
+assert(math.map(16, 0, 4, 0, 2) == 8)
+
 assert(tostring(math.pow(-2, 0.5)) == "nan")
 
 -- test that fastcalls return correct number of results

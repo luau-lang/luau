@@ -3,6 +3,7 @@
 
 #include <string>
 #include <optional>
+#include <vector>
 
 namespace Luau
 {
@@ -31,6 +32,9 @@ struct ModuleInfo
     bool optional = false;
 };
 
+using RequireSuggestion = std::string;
+using RequireSuggestions = std::vector<RequireSuggestion>;
+
 struct FileResolver
 {
     virtual ~FileResolver() {}
@@ -48,6 +52,11 @@ struct FileResolver
     }
 
     virtual std::optional<std::string> getEnvironmentForModule(const ModuleName& name) const
+    {
+        return std::nullopt;
+    }
+
+    virtual std::optional<RequireSuggestions> getRequireSuggestions(const ModuleName& requirer, const std::optional<std::string>& pathString) const
     {
         return std::nullopt;
     }

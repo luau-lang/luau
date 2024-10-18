@@ -594,7 +594,7 @@ struct NonStrictTypeChecker
                     std::shared_ptr<const NormalizedType> norm = normalizer.normalize(expectedArgType);
                     DefId def = dfg->getDef(arg);
                     TypeId runTimeErrorTy;
-                    // If we're dealing with any, negating any will cause all subtype tests to fail, since ~any is any
+                    // If we're dealing with any, negating any will cause all subtype tests to fail
                     // However, when someone calls this function, they're going to want to be able to pass it anything,
                     // for that reason, we manually inject never into the context so that the runtime test will always pass.
                     if (!norm)

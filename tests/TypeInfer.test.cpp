@@ -1683,4 +1683,27 @@ TEST_CASE_FIXTURE(Fixture, "leading_ampersand_no_type")
     CHECK("*error-type*" == toString(requireTypeAlias("Amp")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "react_lua_follow_free_type_ub")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        return function(Roact)
+            local Tree = Roact.Component:extend("Tree")
+
+            function Tree:render()
+                local breadth, components, depth, id, wrap =
+                    self.props.breadth, self.props.components, self.props.depth, self.props.id, self.props.wrap
+                local Box = components.Box
+                if depth == 0 then
+                    Roact.createElement(Box, {})
+                else
+                    Roact.createElement(Tree, {})
+                end
+
+            end
+        end
+    )"));
+}
+
 TEST_SUITE_END();
