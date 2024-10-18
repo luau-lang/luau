@@ -12,6 +12,7 @@ LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
+LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -672,6 +673,36 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_methods_works")
     TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
     REQUIRE(tpm);
     CHECK(toString(tpm->givenTp) == "{ BaseField: number, read BaseMethod: (BaseClass, number) -> (), read Touched: Connection }");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "write_of_readonly_is_nil")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag udtfRwFix{FFlag::LuauUserTypeFunFixNoReadWrite, true};
+
+
+    CheckResult result = check(R"(
+        type function getclass(arg)
+            local props = arg:properties()
+            local table = types.newtable(props)
+            local singleton = types.singleton("BaseMethod")
+
+            if table:writeproperty(singleton) then
+                return types.singleton(true)
+            else
+                return types.singleton(false)
+            end
+        end
+        -- forcing an error here to check the exact type of the metatable
+        local function ok(idx: getclass<BaseClass>): nil return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK(toString(tpm->givenTp) == "false");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")

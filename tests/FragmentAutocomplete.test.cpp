@@ -4,9 +4,12 @@
 #include "Fixture.h"
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
+#include "Luau/Common.h"
 
 
 using namespace Luau;
+
+LUAU_FASTFLAG(LuauAllowFragmentParsing);
 
 struct FragmentAutocompleteFixture : Fixture
 {
@@ -17,9 +20,25 @@ struct FragmentAutocompleteFixture : Fixture
         REQUIRE(p.root);
         return findAncestryForFragmentParse(p.root, cursorPos);
     }
+
+    CheckResult checkBase(const std::string& document)
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        FrontendOptions opts;
+        opts.retainFullTypeGraphs = true;
+        return this->frontend.check("MainModule", opts);
+    }
+
+    FragmentParseResult parseFragment(const std::string& document, const Position& cursorPos)
+    {
+        ScopedFastFlag sffs[]{{FFlag::LuauAllowFragmentParsing, true}, {FFlag::LuauSolverV2, true}};
+        SourceModule* srcModule = this->getMainSourceModule();
+        std::string_view srcString = document;
+        return Luau::parseFragment(*srcModule, srcString, cursorPos);
+    }
 };
 
-TEST_SUITE_BEGIN("FragmentAutocompleteTraversalTest");
+TEST_SUITE_BEGIN("FragmentAutocompleteTraversalTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "just_two_locals")
 {
@@ -32,7 +51,7 @@ local y = 5
     );
 
     CHECK_EQ(3, result.ancestry.size());
-    CHECK_EQ(2, result.localStack.size());
+    CHECK_EQ(1, result.localStack.size());
     CHECK_EQ(result.localMap.size(), result.localStack.size());
     REQUIRE(result.nearestStatement);
 
@@ -56,10 +75,10 @@ end
     );
 
     CHECK_EQ(5, result.ancestry.size());
-    CHECK_EQ(3, result.localStack.size());
+    CHECK_EQ(2, result.localStack.size());
     CHECK_EQ(result.localMap.size(), result.localStack.size());
     REQUIRE(result.nearestStatement);
-    CHECK_EQ("e", std::string(result.localStack.back()->name.value));
+    CHECK_EQ("y", std::string(result.localStack.back()->name.value));
 
     AstStatLocal* local = result.nearestStatement->as<AstStatLocal>();
     REQUIRE(local);
@@ -85,10 +104,10 @@ end
     );
 
     CHECK_EQ(6, result.ancestry.size());
-    CHECK_EQ(4, result.localStack.size());
+    CHECK_EQ(3, result.localStack.size());
     CHECK_EQ(result.localMap.size(), result.localStack.size());
     REQUIRE(result.nearestStatement);
-    CHECK_EQ("q", std::string(result.localStack.back()->name.value));
+    CHECK_EQ("z", std::string(result.localStack.back()->name.value));
 
     AstStatLocal* local = result.nearestStatement->as<AstStatLocal>();
     REQUIRE(local);
@@ -129,11 +148,122 @@ local function bar() return x + foo() end
     );
 
     CHECK_EQ(8, result.ancestry.size());
-    CHECK_EQ(3, result.localStack.size());
+    CHECK_EQ(2, result.localStack.size());
     CHECK_EQ(result.localMap.size(), result.localStack.size());
-    CHECK_EQ("bar", std::string(result.localStack.back()->name.value));
+    CHECK_EQ("x", std::string(result.localStack.back()->name.value));
     auto returnSt = result.nearestStatement->as<AstStatReturn>();
     CHECK(returnSt != nullptr);
+}
+
+TEST_SUITE_END();
+
+
+TEST_SUITE_BEGIN("FragmentAutocompleteParserTests");
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_non_null")
+{
+    auto res = check(R"(
+
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+
+    auto fragment = parseFragment(
+        R"(
+
+)",
+        Position(1, 0)
+    );
+    CHECK_EQ("\n", fragment.fragmentToParse);
+    CHECK_EQ(2, fragment.ancestry.size());
+    REQUIRE(fragment.root);
+    CHECK_EQ(0, fragment.root->body.size);
+    auto statBody = fragment.root->as<AstStatBlock>();
+    CHECK(statBody != nullptr);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_complete_fragments")
+{
+    auto res = check(
+        R"(
+local x = 4
+local y = 5
+)"
+    );
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+
+    auto fragment = parseFragment(
+        R"(
+local x = 4
+local y = 5
+local z = x + y
+)",
+        Position{3, 15}
+    );
+
+    CHECK_EQ("\nlocal z = x + y", fragment.fragmentToParse);
+    CHECK_EQ(5, fragment.ancestry.size());
+    REQUIRE(fragment.root);
+    CHECK_EQ(1, fragment.root->body.size);
+    auto stat = fragment.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(stat);
+    CHECK_EQ(1, stat->vars.size);
+    CHECK_EQ(1, stat->values.size);
+    CHECK_EQ("z", std::string(stat->vars.data[0]->name.value));
+
+    auto bin = stat->values.data[0]->as<AstExprBinary>();
+    REQUIRE(bin);
+    CHECK_EQ(AstExprBinary::Op::Add, bin->op);
+
+    auto lhs = bin->left->as<AstExprLocal>();
+    auto rhs = bin->right->as<AstExprLocal>();
+    REQUIRE(lhs);
+    REQUIRE(rhs);
+    CHECK_EQ("x", std::string(lhs->local->name.value));
+    CHECK_EQ("y", std::string(rhs->local->name.value));
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_fragments_in_line")
+{
+    auto res = check(
+        R"(
+local x = 4
+local y = 5
+)"
+    );
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+
+    auto fragment = parseFragment(
+        R"(
+local x = 4
+local z = x + y
+local y = 5
+)",
+        Position{2, 15}
+    );
+
+    CHECK_EQ("local z = x + y", fragment.fragmentToParse);
+    CHECK_EQ(5, fragment.ancestry.size());
+    REQUIRE(fragment.root);
+    CHECK_EQ(1, fragment.root->body.size);
+    auto stat = fragment.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(stat);
+    CHECK_EQ(1, stat->vars.size);
+    CHECK_EQ(1, stat->values.size);
+    CHECK_EQ("z", std::string(stat->vars.data[0]->name.value));
+
+    auto bin = stat->values.data[0]->as<AstExprBinary>();
+    REQUIRE(bin);
+    CHECK_EQ(AstExprBinary::Op::Add, bin->op);
+
+    auto lhs = bin->left->as<AstExprLocal>();
+    auto rhs = bin->right->as<AstExprGlobal>();
+    REQUIRE(lhs);
+    REQUIRE(rhs);
+    CHECK_EQ("x", std::string(lhs->local->name.value));
+    CHECK_EQ("y", std::string(rhs->name.value));
 }
 
 TEST_SUITE_END();

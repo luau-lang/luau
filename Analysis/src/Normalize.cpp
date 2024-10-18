@@ -1872,7 +1872,7 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
         if (res != NormalizationResult::True)
             return res;
     }
-    else if (get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there) || get<NoRefineType>(there))
     {
         // nothing
     }
@@ -3217,6 +3217,11 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
             // assumption that it is the same as any.
             return NormalizationResult::True;
         }
+        else if (get<NoRefineType>(t))
+        {
+            // `*no-refine*` means we will never do anything to affect the intersection.
+            return NormalizationResult::True;
+        }
         else if (get<NeverType>(t))
         {
             // if we're intersecting with `~never`, this is equivalent to intersecting with `unknown`
@@ -3242,6 +3247,11 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     else if (get<NeverType>(there))
     {
         here.classes.resetToNever();
+    }
+    else if (get<NoRefineType>(there))
+    {
+        // `*no-refine*` means we will never do anything to affect the intersection.
+        return NormalizationResult::True;
     }
     else
         LUAU_ASSERT(!"Unreachable");

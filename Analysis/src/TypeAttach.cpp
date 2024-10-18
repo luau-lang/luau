@@ -145,6 +145,12 @@ public:
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("any"), std::nullopt, Location());
     }
+
+    AstType* operator()(const NoRefineType&)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*no-refine*"), std::nullopt, Location());
+    }
+
     AstType* operator()(const TableType& ttv)
     {
         RecursionCounter counter(&count);

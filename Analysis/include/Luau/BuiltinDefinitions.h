@@ -9,6 +9,8 @@
 namespace Luau
 {
 
+static constexpr char kRequireTagName[] = "require";
+
 struct Frontend;
 struct GlobalTypes;
 struct TypeChecker;

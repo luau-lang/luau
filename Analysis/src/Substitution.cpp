@@ -50,6 +50,11 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             LUAU_ASSERT(ty->persistent);
             return ty;
         }
+        else if constexpr (std::is_same_v<T, NoRefineType>)
+        {
+            LUAU_ASSERT(ty->persistent);
+            return ty;
+        }
         else if constexpr (std::is_same_v<T, ErrorType>)
         {
             LUAU_ASSERT(ty->persistent);

@@ -49,6 +49,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
 LUAU_FASTFLAGVARIABLE(LuauMoreThoroughCycleDetection, false)
 
 LUAU_FASTFLAG(StudioReportLuauAny2)
+LUAU_FASTFLAGVARIABLE(LuauStoreDFGOnModule, false)
 
 namespace Luau
 {
@@ -1315,6 +1316,18 @@ ModulePtr check(
     }
 
     DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, iceHandler);
+    DataFlowGraph* dfgForConstraintGeneration = nullptr;
+    if (FFlag::LuauStoreDFGOnModule)
+    {
+        auto [dfg, scopes] = DataFlowGraphBuilder::buildShared(sourceModule.root, iceHandler);
+        result->dataFlowGraph = std::move(dfg);
+        result->dfgScopes = std::move(scopes);
+        dfgForConstraintGeneration = result->dataFlowGraph.get();
+    }
+    else
+    {
+        dfgForConstraintGeneration = &dfg;
+    }
 
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
@@ -1336,7 +1349,7 @@ ModulePtr check(
         parentScope,
         std::move(prepareModuleScope),
         logger.get(),
-        NotNull{&dfg},
+        NotNull{dfgForConstraintGeneration},
         requireCycles
     };
 

@@ -31,6 +31,7 @@ extern int optimizationLevel;
 void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
+LUAU_FASTFLAG(LuauMathMap)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauNativeAttribute)
@@ -652,6 +653,8 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag LuauMathMap{FFlag::LuauMathMap, true};
+
     runConformance("math.lua");
 }
 

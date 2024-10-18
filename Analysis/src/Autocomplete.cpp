@@ -3,6 +3,8 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
+#include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
 #include "Luau/ToString.h"
 #include "Luau/Subtyping.h"
@@ -15,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAutocompleteNewSolverLimit)
+LUAU_FASTFLAGVARIABLE(AutocompleteRequirePathSuggestions, false)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
@@ -215,8 +218,7 @@ static TypeCorrectKind checkTypeCorrectKind(
     {
         for (TypeId id : itv->parts)
         {
-            if (DFInt::LuauTypeSolverRelease >= 644)
-                id = follow(id);
+            id = follow(id);
 
             if (const FunctionType* ftv = get<FunctionType>(id); ftv && checkFunctionType(ftv))
             {
@@ -1444,11 +1446,25 @@ static std::optional<std::string> getStringContents(const AstNode* node)
     }
 }
 
+static std::optional<AutocompleteEntryMap> convertRequireSuggestionsToAutocompleteEntryMap(std::optional<RequireSuggestions> suggestions)
+{
+    if (!suggestions)
+        return std::nullopt;
+
+    AutocompleteEntryMap result;
+    for (const RequireSuggestion& suggestion : *suggestions)
+    {
+        result[suggestion] = {AutocompleteEntryKind::RequirePath};
+    }
+    return result;
+}
+
 static std::optional<AutocompleteEntryMap> autocompleteStringParams(
     const SourceModule& sourceModule,
     const ModulePtr& module,
     const std::vector<AstNode*>& nodes,
     Position position,
+    FileResolver* fileResolver,
     StringCompletionCallback callback
 )
 {
@@ -1495,6 +1511,13 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(
     {
         for (const std::string& tag : funcType->tags)
         {
+            if (FFlag::AutocompleteRequirePathSuggestions)
+            {
+                if (tag == kRequireTagName && fileResolver)
+                {
+                    return convertRequireSuggestionsToAutocompleteEntryMap(fileResolver->getRequireSuggestions(module->name, candidateString));
+                }
+            }
             if (std::optional<AutocompleteEntryMap> ret = callback(tag, getMethodContainingClass(module, candidate->func), candidateString))
             {
                 return ret;
@@ -1679,6 +1702,7 @@ static AutocompleteResult autocomplete(
     TypeArena* typeArena,
     Scope* globalScope,
     Position position,
+    FileResolver* fileResolver,
     StringCompletionCallback callback
 )
 {
@@ -1922,7 +1946,7 @@ static AutocompleteResult autocomplete(
     else if (isIdentifier(node) && (parent->is<AstStatExpr>() || parent->is<AstStatError>()))
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
-    if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(sourceModule, module, ancestry, position, callback))
+    if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(sourceModule, module, ancestry, position, fileResolver, callback))
     {
         return {*ret, ancestry, AutocompleteContext::String};
     }
@@ -1999,7 +2023,7 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
         globalScope = frontend.globalsForAutocomplete.globalScope.get();
 
     TypeArena typeArena;
-    return autocomplete(*sourceModule, module, builtinTypes, &typeArena, globalScope, position, callback);
+    return autocomplete(*sourceModule, module, builtinTypes, &typeArena, globalScope, position, frontend.fileResolver, callback);
 }
 
 } // namespace Luau

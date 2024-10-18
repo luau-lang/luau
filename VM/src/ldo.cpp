@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauErrorResumeCleanupArgs, false)
-
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -430,11 +428,7 @@ static void resume_handle(lua_State* L, void* ud)
 
 static int resume_error(lua_State* L, const char* msg, int narg)
 {
-    if (FFlag::LuauErrorResumeCleanupArgs)
-        L->top -= narg;
-    else
-        L->top = L->ci->base;
-
+    L->top -= narg;
     setsvalue(L, L->top, luaS_new(L, msg));
     incr_top(L);
     return LUA_ERRRUN;

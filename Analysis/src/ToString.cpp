@@ -856,6 +856,11 @@ struct TypeStringifier
         state.emit("any");
     }
 
+    void operator()(TypeId, const NoRefineType&)
+    {
+        state.emit("*no-refine*");
+    }
+
     void operator()(TypeId, const UnionType& uv)
     {
         if (state.hasSeen(&uv))
