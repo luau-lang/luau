@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack, false)
 
 namespace Luau
 {
@@ -1238,14 +1239,22 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             continue;
         }
 
-        // We use `any` here because the discriminant type may be pointed at by both branches,
-        // where the discriminant type is not negated, and the other where it is negated, i.e.
-        // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
-        // v.s.
-        // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
-        //
-        // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
-        emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
+        if (FFlag::LuauRemoveNotAnyHack)
+        {
+            // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
+        }
+        else
+        {
+            // We use `any` here because the discriminant type may be pointed at by both branches,
+            // where the discriminant type is not negated, and the other where it is negated, i.e.
+            // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
+            // v.s.
+            // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
+            //
+            // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
+            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
+        }
     }
 
     OverloadResolver resolver{
@@ -1322,6 +1331,22 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     if (isBlocked(argsPack))
         return true;
 
+    if (DFInt::LuauTypeSolverRelease >= 648)
+    {
+        // This is expensive as we need to traverse a (potentially large)
+        // literal up front in order to determine if there are any blocked
+        // types, otherwise we may run `matchTypeLiteral` multiple times, 
+        // which right now may fail due to being non-idempotent (it
+        // destructively updates the underlying literal type).
+        auto blockedTypes = findBlockedArgTypesIn(c.callSite, c.astTypes);
+        for (const auto ty : blockedTypes)
+        {
+            block(ty, constraint);
+        }
+        if (!blockedTypes.empty())
+            return false;
+    }
+
     // We know the type of the function and the arguments it expects to receive.
     // We also know the TypeIds of the actual arguments that will be passed.
     //
@@ -1384,7 +1409,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     {
         const TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         const TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
-        const AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+        AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
         (*c.astExpectedTypes)[expr] = expectedArgTy;
 
@@ -1416,10 +1441,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
             std::vector<TypeId> toBlock;
             (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, expectedArgTy, actualArgTy, expr, toBlock);
-            for (auto t : toBlock)
-                block(t, constraint);
-            if (!toBlock.empty())
-                return false;
+            if (DFInt::LuauTypeSolverRelease >= 648)
+            {
+                LUAU_ASSERT(toBlock.empty());
+            }
+            else
+            {
+                for (auto t : toBlock)
+                    block(t, constraint);
+                if (!toBlock.empty())
+                    return false;
+            }
         }
     }
 
@@ -1748,8 +1780,9 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
     if (auto lhsFree = getMutable<FreeType>(lhsType))
     {
-        if (get<TableType>(lhsFree->upperBound) || get<MetatableType>(lhsFree->upperBound))
-            lhsType = lhsFree->upperBound;
+        auto lhsFreeUpperBound = DFInt::LuauTypeSolverRelease >= 648 ? follow(lhsFree->upperBound) : lhsFree->upperBound;
+        if (get<TableType>(lhsFreeUpperBound) || get<MetatableType>(lhsFreeUpperBound))
+            lhsType = lhsFreeUpperBound;
         else
         {
             TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, constraint->scope});
@@ -1759,7 +1792,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
             upperTable->props[c.propName] = rhsType;
 
             // Food for thought: Could we block if simplification encounters a blocked type?
-            lhsFree->upperBound = simplifyIntersection(builtinTypes, arena, lhsFree->upperBound, newUpperBound).result;
+            lhsFree->upperBound = simplifyIntersection(builtinTypes, arena, lhsFreeUpperBound, newUpperBound).result;
 
             bind(constraint, c.propType, rhsType);
             return true;

@@ -425,6 +425,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstExprFunction",
             [&]()
             {
+                PROP(attributes);
                 PROP(generics);
                 PROP(genericPacks);
                 if (node->self)
@@ -894,7 +895,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstStatDeclareFunction",
             [&]()
             {
-                // TODO: attributes
+                PROP(attributes);
                 PROP(name);
                 PROP(nameLocation);
                 PROP(params);
@@ -1042,6 +1043,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstTypeFunction",
             [&]()
             {
+                PROP(attributes);
                 PROP(generics);
                 PROP(genericPacks);
                 PROP(argTypes);
@@ -1132,6 +1134,29 @@ struct AstJsonEncoder : public AstVisitor
             [&]()
             {
                 PROP(genericName);
+            }
+        );
+    }
+
+    void write(AstAttr::Type type)
+    {
+        switch (type)
+        {
+        case AstAttr::Type::Checked:
+            return writeString("checked");
+        case AstAttr::Type::Native:
+            return writeString("native");
+        }
+    }
+
+    void write(class AstAttr* node)
+    {
+        writeNode(
+            node,
+            "AstAttr",
+            [&]()
+            {
+                write("name", node->type);
             }
         );
     }

@@ -4891,4 +4891,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     );
 }
 
+TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    // CLI-121540: All of these examples should have no errors.
+
+    LUAU_CHECK_ERROR_COUNT(3, check(R"(
+        local function doTheThing(_: { [string]: unknown }) end
+        doTheThing({
+            ['foo'] = 5,
+            ['bar'] = 'heyo',
+        })
+    )"));
+
+    LUAU_CHECK_ERROR_COUNT(1, check(R"(
+        type Input = { [string]: unknown }
+
+        local i : Input = {
+            [('%s'):format('3.14')]=5,
+            ['stringField']='Heyo'
+        }
+    )"));
+
+    // This example previously asserted due to eagerly mutating the underlying
+    // table type.
+    LUAU_CHECK_ERROR_COUNT(3, check(R"(
+        type Input = { [string]: unknown }
+
+        local function doTheThing(_: Input) end
+
+        doTheThing({
+            [('%s'):format('3.14')]=5,
+            ['stringField']='Heyo'
+        })
+    )"));
+}
+
 TEST_SUITE_END();

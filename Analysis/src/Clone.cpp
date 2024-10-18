@@ -359,6 +359,11 @@ private:
         // noop.
     }
 
+    void cloneChildren(NoRefineType* t)
+    {
+        // noop.
+    }
+
     void cloneChildren(UnionType* t)
     {
         for (TypeId& ty : t->options)

@@ -801,6 +801,12 @@ struct TypeCacher : TypeOnceVisitor
         return false;
     }
 
+    bool visit(TypeId ty, const NoRefineType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
     bool visit(TypeId ty, const UnionType& ut) override
     {
         if (isUncacheable(ty) || isCached(ty))
