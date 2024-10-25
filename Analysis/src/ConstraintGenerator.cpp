@@ -2,11 +2,12 @@
 #include "Luau/ConstraintGenerator.h"
 
 #include "Luau/Ast.h"
-#include "Luau/Def.h"
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DcrLogger.h"
+#include "Luau/Def.h"
 #include "Luau/DenseHash.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/RecursionCounter.h"
@@ -30,6 +31,9 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+LUAU_FASTFLAG(LuauTypestateBuiltins)
+
+LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues, false)
 
 namespace Luau
 {
@@ -52,20 +56,6 @@ static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
         return std::nullopt;
 
     return call.args.data[0];
-}
-
-static bool matchSetmetatable(const AstExprCall& call)
-{
-    const char* smt = "setmetatable";
-
-    if (call.args.size != 2)
-        return false;
-
-    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
-    if (!funcAsGlobal || funcAsGlobal->name != smt)
-        return false;
-
-    return true;
 }
 
 struct TypeGuard
@@ -108,18 +98,6 @@ static std::optional<TypeGuard> matchTypeGuard(const AstExprBinary* binary)
         /*target*/ call->args.data[0],
         /*type*/ std::string(string->value.data, string->value.size),
     };
-}
-
-static bool matchAssert(const AstExprCall& call)
-{
-    if (call.args.size < 1)
-        return false;
-
-    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
-    if (!funcAsGlobal || funcAsGlobal->name != "assert")
-        return false;
-
-    return true;
 }
 
 namespace
@@ -264,6 +242,31 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     interiorTypes.pop_back();
 
     fillInInferredBindings(scope, block);
+
+    if (logger)
+        logger->captureGenerationModule(module);
+
+    for (const auto& [ty, domain] : localTypes)
+    {
+        // FIXME: This isn't the most efficient thing.
+        TypeId domainTy = builtinTypes->neverType;
+        for (TypeId d : domain)
+        {
+            d = follow(d);
+            if (d == ty)
+                continue;
+            domainTy = simplifyUnion(builtinTypes, arena, domainTy, d).result;
+        }
+
+        LUAU_ASSERT(get<BlockedType>(ty));
+        asMutable(ty)->ty.emplace<BoundType>(domainTy);
+    }
+}
+
+void ConstraintGenerator::visitFragmentRoot(const ScopePtr& resumeScope, AstStatBlock* block)
+{
+    visitBlockWithoutChildScope(resumeScope, block);
+    fillInInferredBindings(resumeScope, block);
 
     if (logger)
         logger->captureGenerationModule(module);
@@ -1075,9 +1078,17 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
         else if (const AstExprCall* call = value->as<AstExprCall>())
         {
-            if (const AstExprGlobal* global = call->func->as<AstExprGlobal>(); global && global->name == "setmetatable")
+            if (FFlag::LuauTypestateBuiltins)
             {
-                addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
+                if (matchSetMetatable(*call))
+                    addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
+            }
+            else
+            {
+                if (const AstExprGlobal* global = call->func->as<AstExprGlobal>(); global && global->name == "setmetatable")
+                {
+                    addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
+                }
             }
         }
     }
@@ -1975,7 +1986,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
     Checkpoint argEndCheckpoint = checkpoint(this);
 
-    if (matchSetmetatable(*call))
+    if (matchSetMetatable(*call))
     {
         TypePack argTailPack;
         if (argTail && args.size() < 2)
@@ -2050,72 +2061,80 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
-    else
+
+    if (FFlag::LuauTypestateBuiltins && shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
-        if (matchAssert(*call) && !argumentRefinements.empty())
-            applyRefinements(scope, call->args.data[0]->location, argumentRefinements[0]);
+        AstExpr* targetExpr = call->args.data[0];
+        auto resultTy = arena->addType(BlockedType{});
 
-        // TODO: How do expectedTypes play into this?  Do they?
-        TypePackId rets = arena->addTypePack(BlockedTypePack{});
-        TypePackId argPack = addTypePack(std::move(args), argTail);
-        FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets, std::nullopt, call->self);
-
-        /*
-         * To make bidirectional type checking work, we need to solve these constraints in a particular order:
-         *
-         * 1. Solve the function type
-         * 2. Propagate type information from the function type to the argument types
-         * 3. Solve the argument types
-         * 4. Solve the call
-         */
-
-        NotNull<Constraint> checkConstraint = addConstraint(
-            scope,
-            call->func->location,
-            FunctionCheckConstraint{fnType, argPack, call, NotNull{&module->astTypes}, NotNull{&module->astExpectedTypes}}
-        );
-
-        forEachConstraint(
-            funcBeginCheckpoint,
-            funcEndCheckpoint,
-            this,
-            [checkConstraint](const ConstraintPtr& constraint)
-            {
-                checkConstraint->dependencies.emplace_back(constraint.get());
-            }
-        );
-
-        NotNull<Constraint> callConstraint = addConstraint(
-            scope,
-            call->func->location,
-            FunctionCallConstraint{
-                fnType,
-                argPack,
-                rets,
-                call,
-                std::move(discriminantTypes),
-                &module->astOverloadResolvedTypes,
-            }
-        );
-
-        getMutable<BlockedTypePack>(rets)->owner = callConstraint.get();
-
-        callConstraint->dependencies.push_back(checkConstraint);
-
-        forEachConstraint(
-            argBeginCheckpoint,
-            argEndCheckpoint,
-            this,
-            [checkConstraint, callConstraint](const ConstraintPtr& constraint)
-            {
-                constraint->dependencies.emplace_back(checkConstraint);
-
-                callConstraint->dependencies.emplace_back(constraint.get());
-            }
-        );
-
-        return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
+        if (auto def = dfg->getDefOptional(targetExpr))
+        {
+            scope->lvalueTypes[*def] = resultTy;
+            scope->rvalueRefinements[*def] = resultTy;
+        }
     }
+
+    if (matchAssert(*call) && !argumentRefinements.empty())
+        applyRefinements(scope, call->args.data[0]->location, argumentRefinements[0]);
+
+    // TODO: How do expectedTypes play into this?  Do they?
+    TypePackId rets = arena->addTypePack(BlockedTypePack{});
+    TypePackId argPack = addTypePack(std::move(args), argTail);
+    FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets, std::nullopt, call->self);
+
+    /*
+     * To make bidirectional type checking work, we need to solve these constraints in a particular order:
+     *
+     * 1. Solve the function type
+     * 2. Propagate type information from the function type to the argument types
+     * 3. Solve the argument types
+     * 4. Solve the call
+     */
+
+    NotNull<Constraint> checkConstraint = addConstraint(
+        scope, call->func->location, FunctionCheckConstraint{fnType, argPack, call, NotNull{&module->astTypes}, NotNull{&module->astExpectedTypes}}
+    );
+
+    forEachConstraint(
+        funcBeginCheckpoint,
+        funcEndCheckpoint,
+        this,
+        [checkConstraint](const ConstraintPtr& constraint)
+        {
+            checkConstraint->dependencies.emplace_back(constraint.get());
+        }
+    );
+
+    NotNull<Constraint> callConstraint = addConstraint(
+        scope,
+        call->func->location,
+        FunctionCallConstraint{
+            fnType,
+            argPack,
+            rets,
+            call,
+            std::move(discriminantTypes),
+            &module->astOverloadResolvedTypes,
+        }
+    );
+
+    getMutable<BlockedTypePack>(rets)->owner = callConstraint.get();
+
+    callConstraint->dependencies.push_back(checkConstraint);
+
+    forEachConstraint(
+        argBeginCheckpoint,
+        argEndCheckpoint,
+        this,
+        [checkConstraint, callConstraint](const ConstraintPtr& constraint)
+        {
+            constraint->dependencies.emplace_back(checkConstraint);
+
+            callConstraint->dependencies.emplace_back(constraint.get());
+        }
+    );
+
+    return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType, bool forceSingleton, bool generalize)
@@ -2703,7 +2722,16 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExpr* expr, Type
         visitLValue(scope, e, rhsType);
     else if (auto e = expr->as<AstExprError>())
     {
-        // Nothing?
+        if (FFlag::LuauNewSolverVisitErrorExprLvalues)
+        {
+            // If we end up with some sort of error expression in an lvalue
+            // position, at least go and check the expressions so that when
+            // we visit them later, there aren't any invalid assumptions.
+            for (auto subExpr : e->expressions)
+            {
+                check(scope, subExpr);
+            }
+        }
     }
     else
         ice->ice("Unexpected lvalue expression", expr->location);

@@ -2,6 +2,7 @@
 #include "Luau/DataFlowGraph.h"
 
 #include "Luau/Ast.h"
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Def.h"
 #include "Luau/Common.h"
 #include "Luau/Error.h"
@@ -12,6 +13,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauTypestateBuiltins)
 
 namespace Luau
 {
@@ -64,6 +66,14 @@ DefId DataFlowGraph::getDef(const AstExpr* expr) const
 {
     auto def = astDefs.find(expr);
     LUAU_ASSERT(def);
+    return NotNull{*def};
+}
+
+std::optional<DefId> DataFlowGraph::getDefOptional(const AstExpr* expr) const
+{
+    auto def = astDefs.find(expr);
+    if (!def)
+        return std::nullopt;
     return NotNull{*def};
 }
 
@@ -928,6 +938,39 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprGlobal* g)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 {
     visitExpr(c->func);
+
+    if (FFlag::LuauTypestateBuiltins && shouldTypestateForFirstArgument(*c) && c->args.size > 1 && isLValue(*c->args.begin()))
+    {
+        AstExpr* firstArg = *c->args.begin();
+
+        // this logic has to handle the name-like subset of expressions.
+        std::optional<DataFlowResult> result;
+        if (auto l = firstArg->as<AstExprLocal>())
+            result = visitExpr(l);
+        else if (auto g = firstArg->as<AstExprGlobal>())
+            result = visitExpr(g);
+        else if (auto i = firstArg->as<AstExprIndexName>())
+            result = visitExpr(i);
+        else if (auto i = firstArg->as<AstExprIndexExpr>())
+            result = visitExpr(i);
+        else
+            LUAU_UNREACHABLE(); // This is unreachable because the whole thing is guarded by `isLValue`.
+
+        LUAU_ASSERT(result);
+
+        Location location = currentScope()->location;
+        // This scope starts at the end of the call site and continues to the end of the original scope.
+        location.begin = c->location.end;
+        DfgScope* child = makeChildScope(location);
+        scopeStack.push_back(child);
+
+        auto [def, key] = *result;
+        graph.astDefs[firstArg] = def;
+        if (key)
+            graph.astRefinementKeys[firstArg] = key;
+
+        visitLValue(firstArg, def);
+    }
 
     for (AstExpr* arg : c->args)
         visitExpr(arg);

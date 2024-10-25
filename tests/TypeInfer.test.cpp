@@ -23,6 +23,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
+LUAU_FASTFLAG(LuauNewSolverVisitErrorExprLvalues)
 
 using namespace Luau;
 
@@ -1703,6 +1704,31 @@ TEST_CASE_FIXTURE(Fixture, "react_lua_follow_free_type_ub")
 
             end
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewSolverVisitErrorExprLvalues, true}
+    };
+
+    // This should always fail to parse, but shouldn't assert. Previously this
+    // would assert as we end up _roughly_ parsing this (with a lot of error
+    // nodes) as:
+    //
+    //  do
+    //      x :: T, y = z
+    //  end
+    //
+    // We assume that `T` has some resolved type that is set up during
+    // constraint generation and resolved during constraint solving to
+    // be used during typechecking. We didn't descend into error nodes
+    // in lvalue positions.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        --!strict
+        (::, 
     )"));
 }
 

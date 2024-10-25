@@ -12,6 +12,7 @@
 
 namespace Luau
 {
+struct FrontendOptions;
 
 struct FragmentAutocompleteAncestryResult
 {
@@ -29,15 +30,30 @@ struct FragmentParseResult
     std::unique_ptr<Allocator> alloc = std::make_unique<Allocator>();
 };
 
+struct FragmentTypeCheckResult
+{
+    ModulePtr incrementalModule = nullptr;
+    Scope* freshScope = nullptr;
+};
+
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* root, const Position& cursorPos);
 
 FragmentParseResult parseFragment(const SourceModule& srcModule, std::string_view src, const Position& cursorPos);
+
+FragmentTypeCheckResult typecheckFragment(
+    Frontend& frontend,
+    const ModuleName& moduleName,
+    const Position& cursorPos,
+    std::optional<FrontendOptions> opts,
+    std::string_view src
+);
 
 AutocompleteResult fragmentAutocomplete(
     Frontend& frontend,
     std::string_view src,
     const ModuleName& moduleName,
     Position& cursorPosition,
+    std::optional<FrontendOptions> opts,
     StringCompletionCallback callback
 );
 

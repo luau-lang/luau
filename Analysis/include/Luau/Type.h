@@ -806,6 +806,13 @@ struct Type final
     Type& operator=(const TypeVariant& rhs);
     Type& operator=(TypeVariant&& rhs);
 
+    Type(Type&&) = default;
+    Type& operator=(Type&&) = default;
+
+    Type clone() const;
+
+private:
+    Type(const Type&) = default;
     Type& operator=(const Type& rhs);
 };
 

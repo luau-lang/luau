@@ -236,4 +236,12 @@ if not limitedstack then
   assert(not err and string.find(msg, "error"))
 end
 
+-- testing deep nested calls with a large thread stack
+do
+  function recurse(n, ...) return n <= 1 and (1 + #{...}) or recurse(n-1, table.unpack(table.create(4000, 1))) + 1 end
+
+  local ok, msg = pcall(recurse, 19000)
+  assert(not ok and string.find(msg, "not enough memory"))
+end
+
 return('OK')
