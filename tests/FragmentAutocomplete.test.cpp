@@ -5,14 +5,17 @@
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Common.h"
+#include "Luau/Frontend.h"
 
 
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauAllowFragmentParsing);
+LUAU_FASTFLAG(LuauStoreDFGOnModule2);
 
 struct FragmentAutocompleteFixture : Fixture
 {
+    ScopedFastFlag sffs[3] = {{FFlag::LuauAllowFragmentParsing, true}, {FFlag::LuauSolverV2, true}, {FFlag::LuauStoreDFGOnModule2, true}};
 
     FragmentAutocompleteAncestryResult runAutocompleteVisitor(const std::string& source, const Position& cursorPos)
     {
@@ -31,10 +34,19 @@ struct FragmentAutocompleteFixture : Fixture
 
     FragmentParseResult parseFragment(const std::string& document, const Position& cursorPos)
     {
-        ScopedFastFlag sffs[]{{FFlag::LuauAllowFragmentParsing, true}, {FFlag::LuauSolverV2, true}};
         SourceModule* srcModule = this->getMainSourceModule();
         std::string_view srcString = document;
         return Luau::parseFragment(*srcModule, srcString, cursorPos);
+    }
+
+    FragmentTypeCheckResult checkFragment(const std::string& document, const Position& cursorPos)
+    {
+        FrontendOptions options;
+        options.retainFullTypeGraphs = true;
+        // Don't strictly need this in the new solver
+        options.forAutocomplete = true;
+        options.runLintChecks = false;
+        return Luau::typecheckFragment(frontend, "MainModule", cursorPos, options, document);
     }
 };
 
@@ -264,6 +276,59 @@ local y = 5
     REQUIRE(rhs);
     CHECK_EQ("x", std::string(lhs->local->name.value));
     CHECK_EQ("y", std::string(rhs->name.value));
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_typecheck_simple_fragment")
+{
+    auto res = check(
+        R"(
+local x = 4
+local y = 5
+)"
+    );
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+
+    auto fragment = checkFragment(
+        R"(
+local x = 4
+local y = 5
+local z = x + y
+)",
+        Position{3, 15}
+    );
+
+    auto opt = linearSearchForBinding(fragment.freshScope, "z");
+    REQUIRE(opt);
+    CHECK_EQ("number", toString(*opt));
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_typecheck_fragment_inserted_inline")
+{
+    auto res = check(
+        R"(
+local x = 4
+local y = 5
+)"
+    );
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+    auto fragment = checkFragment(
+        R"(
+local x = 4
+local z = x
+local y = 5
+)",
+        Position{2, 11}
+    );
+
+    auto correct = linearSearchForBinding(fragment.freshScope, "z");
+    REQUIRE(correct);
+    CHECK_EQ("number", toString(*correct));
 }
 
 TEST_SUITE_END();

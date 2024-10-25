@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Luau/Constraint.h"
+#include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
 #include "Luau/Location.h"
@@ -69,6 +70,9 @@ struct ConstraintSolver
     NotNull<Scope> rootScope;
     ModuleName currentModuleName;
 
+    // The dataflow graph of the program, used in constraint generation and for magic functions.
+    NotNull<const DataFlowGraph> dfg;
+
     // Constraints that the solver has generated, rather than sourcing from the
     // scope tree.
     std::vector<std::unique_ptr<Constraint>> solverConstraints;
@@ -120,6 +124,7 @@ struct ConstraintSolver
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,
+        NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits
     );
 
@@ -167,9 +172,9 @@ public:
      */
     bool tryDispatch(NotNull<const Constraint> c, bool force);
 
-    bool tryDispatch(const SubtypeConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const SubtypeConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
@@ -194,14 +199,14 @@ public:
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint);
 
     // for a, ... in some_table do
     // also handles __iter metamethod
     bool tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     // for a, ... in next_function, t, ... do
-    bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint);
 
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
         NotNull<const Constraint> constraint,

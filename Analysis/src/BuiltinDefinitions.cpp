@@ -2,6 +2,8 @@
 #include "Luau/BuiltinDefinitions.h"
 
 #include "Luau/Ast.h"
+#include "Luau/Clone.h"
+#include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/Symbol.h"
 #include "Luau/Common.h"
@@ -25,9 +27,12 @@
  * about a function that takes any number of values, but where each value must have some specific type.
  */
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins, false)
+LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix, false)
 
-LUAU_FASTFLAG(AutocompleteRequirePathSuggestions);
+LUAU_FASTFLAG(AutocompleteRequirePathSuggestions)
 
 namespace Luau
 {
@@ -67,6 +72,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
 static bool dcrMagicFunctionSelect(MagicFunctionCallContext context);
 static bool dcrMagicFunctionRequire(MagicFunctionCallContext context);
 static bool dcrMagicFunctionPack(MagicFunctionCallContext context);
+static bool dcrMagicFunctionFreeze(MagicFunctionCallContext context);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
 {
@@ -395,8 +401,10 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
             // but it'll be ok for now.
             TypeId genericTy = arena.addType(GenericType{"T"});
             TypePackId thePack = arena.addTypePack({genericTy});
+            TypeId idTyWithMagic = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
+            ttv->props["freeze"] = makeProperty(idTyWithMagic, "@luau/global/table.freeze");
+
             TypeId idTy = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
-            ttv->props["freeze"] = makeProperty(idTy, "@luau/global/table.freeze");
             ttv->props["clone"] = makeProperty(idTy, "@luau/global/table.clone");
         }
         else
@@ -413,6 +421,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
         attachMagicFunction(ttv->props["pack"].type(), magicFunctionPack);
         attachDcrMagicFunction(ttv->props["pack"].type(), dcrMagicFunctionPack);
+        if (FFlag::LuauTypestateBuiltins)
+            attachDcrMagicFunction(ttv->props["freeze"].type(), dcrMagicFunctionFreeze);
     }
 
     if (FFlag::AutocompleteRequirePathSuggestions)
@@ -574,7 +584,11 @@ static void dcrMagicFunctionTypeCheckFormat(MagicFunctionTypeCheckContext contex
         fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
 
     if (!fmt)
+    {
+        if (FFlag::LuauStringFormatArityFix)
+            context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
         return;
+    }
 
     std::vector<TypeId> expected = parseFormatString(context.builtinTypes, fmt->value.data, fmt->value.size);
     const auto& [params, tail] = flatten(context.arguments);
@@ -1324,6 +1338,58 @@ static bool dcrMagicFunctionPack(MagicFunctionCallContext context)
     return true;
 }
 
+static bool dcrMagicFunctionFreeze(MagicFunctionCallContext context)
+{
+    LUAU_ASSERT(FFlag::LuauTypestateBuiltins);
+
+    TypeArena* arena = context.solver->arena;
+    const DataFlowGraph* dfg = context.solver->dfg.get();
+    Scope* scope = context.constraint->scope.get();
+
+    const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
+    LUAU_ASSERT(paramTypes.size() >= 1);
+
+    TypeId inputType = follow(paramTypes.at(0));
+
+    // we'll check if it's a table first since this magic function also produces the error if it's not until we have bounded generics
+    if (!get<TableType>(inputType))
+    {
+        context.solver->reportError(TypeMismatch{context.solver->builtinTypes->tableType, inputType}, context.callSite->argLocation);
+        return false;
+    }
+
+    AstExpr* targetExpr = context.callSite->args.data[0];
+    std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
+    std::optional<TypeId> resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
+
+    // Clone the input type, this will become our final result type after we mutate it.
+    CloneState cloneState{context.solver->builtinTypes};
+    TypeId clonedType = shallowClone(inputType, *arena, cloneState);
+    auto tableTy = getMutable<TableType>(clonedType);
+    // `clone` should not break this.
+    LUAU_ASSERT(tableTy);
+    tableTy->state = TableState::Sealed;
+    tableTy->syntheticName = std::nullopt;
+
+    // We'll mutate the table to make every property type read-only.
+    for (auto iter = tableTy->props.begin(); iter != tableTy->props.end();)
+    {
+        if (iter->second.isWriteOnly())
+            iter = tableTy->props.erase(iter);
+        else
+        {
+            iter->second.writeTy = std::nullopt;
+            iter++;
+        }
+    }
+
+    if (resultTy)
+        asMutable(*resultTy)->ty.emplace<BoundType>(clonedType);
+    asMutable(context.result)->ty.emplace<BoundTypePack>(arena->addTypePack({clonedType}));
+
+    return true;
+}
+
 static bool checkRequirePath(TypeChecker& typechecker, AstExpr* expr)
 {
     // require(foo.parent.bar) will technically work, but it depends on legacy goop that
@@ -1413,6 +1479,54 @@ static bool dcrMagicFunctionRequire(MagicFunctionCallContext context)
     }
 
     return false;
+}
+
+bool matchSetMetatable(const AstExprCall& call)
+{
+    const char* smt = "setmetatable";
+
+    if (call.args.size != 2)
+        return false;
+
+    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    if (!funcAsGlobal || funcAsGlobal->name != smt)
+        return false;
+
+    return true;
+}
+
+bool matchTableFreeze(const AstExprCall& call)
+{
+    if (call.args.size < 1)
+        return false;
+
+    const AstExprIndexName* index = call.func->as<AstExprIndexName>();
+    if (!index || index->index != "freeze")
+        return false;
+
+    const AstExprGlobal* global = index->expr->as<AstExprGlobal>();
+    if (!global || global->name != "table")
+        return false;
+
+    return true;
+}
+
+bool matchAssert(const AstExprCall& call)
+{
+    if (call.args.size < 1)
+        return false;
+
+    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    if (!funcAsGlobal || funcAsGlobal->name != "assert")
+        return false;
+
+    return true;
+}
+
+bool shouldTypestateForFirstArgument(const AstExprCall& call)
+{
+    // TODO: magic function for setmetatable and assert and then add them
+    return matchTableFreeze(call);
 }
 
 } // namespace Luau

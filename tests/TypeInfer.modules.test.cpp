@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauTypestateBuiltins)
 
 using namespace Luau;
 
@@ -150,6 +151,45 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")
     REQUIRE(iter.tail());
 
     CHECK(get<VariadicTypePack>(*iter.tail()));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
+{
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        return {
+            a = 1,
+        }
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        return table.freeze(require(game.A))
+    )";
+
+    CheckResult aResult = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr a = frontend.moduleResolver.getModule("game/A");
+    REQUIRE(a != nullptr);
+    // confirm that no cross-module mutation happened here!
+    if (FFlag::LuauSolverV2)
+        CHECK(toString(a->returnType) == "{ a: number }");
+    else
+        CHECK(toString(a->returnType) == "{| a: number |}");
+
+    ModulePtr b = frontend.moduleResolver.getModule("game/B");
+    REQUIRE(b != nullptr);
+    // confirm that no cross-module mutation happened here!
+    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins)
+        CHECK(toString(b->returnType) == "{ read a: number }");
+    else if (FFlag::LuauSolverV2)
+        CHECK(toString(b->returnType) == "{ a: number }");
+    else
+        CHECK(toString(b->returnType) == "{| a: number |}");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_error_of_unknown_qualified_type")

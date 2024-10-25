@@ -999,6 +999,11 @@ Type& Type::operator=(const Type& rhs)
     return *this;
 }
 
+Type Type::clone() const
+{
+    return *this;
+}
+
 TypeId makeFunction(
     TypeArena& arena,
     std::optional<TypeId> selfType,

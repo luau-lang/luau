@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUseNormalizeIntersectionLimit)
 
 using namespace Luau;
 
@@ -2327,8 +2326,6 @@ end)
 
 TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(0.5))
 {
-    ScopedFastFlag LuauUseNormalizeIntersectionLimit{FFlag::LuauUseNormalizeIntersectionLimit, true};
-
     CheckResult result = check(R"(
 --!strict
 type Dir = {

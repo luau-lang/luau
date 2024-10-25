@@ -168,6 +168,10 @@ checkresults({ false, "oops" }, xpcall(function() table.create(1e6) end, functio
 checkresults({ false, "error in error handling" }, xpcall(function() error("oops") end, function(e) table.create(1e6) end))
 checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6) end, function(e) table.create(1e6) end))
 
+co = coroutine.create(function() table.create(1e6) end)
+coroutine.resume(co)
+checkresults({ false, "not enough memory" }, coroutine.close(co))
+
 -- ensure that pcall and xpcall close upvalues when handling error
 local upclo
 local function uptest(y)

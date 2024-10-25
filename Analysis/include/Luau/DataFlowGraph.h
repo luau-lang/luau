@@ -35,6 +35,8 @@ struct DataFlowGraph
     DataFlowGraph& operator=(DataFlowGraph&&) = default;
 
     DefId getDef(const AstExpr* expr) const;
+    // Look up the definition optionally, knowing it may not be present.
+    std::optional<DefId> getDefOptional(const AstExpr* expr) const;
     // Look up for the rvalue def for a compound assignment.
     std::optional<DefId> getRValueDefForCompoundAssign(const AstExpr* expr) const;
 

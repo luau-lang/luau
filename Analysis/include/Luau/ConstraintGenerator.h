@@ -146,6 +146,8 @@ struct ConstraintGenerator
      */
     void visitModuleRoot(AstStatBlock* block);
 
+    void visitFragmentRoot(const ScopePtr& resumeScope, AstStatBlock* block);
+
 private:
     std::vector<std::vector<TypeId>> interiorTypes;
 

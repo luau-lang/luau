@@ -60,7 +60,7 @@ struct ReplaceGenerics : Substitution
 };
 
 // A substitution which replaces generic functions by monomorphic functions
-struct Instantiation : Substitution
+struct Instantiation final : Substitution
 {
     Instantiation(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope)
         : Substitution(log, arena)
