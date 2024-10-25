@@ -140,7 +140,7 @@ private:
         }
     }
 
-private:
+public:
     TypeId shallowClone(TypeId ty)
     {
         // We want to [`Luau::follow`] but without forcing the expansion of [`LazyType`]s.
@@ -189,6 +189,7 @@ private:
         return target;
     }
 
+private:
     Property shallowClone(const Property& p)
     {
         if (FFlag::LuauSolverV2)
@@ -452,6 +453,24 @@ private:
 };
 
 } // namespace
+
+TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
+{
+    if (tp->persistent)
+        return tp;
+
+    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
+    return cloner.shallowClone(tp);
+}
+
+TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
+{
+    if (typeId->persistent)
+        return typeId;
+
+    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
+    return cloner.shallowClone(typeId);
+}
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
 {

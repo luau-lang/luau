@@ -1146,6 +1146,14 @@ void AstTypePackGeneric::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+bool isLValue(const AstExpr* expr)
+{
+    return expr->is<AstExprLocal>()
+        || expr->is<AstExprGlobal>()
+        || expr->is<AstExprIndexName>()
+        || expr->is<AstExprIndexExpr>();
+}
+
 AstName getIdentifier(AstExpr* node)
 {
     if (AstExprGlobal* expr = node->as<AstExprGlobal>())

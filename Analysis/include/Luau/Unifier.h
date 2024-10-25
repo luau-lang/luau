@@ -179,7 +179,7 @@ public:
     bool occursCheck(TypePackId needle, TypePackId haystack, bool reversed);
     bool occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
-    Unifier makeChildUnifier();
+    std::unique_ptr<Unifier> makeChildUnifier();
 
     void reportError(TypeError err);
     LUAU_NOINLINE void reportError(Location location, TypeErrorData data);

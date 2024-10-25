@@ -22,7 +22,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteNewSolverLimit, false);
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 namespace Luau
@@ -512,19 +511,14 @@ struct SeenSetPopper
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope)
 {
-    std::optional<RecursionCounter> rc;
+    UnifierCounters& counters = normalizer->sharedState->counters;
+    RecursionCounter rc(&counters.recursionCount);
 
-    if (FFlag::LuauAutocompleteNewSolverLimit)
+    if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
     {
-        UnifierCounters& counters = normalizer->sharedState->counters;
-        rc.emplace(&counters.recursionCount);
-
-        if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
-        {
-            SubtypingResult result;
-            result.normalizationTooComplex = true;
-            return result;
-        }
+        SubtypingResult result;
+        result.normalizationTooComplex = true;
+        return result;
     }
 
     subTy = follow(subTy);

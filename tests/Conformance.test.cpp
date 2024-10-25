@@ -35,6 +35,7 @@ LUAU_FASTFLAG(LuauMathMap)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauNativeAttribute)
+LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -755,6 +756,8 @@ TEST_CASE("Closure")
 
 TEST_CASE("Calls")
 {
+    ScopedFastFlag LuauStackLimit{DFFlag::LuauStackLimit, true};
+
     runConformance("calls.lua");
 }
 
@@ -794,6 +797,8 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
+    ScopedFastFlag LuauStackLimit{DFFlag::LuauStackLimit, true};
+
     runConformance(
         "pcall.lua",
         [](lua_State* L)

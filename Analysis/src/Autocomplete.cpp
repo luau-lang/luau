@@ -16,7 +16,6 @@
 #include <utility>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAutocompleteNewSolverLimit)
 LUAU_FASTFLAGVARIABLE(AutocompleteRequirePathSuggestions, false)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
@@ -157,11 +156,8 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
             NotNull{&iceReporter}, NotNull{&limits}
         }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-        if (FFlag::LuauAutocompleteNewSolverLimit)
-        {
-            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
-        }
+        unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+        unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
 
         Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}};
 

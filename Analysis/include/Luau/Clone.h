@@ -22,6 +22,15 @@ struct CloneState
     SeenTypePacks seenTypePacks;
 };
 
+/** `shallowClone` will make a copy of only the _top level_ constructor of the type,
+ * while `clone` will make a deep copy of the entire type and its every component.
+ *
+ * Be mindful about which behavior you actually _want_.
+ */
+
+TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
+TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState);
+
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
 TypeId clone(TypeId tp, TypeArena& dest, CloneState& cloneState);
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState);

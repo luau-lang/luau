@@ -44,7 +44,7 @@ void ConstraintGeneratorFixture::solve(const std::string& code)
 {
     generateConstraints(code);
     ConstraintSolver cs{
-        NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, {}
+        NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, NotNull{dfg.get()}, {}
     };
     cs.run();
 }

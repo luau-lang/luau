@@ -32,7 +32,7 @@ TEST_SUITE_BEGIN("TryUnifyTests");
 TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 {
     Type numberOne{TypeVariant{PrimitiveType{PrimitiveType::Number}}};
-    Type numberTwo = numberOne;
+    Type numberTwo = numberOne.clone();
 
     state.tryUnify(&numberTwo, &numberOne);
 
@@ -64,13 +64,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
     Type functionOne{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
     }};
 
-    Type functionOneSaved = functionOne;
+    Type functionOneSaved = functionOne.clone();
 
     TypePackVar argPackTwo{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
     Type functionTwo{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->stringType}))
     }};
 
-    Type functionTwoSaved = functionTwo;
+    Type functionTwoSaved = functionTwo.clone();
 
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(state.failure);

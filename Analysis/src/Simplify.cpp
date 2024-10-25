@@ -2,6 +2,7 @@
 
 #include "Luau/Simplify.h"
 
+#include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Set.h"
@@ -14,6 +15,7 @@
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8);
+LUAU_FASTFLAGVARIABLE(LuauFlagBasicIntersectFollows, false);
 
 namespace Luau
 {
@@ -1064,6 +1066,12 @@ TypeId TypeSimplifier::intersectIntersectionWithType(TypeId left, TypeId right)
 
 std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 {
+    if (FFlag::LuauFlagBasicIntersectFollows)
+    {
+        left = follow(left);
+        right = follow(right);
+    }
+
     if (get<AnyType>(left) && get<ErrorType>(right))
         return right;
     if (get<AnyType>(right) && get<ErrorType>(left))

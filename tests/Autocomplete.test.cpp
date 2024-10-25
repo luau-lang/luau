@@ -15,9 +15,7 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
-LUAU_FASTFLAG(LuauAutocompleteNewSolverLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauUseNormalizeIntersectionLimit)
 
 using namespace Luau;
 
@@ -3824,7 +3822,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag luauAutocompleteNewSolverLimit{FFlag::LuauAutocompleteNewSolverLimit, true};
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
 
     const int parts = 100;

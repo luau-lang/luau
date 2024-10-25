@@ -1490,6 +1490,7 @@ public:
     }
 };
 
+bool isLValue(const AstExpr*);
 AstName getIdentifier(AstExpr*);
 Location getLocation(const AstTypeList& typeList);
 

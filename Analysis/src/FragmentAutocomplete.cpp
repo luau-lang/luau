@@ -4,10 +4,43 @@
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Common.h"
+#include "Luau/Parser.h"
+#include "Luau/ParseOptions.h"
+#include "Luau/Module.h"
+#include "Luau/TimeTrace.h"
+#include "Luau/UnifierSharedState.h"
+#include "Luau/TypeFunction.h"
+#include "Luau/DataFlowGraph.h"
+#include "Luau/ConstraintGenerator.h"
+#include "Luau/ConstraintSolver.h"
 #include "Luau/Frontend.h"
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/Module.h"
+
+LUAU_FASTINT(LuauTypeInferRecursionLimit);
+LUAU_FASTINT(LuauTypeInferIterationLimit);
+LUAU_FASTINT(LuauTarjanChildLimit)
+LUAU_FASTFLAG(LuauAllowFragmentParsing);
+LUAU_FASTFLAG(LuauStoreDFGOnModule2);
+
+namespace
+{
+template<typename T>
+void copyModuleVec(std::vector<T>& result, const std::vector<T>& input)
+{
+    result.insert(result.end(), input.begin(), input.end());
+}
+
+template<typename K, typename V>
+void copyModuleMap(Luau::DenseHashMap<K, V>& result, const Luau::DenseHashMap<K, V>& input)
+{
+    for (auto [k, v] : input)
+        result[k] = v;
+}
+
+} // namespace
+
 
 namespace Luau
 {
@@ -147,17 +180,173 @@ FragmentParseResult parseFragment(const SourceModule& srcModule, std::string_vie
     return fragmentResult;
 }
 
+ModulePtr copyModule(const ModulePtr& result, std::unique_ptr<Allocator> alloc)
+{
+    freeze(result->internalTypes);
+    freeze(result->interfaceTypes);
+    ModulePtr incrementalModule = std::make_shared<Module>();
+    incrementalModule->name = result->name;
+    incrementalModule->humanReadableName = result->humanReadableName;
+    incrementalModule->allocator = std::move(alloc);
+    // Don't need to keep this alive (it's already on the source module)
+    copyModuleVec(incrementalModule->scopes, result->scopes);
+    copyModuleMap(incrementalModule->astTypes, result->astTypes);
+    copyModuleMap(incrementalModule->astTypePacks, result->astTypePacks);
+    copyModuleMap(incrementalModule->astExpectedTypes, result->astExpectedTypes);
+    // Don't need to clone astOriginalCallTypes
+    copyModuleMap(incrementalModule->astOverloadResolvedTypes, result->astOverloadResolvedTypes);
+    // Don't need to clone astForInNextTypes
+    copyModuleMap(incrementalModule->astForInNextTypes, result->astForInNextTypes);
+    // Don't need to clone astResolvedTypes
+    // Don't need to clone astResolvedTypePacks
+    // Don't need to clone upperBoundContributors
+    copyModuleMap(incrementalModule->astScopes, result->astScopes);
+    // Don't need to clone declared Globals;
+    return incrementalModule;
+}
+
+FragmentTypeCheckResult typeCheckFragmentHelper(
+    Frontend& frontend,
+    AstStatBlock* root,
+    const ModulePtr& stale,
+    const ScopePtr& closestScope,
+    const Position& cursorPos,
+    std::unique_ptr<Allocator> astAllocator,
+    const FrontendOptions& opts
+)
+{
+    freeze(stale->internalTypes);
+    freeze(stale->interfaceTypes);
+    ModulePtr incrementalModule = copyModule(stale, std::move(astAllocator));
+    unfreeze(incrementalModule->internalTypes);
+    unfreeze(incrementalModule->interfaceTypes);
+
+    /// Setup typecheck limits
+    TypeCheckLimits limits;
+    if (opts.moduleTimeLimitSec)
+        limits.finishTime = TimeTrace::getClock() + *opts.moduleTimeLimitSec;
+    else
+        limits.finishTime = std::nullopt;
+    limits.cancellationToken = opts.cancellationToken;
+
+    /// Icehandler
+    NotNull<InternalErrorReporter> iceHandler{&frontend.iceHandler};
+    /// Make the shared state for the unifier (recursion + iteration limits)
+    UnifierSharedState unifierState{iceHandler};
+    unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    unifierState.counters.iterationLimit = limits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
+
+    /// Initialize the normalizer
+    Normalizer normalizer{&incrementalModule->internalTypes, frontend.builtinTypes, NotNull{&unifierState}};
+
+    /// User defined type functions runtime
+    TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
+
+    /// Create a DataFlowGraph just for the surrounding context
+    auto updatedDfg = DataFlowGraphBuilder::updateGraph(*stale->dataFlowGraph.get(), stale->dfgScopes, root, cursorPos, iceHandler);
+
+    /// Contraint Generator
+    ConstraintGenerator cg{
+        incrementalModule,
+        NotNull{&normalizer},
+        NotNull{&typeFunctionRuntime},
+        NotNull{&frontend.moduleResolver},
+        frontend.builtinTypes,
+        iceHandler,
+        frontend.globals.globalScope,
+        nullptr,
+        nullptr,
+        NotNull{&updatedDfg},
+        {}
+    };
+    cg.rootScope = stale->getModuleScope().get();
+    // Any additions to the scope must occur in a fresh scope
+    auto freshChildOfNearestScope = std::make_shared<Scope>(closestScope);
+    incrementalModule->scopes.push_back({root->location, freshChildOfNearestScope});
+
+    // closest Scope -> children = { ...., freshChildOfNearestScope}
+    // We need to trim nearestChild from the scope hierarcy
+    closestScope->children.push_back(NotNull{freshChildOfNearestScope.get()});
+    // Visit just the root - we know the scope it should be in
+    cg.visitFragmentRoot(freshChildOfNearestScope, root);
+    // Trim nearestChild from the closestScope
+    Scope* back = closestScope->children.back().get();
+    LUAU_ASSERT(back == freshChildOfNearestScope.get());
+    closestScope->children.pop_back();
+
+    /// Initialize the constraint solver and run it
+    ConstraintSolver cs{
+        NotNull{&normalizer},
+        NotNull{&typeFunctionRuntime},
+        NotNull(cg.rootScope),
+        borrowConstraints(cg.constraints),
+        incrementalModule->name,
+        NotNull{&frontend.moduleResolver},
+        {},
+        nullptr,
+        NotNull{&updatedDfg},
+        limits
+    };
+
+    try
+    {
+        cs.run();
+    }
+    catch (const TimeLimitError&)
+    {
+        stale->timeout = true;
+    }
+    catch (const UserCancelError&)
+    {
+        stale->cancelled = true;
+    }
+
+    // In frontend we would forbid internal types
+    // because this is just for autocomplete, we don't actually care
+    // We also don't even need to typecheck - just synthesize types as best as we can
+
+    freeze(incrementalModule->internalTypes);
+    freeze(incrementalModule->interfaceTypes);
+    return {std::move(incrementalModule), freshChildOfNearestScope.get()};
+}
+
+
+FragmentTypeCheckResult typecheckFragment(
+    Frontend& frontend,
+    const ModuleName& moduleName,
+    const Position& cursorPos,
+    std::optional<FrontendOptions> opts,
+    std::string_view src
+)
+{
+    const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
+    if (!sourceModule)
+    {
+        LUAU_ASSERT(!"Expected Source Module for fragment typecheck");
+        return {};
+    }
+
+    ModulePtr module = frontend.moduleResolver.getModule(moduleName);
+    const ScopePtr& closestScope = findClosestScope(module, cursorPos);
+
+
+    FragmentParseResult r = parseFragment(*sourceModule, src, cursorPos);
+    FrontendOptions frontendOptions = opts.value_or(frontend.options);
+    return typeCheckFragmentHelper(frontend, r.root, module, closestScope, cursorPos, std::move(r.alloc), frontendOptions);
+}
 
 AutocompleteResult fragmentAutocomplete(
     Frontend& frontend,
     std::string_view src,
     const ModuleName& moduleName,
     Position& cursorPosition,
+    const FrontendOptions& opts,
     StringCompletionCallback callback
 )
 {
     LUAU_ASSERT(FFlag::LuauSolverV2);
-    // TODO
+    LUAU_ASSERT(FFlag::LuauAllowFragmentParsing);
+    LUAU_ASSERT(FFlag::LuauStoreDFGOnModule2);
     return {};
 }
 
