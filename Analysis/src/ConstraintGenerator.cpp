@@ -653,6 +653,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
 void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* block)
 {
     std::unordered_map<Name, Location> aliasDefinitionLocations;
+    std::unordered_map<Name, Location> classDefinitionLocations;
 
     // In order to enable mutually-recursive type aliases, we need to
     // populate the type bindings before we actually check any of the
@@ -749,6 +750,29 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
             // Set type bindings and definition locations for this user-defined type function
             scope->privateTypeBindings[function->name.value] = std::move(typeFunction);
             aliasDefinitionLocations[function->name.value] = function->location;
+        }
+        else if (auto classDeclaration = stat->as<AstStatDeclareClass>())
+        {
+            if (scope->exportedTypeBindings.count(classDeclaration->name.value))
+            {
+                auto it = classDefinitionLocations.find(classDeclaration->name.value);
+                LUAU_ASSERT(it != classDefinitionLocations.end());
+                reportError(classDeclaration->location, DuplicateTypeDefinition{classDeclaration->name.value, it->second});
+                continue;
+            }
+
+            // A class might have no name if the code is syntactically
+            // illegal. We mustn't prepopulate anything in this case.
+            if (classDeclaration->name == kParseNameError)
+                continue;
+
+            ScopePtr defnScope = childScope(classDeclaration, scope);
+
+            TypeId initialType = arena->addType(BlockedType{});
+            TypeFun initialFun{initialType};
+            scope->exportedTypeBindings[classDeclaration->name.value] = std::move(initialFun);
+
+            classDefinitionLocations[classDeclaration->name.value] = classDeclaration->location;
         }
     }
 }
@@ -1645,6 +1669,11 @@ static bool isMetamethod(const Name& name)
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)
 {
+    // If a class with the same name was already defined, we skip over
+    auto bindingIt = scope->exportedTypeBindings.find(declaredClass->name.value);
+    if (bindingIt == scope->exportedTypeBindings.end())
+        return ControlFlow::None;
+
     std::optional<TypeId> superTy = std::make_optional(builtinTypes->classType);
     if (declaredClass->superName)
     {
@@ -1659,9 +1688,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
         // We don't have generic classes, so this assertion _should_ never be hit.
         LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
-        superTy = lookupType->type;
+        superTy = follow(lookupType->type);
 
-        if (!get<ClassType>(follow(*superTy)))
+        if (!get<ClassType>(*superTy))
         {
             reportError(
                 declaredClass->location,
@@ -1682,7 +1711,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
     ctv->metatable = metaTy;
 
-    scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+    TypeId classBindTy = bindingIt->second.type;
+    emplaceType<BoundType>(asMutable(classBindTy), classTy);
 
     if (declaredClass->indexer)
     {
