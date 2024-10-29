@@ -1108,6 +1108,12 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
             target = follow(instantiated);
         }
+        else
+        {
+            // This is a new type - redefine the location.
+            ttv->definitionLocation = constraint->location;
+            ttv->definitionModuleName = currentModuleName;
+        }
 
         ttv->instantiatedTypeParams = typeArguments;
         ttv->instantiatedTypePackParams = packArguments;
