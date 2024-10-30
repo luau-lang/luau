@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauNewSolverPrePopulateClasses)
+
 TEST_SUITE_BEGIN("DefinitionTests");
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
@@ -492,6 +494,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
+    ScopedFastFlag _{FFlag::LuauNewSolverPrePopulateClasses, true};
     loadDefinition(R"(
         declare class Channel
             Messages: { Message }

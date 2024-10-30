@@ -34,6 +34,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 
 namespace Luau
 {
@@ -753,6 +754,9 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
         }
         else if (auto classDeclaration = stat->as<AstStatDeclareClass>())
         {
+            if (!FFlag::LuauNewSolverPrePopulateClasses)
+                continue;
+
             if (scope->exportedTypeBindings.count(classDeclaration->name.value))
             {
                 auto it = classDefinitionLocations.find(classDeclaration->name.value);
@@ -1671,7 +1675,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 {
     // If a class with the same name was already defined, we skip over
     auto bindingIt = scope->exportedTypeBindings.find(declaredClass->name.value);
-    if (bindingIt == scope->exportedTypeBindings.end())
+    if (FFlag::LuauNewSolverPrePopulateClasses && bindingIt == scope->exportedTypeBindings.end())
         return ControlFlow::None;
 
     std::optional<TypeId> superTy = std::make_optional(builtinTypes->classType);
@@ -1688,9 +1692,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
         // We don't have generic classes, so this assertion _should_ never be hit.
         LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
-        superTy = follow(lookupType->type);
+        if (FFlag::LuauNewSolverPrePopulateClasses)
+            superTy = follow(lookupType->type);
+        else
+            superTy = lookupType->type;
 
-        if (!get<ClassType>(*superTy))
+        if (!get<ClassType>(follow(*superTy)))
         {
             reportError(
                 declaredClass->location,
@@ -1711,8 +1718,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
     ctv->metatable = metaTy;
 
-    TypeId classBindTy = bindingIt->second.type;
-    emplaceType<BoundType>(asMutable(classBindTy), classTy);
+
+    if (FFlag::LuauNewSolverPrePopulateClasses)
+    {
+        TypeId classBindTy = bindingIt->second.type;
+        emplaceType<BoundType>(asMutable(classBindTy), classTy);
+    }
+    else
+        scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
 
     if (declaredClass->indexer)
     {
