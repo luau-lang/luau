@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
+LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 
 namespace Luau
 {
@@ -1108,7 +1109,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
             target = follow(instantiated);
         }
-        else
+        else if (FFlag::LuauNewSolverPopulateTableLocations)
         {
             // This is a new type - redefine the location.
             ttv->definitionLocation = constraint->location;
