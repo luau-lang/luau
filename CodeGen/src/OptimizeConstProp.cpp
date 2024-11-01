@@ -17,7 +17,7 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
-LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 
 namespace Luau
 {
@@ -536,6 +536,17 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_BUFFER_WRITEF32:
     case LBF_BUFFER_READF64:
     case LBF_BUFFER_WRITEF64:
+    case LBF_VECTOR_MAGNITUDE:
+    case LBF_VECTOR_NORMALIZE:
+    case LBF_VECTOR_CROSS:
+    case LBF_VECTOR_DOT:
+    case LBF_VECTOR_FLOOR:
+    case LBF_VECTOR_CEIL:
+    case LBF_VECTOR_ABS:
+    case LBF_VECTOR_SIGN:
+    case LBF_VECTOR_CLAMP:
+    case LBF_VECTOR_MIN:
+    case LBF_VECTOR_MAX:
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();

@@ -128,7 +128,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_infer_that_a_parameter_must_be_a_particu
 
 TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function makeClone(o)
@@ -235,7 +235,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
 TEST_CASE_FIXTURE(ClassFixture, "cannot_unify_class_instance_with_primitive")
 {
     // This is allowed in the new solver
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local v = Vector2.New(0, 5)
@@ -472,7 +472,7 @@ Type 'number' could not be converted into 'string')";
 TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")
 {
     // CLI-116433
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 local i = ChildClass.New()

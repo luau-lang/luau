@@ -11,7 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-LUAU_FASTFLAG(LuauTypestateBuiltins)
+LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauStringFormatArityFix)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -136,7 +136,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -516,7 +516,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function nifty(x, y)
@@ -1133,7 +1133,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
         CHECK("Key 'b' not found in table '{ read a: number }'" == toString(result.errors[0]));
     else if (FFlag::LuauSolverV2)
         CHECK("Key 'b' not found in table '{ a: number }'" == toString(result.errors[0]));
@@ -1141,7 +1141,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
         CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
     CHECK(Location({13, 18}, {13, 23}) == result.errors[0].location);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
     {
         CHECK_EQ("{ read a: number }", toString(requireTypeAtPosition({15, 19})));
         CHECK_EQ("{ read b: string }", toString(requireTypeAtPosition({16, 19})));
@@ -1178,13 +1178,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mu
     LUAU_REQUIRE_NO_ERRORS(result);
 
 
-    if (FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauTypestateBuiltins2)
     {
-        CHECK_EQ("t1 | { read a: number, read q: string }", toString(requireType("t1")));
+        CHECK_EQ("{ a: number, q: string } | { read a: number, read q: string }", toString(requireType("t1"), {/*exhaustive */ true}));
         // before the assignment, it's `t1`
-        CHECK_EQ("t1", toString(requireTypeAtPosition({3, 8})));
+        CHECK_EQ("{ a: number, q: string }", toString(requireTypeAtPosition({3, 8}), {/*exhaustive */ true}));
         // after the assignment, it's read-only.
-        CHECK_EQ("{ read a: number, read q: string }", toString(requireTypeAtPosition({8, 18})));
+        CHECK_EQ("{ read a: number, read q: string }", toString(requireTypeAtPosition({8, 18}), {/*exhaustive */ true}));
     }
 
     CHECK_EQ("number", toString(requireType("a")));
@@ -1208,8 +1208,44 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_generic_table")
         end
     )");
 
-    if (FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauTypestateBuiltins2)
         LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_metatable")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local meta = {
+            __index = function()
+                return "foo"
+            end
+        }
+
+        local myTable = setmetatable({}, meta)
+        table.freeze(myTable)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_no_args")
+{
+    CheckResult result = check(R"(
+        --!strict
+        table.freeze()
+    )");
+
+    // this does not error in the new solver without the typestate builtins functionality.
+    if (FFlag::LuauSolverV2 && !FFlag::LuauTypestateBuiltins2)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        return;
+    }
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(get<CountMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_non_tables")
@@ -1220,7 +1256,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_non_tables")
     )");
 
     // this does not error in the new solver without the typestate builtins functionality.
-    if (FFlag::LuauSolverV2 && !FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauTypestateBuiltins2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
         return;
@@ -1231,7 +1267,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_non_tables")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
         CHECK_EQ(toString(tm->wantedType), "table");
     else
         CHECK_EQ(toString(tm->wantedType), "{-  -}");
@@ -1241,7 +1277,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_non_tables")
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
     // In the new solver, nil can certainly be used where a generic is required, so all generic parameters are optional.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local a = {b=setmetatable}

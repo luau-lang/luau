@@ -15,14 +15,14 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/Unifier.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(LuauSolverV2);
 
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationTracksCyclicPairsThroughInhabitance, false);
-LUAU_FASTFLAGVARIABLE(LuauIntersectNormalsNeedsToTrackResourceLimits, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizationTracksCyclicPairsThroughInhabitance);
+LUAU_FASTFLAGVARIABLE(LuauIntersectNormalsNeedsToTrackResourceLimits);
 
 namespace Luau
 {

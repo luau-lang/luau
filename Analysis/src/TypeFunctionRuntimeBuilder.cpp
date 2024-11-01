@@ -20,6 +20,8 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixMetatable)
+
 namespace Luau
 {
 
@@ -241,31 +243,31 @@ private:
         return target;
     }
 
-    void serializeChildren(TypeId ty, TypeFunctionTypeId tfti)
+    void serializeChildren(const TypeId ty, TypeFunctionTypeId tfti)
     {
-        if (auto [p1, p2] = std::tuple{getMutable<PrimitiveType>(ty), getMutable<TypeFunctionPrimitiveType>(tfti)}; p1 && p2)
+        if (auto [p1, p2] = std::tuple{get<PrimitiveType>(ty), getMutable<TypeFunctionPrimitiveType>(tfti)}; p1 && p2)
             serializeChildren(p1, p2);
-        else if (auto [u1, u2] = std::tuple{getMutable<UnknownType>(ty), getMutable<TypeFunctionUnknownType>(tfti)}; u1 && u2)
+        else if (auto [u1, u2] = std::tuple{get<UnknownType>(ty), getMutable<TypeFunctionUnknownType>(tfti)}; u1 && u2)
             serializeChildren(u1, u2);
-        else if (auto [n1, n2] = std::tuple{getMutable<NeverType>(ty), getMutable<TypeFunctionNeverType>(tfti)}; n1 && n2)
+        else if (auto [n1, n2] = std::tuple{get<NeverType>(ty), getMutable<TypeFunctionNeverType>(tfti)}; n1 && n2)
             serializeChildren(n1, n2);
-        else if (auto [a1, a2] = std::tuple{getMutable<AnyType>(ty), getMutable<TypeFunctionAnyType>(tfti)}; a1 && a2)
+        else if (auto [a1, a2] = std::tuple{get<AnyType>(ty), getMutable<TypeFunctionAnyType>(tfti)}; a1 && a2)
             serializeChildren(a1, a2);
-        else if (auto [s1, s2] = std::tuple{getMutable<SingletonType>(ty), getMutable<TypeFunctionSingletonType>(tfti)}; s1 && s2)
+        else if (auto [s1, s2] = std::tuple{get<SingletonType>(ty), getMutable<TypeFunctionSingletonType>(tfti)}; s1 && s2)
             serializeChildren(s1, s2);
-        else if (auto [u1, u2] = std::tuple{getMutable<UnionType>(ty), getMutable<TypeFunctionUnionType>(tfti)}; u1 && u2)
+        else if (auto [u1, u2] = std::tuple{get<UnionType>(ty), getMutable<TypeFunctionUnionType>(tfti)}; u1 && u2)
             serializeChildren(u1, u2);
-        else if (auto [i1, i2] = std::tuple{getMutable<IntersectionType>(ty), getMutable<TypeFunctionIntersectionType>(tfti)}; i1 && i2)
+        else if (auto [i1, i2] = std::tuple{get<IntersectionType>(ty), getMutable<TypeFunctionIntersectionType>(tfti)}; i1 && i2)
             serializeChildren(i1, i2);
-        else if (auto [n1, n2] = std::tuple{getMutable<NegationType>(ty), getMutable<TypeFunctionNegationType>(tfti)}; n1 && n2)
+        else if (auto [n1, n2] = std::tuple{get<NegationType>(ty), getMutable<TypeFunctionNegationType>(tfti)}; n1 && n2)
             serializeChildren(n1, n2);
-        else if (auto [t1, t2] = std::tuple{getMutable<TableType>(ty), getMutable<TypeFunctionTableType>(tfti)}; t1 && t2)
+        else if (auto [t1, t2] = std::tuple{get<TableType>(ty), getMutable<TypeFunctionTableType>(tfti)}; t1 && t2)
             serializeChildren(t1, t2);
-        else if (auto [m1, m2] = std::tuple{getMutable<MetatableType>(ty), getMutable<TypeFunctionTableType>(tfti)}; m1 && m2)
+        else if (auto [m1, m2] = std::tuple{get<MetatableType>(ty), getMutable<TypeFunctionTableType>(tfti)}; m1 && m2)
             serializeChildren(m1, m2);
-        else if (auto [f1, f2] = std::tuple{getMutable<FunctionType>(ty), getMutable<TypeFunctionFunctionType>(tfti)}; f1 && f2)
+        else if (auto [f1, f2] = std::tuple{get<FunctionType>(ty), getMutable<TypeFunctionFunctionType>(tfti)}; f1 && f2)
             serializeChildren(f1, f2);
-        else if (auto [c1, c2] = std::tuple{getMutable<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
+        else if (auto [c1, c2] = std::tuple{get<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
             serializeChildren(c1, c2);
         else
         { // Either this or ty and tfti do not represent the same type
@@ -274,12 +276,11 @@ private:
         }
     }
 
-    void serializeChildren(TypePackId tp, TypeFunctionTypePackId tftp)
+    void serializeChildren(const TypePackId tp, TypeFunctionTypePackId tftp)
     {
-        if (auto [tPack1, tPack2] = std::tuple{getMutable<TypePack>(tp), getMutable<TypeFunctionTypePack>(tftp)}; tPack1 && tPack2)
+        if (auto [tPack1, tPack2] = std::tuple{get<TypePack>(tp), getMutable<TypeFunctionTypePack>(tftp)}; tPack1 && tPack2)
             serializeChildren(tPack1, tPack2);
-        else if (auto [vPack1, vPack2] = std::tuple{getMutable<VariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)};
-                 vPack1 && vPack2)
+        else if (auto [vPack1, vPack2] = std::tuple{get<VariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)}; vPack1 && vPack2)
             serializeChildren(vPack1, vPack2);
         else
         { // Either this or ty and tfti do not represent the same type
@@ -298,49 +299,49 @@ private:
             state->ctx->ice->ice("Serializing user defined type function arguments: kind and tfkind do not represent the same type");
     }
 
-    void serializeChildren(PrimitiveType* p1, TypeFunctionPrimitiveType* p2)
+    void serializeChildren(const PrimitiveType* p1, TypeFunctionPrimitiveType* p2)
     {
         // noop.
     }
 
-    void serializeChildren(UnknownType* u1, TypeFunctionUnknownType* u2)
+    void serializeChildren(const UnknownType* u1, TypeFunctionUnknownType* u2)
     {
         // noop.
     }
 
-    void serializeChildren(NeverType* n1, TypeFunctionNeverType* n2)
+    void serializeChildren(const NeverType* n1, TypeFunctionNeverType* n2)
     {
         // noop.
     }
 
-    void serializeChildren(AnyType* a1, TypeFunctionAnyType* a2)
+    void serializeChildren(const AnyType* a1, TypeFunctionAnyType* a2)
     {
         // noop.
     }
 
-    void serializeChildren(SingletonType* s1, TypeFunctionSingletonType* s2)
+    void serializeChildren(const SingletonType* s1, TypeFunctionSingletonType* s2)
     {
         // noop.
     }
 
-    void serializeChildren(UnionType* u1, TypeFunctionUnionType* u2)
+    void serializeChildren(const UnionType* u1, TypeFunctionUnionType* u2)
     {
-        for (TypeId& ty : u1->options)
+        for (const TypeId& ty : u1->options)
             u2->components.push_back(shallowSerialize(ty));
     }
 
-    void serializeChildren(IntersectionType* i1, TypeFunctionIntersectionType* i2)
+    void serializeChildren(const IntersectionType* i1, TypeFunctionIntersectionType* i2)
     {
-        for (TypeId& ty : i1->parts)
+        for (const TypeId& ty : i1->parts)
             i2->components.push_back(shallowSerialize(ty));
     }
 
-    void serializeChildren(NegationType* n1, TypeFunctionNegationType* n2)
+    void serializeChildren(const NegationType* n1, TypeFunctionNegationType* n2)
     {
         n2->type = shallowSerialize(n1->ty);
     }
 
-    void serializeChildren(TableType* t1, TypeFunctionTableType* t2)
+    void serializeChildren(const TableType* t1, TypeFunctionTableType* t2)
     {
         for (const auto& [k, p] : t1->props)
         {
@@ -359,25 +360,34 @@ private:
             t2->indexer = TypeFunctionTableIndexer(shallowSerialize(t1->indexer->indexType), shallowSerialize(t1->indexer->indexResultType));
     }
 
-    void serializeChildren(MetatableType* m1, TypeFunctionTableType* m2)
+    void serializeChildren(const MetatableType* m1, TypeFunctionTableType* m2)
     {
-        auto tmpTable = get<TypeFunctionTableType>(shallowSerialize(m1->table));
-        if (!tmpTable)
-            state->ctx->ice->ice("Serializing user defined type function arguments: metatable's table is not a TableType");
+        if (FFlag::LuauUserTypeFunFixMetatable)
+        {
+            // Serialize main part of the metatable immediately
+            if (auto tableTy = get<TableType>(m1->table))
+                serializeChildren(tableTy, m2);
+        }
+        else
+        {
+            auto tmpTable = get<TypeFunctionTableType>(shallowSerialize(m1->table));
+            if (!tmpTable)
+                state->ctx->ice->ice("Serializing user defined type function arguments: metatable's table is not a TableType");
 
-        m2->props = tmpTable->props;
-        m2->indexer = tmpTable->indexer;
+            m2->props = tmpTable->props;
+            m2->indexer = tmpTable->indexer;
+        }
 
         m2->metatable = shallowSerialize(m1->metatable);
     }
 
-    void serializeChildren(FunctionType* f1, TypeFunctionFunctionType* f2)
+    void serializeChildren(const FunctionType* f1, TypeFunctionFunctionType* f2)
     {
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
     }
 
-    void serializeChildren(ClassType* c1, TypeFunctionClassType* c2)
+    void serializeChildren(const ClassType* c1, TypeFunctionClassType* c2)
     {
         for (const auto& [k, p] : c1->props)
         {
@@ -402,16 +412,16 @@ private:
             c2->parent = shallowSerialize(*c1->parent);
     }
 
-    void serializeChildren(TypePack* t1, TypeFunctionTypePack* t2)
+    void serializeChildren(const TypePack* t1, TypeFunctionTypePack* t2)
     {
-        for (TypeId& ty : t1->head)
+        for (const TypeId& ty : t1->head)
             t2->head.push_back(shallowSerialize(ty));
 
         if (t1->tail.has_value())
             t2->tail = shallowSerialize(*t1->tail);
     }
 
-    void serializeChildren(VariadicTypePack* v1, TypeFunctionVariadicTypePack* v2)
+    void serializeChildren(const VariadicTypePack* v1, TypeFunctionVariadicTypePack* v2)
     {
         v2->type = shallowSerialize(v1->ty);
     }

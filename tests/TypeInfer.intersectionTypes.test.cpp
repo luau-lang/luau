@@ -332,9 +332,9 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
-    ScopedFastFlag dcr{
-        FFlag::LuauSolverV2, false
-    }; // CLI-116476 Subtyping between type alias and an equivalent but not named type isn't working.
+    // CLI-116476 Subtyping between type alias and an equivalent but not named type isn't working.
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
         type Y = { y: (string) -> string }
@@ -372,7 +372,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
 {
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, false}; // CLI-
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     // After normalization, previous 'table_intersection_write_sealed_indirect' is identical to this one
     CheckResult result = check(R"(
     type XY = { x: (number) -> number, y: (string) -> string }
@@ -581,9 +581,9 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 {
-    ScopedFastFlag dcr{
-        FFlag::LuauSolverV2, false
-    }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     CheckResult result = check(R"(
         function f(x: ((number) -> number) & ((string) -> string))
             local y : ((number | string) -> (number | string)) = x -- OK
@@ -811,9 +811,9 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
 {
-    ScopedFastFlag dcr{
-        FFlag::LuauSolverV2, false
-    }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     CheckResult result = check(R"(
         function f<a...,b...>()
             function g(x : ((number) -> number) & ((nil) -> unknown))
@@ -833,9 +833,9 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 {
-    ScopedFastFlag dcr{
-        FFlag::LuauSolverV2, false
-    }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     CheckResult result = check(R"(
         function f<a...,b...>()
             function g(x : ((number) -> number?) & ((unknown) -> string?))
@@ -939,9 +939,9 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_variadics")
 {
-    ScopedFastFlag dcr{
-        FFlag::LuauSolverV2, false
-    }; // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    // CLI-116474 Semantic subtyping of assignments needs to decide how to interpret intersections of functions
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     CheckResult result = check(R"(
         function f(x : ((string?) -> (string | number)) & ((number?) -> ...number))
             local y : ((nil) -> (number, number?)) = x -- OK

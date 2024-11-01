@@ -28,6 +28,8 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
+LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
+
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
 namespace Luau

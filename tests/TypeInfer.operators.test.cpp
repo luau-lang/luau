@@ -17,6 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauMetatableFollow)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -630,7 +631,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
 {
     // CLI-116463
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -884,7 +885,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
 {
     // There's an extra spurious warning here when the new solver is enabled.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -1425,7 +1426,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array_simplified")
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array")
 {
     // CLI-116480 Subtyping bug: table should probably be a subtype of {[unknown]: unknown}
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 --!strict
@@ -1606,6 +1607,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_operator_on_upvalue")
         local function advance(bytes: number)
             byteCursor += bytes
         end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_operator_follow")
+{
+    ScopedFastFlag luauMetatableFollow{FFlag::LuauMetatableFollow, true};
+
+    CheckResult result = check(R"(
+local t1 = {}
+local t2 = {}
+local mt = {}
+
+mt.__eq = function(a, b)
+    return false
+end
+
+setmetatable(t1, mt)
+setmetatable(t2, mt)
+
+if t1 == t2 then
+
+end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

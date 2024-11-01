@@ -136,6 +136,9 @@ LUALIB_API int luaopen_math(lua_State* L);
 #define LUA_DBLIBNAME "debug"
 LUALIB_API int luaopen_debug(lua_State* L);
 
+#define LUA_VECLIBNAME "vector"
+LUALIB_API int luaopen_vector(lua_State* L);
+
 // open all builtin libraries
 LUALIB_API void luaL_openlibs(lua_State* L);
 

@@ -13,6 +13,9 @@ LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
+LUAU_FASTFLAG(LuauUserTypeFunFixMetatable)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctionResetState)
+LUAU_FASTFLAG(LuauUserTypeFunNonstrict)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -987,6 +990,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
     CHECK(toString(result.errors[1]) == R"(Type function instance bar<"x"> is uninhabited)");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag luauUserDefinedTypeFunctionResetState{FFlag::LuauUserDefinedTypeFunctionResetState, true};
+
+    CheckResult result = check(R"(
+        type function foo(x)
+            return types.singleton(tostring(math.random(1, 100)))
+        end
+        local x: foo<'a'> = ('' :: any) :: foo<'b'>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
@@ -1228,6 +1248,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
     CHECK(toString(result.errors[0]) == R"(Type pack '"number"' could not be converted into 'never'; at [0], "number" is not a subtype of never)");
     CHECK(toString(result.errors[1]) == R"(Type pack '"string"' could not be converted into 'never'; at [0], "string" is not a subtype of never)");
     CHECK(toString(result.errors[2]) == R"(Type pack '"table"' could not be converted into 'never'; at [0], "table" is not a subtype of never)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
+    ScopedFastFlag luauUserTypeFunFixMetatable{FFlag::LuauUserTypeFunFixMetatable, true};
+
+    CheckResult result = check(R"(
+        type function makemttbl()
+            local metaprops = {
+                [types.singleton("ma")] = types.boolean
+            }
+            local mt = types.newtable(metaprops)
+
+            local props = {
+                [types.singleton("a")] = types.number
+            }
+            return types.newtable(props, nil, mt)
+        end
+
+        type function id(x)
+            return x
+        end
+
+        local a: number = {} :: id<makemttbl<>>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == R"(Type '{ @metatable { ma: boolean }, { a: number } }' could not be converted into 'number')");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "nonstrict_mode")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
+    ScopedFastFlag luauUserTypeFunNonstrict{FFlag::LuauUserTypeFunNonstrict, true};
+
+    CheckResult result = check(R"(
+--!nonstrict
+type function foo() return types.string end
+local a: foo<> = "a"
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

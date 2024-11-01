@@ -19,6 +19,8 @@
 #include <iostream>
 #include <iterator>
 
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunNonstrict)
+
 namespace Luau
 {
 
@@ -421,7 +423,9 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatTypeFunction* typeFunc)
     {
-        reportError(GenericError{"This syntax is not supported"}, typeFunc->location);
+        if (!FFlag::LuauUserTypeFunNonstrict)
+            reportError(GenericError{"This syntax is not supported"}, typeFunc->location);
+
         return {};
     }
 

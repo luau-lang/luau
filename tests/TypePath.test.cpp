@@ -538,9 +538,7 @@ TEST_SUITE_BEGIN("TypePathToString");
 
 TEST_CASE("field")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CHECK(toString(PathBuilder().prop("foo").build()) == R"(["foo"])");
 }
@@ -567,9 +565,7 @@ TEST_CASE("empty_path")
 
 TEST_CASE("prop")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     Path p = PathBuilder().prop("foo").build();
     CHECK(p == Path(TypePath::Property{"foo"}));

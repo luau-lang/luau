@@ -787,7 +787,7 @@ local d: Y<number, string, ...boolean, ...() -> ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Y<T = T> = { a: T }
@@ -811,7 +811,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors2")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Y<T = string, U... = ...string> = { a: (T) -> U... }
@@ -824,7 +824,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors4")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Packed<T> = (T) -> T
@@ -1065,7 +1065,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function foo(...: string): number

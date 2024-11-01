@@ -10,7 +10,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64, false)
+LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 
 namespace Luau
 {

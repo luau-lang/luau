@@ -31,9 +31,9 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-LUAU_FASTFLAG(LuauTypestateBuiltins)
+LUAU_FASTFLAG(LuauTypestateBuiltins2)
 
-LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues, false)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues)
 
 namespace Luau
 {
@@ -1078,7 +1078,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
         else if (const AstExprCall* call = value->as<AstExprCall>())
         {
-            if (FFlag::LuauTypestateBuiltins)
+            if (FFlag::LuauTypestateBuiltins2)
             {
                 if (matchSetMetatable(*call))
                     addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
@@ -2062,7 +2062,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
 
-    if (FFlag::LuauTypestateBuiltins && shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
+    if (FFlag::LuauTypestateBuiltins2 && shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
         AstExpr* targetExpr = call->args.data[0];
         auto resultTy = arena->addType(BlockedType{});
@@ -2913,7 +2913,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
         std::vector<TypeId> toBlock;
         if (DFInt::LuauTypeSolverRelease >= 648)
         {
-            // This logic is incomplete as we want to re-run this 
+            // This logic is incomplete as we want to re-run this
             // _after_ blocked types have resolved, but this
             // allows us to do some bidirectional inference.
             toBlock = findBlockedTypesIn(expr, NotNull{&module->astTypes});
@@ -2931,7 +2931,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                     toBlock
                 );
                 // The visitor we ran prior should ensure that there are no
-                // blocked types that we would encounter while matching on 
+                // blocked types that we would encounter while matching on
                 // this expression.
                 LUAU_ASSERT(toBlock.empty());
             }

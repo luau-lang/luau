@@ -26,7 +26,7 @@
 
 #include <time.h>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauTimeTracing, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauTimeTracing)
 namespace Luau
 {
 namespace TimeTrace

@@ -7,7 +7,7 @@
 #include <math.h>
 #include <time.h>
 
-LUAU_FASTFLAGVARIABLE(LuauMathMap, false)
+LUAU_FASTFLAGVARIABLE(LuauMathMap)
 
 #undef PI
 #define PI (3.14159265358979323846)

@@ -17,11 +17,11 @@
 
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
-LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
+LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
-LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart, false)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
+LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
 
 namespace Luau
 {
