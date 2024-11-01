@@ -138,4 +138,17 @@ end)
 
 coroutine.resume(wrapped2)
 
+local wrapped3 = coroutine.create(function()
+	local thread = coroutine.create(function(target)
+		for i = 1, 100 do pcall(debug.info, target, 0, "?f") end
+		return 123
+	end)
+
+	local success, res = coroutine.resume(thread, coroutine.running())
+	assert(success)
+	assert(res == 123)
+end)
+
+coroutine.resume(wrapped3)
+
 return 'OK'

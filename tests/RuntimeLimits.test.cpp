@@ -45,9 +45,7 @@ TEST_SUITE_BEGIN("RuntimeLimits");
 
 TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     constexpr const char* src = R"LUA(
         --!strict

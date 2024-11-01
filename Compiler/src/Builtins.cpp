@@ -4,6 +4,8 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
+LUAU_FASTFLAGVARIABLE(LuauVectorBuiltins)
+
 namespace Luau
 {
 namespace Compile
@@ -218,6 +220,34 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BUFFER_READF64;
         if (builtin.method == "writef64")
             return LBF_BUFFER_WRITEF64;
+    }
+
+    if (FFlag::LuauVectorBuiltins && builtin.object == "vector")
+    {
+        if (builtin.method == "create")
+            return LBF_VECTOR;
+        if (builtin.method == "magnitude")
+            return LBF_VECTOR_MAGNITUDE;
+        if (builtin.method == "normalize")
+            return LBF_VECTOR_NORMALIZE;
+        if (builtin.method == "cross")
+            return LBF_VECTOR_CROSS;
+        if (builtin.method == "dot")
+            return LBF_VECTOR_DOT;
+        if (builtin.method == "floor")
+            return LBF_VECTOR_FLOOR;
+        if (builtin.method == "ceil")
+            return LBF_VECTOR_CEIL;
+        if (builtin.method == "abs")
+            return LBF_VECTOR_ABS;
+        if (builtin.method == "sign")
+            return LBF_VECTOR_SIGN;
+        if (builtin.method == "clamp")
+            return LBF_VECTOR_CLAMP;
+        if (builtin.method == "min")
+            return LBF_VECTOR_MIN;
+        if (builtin.method == "max")
+            return LBF_VECTOR_MAX;
     }
 
     if (options.vectorCtor)
@@ -463,6 +493,23 @@ BuiltinInfo getBuiltinInfo(int bfid)
     case LBF_BUFFER_WRITEF32:
     case LBF_BUFFER_WRITEF64:
         return {3, 0, BuiltinInfo::Flag_NoneSafe};
+
+    case LBF_VECTOR_MAGNITUDE:
+    case LBF_VECTOR_NORMALIZE:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_CROSS:
+    case LBF_VECTOR_DOT:
+        return {2, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_FLOOR:
+    case LBF_VECTOR_CEIL:
+    case LBF_VECTOR_ABS:
+    case LBF_VECTOR_SIGN:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_CLAMP:
+        return {3, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_MIN:
+    case LBF_VECTOR_MAX:
+        return {-1, 1}; // variadic
     }
 
     LUAU_UNREACHABLE();

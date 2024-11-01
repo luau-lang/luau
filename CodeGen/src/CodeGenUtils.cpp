@@ -226,9 +226,10 @@ Udata* newUserdata(lua_State* L, size_t s, int tag)
 
     if (Table* h = L->global->udatamt[tag])
     {
-        u->metatable = h;
+        // currently, we always allocate unmarked objects, so forward barrier can be skipped
+        LUAU_ASSERT(!isblack(obj2gco(u)));
 
-        luaC_objbarrier(L, u, h);
+        u->metatable = h;
     }
 
     return u;

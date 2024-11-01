@@ -217,7 +217,7 @@ private:
     AstType* parseTableType(bool inDeclarationContext = false);
     AstTypeOrPack parseSimpleType(bool allowPack, bool inDeclarationContext = false);
 
-    AstTypeOrPack parseTypeOrPack();
+    AstTypeOrPack parseSimpleTypeOrPack();
     AstType* parseType(bool inDeclarationContext = false);
 
     AstTypePack* parseTypePack();

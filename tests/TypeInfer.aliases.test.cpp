@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
 TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
 {
     // We erroneously report an extra error in this case when the new solver is enabled.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type T<A> = (A...) -> ()
@@ -245,7 +245,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
     // CLI-116108
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -355,9 +355,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 // Check that recursive intersection type doesn't generate an OOM
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    }; // FIXME
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function _(l0:(t0)&((t0)&(((t0)&((t0)->()))->(typeof(_),typeof(# _)))),l39,...):any
@@ -418,7 +416,7 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
 
 TEST_CASE_FIXTURE(Fixture, "generic_param_remap")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     const std::string code = R"(
         -- An example of a forwarded use of a type that has different type arguments than parameters
@@ -544,7 +542,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_local_mutation")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Cool = { a: number, b: string }
@@ -565,7 +563,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_local_mutation")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_local_rename")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 type Cool = { a: number, b: string }
@@ -713,7 +711,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 {
     // CLI-116108
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         -- OK because forwarded types are used with their parameters.
@@ -727,7 +725,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
 {
     // CLI-116108
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         -- Not OK because forwarded types are used with different types than their parameters.
@@ -751,7 +749,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
 {
     // CLI-116108
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
@@ -876,7 +874,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 {
     // CLI-116108
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         -- this would be an infinite type if we allowed it
@@ -889,7 +887,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 TEST_CASE_FIXTURE(Fixture, "report_shadowed_aliases")
 {
     // CLI-116110
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     // We allow a previous type alias to depend on a future type alias. That exact feature enables a confusing example, like the following snippet,
     // which has the type alias FakeString point to the type alias `string` that which points to `number`.
@@ -973,7 +971,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_lose_track_of_PendingExpansionTypes_after_substitution")
 {
     // CLI-114134 - We need egraphs to properly simplify these types.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     fileResolver.source["game/ReactCurrentDispatcher"] = R"(
         export type BasicStateAction<S> = ((S) -> S) | S

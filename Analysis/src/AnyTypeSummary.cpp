@@ -38,7 +38,7 @@
 
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(StudioReportLuauAny2, false);
+LUAU_FASTFLAGVARIABLE(StudioReportLuauAny2);
 LUAU_FASTINTVARIABLE(LuauAnySummaryRecursionLimit, 300);
 
 LUAU_FASTFLAG(DebugLuauMagicTypes);
@@ -161,7 +161,7 @@ void AnyTypeSummary::visit(const Scope* scope, AstStatReturn* ret, const Module*
                 typeInfo.push_back(ti);
             }
         }
-        
+
         if (ret->list.size > 1 && !seenTP)
         {
             if (containsAny(retScope->returnType))

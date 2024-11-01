@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
+LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -318,7 +319,7 @@ TEST_CASE_FIXTURE(Fixture, "call_method_with_explicit_self_argument")
 TEST_CASE_FIXTURE(Fixture, "used_dot_instead_of_colon")
 {
     // CLI-114792 Dot vs colon warnings aren't in the new solver yet.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local T = {}
@@ -371,7 +372,7 @@ TEST_CASE_FIXTURE(Fixture, "used_dot_instead_of_colon_but_correctly")
 TEST_CASE_FIXTURE(Fixture, "used_colon_instead_of_dot")
 {
     // CLI-114792 Dot vs colon warnings aren't in the new solver yet.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local T = {}
@@ -396,7 +397,7 @@ TEST_CASE_FIXTURE(Fixture, "used_colon_instead_of_dot")
 TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
 {
     // CLI-114792 We don't report MissingProperties in many places where the old solver does.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local a = {}
@@ -536,7 +537,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_3")
 TEST_CASE_FIXTURE(Fixture, "table_unification_4")
 {
     // CLI-114134 - Use egraphs to simplify types better.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function foo(o)
@@ -567,7 +568,7 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_add_property_to_free_table")
 TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_assignment")
 {
     // CLI-114872
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -586,7 +587,7 @@ TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_assignmen
 TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_function_call")
 {
     // CLI-114873
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -811,7 +812,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_value_property_in_literal")
 TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_its_variable_type_and_unifiable")
 {
     // This code is totally different in the new solver.  We instead create a new type state for t2.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t1: { [string]: string } = {}
@@ -893,7 +894,7 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_value_can_infer_an_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "array_factory_function")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function empty() return {} end
@@ -930,7 +931,7 @@ TEST_CASE_FIXTURE(Fixture, "indexer_on_sealed_table_must_unify_with_free_table")
     // CLI-114134 What should be happening here is that the type of `t` should
     // be reduced from `{number} & {string}` to `never`, but that's not
     // happening.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function F(t): {number}
@@ -993,7 +994,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_from_a_table_should_prefer_properti
 
 TEST_CASE_FIXTURE(Fixture, "any_when_indexing_into_an_unsealed_table_with_no_indexer_in_nonstrict_mode")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!nonstrict
@@ -1145,7 +1146,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add_inferred")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add_both_ways")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type VectorMt = { __add: (Vector, number) -> Vector }
@@ -1523,7 +1524,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "found_multiple_like_keys")
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_suggest_exact_match_keys")
 {
     // CLI-114977 Unsealed table writes don't account for order properly
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t = {}
@@ -1566,7 +1567,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_pointer_to_metatable")
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_mismatch_should_fail")
 {
     // This test is invalid because we now create a new type state for t1 at the assignment.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t1 = {x = 1}
@@ -1610,7 +1611,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "property_lookup_through_tabletypevar_metatab
 TEST_CASE_FIXTURE(BuiltinsFixture, "missing_metatable_for_sealed_tables_do_not_get_inferred")
 {
     // This test is invalid because we now create a new type state for t at the assignment.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t = {x = 1}
@@ -1665,7 +1666,7 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key")
 TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
 {
     // CLI-114792 We don't report MissingProperties
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(t: {}): { [string]: string, a: string }
@@ -1927,7 +1928,7 @@ TEST_CASE_FIXTURE(Fixture, "type_mismatch_on_massive_table_is_cut_short")
 TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_even_on_non_lvalue_base_expr")
 {
     // CLI-100076 Assigning nil to an indexer should always succeed
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f(): { [string]: number }
@@ -2096,7 +2097,7 @@ local Test: {Table} = {
 TEST_CASE_FIXTURE(Fixture, "common_table_element_general")
 {
     // CLI-115275 - Bidirectional inference does not always propagate indexer types into the expression
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Table = {
@@ -2218,7 +2219,7 @@ foo({
 TEST_CASE_FIXTURE(Fixture, "common_table_element_union_in_call_tail")
 {
     // CLI-115239 - Bidirectional checking does not work for __call metamethods
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Foo = {x: number | string}
@@ -2265,7 +2266,16 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauRetrySubtypingWithoutHiddenPack)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+
+        // This is not actually the expected behavior, but the typemismatch we were seeing before was for the wrong reason.
+        // The behavior of this test is just regressed generally in the new solver, and will need to be consciously addressed.
+    }
+    else if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
@@ -2504,7 +2514,7 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
     // Table properties like HasSuper.p must be invariant.  The new solver rightly rejects this program.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 --!strict
@@ -2554,7 +2564,7 @@ Table type '{ x: number, y: number }' not compatible with type 'Super' because t
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 {
     // CLI-114791 Bidirectional inference should be able to cause the inference engine to forget that a table literal has some property
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -2572,7 +2582,7 @@ TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_type_call")
 {
     // CLI-114782
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 local b
@@ -2827,7 +2837,7 @@ TEST_CASE_FIXTURE(Fixture, "table_length")
 TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_indexer")
 {
     // CLI-100076 - Assigning a table key to `nil` in the presence of an indexer should always be permitted
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check("local a = {} a[0] = 7  a[0] = nil");
     LUAU_REQUIRE_ERROR_COUNT(0, result);
@@ -3296,7 +3306,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_generic")
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_simple_call")
 {
     // The new solver can see that this function is safe to oversaturate.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local a = setmetatable({ x = 2 }, {
@@ -3589,7 +3599,7 @@ local b = a.x
 TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
     // CLI-115087 The new solver cannot infer that a table-like type is actually string
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f(s)
@@ -3678,7 +3688,7 @@ Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutel
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compatible")
 {
     // CLI-115087 The new solver cannot infer that a table-like type is actually string
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f(s): string
@@ -3733,7 +3743,7 @@ Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutel
 TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly")
 {
     // We need egraphs to simplify the type of `out` here.  CLI-114134
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function stringByteList(str)
@@ -4231,9 +4241,7 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type W = {read x: number}
@@ -4370,7 +4378,7 @@ TEST_CASE_FIXTURE(Fixture, "write_annotations_are_unsupported_even_with_the_new_
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type W = {read x: number}
@@ -4394,7 +4402,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type T = {read [string]: number}

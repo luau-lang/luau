@@ -8,6 +8,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <string.h>
 
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauTypeLengthLimit, 1000)
@@ -16,11 +17,12 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // Warning: If you are introducing new syntax, ensure that it is behind a separate
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
-LUAU_FASTFLAGVARIABLE(LuauSolverV2, false)
-LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
-LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax2, false)
-LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing, false)
+LUAU_FASTFLAGVARIABLE(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauNativeAttribute)
+LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax2)
+LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
+LUAU_FASTFLAGVARIABLE(LuauPortableStringZeroCheck)
 
 namespace Luau
 {
@@ -1131,7 +1133,8 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 AstType* type = parseType();
 
                 // since AstName contains a char*, it can't contain null
-                bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
+                bool containsNull = chars && (FFlag::LuauPortableStringZeroCheck ? memchr(chars->data, 0, chars->size) != nullptr
+                                                                                 : strnlen(chars->data, chars->size) < chars->size);
 
                 if (chars && !containsNull)
                 {
@@ -1609,7 +1612,8 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             AstType* type = parseType();
 
             // since AstName contains a char*, it can't contain null
-            bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
+            bool containsNull = chars && (FFlag::LuauPortableStringZeroCheck ? memchr(chars->data, 0, chars->size) != nullptr
+                                                                             : strnlen(chars->data, chars->size) < chars->size);
 
             if (chars && !containsNull)
                 props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
@@ -1858,7 +1862,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
     ParseError::raise(begin, "Composite type was not an intersection or union.");
 }
 
-AstTypeOrPack Parser::parseTypeOrPack()
+AstTypeOrPack Parser::parseSimpleTypeOrPack()
 {
     unsigned int oldRecursionCount = recursionCounter;
     // recursion counter is incremented in parseSimpleType
@@ -2873,7 +2877,7 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
                     }
                     else
                     {
-                        auto [type, typePack] = parseTypeOrPack();
+                        auto [type, typePack] = parseSimpleTypeOrPack();
 
                         if (type)
                             report(type->location, "Expected type pack after '=', got type");
@@ -2950,7 +2954,7 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
             }
             else if (lexer.current().type == '(')
             {
-                auto [type, typePack] = parseTypeOrPack();
+                auto [type, typePack] = parseSimpleTypeOrPack();
 
                 if (typePack)
                     parameters.push_back({{}, typePack});

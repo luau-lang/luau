@@ -18,7 +18,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauAttribute)
 LUAU_FASTFLAG(LuauNativeAttribute)
-LUAU_FASTFLAGVARIABLE(LintRedundantNativeAttribute, false)
+LUAU_FASTFLAGVARIABLE(LintRedundantNativeAttribute)
 
 namespace Luau
 {

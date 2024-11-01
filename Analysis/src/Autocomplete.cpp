@@ -16,7 +16,7 @@
 #include <utility>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(AutocompleteRequirePathSuggestions, false)
+LUAU_FASTFLAGVARIABLE(AutocompleteRequirePathSuggestions)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTINT(LuauTypeInferIterationLimit)

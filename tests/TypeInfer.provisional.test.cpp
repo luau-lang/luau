@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.filter")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     // This test exercises the fact that we should reduce sealed/unsealed/free tables
     // res is a unsealed table with type {((T & ~nil)?) & any}
@@ -172,7 +172,7 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 // For now, infer it as just a free table.
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local a = {}
@@ -192,7 +192,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_
 // Luau currently doesn't yet know how to allow assignments when the binding was refined.
 TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type Node<T> = { value: T, child: Node<T>? }
@@ -217,7 +217,7 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 // We should be type checking the metamethod at the call site of setmetatable.
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_other_than_boolean")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local tab = {a = 1}
@@ -390,11 +390,9 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
 
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 {
-    ScopedFastFlag sff[] = {
-        // I'm not sure why this is broken without DCR, but it seems to be fixed
-        // when DCR is enabled.
-        {FFlag::LuauSolverV2, false},
-    };
+    // I'm not sure why this is broken without DCR, but it seems to be fixed
+    // when DCR is enabled.
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f() return end
@@ -517,7 +515,7 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
@@ -553,7 +551,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function no_iter() end
@@ -847,7 +845,7 @@ Type 'number?' could not be converted into 'number' in an invariant context)";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function foo(t, x)
@@ -921,7 +919,7 @@ TEST_CASE_FIXTURE(Fixture, "expected_type_should_be_a_helpful_deduction_guide_fo
 
 TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local assign : <T, U, V, W>(target: T, source0: U?, source1: V?, source2: W?, ...any) -> T & U & V & W = (nil :: any)
@@ -945,7 +943,7 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
@@ -992,7 +990,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_more_complex_unions_that_include_nil")
 
 TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant_old_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     createSomeClasses(&frontend);
 
@@ -1076,7 +1074,7 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_infinite_recursion")
 {
     // The new solver doesn't recurse as heavily in this situation.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
 #if defined(_NOOPT) || defined(_DEBUG)
     ScopedFastInt LuauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 100};

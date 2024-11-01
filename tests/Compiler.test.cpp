@@ -22,6 +22,7 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
+LUAU_FASTFLAG(LuauCompileVectorTypeInfo)
 
 using namespace Luau;
 
@@ -94,6 +95,8 @@ TEST_CASE("BytecodeIsStable")
     // Note: these aren't strictly bound to specific bytecode versions, but must monotonically increase to keep backwards compat
     CHECK(LBF_VECTOR == 54);
     CHECK(LBF_TOSTRING == 63);
+    CHECK(LBF_BUFFER_WRITEF64 == 77);
+    CHECK(LBF_VECTOR_MAX == 88);
 
     // Bytecode capture type (serialized & in-memory)
     CHECK(LCT_UPVAL == 2); // bytecode v1
@@ -8413,6 +8416,21 @@ end
 0: function(userdata, vector)
 1: function(userdata, any)
 2: function(userdata, number)
+)"
+    );
+}
+
+TEST_CASE("BuiltinTypeVector")
+{
+    ScopedFastFlag luauCompileVectorTypeInfo{FFlag::LuauCompileVectorTypeInfo, true};
+
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function myfunc(test: Instance, pos: vector)
+end
+)"),
+        R"(
+0: function(userdata, vector)
 )"
     );
 }

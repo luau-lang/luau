@@ -322,9 +322,7 @@ n3 [label="TableType 3"];
 
 TEST_CASE_FIXTURE(Fixture, "free")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     Type type{TypeVariant{FreeType{TypeLevel{0, 0}}}};
 

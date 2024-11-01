@@ -33,11 +33,11 @@ struct lua_CompileOptions
     // 2 - statement and expression coverage (verbose)
     int coverageLevel; // default=0
 
-    // global builtin to construct vectors; disabled by default
+    // alternative global builtin to construct vectors, in addition to default builtin 'vector.create'
     const char* vectorLib;
     const char* vectorCtor;
 
-    // vector type name for type tables; disabled by default
+    // alternative vector type name for type tables, in addition to default type 'vector'
     const char* vectorType;
 
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these

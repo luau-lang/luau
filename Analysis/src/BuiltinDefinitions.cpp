@@ -3,6 +3,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Clone.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/Symbol.h"
@@ -29,8 +30,8 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins, false)
-LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix, false)
+LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
+LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
 
 LUAU_FASTFLAG(AutocompleteRequirePathSuggestions)
 
@@ -421,7 +422,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
         attachMagicFunction(ttv->props["pack"].type(), magicFunctionPack);
         attachDcrMagicFunction(ttv->props["pack"].type(), dcrMagicFunctionPack);
-        if (FFlag::LuauTypestateBuiltins)
+        if (FFlag::LuauTypestateBuiltins2)
             attachDcrMagicFunction(ttv->props["freeze"].type(), dcrMagicFunctionFreeze);
     }
 
@@ -1338,54 +1339,86 @@ static bool dcrMagicFunctionPack(MagicFunctionCallContext context)
     return true;
 }
 
+static std::optional<TypeId> freezeTable(TypeId inputType, MagicFunctionCallContext& context)
+{
+    TypeArena* arena = context.solver->arena;
+
+    if (auto mt = get<MetatableType>(inputType))
+    {
+        std::optional<TypeId> frozenTable = freezeTable(mt->table, context);
+
+        if (!frozenTable)
+            return std::nullopt;
+
+        TypeId resultType = arena->addType(MetatableType{*frozenTable, mt->metatable, mt->syntheticName});
+
+        return resultType;
+    }
+
+    if (get<TableType>(inputType))
+    {
+        // Clone the input type, this will become our final result type after we mutate it.
+        CloneState cloneState{context.solver->builtinTypes};
+        TypeId resultType = shallowClone(inputType, *arena, cloneState);
+        auto tableTy = getMutable<TableType>(resultType);
+        // `clone` should not break this.
+        LUAU_ASSERT(tableTy);
+        tableTy->state = TableState::Sealed;
+
+        // We'll mutate the table to make every property type read-only.
+        for (auto iter = tableTy->props.begin(); iter != tableTy->props.end();)
+        {
+            if (iter->second.isWriteOnly())
+                iter = tableTy->props.erase(iter);
+            else
+            {
+                iter->second.writeTy = std::nullopt;
+                iter++;
+            }
+        }
+
+        return resultType;
+    }
+
+    context.solver->reportError(TypeMismatch{context.solver->builtinTypes->tableType, inputType}, context.callSite->argLocation);
+    return std::nullopt;
+}
+
 static bool dcrMagicFunctionFreeze(MagicFunctionCallContext context)
 {
-    LUAU_ASSERT(FFlag::LuauTypestateBuiltins);
+    LUAU_ASSERT(FFlag::LuauTypestateBuiltins2);
 
     TypeArena* arena = context.solver->arena;
     const DataFlowGraph* dfg = context.solver->dfg.get();
     Scope* scope = context.constraint->scope.get();
 
     const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
-    LUAU_ASSERT(paramTypes.size() >= 1);
-
-    TypeId inputType = follow(paramTypes.at(0));
-
-    // we'll check if it's a table first since this magic function also produces the error if it's not until we have bounded generics
-    if (!get<TableType>(inputType))
+    if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        context.solver->reportError(TypeMismatch{context.solver->builtinTypes->tableType, inputType}, context.callSite->argLocation);
+        context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }
+
+    TypeId inputType = follow(paramTypes[0]);
 
     AstExpr* targetExpr = context.callSite->args.data[0];
     std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
     std::optional<TypeId> resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
 
-    // Clone the input type, this will become our final result type after we mutate it.
-    CloneState cloneState{context.solver->builtinTypes};
-    TypeId clonedType = shallowClone(inputType, *arena, cloneState);
-    auto tableTy = getMutable<TableType>(clonedType);
-    // `clone` should not break this.
-    LUAU_ASSERT(tableTy);
-    tableTy->state = TableState::Sealed;
-    tableTy->syntheticName = std::nullopt;
+    std::optional<TypeId> frozenType = freezeTable(inputType, context);
 
-    // We'll mutate the table to make every property type read-only.
-    for (auto iter = tableTy->props.begin(); iter != tableTy->props.end();)
+    if (!frozenType)
     {
-        if (iter->second.isWriteOnly())
-            iter = tableTy->props.erase(iter);
-        else
-        {
-            iter->second.writeTy = std::nullopt;
-            iter++;
-        }
+        if (resultTy)
+            asMutable(*resultTy)->ty.emplace<BoundType>(context.solver->builtinTypes->errorType);
+        asMutable(context.result)->ty.emplace<BoundTypePack>(context.solver->builtinTypes->errorTypePack);
+
+        return true;
     }
 
     if (resultTy)
-        asMutable(*resultTy)->ty.emplace<BoundType>(clonedType);
-    asMutable(context.result)->ty.emplace<BoundTypePack>(arena->addTypePack({clonedType}));
+        asMutable(*resultTy)->ty.emplace<BoundType>(*frozenType);
+    asMutable(context.result)->ty.emplace<BoundTypePack>(arena->addTypePack({*frozenType}));
 
     return true;
 }

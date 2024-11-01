@@ -13,7 +13,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAGVARIABLE(LuauDocumentationAtPosition, false)
+LUAU_FASTFLAGVARIABLE(LuauDocumentationAtPosition)
 
 namespace Luau
 {

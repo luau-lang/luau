@@ -265,4 +265,6 @@ void registerTypeUserData(lua_State* L);
 
 void setTypeFunctionEnvironment(lua_State* L);
 
+void resetTypeFunctionState(lua_State* L);
+
 } // namespace Luau

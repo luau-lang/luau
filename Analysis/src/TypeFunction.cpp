@@ -45,11 +45,12 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 // when this value is set to a negative value, guessing will be totally disabled.
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
-LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions2, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAG(LuauRemoveNotAnyHack)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionResetState)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -644,6 +645,9 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     lua_getglobal(global, name.value);
     lua_xmove(global, L, 1);
+
+    if (FFlag::LuauUserDefinedTypeFunctionResetState)
+        resetTypeFunctionState(L);
 
     // Push serialized arguments onto the stack
 

@@ -17,7 +17,7 @@ LUAU_FASTFLAG(LuauUnifierRecursionOnRestart);
 struct TryUnifyFixture : Fixture
 {
     // Cannot use `TryUnifyFixture` under DCR.
-    ScopedFastFlag noDcr{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     TypeArena arena;
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
@@ -154,7 +154,7 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_intersection_sub_anything")
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_never")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : never
@@ -166,7 +166,7 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_never")
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_anything")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : boolean
@@ -178,7 +178,7 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_anything")
 
 TEST_CASE_FIXTURE(Fixture, "members_of_failed_typepack_unification_are_unified_with_errorType")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg: number) end
@@ -195,7 +195,7 @@ TEST_CASE_FIXTURE(Fixture, "members_of_failed_typepack_unification_are_unified_w
 
 TEST_CASE_FIXTURE(Fixture, "result_of_failed_typepack_unification_is_constrained")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg: number) return arg end

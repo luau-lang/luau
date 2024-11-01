@@ -13,7 +13,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTypestateBuiltins)
+LUAU_FASTFLAG(LuauTypestateBuiltins2)
 
 namespace Luau
 {
@@ -939,7 +939,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 {
     visitExpr(c->func);
 
-    if (FFlag::LuauTypestateBuiltins && shouldTypestateForFirstArgument(*c) && c->args.size > 1 && isLValue(*c->args.begin()))
+    if (FFlag::LuauTypestateBuiltins2 && shouldTypestateForFirstArgument(*c) && c->args.size > 1 && isLValue(*c->args.begin()))
     {
         AstExpr* firstArg = *c->args.begin();
 

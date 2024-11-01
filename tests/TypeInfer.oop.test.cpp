@@ -19,7 +19,7 @@ TEST_SUITE_BEGIN("TypeInferOOP");
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defined_with_colon")
 {
     // CLI-116571 method calls are missing arity checking?
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local someTable = {}
@@ -37,7 +37,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_help_2")
 {
     // CLI-116571 method calls are missing arity checking?
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local someTable = {}
