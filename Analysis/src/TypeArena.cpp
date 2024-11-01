@@ -2,7 +2,7 @@
 
 #include "Luau/TypeArena.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena);
 
 namespace Luau
 {

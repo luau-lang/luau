@@ -36,6 +36,9 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauNativeAttribute)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
+LUAU_FASTFLAG(LuauVectorDefinitions)
+LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoInvArgLeftovers)
+LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -884,6 +887,30 @@ TEST_CASE("Vector")
     );
 }
 
+TEST_CASE("VectorLibrary")
+{
+    ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
+
+    lua_CompileOptions copts = defaultOptions();
+
+    SUBCASE("O0")
+    {
+        copts.optimizationLevel = 0;
+    }
+    SUBCASE("O1")
+    {
+        copts.optimizationLevel = 1;
+    }
+    SUBCASE("O2")
+    {
+        copts.optimizationLevel = 2;
+    }
+
+    runConformance(
+        "vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts
+    );
+}
+
 static void populateRTTI(lua_State* L, Luau::TypeId type)
 {
     if (auto p = Luau::get<Luau::PrimitiveType>(type))
@@ -943,6 +970,10 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         lua_pushstring(L, "function");
     }
+    else if (auto c = Luau::get<Luau::ClassType>(type))
+    {
+        lua_pushstring(L, c->name.c_str());
+    }
     else
     {
         LUAU_ASSERT(!"Unknown type");
@@ -951,6 +982,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag luauVectorDefinitions{FFlag::LuauVectorDefinitions, true};
+
     runConformance(
         "types.lua",
         [](lua_State* L)
@@ -982,6 +1015,8 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
+    ScopedFastFlag luauDebugInfoInvArgLeftovers{DFFlag::LuauDebugInfoInvArgLeftovers, true};
+
     runConformance("debug.lua");
 }
 
@@ -2196,9 +2231,7 @@ TEST_CASE("UserdataApi")
     lua_getuserdatametatable(L, 50);
     lua_setmetatable(L, -2);
 
-    void* ud8 = lua_newuserdatatagged(L, 16, 51);
-    lua_getuserdatametatable(L, 51);
-    lua_setmetatable(L, -2);
+    void* ud8 = lua_newuserdatataggedwithmetatable(L, 16, 51);
 
     CHECK(luaL_checkudata(L, -2, "udata3") == ud7);
     CHECK(luaL_checkudata(L, -1, "udata4") == ud8);

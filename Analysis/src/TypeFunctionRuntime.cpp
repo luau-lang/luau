@@ -15,8 +15,8 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixRegister, false)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite, false)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixRegister)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
 
 namespace Luau
 {
@@ -1645,6 +1645,15 @@ void setTypeFunctionEnvironment(lua_State* L)
         lua_pushcfunction(L, unsupportedFunction, "Removing global function from type function environment");
         lua_setglobal(L, name.c_str());
     }
+}
+
+void resetTypeFunctionState(lua_State* L)
+{
+    lua_getglobal(L, "math");
+    lua_getfield(L, -1, "randomseed");
+    lua_pushnumber(L, 0);
+    lua_call(L, 1, 0);
+    lua_pop(L, 1);
 }
 
 /*

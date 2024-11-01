@@ -12,7 +12,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauRequireCyclesDontAlwaysReturnAny);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 
@@ -313,6 +314,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
 
     if (FFlag::LuauSolverV2)
         CHECK_EQ("{ a: { hello: any }, b: { hello: any } }", toString(*cExports));
+    else if (FFlag::LuauRequireCyclesDontAlwaysReturnAny)
+        CHECK("{| a: any, b: any |}, {| a: {| hello: any |}, b: {| hello: any |} |}" == toString(*cExports));
     else
         CHECK_EQ("{| a: any, b: any |}", toString(*cExports));
 }
@@ -1375,7 +1378,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "checked_modules_have_the_correct_mode")
 
 TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     fileResolver.source["game/A"] = R"(
         --!nonstrict

@@ -38,7 +38,7 @@ LUAU_FASTFLAG(LuauSolverV2)
  * 3: Suffix free/generic types with their scope pointer, if present.
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
-LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
 
 namespace Luau
 {

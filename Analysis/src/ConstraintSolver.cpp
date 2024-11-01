@@ -27,12 +27,12 @@
 #include <algorithm>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
+LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack, false)
+LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
 
 namespace Luau
 {
@@ -1337,7 +1337,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     {
         // This is expensive as we need to traverse a (potentially large)
         // literal up front in order to determine if there are any blocked
-        // types, otherwise we may run `matchTypeLiteral` multiple times, 
+        // types, otherwise we may run `matchTypeLiteral` multiple times,
         // which right now may fail due to being non-idempotent (it
         // destructively updates the underlying literal type).
         auto blockedTypes = findBlockedArgTypesIn(c.callSite, c.astTypes);

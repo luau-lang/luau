@@ -11,8 +11,9 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauRequireCyclesDontAlwaysReturnAny)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTypestateBuiltins)
+LUAU_FASTFLAG(LuauTypestateBuiltins2)
 
 using namespace Luau;
 
@@ -184,7 +185,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
     ModulePtr b = frontend.moduleResolver.getModule("game/B");
     REQUIRE(b != nullptr);
     // confirm that no cross-module mutation happened here!
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins)
+    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
         CHECK(toString(b->returnType) == "{ read a: number }");
     else if (FFlag::LuauSolverV2)
         CHECK(toString(b->returnType) == "{ a: number }");
@@ -604,7 +605,7 @@ function createUpdater(renderer)
     function updater.enqueueForceUpdate(publicInstance, callback, _callerName)
         updater._renderer.render(
             updater._renderer,
-            updater._renderer._element, 
+            updater._renderer._element,
             updater._renderer._context
         )
     end
@@ -617,7 +618,7 @@ function createUpdater(renderer)
     )
         updater._renderer.render(
             updater._renderer,
-            updater._renderer._element, 
+            updater._renderer._element,
             updater._renderer._context
         )
     end
@@ -626,7 +627,7 @@ function createUpdater(renderer)
         local currentState = updater._renderer._newState or publicInstance.state
         updater._renderer.render(
             updater._renderer,
-            updater._renderer._element, 
+            updater._renderer._element,
             updater._renderer._context
         )
     end
@@ -734,6 +735,47 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local _ = require(game.A);
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
+{
+    ScopedFastFlag sff{FFlag::LuauRequireCyclesDontAlwaysReturnAny, true};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local module = {}
+
+        function module.foo()
+            return 2
+        end
+
+        function module.bar()
+            local m = require(game.B)
+            return m.foo() + 1
+        end
+
+        return module
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local module = {}
+
+        function module.foo()
+            return 2
+        end
+
+        function module.bar()
+            local m = require(game.A)
+            return m.foo() + 1
+        end
+
+        return module
+    )";
+
+    frontend.check("game/A");
+
+    CHECK("module" == toString(frontend.moduleResolver.getModule("game/B")->returnType));
 }
 
 TEST_SUITE_END();

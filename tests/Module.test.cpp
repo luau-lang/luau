@@ -110,9 +110,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     // breaks this test.  I'm not sure if that behaviour change is important or
     // not, but it's tangental to the core purpose of this test.
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local Cyclic = {}
@@ -283,7 +281,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     TypeArena arena;
     TypeId freeTy = freshType(NotNull{&arena}, builtinTypes, nullptr);

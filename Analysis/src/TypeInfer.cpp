@@ -23,16 +23,18 @@
 #include <algorithm>
 #include <iterator>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 165)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 20000)
 LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
-LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauAcceptIndexingTableUnionsIntersections, false)
+LUAU_FASTFLAGVARIABLE(LuauAcceptIndexingTableUnionsIntersections)
+LUAU_FASTFLAGVARIABLE(LuauMetatableFollow)
+LUAU_FASTFLAGVARIABLE(LuauRequireCyclesDontAlwaysReturnAny)
 
 namespace Luau
 {
@@ -263,10 +265,17 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     ScopePtr parentScope = environmentScope.value_or(globalScope);
     ScopePtr moduleScope = std::make_shared<Scope>(parentScope);
 
-    if (module.cyclic)
-        moduleScope->returnType = addTypePack(TypePack{{anyType}, std::nullopt});
-    else
+    if (FFlag::LuauRequireCyclesDontAlwaysReturnAny)
+    {
         moduleScope->returnType = freshTypePack(moduleScope);
+    }
+    else
+    {
+        if (module.cyclic)
+            moduleScope->returnType = addTypePack(TypePack{{anyType}, std::nullopt});
+        else
+            moduleScope->returnType = freshTypePack(moduleScope);
+    }
 
     moduleScope->varargPack = anyTypePack;
 
@@ -2870,7 +2879,7 @@ TypeId TypeChecker::checkRelationalOperation(
             std::optional<TypeId> metamethod = findMetatableEntry(lhsType, metamethodName, expr.location, /* addErrors= */ true);
             if (metamethod)
             {
-                if (const FunctionType* ftv = get<FunctionType>(*metamethod))
+                if (const FunctionType* ftv = get<FunctionType>(FFlag::LuauMetatableFollow ? follow(*metamethod) : *metamethod))
                 {
                     if (isEquality)
                     {

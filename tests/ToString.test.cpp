@@ -45,7 +45,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "free_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check("local a");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -166,7 +166,7 @@ TEST_CASE_FIXTURE(Fixture, "named_metatable")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function createTbl(): NamedMetatable
@@ -594,7 +594,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 local function target(callback: nil) return callback(4, "hello") end

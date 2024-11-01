@@ -1283,6 +1283,26 @@ void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag)
     return u->data;
 }
 
+void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    luaC_checkGC(L);
+    luaC_threadbarrier(L);
+    Udata* u = luaU_newudata(L, sz, tag);
+
+    // currently, we always allocate unmarked objects, so forward barrier can be skipped
+    LUAU_ASSERT(!isblack(obj2gco(u)));
+
+    Table* h = L->global->udatamt[tag];
+    api_check(L, h != nullptr);
+
+    u->metatable = h;
+
+    setuvalue(L, L->top, u);
+    api_incr_top(L);
+    return u->data;
+}
+
 void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
 {
     luaC_checkGC(L);

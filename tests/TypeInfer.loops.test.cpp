@@ -152,7 +152,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
     // CLI-116494 The generics K and V are leaking out of the next() function somehow.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local n
@@ -270,7 +270,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 {
     // We report a spuriouus duplicate error here.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local bad_iter = 5
@@ -287,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")
 {
     // Spurious duplicate errors
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function hasDivisors(value: number, table)
@@ -339,7 +339,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
 {
     // CLI-116496
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function prime_iter(state, index)
@@ -757,7 +757,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t: {string} = {}
@@ -774,9 +774,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t = {}
@@ -1082,7 +1080,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 {
     // CLI-116498 - Sometimes you can iterate over tables with no indexer.
-    ScopedFastFlag sff0{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f()
