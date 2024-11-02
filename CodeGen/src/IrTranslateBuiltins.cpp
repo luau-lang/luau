@@ -957,13 +957,13 @@ static BuiltinImplResult translateBuiltinVectorNormalize(
 
     IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
     IrOp inv = build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), mag);
+    IrOp invvec = build.inst(IrCmd::NUM_TO_VEC, inv);
 
-    IrOp xr = build.inst(IrCmd::MUL_NUM, x, inv);
-    IrOp yr = build.inst(IrCmd::MUL_NUM, y, inv);
-    IrOp zr = build.inst(IrCmd::MUL_NUM, z, inv);
+    IrOp v = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0), build.constTag(LUA_TVECTOR));
+    IrOp norm = build.inst(IrCmd::MUL_VEC, v, invvec);
 
-    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+    IrOp result = build.inst(IrCmd::TAG_VECTOR, norm);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1027,11 +1027,13 @@ static BuiltinImplResult translateBuiltinVectorDot(IrBuilder& build, int nparams
     IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
     IrOp yy = build.inst(IrCmd::MUL_NUM, y1, y2);
 
+    IrOp sum0 = build.inst(IrCmd::ADD_NUM, xx, yy);
+
     IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
     IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
     IrOp zz = build.inst(IrCmd::MUL_NUM, z1, z2);
 
-    IrOp sum = build.inst(IrCmd::ADD_NUM, build.inst(IrCmd::ADD_NUM, xx, yy), zz);
+    IrOp sum = build.inst(IrCmd::ADD_NUM, sum0, zz);
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), sum);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
