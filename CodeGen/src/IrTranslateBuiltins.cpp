@@ -959,8 +959,8 @@ static BuiltinImplResult translateBuiltinVectorNormalize(
     IrOp inv = build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), mag);
     IrOp invvec = build.inst(IrCmd::NUM_TO_VEC, inv);
 
-    IrOp v = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0), build.constTag(LUA_TVECTOR));
-    IrOp norm = build.inst(IrCmd::MUL_VEC, v, invvec);
+    IrOp vec = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0), build.constTag(LUA_TVECTOR));
+    IrOp norm = build.inst(IrCmd::MUL_VEC, vec, invvec);
 
     IrOp result = build.inst(IrCmd::TAG_VECTOR, norm);
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
