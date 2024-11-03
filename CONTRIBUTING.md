@@ -8,7 +8,7 @@ Some questions help improve the language, implementation or documentation by ins
 
 ## Documentation
 
-A [separate site repository](https://github.com/luau-lang/site) hosts the language documentation, which is accessible on https://luau-lang.org.
+A [separate site repository](https://github.com/luau-lang/site) hosts the language documentation, which is accessible on https://luau.org.
 Changes to this documentation that improve clarity, fix grammatical issues, explain aspects that haven't been explained before and the like are warmly welcomed.
 
 Please feel free to [create a pull request](https://help.github.com/articles/about-pull-requests/) to improve our documentation. Note that at this point the documentation is English-only.
