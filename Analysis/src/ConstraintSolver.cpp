@@ -1109,7 +1109,8 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
             target = follow(instantiated);
         }
-        else if (FFlag::LuauNewSolverPopulateTableLocations)
+
+        if (FFlag::LuauNewSolverPopulateTableLocations)
         {
             // This is a new type - redefine the location.
             ttv->definitionLocation = constraint->location;
