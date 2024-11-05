@@ -35,6 +35,7 @@ LUAU_FASTFLAG(LuauTypestateBuiltins2)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
 
 namespace Luau
 {
@@ -2887,6 +2888,10 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     ttv->state = TableState::Unsealed;
     ttv->definitionModuleName = module->name;
+    if (FFlag::LuauNewSolverPopulateTableLocations)
+    {
+        ttv->definitionLocation = expr->location;
+    }
     ttv->scope = scope.get();
 
     interiorTypes.back().push_back(ty);
@@ -3344,7 +3349,16 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
             ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
     }
 
-    return arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
+    TypeId tableTy = arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
+    TableType* ttv = getMutable<TableType>(tableTy);
+
+    if (FFlag::LuauNewSolverPopulateTableLocations)
+    {
+        ttv->definitionModuleName = module->name;
+        ttv->definitionLocation = tab->location;
+    }
+
+    return tableTy;
 }
 
 TypeId ConstraintGenerator::resolveFunctionType(
