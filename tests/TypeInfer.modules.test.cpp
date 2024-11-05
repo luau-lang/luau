@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauRequireCyclesDontAlwaysReturnAny)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
+LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 
 using namespace Luau;
 
@@ -466,7 +467,15 @@ local b: B.T = a
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (FFlag::LuauSolverV2)
-        CHECK(toString(result.errors.at(0)) == "Type 'T' could not be converted into 'T'; at [read \"x\"], number is not exactly string");
+    {
+        if (FFlag::LuauNewSolverPopulateTableLocations)
+            CHECK(
+                toString(result.errors.at(0)) ==
+                "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; at [read \"x\"], number is not exactly string"
+            );
+        else
+            CHECK(toString(result.errors.at(0)) == "Type 'T' could not be converted into 'T'; at [read \"x\"], number is not exactly string");
+    }
     else
     {
         const std::string expected = R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
@@ -507,7 +516,15 @@ local b: B.T = a
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (FFlag::LuauSolverV2)
-        CHECK(toString(result.errors.at(0)) == "Type 'T' could not be converted into 'T'; at [read \"x\"], number is not exactly string");
+    {
+        if (FFlag::LuauNewSolverPopulateTableLocations)
+            CHECK(
+                toString(result.errors.at(0)) ==
+                "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; at [read \"x\"], number is not exactly string"
+            );
+        else
+            CHECK(toString(result.errors.at(0)) == "Type 'T' could not be converted into 'T'; at [read \"x\"], number is not exactly string");
+    }
     else
     {
         const std::string expected = R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
