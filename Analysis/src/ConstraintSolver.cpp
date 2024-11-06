@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
+LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 
 namespace Luau
 {
@@ -1109,9 +1110,15 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
             target = follow(instantiated);
         }
 
+        if (FFlag::LuauNewSolverPopulateTableLocations)
+        {
+            // This is a new type - redefine the location.
+            ttv->definitionLocation = constraint->location;
+            ttv->definitionModuleName = currentModuleName;
+        }
+
         ttv->instantiatedTypeParams = typeArguments;
         ttv->instantiatedTypePackParams = packArguments;
-        // TODO: Fill in definitionModuleName.
     }
 
     bindResult(target);
@@ -1433,7 +1440,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                 }
             }
         }
-        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantNil>())
+        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
+                 expr->is<AstExprConstantNil>())
         {
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
             u2.unify(actualArgTy, expectedArgTy);
@@ -2326,12 +2334,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     return true;
 }
 
-bool ConstraintSolver::tryDispatchIterableFunction(
-    TypeId nextTy,
-    TypeId tableTy,
-    const IterableConstraint& c,
-    NotNull<const Constraint> constraint
-)
+bool ConstraintSolver::tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint)
 {
     const FunctionType* nextFn = get<FunctionType>(nextTy);
     // If this does not hold, we should've never called `tryDispatchIterableFunction` in the first place.
