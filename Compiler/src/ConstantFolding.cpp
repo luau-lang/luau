@@ -6,6 +6,8 @@
 #include <vector>
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauConstantFoldStringComparisons, false)
+
 namespace Luau
 {
 namespace Compile
@@ -70,6 +72,17 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
     default:
         LUAU_ASSERT(!"Unexpected unary operation");
     }
+}
+
+static int compareStrings(const char* string1, const char* string2, unsigned int size1, unsigned int size2)
+{
+    unsigned int size = std::min(size1, size2);
+
+    int res = memcmp(string1, string2, size);
+    if (res != 0 || size1 == size2)
+        return res;
+
+    return size1 < size2 ? -1 : 1;
 }
 
 static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra)
@@ -157,6 +170,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber < ra.valueNumber;
         }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) < 0;
+        }
         break;
 
     case AstExprBinary::CompareLe:
@@ -164,6 +182,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber <= ra.valueNumber;
+        }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) <= 0;
         }
         break;
 
@@ -173,6 +196,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber > ra.valueNumber;
         }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) > 0;
+        }
         break;
 
     case AstExprBinary::CompareGe:
@@ -180,6 +208,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber >= ra.valueNumber;
+        }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) >= 0;
         }
         break;
 
