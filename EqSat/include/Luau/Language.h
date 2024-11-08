@@ -6,9 +6,19 @@
 #include "Luau/Slice.h"
 #include "Luau/Variant.h"
 
+#include <algorithm>
 #include <array>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
+#include <vector>
+
+#define LUAU_EQSAT_UNIT(name) \
+    struct name : ::Luau::EqSat::Unit<name> \
+    { \
+        static constexpr const char* tag = #name; \
+        using Unit::Unit; \
+    }
 
 #define LUAU_EQSAT_ATOM(name, t) \
     struct name : public ::Luau::EqSat::Atom<name, t> \
@@ -31,20 +41,56 @@
         using NodeVector::NodeVector; \
     }
 
-#define LUAU_EQSAT_FIELD(name) \
-    struct name : public ::Luau::EqSat::Field<name> \
-    { \
-    }
-
-#define LUAU_EQSAT_NODE_FIELDS(name, ...) \
-    struct name : public ::Luau::EqSat::NodeFields<name, __VA_ARGS__> \
+#define LUAU_EQSAT_NODE_SET(name) \
+    struct name : public ::Luau::EqSat::NodeSet<name, std::vector<::Luau::EqSat::Id>> \
     { \
         static constexpr const char* tag = #name; \
-        using NodeFields::NodeFields; \
+        using NodeSet::NodeSet; \
+    }
+
+#define LUAU_EQSAT_NODE_ATOM_WITH_VECTOR(name, t) \
+    struct name : public ::Luau::EqSat::NodeAtomAndVector<name, t, std::vector<::Luau::EqSat::Id>> \
+    { \
+        static constexpr const char* tag = #name; \
+        using NodeAtomAndVector::NodeAtomAndVector; \
     }
 
 namespace Luau::EqSat
 {
+
+template<typename Phantom>
+struct Unit
+{
+    Slice<Id> mutableOperands()
+    {
+        return {};
+    }
+
+    Slice<const Id> operands() const
+    {
+        return {};
+    }
+
+    bool operator==(const Unit& rhs) const
+    {
+        return true;
+    }
+
+    bool operator!=(const Unit& rhs) const
+    {
+        return false;
+    }
+
+    struct Hash
+    {
+        size_t operator()(const Unit& value) const
+        {
+            // chosen by fair dice roll.
+            // guaranteed to be random.
+            return 4;
+        }
+    };
+};
 
 template<typename Phantom, typename T>
 struct Atom
@@ -60,7 +106,7 @@ struct Atom
     }
 
 public:
-    Slice<Id> operands()
+    Slice<Id> mutableOperands()
     {
         return {};
     }
@@ -92,6 +138,62 @@ private:
     T _value;
 };
 
+template<typename Phantom, typename X, typename T>
+struct NodeAtomAndVector
+{
+    template<typename... Args>
+    NodeAtomAndVector(const X& value, Args&&... args)
+        : _value(value)
+        , vector{std::forward<Args>(args)...}
+    {
+    }
+
+    Id operator[](size_t i) const
+    {
+        return vector[i];
+    }
+
+public:
+    const X& value() const
+    {
+        return _value;
+    }
+
+    Slice<Id> mutableOperands()
+    {
+        return Slice{vector.data(), vector.size()};
+    }
+
+    Slice<const Id> operands() const
+    {
+        return Slice{vector.data(), vector.size()};
+    }
+
+    bool operator==(const NodeAtomAndVector& rhs) const
+    {
+        return _value == rhs._value && vector == rhs.vector;
+    }
+
+    bool operator!=(const NodeAtomAndVector& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    struct Hash
+    {
+        size_t operator()(const NodeAtomAndVector& value) const
+        {
+            size_t result = languageHash(value._value);
+            hashCombine(result, languageHash(value.vector));
+            return result;
+        }
+    };
+
+private:
+    X _value;
+    T vector;
+};
+
 template<typename Phantom, typename T>
 struct NodeVector
 {
@@ -107,7 +209,7 @@ struct NodeVector
     }
 
 public:
-    Slice<Id> operands()
+    Slice<Id> mutableOperands()
     {
         return Slice{vector.data(), vector.size()};
     }
@@ -139,90 +241,61 @@ private:
     T vector;
 };
 
-/// Empty base class just for static_asserts.
-struct FieldBase
+template<typename Phantom, typename T>
+struct NodeSet
 {
-    FieldBase() = delete;
-
-    FieldBase(FieldBase&&) = delete;
-    FieldBase& operator=(FieldBase&&) = delete;
-
-    FieldBase(const FieldBase&) = delete;
-    FieldBase& operator=(const FieldBase&) = delete;
-};
-
-template<typename Phantom>
-struct Field : FieldBase
-{
-};
-
-template<typename Phantom, typename... Fields>
-struct NodeFields
-{
-    static_assert(std::conjunction<std::is_base_of<FieldBase, Fields>...>::value);
-
-    template<typename T>
-    static constexpr int getIndex()
+    template<typename... Args>
+    NodeSet(Args&&... args)
+        : vector{std::forward<Args>(args)...}
     {
-        constexpr int N = sizeof...(Fields);
-        constexpr bool is[N] = {std::is_same_v<std::decay_t<T>, Fields>...};
+        std::sort(begin(vector), end(vector));
+        auto it = std::unique(begin(vector), end(vector));
+        vector.erase(it, end(vector));
+    }
 
-        for (int i = 0; i < N; ++i)
-            if (is[i])
-                return i;
-
-        return -1;
+    Id operator[](size_t i) const
+    {
+        return vector[i];
     }
 
 public:
-    template<typename... Args>
-    NodeFields(Args&&... args)
-        : array{std::forward<Args>(args)...}
+    Slice<Id> mutableOperands()
     {
-    }
-
-    Slice<Id> operands()
-    {
-        return Slice{array};
+        return Slice{vector.data(), vector.size()};
     }
 
     Slice<const Id> operands() const
     {
-        return Slice{array.data(), array.size()};
+        return Slice{vector.data(), vector.size()};
     }
 
-    template<typename T>
-    Id field() const
+    bool operator==(const NodeSet& rhs) const
     {
-        static_assert(std::disjunction_v<std::is_same<std::decay_t<T>, Fields>...>);
-        return array[getIndex<T>()];
+        return vector == rhs.vector;
     }
 
-    bool operator==(const NodeFields& rhs) const
-    {
-        return array == rhs.array;
-    }
-
-    bool operator!=(const NodeFields& rhs) const
+    bool operator!=(const NodeSet& rhs) const
     {
         return !(*this == rhs);
     }
 
     struct Hash
     {
-        size_t operator()(const NodeFields& value) const
+        size_t operator()(const NodeSet& value) const
         {
-            return languageHash(value.array);
+            return languageHash(value.vector);
         }
     };
 
-private:
-    std::array<Id, sizeof...(Fields)> array;
+protected:
+    T vector;
 };
 
 template<typename... Ts>
 struct Language final
 {
+    using VariantTy = Luau::Variant<Ts...>;
+
     template<typename T>
     using WithinDomain = std::disjunction<std::is_same<std::decay_t<T>, Ts>...>;
 
@@ -237,14 +310,14 @@ struct Language final
         return v.index();
     }
 
-    /// You should never call this function with the intention of mutating the `Id`.
-    /// Reading is ok, but you should also never assume that these `Id`s are stable.
-    Slice<Id> operands() noexcept
+    /// This should only be used in canonicalization!
+    /// Always prefer operands()
+    Slice<Id> mutableOperands() noexcept
     {
         return visit(
             [](auto&& v) -> Slice<Id>
             {
-                return v.operands();
+                return v.mutableOperands();
             },
             v
         );
@@ -306,7 +379,7 @@ public:
     };
 
 private:
-    Variant<Ts...> v;
+    VariantTy v;
 };
 
 } // namespace Luau::EqSat

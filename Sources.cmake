@@ -14,6 +14,7 @@ endif()
 
 # Luau.Ast Sources
 target_sources(Luau.Ast PRIVATE
+    Ast/include/Luau/Allocator.h
     Ast/include/Luau/Ast.h
     Ast/include/Luau/Confusables.h
     Ast/include/Luau/Lexer.h
@@ -24,6 +25,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/StringUtils.h
     Ast/include/Luau/TimeTrace.h
 
+    Ast/src/Allocator.cpp
     Ast/src/Ast.cpp
     Ast/src/Confusables.cpp
     Ast/src/Lexer.cpp
@@ -168,6 +170,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/AstJsonEncoder.h
     Analysis/include/Luau/AstQuery.h
     Analysis/include/Luau/Autocomplete.h
+    Analysis/include/Luau/AutocompleteTypes.h
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Cancellation.h
     Analysis/include/Luau/Clone.h
@@ -181,6 +184,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Differ.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
+    Analysis/include/Luau/EqSatSimplification.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/FragmentAutocomplete.h
     Analysis/include/Luau/Frontend.h
@@ -245,6 +249,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/AstJsonEncoder.cpp
     Analysis/src/AstQuery.cpp
     Analysis/src/Autocomplete.cpp
+    Analysis/src/AutocompleteCore.cpp
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Clone.cpp
     Analysis/src/Constraint.cpp
@@ -256,6 +261,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Differ.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
+    Analysis/src/EqSatSimplification.cpp
     Analysis/src/FragmentAutocomplete.cpp
     Analysis/src/Frontend.cpp
     Analysis/src/Generalization.cpp
@@ -417,7 +423,7 @@ endif()
 if(TARGET Luau.UnitTest)
     # Luau.UnitTest Sources
     target_sources(Luau.UnitTest PRIVATE
-        tests/AnyTypeSummary.test.cpp 
+        tests/AnyTypeSummary.test.cpp
         tests/AssemblyBuilderA64.test.cpp
         tests/AssemblyBuilderX64.test.cpp
         tests/AstJsonEncoder.test.cpp
@@ -444,6 +450,7 @@ if(TARGET Luau.UnitTest)
         tests/EqSat.language.test.cpp
         tests/EqSat.propositional.test.cpp
         tests/EqSat.slice.test.cpp
+        tests/EqSatSimplification.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h

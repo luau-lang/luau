@@ -4,7 +4,8 @@
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 #include <algorithm>
-#include <unordered_map>
+#include <memory>
+#include <string>
 
 namespace Luau
 {
@@ -14,6 +15,50 @@ using Error = std::optional<std::string>;
 Config::Config()
 {
     enabledLint.setDefaults();
+}
+
+Config::Config(const Config& other) noexcept
+    : mode(other.mode)
+    , parseOptions(other.parseOptions)
+    , enabledLint(other.enabledLint)
+    , fatalLint(other.fatalLint)
+    , lintErrors(other.lintErrors)
+    , typeErrors(other.typeErrors)
+    , globals(other.globals)
+{
+    for (const auto& [alias, aliasInfo] : other.aliases)
+    {
+        std::string configLocation = std::string(aliasInfo.configLocation);
+
+        if (!configLocationCache.contains(configLocation))
+            configLocationCache[configLocation] = std::make_unique<std::string>(configLocation);
+
+        AliasInfo newAliasInfo;
+        newAliasInfo.value = aliasInfo.value;
+        newAliasInfo.configLocation = *configLocationCache[configLocation];
+        aliases[alias] = std::move(newAliasInfo);
+    }
+}
+
+Config& Config::operator=(const Config& other) noexcept
+{
+    if (this != &other)
+    {
+        Config copy(other);
+        std::swap(*this, copy);
+    }
+    return *this;
+}
+
+void Config::setAlias(std::string alias, const std::string& value, const std::string configLocation)
+{
+    AliasInfo& info = aliases[alias];
+    info.value = value;
+
+    if (!configLocationCache.contains(configLocation))
+        configLocationCache[configLocation] = std::make_unique<std::string>(configLocation);
+
+    info.configLocation = *configLocationCache[configLocation];
 }
 
 static Error parseBoolean(bool& result, const std::string& value)
@@ -136,7 +181,12 @@ bool isValidAlias(const std::string& alias)
     return true;
 }
 
-Error parseAlias(std::unordered_map<std::string, std::string>& aliases, std::string aliasKey, const std::string& aliasValue)
+static Error parseAlias(
+    Config& config,
+    std::string aliasKey,
+    const std::string& aliasValue,
+    const std::optional<ConfigOptions::AliasOptions>& aliasOptions
+)
 {
     if (!isValidAlias(aliasKey))
         return Error{"Invalid alias " + aliasKey};
@@ -150,8 +200,12 @@ Error parseAlias(std::unordered_map<std::string, std::string>& aliases, std::str
             return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
         }
     );
-    if (!aliases.count(aliasKey))
-        aliases[std::move(aliasKey)] = aliasValue;
+
+    if (!aliasOptions)
+        return Error("Cannot parse aliases without alias options");
+
+    if (aliasOptions->overwriteAliases || !config.aliases.contains(aliasKey))
+        config.setAlias(std::move(aliasKey), aliasValue, aliasOptions->configLocation);
 
     return std::nullopt;
 }
@@ -285,16 +339,16 @@ static Error parseJson(const std::string& contents, Action action)
     return {};
 }
 
-Error parseConfig(const std::string& contents, Config& config, bool compat)
+Error parseConfig(const std::string& contents, Config& config, const ConfigOptions& options)
 {
     return parseJson(
         contents,
         [&](const std::vector<std::string>& keys, const std::string& value) -> Error
         {
             if (keys.size() == 1 && keys[0] == "languageMode")
-                return parseModeString(config.mode, value, compat);
+                return parseModeString(config.mode, value, options.compat);
             else if (keys.size() == 2 && keys[0] == "lint")
-                return parseLintRuleString(config.enabledLint, config.fatalLint, keys[1], value, compat);
+                return parseLintRuleString(config.enabledLint, config.fatalLint, keys[1], value, options.compat);
             else if (keys.size() == 1 && keys[0] == "lintErrors")
                 return parseBoolean(config.lintErrors, value);
             else if (keys.size() == 1 && keys[0] == "typeErrors")
@@ -305,9 +359,9 @@ Error parseConfig(const std::string& contents, Config& config, bool compat)
                 return std::nullopt;
             }
             else if (keys.size() == 2 && keys[0] == "aliases")
-                return parseAlias(config.aliases, keys[1], value);
-            else if (compat && keys.size() == 2 && keys[0] == "language" && keys[1] == "mode")
-                return parseModeString(config.mode, value, compat);
+                return parseAlias(config, keys[1], value, options.aliasOptions);
+            else if (options.compat && keys.size() == 2 && keys[0] == "language" && keys[1] == "mode")
+                return parseModeString(config.mode, value, options.compat);
             else
             {
                 std::vector<std::string_view> keysv(keys.begin(), keys.end());

@@ -15,6 +15,8 @@ std::string resolvePath(std::string_view relativePath, std::string_view baseFile
 std::optional<std::string> readFile(const std::string& name);
 std::optional<std::string> readStdin();
 
+bool hasFileExtension(std::string_view name, const std::vector<std::string>& extensions);
+
 bool isAbsolutePath(std::string_view path);
 bool isFile(const std::string& path);
 bool isDirectory(const std::string& path);

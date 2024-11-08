@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Config.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/BuiltinDefinitions.h"
@@ -224,7 +225,14 @@ struct CliConfigResolver : Luau::ConfigResolver
 
         if (std::optional<std::string> contents = readFile(configPath))
         {
-            std::optional<std::string> error = Luau::parseConfig(*contents, result);
+            Luau::ConfigOptions::AliasOptions aliasOpts;
+            aliasOpts.configLocation = configPath;
+            aliasOpts.overwriteAliases = true;
+
+            Luau::ConfigOptions opts;
+            opts.aliasOptions = std::move(aliasOpts);
+
+            std::optional<std::string> error = Luau::parseConfig(*contents, result, opts);
             if (error)
                 configErrors.push_back({configPath, *error});
         }

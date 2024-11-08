@@ -3,9 +3,10 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Parser.h"
-#include "Luau/Autocomplete.h"
+#include "Luau/AutocompleteTypes.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Module.h"
+#include "Luau/Frontend.h"
 
 #include <memory>
 #include <vector>
@@ -27,13 +28,23 @@ struct FragmentParseResult
     std::string fragmentToParse;
     AstStatBlock* root = nullptr;
     std::vector<AstNode*> ancestry;
+    AstStat* nearestStatement = nullptr;
     std::unique_ptr<Allocator> alloc = std::make_unique<Allocator>();
 };
 
 struct FragmentTypeCheckResult
 {
     ModulePtr incrementalModule = nullptr;
-    Scope* freshScope = nullptr;
+    ScopePtr freshScope;
+    std::vector<AstNode*> ancestry;
+};
+
+struct FragmentAutocompleteResult
+{
+    ModulePtr incrementalModule;
+    Scope* freshScope;
+    TypeArena arenaForAutocomplete;
+    AutocompleteResult acResults;
 };
 
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* root, const Position& cursorPos);
@@ -48,11 +59,11 @@ FragmentTypeCheckResult typecheckFragment(
     std::string_view src
 );
 
-AutocompleteResult fragmentAutocomplete(
+FragmentAutocompleteResult fragmentAutocomplete(
     Frontend& frontend,
     std::string_view src,
     const ModuleName& moduleName,
-    Position& cursorPosition,
+    Position cursorPosition,
     std::optional<FrontendOptions> opts,
     StringCompletionCallback callback
 );

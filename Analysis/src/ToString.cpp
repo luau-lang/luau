@@ -870,6 +870,8 @@ struct TypeStringifier
             return;
         }
 
+        LUAU_ASSERT(uv.options.size() > 1);
+
         bool optional = false;
         bool hasNonNilDisjunct = false;
 
@@ -878,7 +880,7 @@ struct TypeStringifier
         {
             el = follow(el);
 
-            if (isNil(el))
+            if (state.opts.useQuestionMarks && isNil(el))
             {
                 optional = true;
                 continue;

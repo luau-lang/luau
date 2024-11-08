@@ -964,6 +964,7 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
         std::vector<TypeId>{builtinTypes->numberType}, // Type Function Arguments
         {},
         {AstName{"woohoo"}}, // Type Function Name
+        {},
     };
 
     Type tv{tftt};

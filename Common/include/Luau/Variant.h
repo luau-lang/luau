@@ -19,7 +19,7 @@ class Variant
     static_assert(std::disjunction_v<std::is_reference<Ts>...> == false, "variant does not allow references as an alternative type");
     static_assert(std::disjunction_v<std::is_array<Ts>...> == false, "variant does not allow arrays as an alternative type");
 
-private:
+public:
     template<typename T>
     static constexpr int getTypeId()
     {
@@ -35,6 +35,7 @@ private:
         return -1;
     }
 
+private:
     template<typename T, typename... Tail>
     struct First
     {

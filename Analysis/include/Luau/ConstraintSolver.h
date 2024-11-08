@@ -5,6 +5,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/Location.h"
 #include "Luau/Module.h"
@@ -64,6 +65,7 @@ struct ConstraintSolver
     NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;
+    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // The entire set of constraints that the solver is trying to resolve.
     std::vector<NotNull<Constraint>> constraints;
@@ -117,6 +119,7 @@ struct ConstraintSolver
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
+        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
@@ -383,6 +386,10 @@ public:
      * @param subst the substitution that was applied
      **/
     void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
+
+    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
+    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+    TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
     TypeId errorRecoveryType() const;
     TypePackId errorRecoveryTypePack() const;
