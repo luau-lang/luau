@@ -99,14 +99,14 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* ro
  * Example - your document is "foo bar baz" and getDocumentOffsets is passed (1, 4) - (1, 8). This function returns the pair {3, 7},
  * which corresponds to the string " bar "
  */
-std::pair<unsigned int, unsigned int> getDocumentOffsets(const std::string_view& src, const Position& startPos, const Position& endPos)
+std::pair<size_t, size_t> getDocumentOffsets(const std::string_view& src, const Position& startPos, const Position& endPos)
 {
-    unsigned int lineCount = 0;
-    unsigned int colCount = 0;
+    size_t lineCount = 0;
+    size_t colCount = 0;
 
-    unsigned int docOffset = 0;
-    unsigned int startOffset = 0;
-    unsigned int endOffset = 0;
+    size_t docOffset = 0;
+    size_t startOffset = 0;
+    size_t endOffset = 0;
     bool foundStart = false;
     bool foundEnd = false;
     for (char c : src)
@@ -146,8 +146,8 @@ std::pair<unsigned int, unsigned int> getDocumentOffsets(const std::string_view&
     if (foundStart && !foundEnd)
         endOffset = src.length();
 
-    unsigned int min = std::min(startOffset, endOffset);
-    unsigned int len = std::max(startOffset, endOffset) - min;
+    size_t min = std::min(startOffset, endOffset);
+    size_t len = std::max(startOffset, endOffset) - min;
     return {min, len};
 }
 
