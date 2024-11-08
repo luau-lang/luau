@@ -730,7 +730,19 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::DOT_VEC:
     {
-        CODEGEN_ASSERT(!"DOT_VEC is not implemented for A64");
+        inst.regA64 = regs.allocReg(KindA64::d, index);
+
+        RegisterA64 temp1 = regs.allocTemp(KindA64::q);
+        RegisterA64 temp2 = regs.allocTemp(KindA64::q);
+        RegisterA64 temp3 = regs.allocTemp(KindA64::q);
+
+        build.fmul(temp1, regOp(inst.a), regOp(inst.b));
+        build.dup_4s(temp2, temp1, 1);
+        build.dup_4s(temp3, temp1, 2);
+
+        build.fadd(castReg(KindA64::s, temp1), castReg(KindA64::s, temp1), castReg(KindA64::s, temp2));
+        build.fadd(castReg(KindA64::s, temp1), castReg(KindA64::s, temp1), castReg(KindA64::s, temp3));
+        build.fcvt(inst.regA64, castReg(KindA64::s, temp1));
         break;
     }
     case IrCmd::NOT_ANY:
