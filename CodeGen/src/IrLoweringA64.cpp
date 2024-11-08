@@ -732,17 +732,15 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regA64 = regs.allocReg(KindA64::d, index);
 
-        RegisterA64 temp1 = regs.allocTemp(KindA64::q);
-        RegisterA64 temp2 = regs.allocTemp(KindA64::q);
-        RegisterA64 temp3 = regs.allocTemp(KindA64::q);
+        RegisterA64 temp = regs.allocTemp(KindA64::q);
+        RegisterA64 temps = castReg(KindA64::s, temp);
+        RegisterA64 regs = castReg(KindA64::s, inst.regA64);
 
-        build.fmul(temp1, regOp(inst.a), regOp(inst.b));
-        build.dup_4s(temp2, temp1, 1);
-        build.dup_4s(temp3, temp1, 2);
-
-        build.fadd(castReg(KindA64::s, temp1), castReg(KindA64::s, temp1), castReg(KindA64::s, temp2));
-        build.fadd(castReg(KindA64::s, temp1), castReg(KindA64::s, temp1), castReg(KindA64::s, temp3));
-        build.fcvt(inst.regA64, castReg(KindA64::s, temp1));
+        build.fmul(temp, regOp(inst.a), regOp(inst.b));
+        build.faddp(regs, temps); // x+y
+        build.dup_4s(temp, temp, 2);
+        build.fadd(regs, regs, temps); // +z
+        build.fcvt(inst.regA64, regs);
         break;
     }
     case IrCmd::NOT_ANY:
