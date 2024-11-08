@@ -21,6 +21,7 @@ LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauNativeAttribute)
 LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax2)
+LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
 LUAU_FASTFLAGVARIABLE(LuauPortableStringZeroCheck)
 
@@ -943,8 +944,11 @@ AstStat* Parser::parseTypeFunction(const Location& start, bool exported)
     Lexeme matchFn = lexer.current();
     nextLexeme();
 
-    if (exported)
-        report(start, "Type function cannot be exported");
+    if (!FFlag::LuauUserDefinedTypeFunParseExport)
+    {
+        if (exported)
+            report(start, "Type function cannot be exported");
+    }
 
     // parse the name of the type function
     std::optional<Name> fnName = parseNameOpt("type function name");
@@ -962,7 +966,7 @@ AstStat* Parser::parseTypeFunction(const Location& start, bool exported)
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 
-    return allocator.alloc<AstStatTypeFunction>(Location(start, body->location), fnName->name, fnName->location, body);
+    return allocator.alloc<AstStatTypeFunction>(Location(start, body->location), fnName->name, fnName->location, body, exported);
 }
 
 AstDeclaredClassProp Parser::parseDeclaredClassMethod()
@@ -3012,8 +3016,23 @@ std::optional<AstArray<char>> Parser::parseCharArray()
 AstExpr* Parser::parseString()
 {
     Location location = lexer.current().location;
+
+    AstExprConstantString::QuoteStyle style;
+    switch (lexer.current().type)
+    {
+    case Lexeme::QuotedString:
+    case Lexeme::InterpStringSimple:
+        style = AstExprConstantString::QuotedSimple;
+        break;
+    case Lexeme::RawString:
+        style = AstExprConstantString::QuotedRaw;
+        break;
+    default:
+        LUAU_ASSERT(false && "Invalid string type");
+    }
+
     if (std::optional<AstArray<char>> value = parseCharArray())
-        return allocator.alloc<AstExprConstantString>(location, *value);
+        return allocator.alloc<AstExprConstantString>(location, *value, style);
     else
         return reportExprError(location, {}, "String literal contains malformed escape sequence");
 }

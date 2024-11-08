@@ -316,16 +316,18 @@ public:
 
     enum QuoteStyle
     {
-        Quoted,
+        QuotedSimple,
+        QuotedRaw,
         Unquoted
     };
 
-    AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle = Quoted);
+    AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle);
 
     void visit(AstVisitor* visitor) override;
+    bool isQuoted() const;
 
     AstArray<char> value;
-    QuoteStyle quoteStyle = Quoted;
+    QuoteStyle quoteStyle;
 };
 
 class AstExprLocal : public AstExpr
@@ -876,13 +878,14 @@ class AstStatTypeFunction : public AstStat
 public:
     LUAU_RTTI(AstStatTypeFunction);
 
-    AstStatTypeFunction(const Location& location, const AstName& name, const Location& nameLocation, AstExprFunction* body);
+    AstStatTypeFunction(const Location& location, const AstName& name, const Location& nameLocation, AstExprFunction* body, bool exported);
 
     void visit(AstVisitor* visitor) override;
 
     AstName name;
     Location nameLocation;
     AstExprFunction* body;
+    bool exported;
 };
 
 class AstStatDeclareGlobal : public AstStat

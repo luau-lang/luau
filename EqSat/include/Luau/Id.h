@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 
 namespace Luau::EqSat
@@ -9,15 +10,17 @@ namespace Luau::EqSat
 
 struct Id final
 {
-    explicit Id(size_t id);
+    explicit Id(uint32_t id);
 
-    explicit operator size_t() const;
+    explicit operator uint32_t() const;
 
     bool operator==(Id rhs) const;
     bool operator!=(Id rhs) const;
 
+    bool operator<(Id rhs) const;
+
 private:
-    size_t id;
+    uint32_t id;
 };
 
 } // namespace Luau::EqSat

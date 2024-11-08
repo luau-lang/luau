@@ -181,6 +181,16 @@ std::string resolvePath(std::string_view path, std::string_view baseFilePath)
     return resolvedPath;
 }
 
+bool hasFileExtension(std::string_view name, const std::vector<std::string>& extensions)
+{
+    for (const std::string& extension : extensions)
+    {
+        if (name.size() >= extension.size() && name.substr(name.size() - extension.size()) == extension)
+            return true;
+    }
+    return false;
+}
+
 std::optional<std::string> readFile(const std::string& name)
 {
 #ifdef _WIN32

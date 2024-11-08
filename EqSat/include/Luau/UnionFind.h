@@ -14,7 +14,9 @@ struct UnionFind final
     Id makeSet();
     Id find(Id id) const;
     Id find(Id id);
-    void merge(Id a, Id b);
+
+    // Merge aSet with bSet and return the canonicalized Id into the merged set.
+    Id merge(Id aSet, Id bSet);
 
 private:
     std::vector<Id> parents;

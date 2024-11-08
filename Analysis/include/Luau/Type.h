@@ -31,6 +31,7 @@ namespace Luau
 struct TypeArena;
 struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
+struct Module;
 
 struct TypeFunction;
 struct Constraint;
@@ -598,6 +599,18 @@ struct ClassType
     }
 };
 
+// Data required to initialize a user-defined function and its environment
+struct UserDefinedFunctionData
+{
+    // Store a weak module reference to ensure the lifetime requirements are preserved
+    std::weak_ptr<Module> owner;
+
+    // References to AST elements are owned by the Module allocator which also stores this type
+    AstStatTypeFunction* definition = nullptr;
+
+    DenseHashMap<Name, AstStatTypeFunction*> environment{""};
+};
+
 /**
  * An instance of a type function that has not yet been reduced to a more concrete
  * type. The constraint solver receives a constraint to reduce each
@@ -613,17 +626,20 @@ struct TypeFunctionInstanceType
     std::vector<TypePackId> packArguments;
 
     std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
+    UserDefinedFunctionData userFuncData;
 
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
         std::vector<TypeId> typeArguments,
         std::vector<TypePackId> packArguments,
-        std::optional<AstName> userFuncName = std::nullopt
+        std::optional<AstName> userFuncName,
+        UserDefinedFunctionData userFuncData
     )
         : function(function)
         , typeArguments(typeArguments)
         , packArguments(packArguments)
         , userFuncName(userFuncName)
+        , userFuncData(userFuncData)
     {
     }
 
@@ -636,6 +652,13 @@ struct TypeFunctionInstanceType
 
     TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : function{&function}
+        , typeArguments(typeArguments)
+        , packArguments(packArguments)
+    {
+    }
+
+    TypeFunctionInstanceType(NotNull<const TypeFunction> function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : function{function}
         , typeArguments(typeArguments)
         , packArguments(packArguments)
     {

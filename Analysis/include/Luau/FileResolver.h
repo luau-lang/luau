@@ -32,7 +32,11 @@ struct ModuleInfo
     bool optional = false;
 };
 
-using RequireSuggestion = std::string;
+struct RequireSuggestion
+{
+    std::string label;
+    std::string fullPath;
+};
 using RequireSuggestions = std::vector<RequireSuggestion>;
 
 struct FileResolver

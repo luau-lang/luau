@@ -24,6 +24,7 @@ LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTFLAG(LuauNewSolverVisitErrorExprLvalues)
+LUAU_FASTFLAG(LuauDontRefCountTypesInTypeFunctions)
 
 using namespace Luau;
 
@@ -1727,6 +1728,38 @@ TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
     LUAU_REQUIRE_ERRORS(check(R"(
         --!strict
         (::, 
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        --!strict
+        local function foo(a : string?)
+            local b = a or ""
+            return b:upper()
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        --!strict
+        local function wtf(name: string?)
+            local message
+            message = "invalid alternate fiber: " .. (name or "UNNAMED alternate")
+        end
     )"));
 }
 
