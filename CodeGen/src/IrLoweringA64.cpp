@@ -728,6 +728,11 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fneg(inst.regA64, regOp(inst.a));
         break;
     }
+    case IrCmd::DOT_VEC:
+    {
+        CODEGEN_ASSERT(!"DOT_VEC is not implemented for A64");
+        break;
+    }
     case IrCmd::NOT_ANY:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
