@@ -3,6 +3,7 @@
 
 #include "FileUtils.h"
 #include "Luau/Common.h"
+#include "Luau/Config.h"
 
 #include <algorithm>
 #include <array>
@@ -82,6 +83,9 @@ RequireResolver::ModuleStatus RequireResolver::findModuleImpl()
 
         absolutePath.resize(unsuffixedAbsolutePathSize); // truncate to remove suffix
     }
+
+    if (hasFileExtension(absolutePath, {".luau", ".lua"}) && isFile(absolutePath))
+        luaL_argerrorL(L, 1, "error requiring module: consider removing the file extension");
 
     return ModuleStatus::NotFound;
 }
@@ -235,14 +239,15 @@ std::optional<std::string> RequireResolver::getAlias(std::string alias)
             return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
         }
     );
-    while (!config.aliases.count(alias) && !isConfigFullyResolved)
+    while (!config.aliases.contains(alias) && !isConfigFullyResolved)
     {
         parseNextConfig();
     }
-    if (!config.aliases.count(alias) && isConfigFullyResolved)
+    if (!config.aliases.contains(alias) && isConfigFullyResolved)
         return std::nullopt; // could not find alias
 
-    return resolvePath(config.aliases[alias], joinPaths(lastSearchedDir, Luau::kConfigName));
+    const Luau::Config::AliasInfo& aliasInfo = config.aliases[alias];
+    return resolvePath(aliasInfo.value, aliasInfo.configLocation);
 }
 
 void RequireResolver::parseNextConfig()
@@ -275,9 +280,16 @@ void RequireResolver::parseConfigInDirectory(const std::string& directory)
 {
     std::string configPath = joinPaths(directory, Luau::kConfigName);
 
+    Luau::ConfigOptions::AliasOptions aliasOpts;
+    aliasOpts.configLocation = configPath;
+    aliasOpts.overwriteAliases = false;
+
+    Luau::ConfigOptions opts;
+    opts.aliasOptions = std::move(aliasOpts);
+
     if (std::optional<std::string> contents = readFile(configPath))
     {
-        std::optional<std::string> error = Luau::parseConfig(*contents, config);
+        std::optional<std::string> error = Luau::parseConfig(*contents, config, opts);
         if (error)
             luaL_errorL(L, "error parsing %s (%s)", configPath.c_str(), (*error).c_str());
     }

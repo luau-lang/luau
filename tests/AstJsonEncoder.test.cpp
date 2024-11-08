@@ -67,7 +67,7 @@ TEST_CASE("encode_constants")
     charString.data = const_cast<char*>("a\x1d\0\\\"b");
     charString.size = 6;
 
-    AstExprConstantString needsEscaping{Location(), charString};
+    AstExprConstantString needsEscaping{Location(), charString, AstExprConstantString::QuotedSimple};
 
     CHECK_EQ(R"({"type":"AstExprConstantNil","location":"0,0 - 0,0"})", toJson(&nil));
     CHECK_EQ(R"({"type":"AstExprConstantBool","location":"0,0 - 0,0","value":true})", toJson(&b));
@@ -83,7 +83,7 @@ TEST_CASE("basic_escaping")
 {
     std::string s = "hello \"world\"";
     AstArray<char> theString{s.data(), s.size()};
-    AstExprConstantString str{Location(), theString};
+    AstExprConstantString str{Location(), theString, AstExprConstantString::QuotedSimple};
 
     std::string expected = R"({"type":"AstExprConstantString","location":"0,0 - 0,0","value":"hello \"world\""})";
     CHECK_EQ(expected, toJson(&str));

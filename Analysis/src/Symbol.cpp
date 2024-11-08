@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauSymbolEquality)
 
 namespace Luau
 {
@@ -14,7 +15,7 @@ bool Symbol::operator==(const Symbol& rhs) const
         return local == rhs.local;
     else if (global.value)
         return rhs.global.value && global == rhs.global.value; // Subtlety: AstName::operator==(const char*) uses strcmp, not pointer identity.
-    else if (FFlag::LuauSolverV2)
+    else if (FFlag::LuauSolverV2 || FFlag::LuauSymbolEquality)
         return !rhs.local && !rhs.global.value; // Reflexivity: we already know `this` Symbol is empty, so check that rhs is.
     else
         return false;

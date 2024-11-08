@@ -424,6 +424,13 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
     assertOutputContainsAll({"false", "require path must start with a valid prefix: ./, ../, or @"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithExtension")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/dependency.luau";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "error requiring module: consider removing the file extension"});
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")
 {
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/alias_requirer";

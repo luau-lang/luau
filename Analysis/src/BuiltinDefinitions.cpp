@@ -33,7 +33,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
 
-LUAU_FASTFLAG(AutocompleteRequirePathSuggestions)
+LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2);
 
 namespace Luau
 {
@@ -426,7 +426,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
             attachDcrMagicFunction(ttv->props["freeze"].type(), dcrMagicFunctionFreeze);
     }
 
-    if (FFlag::AutocompleteRequirePathSuggestions)
+    if (FFlag::AutocompleteRequirePathSuggestions2)
     {
         TypeId requireTy = getGlobalBinding(globals, "require");
         attachTag(requireTy, kRequireTagName);

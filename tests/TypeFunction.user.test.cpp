@@ -16,6 +16,8 @@ LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAG(LuauUserTypeFunFixMetatable)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionResetState)
 LUAU_FASTFLAG(LuauUserTypeFunNonstrict)
+LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
+LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1296,6 +1298,94 @@ type function foo() return types.string end
 local a: foo<> = "a"
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "implicit_export")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
+    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
+
+    fileResolver.source["game/A"] = R"(
+type function concat(a, b)
+    return types.singleton(a:value() .. b:value())
+end
+export type Concat<T, U> = concat<T, U>
+local a: concat<'first', 'second'>
+return {}
+    )";
+
+    CheckResult aResult = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CHECK(toString(requireType("game/A", "a")) == R"("firstsecond")");
+
+    CheckResult bResult = check(R"(
+local Test = require(game.A);
+local b: Test.Concat<'third', 'fourth'>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    CHECK(toString(requireType("b")) == R"("thirdfourth")");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "local_scope")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
+    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
+
+    CheckResult result = check(R"(
+type function foo()
+    return "hi"
+end
+local function test()
+    type function bar()
+        return types.singleton(foo())
+    end
+
+    return ("" :: any) :: bar<>
+end
+local a = test()
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("a")) == R"("hi")");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
+    ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
+    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
+    ScopedFastFlag luauUserDefinedTypeFunParseExport{FFlag::LuauUserDefinedTypeFunParseExport, true};
+
+    fileResolver.source["game/A"] = R"(
+export type function concat(a, b)
+    return types.singleton(a:value() .. b:value())
+end
+local a: concat<'first', 'second'>
+return {}
+    )";
+
+    CheckResult aResult = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CHECK(toString(requireType("game/A", "a")) == R"("firstsecond")");
+
+    CheckResult bResult = check(R"(
+local Test = require(game.A);
+local b: Test.concat<'third', 'fourth'>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    CHECK(toString(requireType("b")) == R"("thirdfourth")");
 }
 
 TEST_SUITE_END();

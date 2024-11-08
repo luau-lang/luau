@@ -10,6 +10,7 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
+    , simplifier(newSimplifier(NotNull{&arena}, builtinTypes))
     , forceTheFlag{FFlag::LuauSolverV2, true}
 {
     mainModule->name = "MainModule";
@@ -25,6 +26,7 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
     cg = std::make_unique<ConstraintGenerator>(
         mainModule,
         NotNull{&normalizer},
+        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(&moduleResolver),
         builtinTypes,
@@ -44,8 +46,19 @@ void ConstraintGeneratorFixture::solve(const std::string& code)
 {
     generateConstraints(code);
     ConstraintSolver cs{
-        NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, NotNull{dfg.get()}, {}
+        NotNull{&normalizer},
+        NotNull{simplifier.get()},
+        NotNull{&typeFunctionRuntime},
+        NotNull{rootScope},
+        constraints,
+        "MainModule",
+        NotNull(&moduleResolver),
+        {},
+        &logger,
+        NotNull{dfg.get()},
+        {}
     };
+
     cs.run();
 }
 

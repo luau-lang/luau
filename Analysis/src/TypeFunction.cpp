@@ -51,6 +51,7 @@ LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAG(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionResetState)
+LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
 
 LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
@@ -610,10 +611,29 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     NotNull<TypeFunctionContext> ctx
 )
 {
-    if (!ctx->userFuncName)
+    auto typeFunction = getMutable<TypeFunctionInstanceType>(instance);
+
+    if (FFlag::LuauUserTypeFunExportedAndLocal)
     {
-        ctx->ice->ice("all user-defined type functions must have an associated function definition");
-        return {std::nullopt, true, {}, {}};
+        if (typeFunction->userFuncData.owner.expired())
+        {
+            ctx->ice->ice("user-defined type function module has expired");
+            return {std::nullopt, true, {}, {}};
+        }
+
+        if (!typeFunction->userFuncName || !typeFunction->userFuncData.definition)
+        {
+            ctx->ice->ice("all user-defined type functions must have an associated function definition");
+            return {std::nullopt, true, {}, {}};
+        }
+    }
+    else
+    {
+        if (!ctx->userFuncName)
+        {
+            ctx->ice->ice("all user-defined type functions must have an associated function definition");
+            return {std::nullopt, true, {}, {}};
+        }
     }
 
     if (FFlag::LuauUserDefinedTypeFunctionNoEvaluation)
@@ -632,7 +652,22 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             return {std::nullopt, false, {ty}, {}};
     }
 
-    AstName name = *ctx->userFuncName;
+    if (FFlag::LuauUserTypeFunExportedAndLocal)
+    {
+        // Ensure that whole type function environment is registered
+        for (auto& [name, definition] : typeFunction->userFuncData.environment)
+        {
+            if (std::optional<std::string> error = ctx->typeFunctionRuntime->registerFunction(definition))
+            {
+                // Failure to register at this point means that original definition had to error out and should not have been present in the
+                // environment
+                ctx->ice->ice("user-defined type function reference cannot be registered");
+                return {std::nullopt, true, {}, {}};
+            }
+        }
+    }
+
+    AstName name = FFlag::LuauUserTypeFunExportedAndLocal ? typeFunction->userFuncData.definition->name : *ctx->userFuncName;
 
     lua_State* global = ctx->typeFunctionRuntime->state.get();
 
@@ -643,8 +678,44 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     lua_State* L = lua_newthread(global);
     LuauTempThreadPopper popper(global);
 
-    lua_getglobal(global, name.value);
-    lua_xmove(global, L, 1);
+    if (FFlag::LuauUserTypeFunExportedAndLocal)
+    {
+        // Fetch the function we want to evaluate
+        lua_pushlightuserdata(L, typeFunction->userFuncData.definition);
+        lua_gettable(L, LUA_REGISTRYINDEX);
+
+        if (!lua_isfunction(L, -1))
+        {
+            ctx->ice->ice("user-defined type function reference cannot be found in the registry");
+            return {std::nullopt, true, {}, {}};
+        }
+
+        // Build up the environment
+        lua_getfenv(L, -1);
+        lua_setreadonly(L, -1, false);
+
+        for (auto& [name, definition] : typeFunction->userFuncData.environment)
+        {
+            lua_pushlightuserdata(L, definition);
+            lua_gettable(L, LUA_REGISTRYINDEX);
+
+            if (!lua_isfunction(L, -1))
+            {
+                ctx->ice->ice("user-defined type function reference cannot be found in the registry");
+                return {std::nullopt, true, {}, {}};
+            }
+
+            lua_setfield(L, -2, name.c_str());
+        }
+
+        lua_setreadonly(L, -1, true);
+        lua_pop(L, 1);
+    }
+    else
+    {
+        lua_getglobal(global, name.value);
+        lua_xmove(global, L, 1);
+    }
 
     if (FFlag::LuauUserDefinedTypeFunctionResetState)
         resetTypeFunctionState(L);
@@ -693,7 +764,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     TypeId retTypeId = deserialize(retTypeFunctionTypeId, runtimeBuilder.get());
 
-    // At least 1 error occured while deserializing
+    // At least 1 error occurred while deserializing
     if (runtimeBuilder->errors.size() > 0)
         return {std::nullopt, true, {}, {}, runtimeBuilder->errors.front()};
 
@@ -935,6 +1006,23 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
 
     prepareState();
 
+    lua_State* global = state.get();
+
+    if (FFlag::LuauUserTypeFunExportedAndLocal)
+    {
+        // Fetch to check if function is already registered
+        lua_pushlightuserdata(global, function);
+        lua_gettable(global, LUA_REGISTRYINDEX);
+
+        if (!lua_isnil(global, -1))
+        {
+            lua_pop(global, 1);
+            return std::nullopt;
+        }
+
+        lua_pop(global, 1);
+    }
+
     AstName name = function->name;
 
     // Construct ParseResult containing the type function
@@ -961,7 +1049,6 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
 
     std::string bytecode = builder.getBytecode();
 
-    lua_State* global = state.get();
 
     // Separate sandboxed thread for individual execution and private globals
     lua_State* L = lua_newthread(global);
@@ -989,9 +1076,19 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
         return format("Could not find '%s' type function in the global scope", name.value);
     }
 
-    // Store resulting function in the global environment
-    lua_xmove(L, global, 1);
-    lua_setglobal(global, name.value);
+    if (FFlag::LuauUserTypeFunExportedAndLocal)
+    {
+        // Store resulting function in the registry
+        lua_pushlightuserdata(global, function);
+        lua_xmove(L, global, 1);
+        lua_settable(global, LUA_REGISTRYINDEX);
+    }
+    else
+    {
+        // Store resulting function in the global environment
+        lua_xmove(L, global, 1);
+        lua_setglobal(global, name.value);
+    }
 
     return std::nullopt;
 }

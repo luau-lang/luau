@@ -293,3 +293,37 @@ using DifferFixtureWithBuiltins = DifferFixtureGeneric<BuiltinsFixture>;
     } while (false)
 
 #define LUAU_CHECK_NO_ERRORS(result) LUAU_CHECK_ERROR_COUNT(0, result)
+
+#define LUAU_CHECK_HAS_KEY(map, key) \
+    do \
+    { \
+        auto&& _m = (map); \
+        auto&& _k = (key); \
+        const size_t count = _m.count(_k); \
+        CHECK_MESSAGE(count, "Map should have key \"" << _k << "\""); \
+        if (!count) \
+        { \
+            MESSAGE("Keys: (count " << _m.size() << ")"); \
+            for (const auto& [k, v] : _m) \
+            { \
+                MESSAGE("\tkey: " << k); \
+            } \
+        } \
+    } while (false)
+
+#define LUAU_CHECK_HAS_NO_KEY(map, key) \
+    do \
+    { \
+        auto&& _m = (map); \
+        auto&& _k = (key); \
+        const size_t count = _m.count(_k); \
+        CHECK_MESSAGE(!count, "Map should not have key \"" << _k << "\""); \
+        if (count) \
+        { \
+            MESSAGE("Keys: (count " << _m.size() << ")"); \
+            for (const auto& [k, v] : _m) \
+            { \
+                MESSAGE("\tkey: " << k); \
+            } \
+        } \
+    } while (false)
