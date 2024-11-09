@@ -265,7 +265,7 @@ private:
     // fieldsep ::= `,' | `;'
     AstExpr* parseTableConstructor();
 
-    // TODO: Add grammar rules here?
+    // ifelseexp ::= `if' exp `then' exp {`elseif' exp `then' exp} `else' exp
     AstExpr* parseIfElseExpr();
 
     // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
