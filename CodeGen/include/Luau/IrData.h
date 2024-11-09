@@ -194,6 +194,10 @@ enum class IrCmd : uint8_t
     // A: TValue
     UNM_VEC,
 
+    // Compute dot product between two vectors
+    // A, B: TValue
+    DOT_VEC,
+
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
     // B: int (value)

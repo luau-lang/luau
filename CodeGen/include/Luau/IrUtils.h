@@ -176,6 +176,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::SUB_VEC:
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
+    case IrCmd::DOT_VEC:
     case IrCmd::UNM_VEC:
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:

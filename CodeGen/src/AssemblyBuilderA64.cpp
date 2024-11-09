@@ -586,6 +586,14 @@ void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
     placeR1("fabs", dst, src, 0b000'11110'01'1'0000'01'10000);
 }
 
+void AssemblyBuilderA64::faddp(RegisterA64 dst, RegisterA64 src)
+{
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+
+    placeR1("faddp", dst, src, 0b011'11110'0'0'11000'01101'10 | ((dst.kind == KindA64::d) << 12));
+}
+
 void AssemblyBuilderA64::fadd(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
     if (dst.kind == KindA64::d)

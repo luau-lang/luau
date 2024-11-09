@@ -75,6 +75,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::UNM_VEC:
         return IrValueKind::Tvalue;
+    case IrCmd::DOT_VEC:
+        return IrValueKind::Double;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
         return IrValueKind::Int;
