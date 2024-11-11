@@ -86,7 +86,8 @@ function test()
     function compute_triangle_cones()
         local mesh_area = 0
         
-        local i = 1
+        local pos = 1
+
         for i = 1,#mesh.indices,3 do
             local p0 = mesh.vertices[mesh.indices[i]]
             local p1 = mesh.vertices[mesh.indices[i + 1]]
@@ -100,9 +101,9 @@ function test()
             local area = vector.magnitude(normal)
             local invarea = (area == 0) and 0 or 1 / area;
             
-            mesh.triangle_cone_p[i] = (p0.p + p1.p + p2.p) / 3
-            mesh.triangle_cone_n[i] = normal * invarea
-            i += 1
+            mesh.triangle_cone_p[pos] = (p0.p + p1.p + p2.p) / 3
+            mesh.triangle_cone_n[pos] = normal * invarea
+            pos += 1
     
             mesh_area += area
         end
