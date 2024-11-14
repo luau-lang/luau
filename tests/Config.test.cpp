@@ -58,7 +58,11 @@ TEST_CASE("report_a_syntax_error")
 TEST_CASE("noinfer_is_still_allowed")
 {
     Config config;
-    auto err = parseConfig(R"( {"language": {"mode": "noinfer"}} )", config, true);
+
+    ConfigOptions opts;
+    opts.compat = true;
+
+    auto err = parseConfig(R"( {"language": {"mode": "noinfer"}} )", config, opts);
     REQUIRE(!err);
 
     CHECK_EQ(int(Luau::Mode::NoCheck), int(config.mode));
@@ -147,6 +151,10 @@ TEST_CASE("extra_globals")
 TEST_CASE("lint_rules_compat")
 {
     Config config;
+
+    ConfigOptions opts;
+    opts.compat = true;
+
     auto err = parseConfig(
         R"(
         {"lint": {
@@ -156,7 +164,7 @@ TEST_CASE("lint_rules_compat")
         }}
     )",
         config,
-        true
+        opts
     );
     REQUIRE(!err);
 

@@ -11,9 +11,7 @@ LUAU_EQSAT_ATOM(I32, int);
 LUAU_EQSAT_ATOM(Bool, bool);
 LUAU_EQSAT_ATOM(Str, std::string);
 
-LUAU_EQSAT_FIELD(Left);
-LUAU_EQSAT_FIELD(Right);
-LUAU_EQSAT_NODE_FIELDS(Add, Left, Right);
+LUAU_EQSAT_NODE_ARRAY(Add, 2);
 
 using namespace Luau;
 
@@ -117,8 +115,8 @@ TEST_CASE("node_field")
 
     Add add{left, right};
 
-    EqSat::Id left2 = add.field<Left>();
-    EqSat::Id right2 = add.field<Right>();
+    EqSat::Id left2 = add.operands()[0];
+    EqSat::Id right2 = add.operands()[1];
 
     CHECK(left == left2);
     CHECK(left != right2);
@@ -135,10 +133,10 @@ TEST_CASE("language_operands")
     const Add* add = v2.get<Add>();
     REQUIRE(add);
 
-    EqSat::Slice<EqSat::Id> actual = v2.operands();
+    EqSat::Slice<const EqSat::Id> actual = v2.operands();
     CHECK(actual.size() == 2);
-    CHECK(actual[0] == add->field<Left>());
-    CHECK(actual[1] == add->field<Right>());
+    CHECK(actual[0] == add->operands()[0]);
+    CHECK(actual[1] == add->operands()[1]);
 }
 
 TEST_SUITE_END();

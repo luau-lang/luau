@@ -138,6 +138,7 @@ public:
     void fneg(RegisterA64 dst, RegisterA64 src);
     void fsqrt(RegisterA64 dst, RegisterA64 src);
     void fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void faddp(RegisterA64 dst, RegisterA64 src);
 
     // Vector component manipulation
     void ins_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);

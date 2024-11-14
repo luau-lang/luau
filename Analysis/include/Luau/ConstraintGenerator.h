@@ -5,6 +5,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
@@ -15,7 +16,6 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Variant.h"
-#include "Luau/Normalize.h"
 
 #include <memory>
 #include <vector>
@@ -109,6 +109,9 @@ struct ConstraintGenerator
 
     // Needed to be able to enable error-suppression preservation for immediate refinements.
     NotNull<Normalizer> normalizer;
+
+    NotNull<Simplifier> simplifier;
+
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // Needed to resolve modules to make 'require' import types properly.
@@ -128,6 +131,7 @@ struct ConstraintGenerator
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
+        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<ModuleResolver> moduleResolver,
         NotNull<BuiltinTypes> builtinTypes,
@@ -405,6 +409,7 @@ private:
     TypeId makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
     // make an intersect type function of these two types
     TypeId makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
+    void prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program);
 
     /** Scan the program for global definitions.
      *
@@ -435,6 +440,8 @@ private:
         const ScopePtr& scope,
         Location location
     );
+
+    TypeId simplifyUnion(const ScopePtr& scope, Location location, TypeId left, TypeId right);
 };
 
 /** Borrow a vector of pointers from a vector of owning pointers to constraints.

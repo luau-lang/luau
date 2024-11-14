@@ -10,6 +10,7 @@
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DcrLogger.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/FileResolver.h"
 #include "Luau/NonStrictTypeChecker.h"
 #include "Luau/Parser.h"
@@ -46,7 +47,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
-LUAU_FASTFLAGVARIABLE(LuauMoreThoroughCycleDetection)
 
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAGVARIABLE(LuauStoreDFGOnModule2)
@@ -287,8 +287,7 @@ static void filterLintOptions(LintOptions& lintOptions, const std::vector<HotCom
 std::vector<RequireCycle> getRequireCycles(
     const FileResolver* resolver,
     const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes,
-    const SourceNode* start,
-    bool stopAtFirst = false
+    const SourceNode* start
 )
 {
     std::vector<RequireCycle> result;
@@ -357,9 +356,6 @@ std::vector<RequireCycle> getRequireCycles(
         if (!cycle.empty())
         {
             result.push_back({depLocation, std::move(cycle)});
-
-            if (stopAtFirst)
-                return result;
 
             // note: if we didn't find a cycle, all nodes that we've seen don't depend [transitively] on start
             // so it's safe to *only* clear seen vector when we find a cycle
@@ -884,18 +880,11 @@ void Frontend::addBuildQueueItems(
         data.environmentScope = getModuleEnvironment(*sourceModule, data.config, frontendOptions.forAutocomplete);
         data.recordJsonLog = FFlag::DebugLuauLogSolverToJson;
 
-        const Mode mode = sourceModule->mode.value_or(data.config.mode);
-
         // in the future we could replace toposort with an algorithm that can flag cyclic nodes by itself
         // however, for now getRequireCycles isn't expensive in practice on the cases we care about, and long term
         // all correct programs must be acyclic so this code triggers rarely
         if (cycleDetected)
-        {
-            if (FFlag::LuauMoreThoroughCycleDetection)
-                data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get(), false);
-            else
-                data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get(), mode == Mode::NoCheck);
-        }
+            data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get());
 
         data.options = frontendOptions;
 
@@ -1334,6 +1323,7 @@ ModulePtr check(
     unifierState.counters.iterationLimit = limits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
     Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
+    SimplifierPtr simplifier = newSimplifier(NotNull{&result->internalTypes}, builtinTypes);
     TypeFunctionRuntime typeFunctionRuntime{iceHandler, NotNull{&limits}};
 
     if (FFlag::LuauUserDefinedTypeFunctionNoEvaluation)
@@ -1342,6 +1332,7 @@ ModulePtr check(
     ConstraintGenerator cg{
         result,
         NotNull{&normalizer},
+        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         moduleResolver,
         builtinTypes,
@@ -1358,6 +1349,7 @@ ModulePtr check(
 
     ConstraintSolver cs{
         NotNull{&normalizer},
+        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),

@@ -92,6 +92,11 @@ void AstExprConstantString::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+bool AstExprConstantString::isQuoted() const
+{
+    return quoteStyle == QuoteStyle::QuotedSimple || quoteStyle == QuoteStyle::QuotedRaw;
+}
+
 AstExprLocal::AstExprLocal(const Location& location, AstLocal* local, bool upvalue)
     : AstExpr(ClassIndex(), location)
     , local(local)
@@ -760,11 +765,18 @@ void AstStatTypeAlias::visit(AstVisitor* visitor)
     }
 }
 
-AstStatTypeFunction::AstStatTypeFunction(const Location& location, const AstName& name, const Location& nameLocation, AstExprFunction* body)
+AstStatTypeFunction::AstStatTypeFunction(
+    const Location& location,
+    const AstName& name,
+    const Location& nameLocation,
+    AstExprFunction* body,
+    bool exported
+)
     : AstStat(ClassIndex(), location)
     , name(name)
     , nameLocation(nameLocation)
     , body(body)
+    , exported(exported)
 {
 }
 

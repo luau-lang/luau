@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauNewSolverPrePopulateClasses)
+
 TEST_SUITE_BEGIN("DefinitionTests");
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
@@ -492,11 +494,8 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
-    unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
-        frontend.globals,
-        frontend.globals.globalScope,
-        R"(
+    ScopedFastFlag _{FFlag::LuauNewSolverPrePopulateClasses, true};
+    loadDefinition(R"(
         declare class Channel
             Messages: { Message }
             OnMessage: (message: Message) -> ()
@@ -506,13 +505,19 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
             Text: string
             Channel: Channel
         end
-    )",
-        "@test",
-        /* captureComments */ false
-    );
-    freeze(frontend.globals.globalTypes);
+    )");
 
-    REQUIRE(result.success);
+    CheckResult result = check(R"(
+        local a: Channel
+        local b = a.Messages[1]
+        local c = b.Channel
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Channel");
+    CHECK_EQ(toString(requireType("b")), "Message");
+    CHECK_EQ(toString(requireType("c")), "Channel");
 }
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
