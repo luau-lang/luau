@@ -464,14 +464,14 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
 TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
 {
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: (number, number) -> (string
         )"),
         "Expected ')' (to close '(' at line 2), got <eof>"
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: (number, number) -> (
                 string
         )"),
@@ -479,42 +479,42 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: (number, number)
         )"),
         "Expected '->' when parsing function type, got <eof>"
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: (number, number
         )"),
         "Expected ')' (to close '(' at line 2), got <eof>"
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: {foo: string,
         )"),
         "Expected identifier when parsing table field, got <eof>"
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: {foo: string
         )"),
         "Expected '}' (to close '{' at line 2), got <eof>"
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: { [string]: number, [number]: string }
         )"),
         "Cannot have more than one table indexer"
     );
 
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             type T = <a>foo
         )"),
         "Expected '(' when parsing function parameters, got 'foo'"
@@ -546,10 +546,10 @@ TEST_CASE_FIXTURE(Fixture, "cannot_write_multiple_values_in_type_groups")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_error_messages")
 {
-    CHECK_EQ(getParseError("type 5 = number"), "Expected identifier when parsing type name, got '5'");
-    CHECK_EQ(getParseError("type A"), "Expected '=' when parsing type alias, got <eof>");
-    CHECK_EQ(getParseError("type A<"), "Expected identifier, got <eof>");
-    CHECK_EQ(getParseError("type A<B"), "Expected '>' (to close '<' at column 7), got <eof>");
+    CHECK_EQ(matchParseError("type 5 = number"), "Expected identifier when parsing type name, got '5'");
+    CHECK_EQ(matchParseError("type A"), "Expected '=' when parsing type alias, got <eof>");
+    CHECK_EQ(matchParseError("type A<"), "Expected identifier, got <eof>");
+    CHECK_EQ(matchParseError("type A<B"), "Expected '>' (to close '<' at column 7), got <eof>");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expression")
@@ -714,14 +714,14 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
 {
-    CHECK_EQ(getParseError("return 0 print(5)"), "Expected <eof>, got 'print'");
-    CHECK_EQ(getParseError("while true do break print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
+    CHECK_EQ(matchParseError("return 0 print(5)"), "Expected <eof>, got 'print'");
+    CHECK_EQ(matchParseError("while true do break print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_unicode")
 {
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local ☃ = 10
         )"),
         "Expected identifier when parsing variable name, got Unicode character U+2603"
