@@ -38,24 +38,6 @@ struct Counter
 
 int Counter::instanceCount = 0;
 
-// TODO: delete this and replace all other use of this function with matchParseError
-std::string getParseError(const std::string& code)
-{
-    Fixture f;
-
-    try
-    {
-        f.parse(code);
-    }
-    catch (const Luau::ParseErrors& e)
-    {
-        // in general, tests check only the first error
-        return e.getErrors().front().getMessage();
-    }
-
-    throw std::runtime_error("Expected a parse error in '" + code + "'");
-}
-
 } // namespace
 
 TEST_SUITE_BEGIN("AllocatorTests");
@@ -655,7 +637,7 @@ TEST_CASE_FIXTURE(Fixture, "vertical_space")
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_name")
 {
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local a: Foo.=
         )"),
         "Expected identifier when parsing field name, got '='"
@@ -705,12 +687,12 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
-    CHECK_EQ(getParseError("return 0b123"), "Malformed number");
-    CHECK_EQ(getParseError("return 123x"), "Malformed number");
-    CHECK_EQ(getParseError("return 0xg"), "Malformed number");
-    CHECK_EQ(getParseError("return 0x0x123"), "Malformed number");
-    CHECK_EQ(getParseError("return 0xffffffffffffffffffffllllllg"), "Malformed number");
-    CHECK_EQ(getParseError("return 0x0xffffffffffffffffffffffffffff"), "Malformed number");
+    CHECK_EQ(matchParseError("return 0b123"), "Malformed number");
+    CHECK_EQ(matchParseError("return 123x"), "Malformed number");
+    CHECK_EQ(matchParseError("return 0xg"), "Malformed number");
+    CHECK_EQ(matchParseError("return 0x0x123"), "Malformed number");
+    CHECK_EQ(matchParseError("return 0xffffffffffffffffffffllllllg"), "Malformed number");
+    CHECK_EQ(matchParseError("return 0x0xffffffffffffffffffffffffffff"), "Malformed number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
@@ -738,7 +720,7 @@ TEST_CASE_FIXTURE(Fixture, "allow_unicode_in_string")
 TEST_CASE_FIXTURE(Fixture, "error_on_confusable")
 {
     CHECK_EQ(
-        getParseError(R"(
+        matchParseError(R"(
             local pi = 3․13
         )"),
         "Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)"
@@ -749,8 +731,8 @@ TEST_CASE_FIXTURE(Fixture, "error_on_non_utf8_sequence")
 {
     const char* expected = "Expected identifier when parsing expression, got invalid UTF-8 sequence";
 
-    CHECK_EQ(getParseError("local pi = \xFF!"), expected);
-    CHECK_EQ(getParseError("local pi = \xE2!"), expected);
+    CHECK_EQ(matchParseError("local pi = \xFF!"), expected);
+    CHECK_EQ(matchParseError("local pi = \xE2!"), expected);
 }
 
 TEST_CASE_FIXTURE(Fixture, "lex_broken_unicode")
@@ -818,7 +800,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_continue")
 
 TEST_CASE_FIXTURE(Fixture, "continue_not_last_error")
 {
-    CHECK_EQ(getParseError("while true do continue print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
+    CHECK_EQ(matchParseError("while true do continue print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_export_type")
@@ -861,7 +843,7 @@ TEST_CASE_FIXTURE(Fixture, "export_is_an_identifier_only_when_followed_by_type")
 
 TEST_CASE_FIXTURE(Fixture, "incomplete_statement_error")
 {
-    CHECK_EQ(getParseError("fiddlesticks"), "Incomplete statement: expected assignment or a function call");
+    CHECK_EQ(matchParseError("fiddlesticks"), "Incomplete statement: expected assignment or a function call");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment")
