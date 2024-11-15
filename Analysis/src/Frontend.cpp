@@ -50,6 +50,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
 
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAGVARIABLE(LuauStoreDFGOnModule2)
+LUAU_FASTFLAGVARIABLE(LuauStoreSolverTypeOnModule)
 
 namespace Luau
 {
@@ -1285,6 +1286,8 @@ ModulePtr check(
     LUAU_TIMETRACE_ARGUMENT("name", sourceModule.humanReadableName.c_str());
 
     ModulePtr result = std::make_shared<Module>();
+    if (FFlag::LuauStoreSolverTypeOnModule)
+        result->checkedInNewSolver = true;
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;
     result->mode = mode;

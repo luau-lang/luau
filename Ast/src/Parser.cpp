@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
 LUAU_FASTFLAGVARIABLE(LuauPortableStringZeroCheck)
+LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 
 namespace Luau
 {
@@ -1773,6 +1774,11 @@ AstType* Parser::parseFunctionTypeTail(
     );
 }
 
+static bool isTypeFollow(Lexeme::Type c)
+{
+    return c == '|' || c == '?' || c == '&';
+}
+
 // Type ::=
 //      nil |
 //      Name[`.' Name] [`<' namelist `>'] |
@@ -2953,17 +2959,75 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
             if (shouldParseTypePack(lexer))
             {
                 AstTypePack* typePack = parseTypePack();
-
                 parameters.push_back({{}, typePack});
             }
             else if (lexer.current().type == '(')
             {
-                auto [type, typePack] = parseSimpleTypeOrPack();
+                if (FFlag::LuauAllowComplexTypesInGenericParams)
+                {
+                    Location begin = lexer.current().location;
+                    AstType* type = nullptr;
+                    AstTypePack* typePack = nullptr;
+                    Lexeme::Type c = lexer.current().type;
 
-                if (typePack)
-                    parameters.push_back({{}, typePack});
+                    if (c != '|' && c != '&')
+                    {
+                        auto typeOrTypePack = parseSimpleType(/* allowPack */ true, /* inDeclarationContext */ false);
+                        type = typeOrTypePack.type;
+                        typePack = typeOrTypePack.typePack;
+                    }
+
+                    // Consider the following type:
+                    //
+                    //  X<(T)>
+                    //
+                    // Is this a type pack or a parenthesized type? The
+                    // assumption will be a type pack, as that's what allows one
+                    // to express either a singular type pack or a potential
+                    // complex type.
+
+                    if (typePack)
+                    {
+                        auto explicitTypePack = typePack->as<AstTypePackExplicit>();
+                        if (explicitTypePack && explicitTypePack->typeList.tailType == nullptr && explicitTypePack->typeList.types.size == 1 &&
+                            isTypeFollow(lexer.current().type))
+                        {
+                            // If we parsed an explicit type pack with a single
+                            // type in it (something of the form `(T)`), and
+                            // the next lexeme is one that follows a type
+                            // (&, |, ?), then assume that this was actually a
+                            // parenthesized type.
+                            parameters.push_back({parseTypeSuffix(explicitTypePack->typeList.types.data[0], begin), {}});
+                        }
+                        else
+                        {
+                            // Otherwise, it's a type pack.
+                            parameters.push_back({{}, typePack});
+                        }
+                    }
+                    else
+                    {
+                        // There's two cases in which `typePack` will be null:
+                        // - We try to parse a simple type or a type pack, and
+                        //   we get a simple type: there's no ambiguity and
+                        //   we attempt to parse a complex type.
+                        // - The next lexeme was a `|` or `&` indicating a
+                        //   union or intersection type with a leading
+                        //   separator. We just fall right into
+                        //   `parseTypeSuffix`, which allows its first
+                        //   argument to be `nullptr`
+                        parameters.push_back({parseTypeSuffix(type, begin), {}});
+                    }
+                }
                 else
-                    parameters.push_back({type, {}});
+                {
+                    auto [type, typePack] = parseSimpleTypeOrPack();
+
+                    if (typePack)
+                        parameters.push_back({{}, typePack});
+                    else
+                        parameters.push_back({type, {}});
+                }
             }
             else if (lexer.current().type == '>' && parameters.empty())
             {

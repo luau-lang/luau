@@ -9,8 +9,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-
 namespace Luau
 {
 
@@ -376,21 +374,11 @@ TypeId matchLiteralType(
                 const TypeId* keyTy = astTypes->find(item.key);
                 LUAU_ASSERT(keyTy);
                 TypeId tKey = follow(*keyTy);
-                if (DFInt::LuauTypeSolverRelease >= 648)
-                {
-                    LUAU_ASSERT(!is<BlockedType>(tKey));
-                }
-                else if (get<BlockedType>(tKey))
-                    toBlock.push_back(tKey);
+                LUAU_ASSERT(!is<BlockedType>(tKey));
                 const TypeId* propTy = astTypes->find(item.value);
                 LUAU_ASSERT(propTy);
                 TypeId tProp = follow(*propTy);
-                if (DFInt::LuauTypeSolverRelease >= 648)
-                {
-                    LUAU_ASSERT(!is<BlockedType>(tKey));
-                }
-                else if (get<BlockedType>(tProp))
-                    toBlock.push_back(tProp);
+                LUAU_ASSERT(!is<BlockedType>(tProp));
                 // Populate expected types for non-string keys declared with [] (the code below will handle the case where they are strings)
                 if (!item.key->as<AstExprConstantString>() && expectedTableTy->indexer)
                     (*astExpectedTypes)[item.key] = expectedTableTy->indexer->indexType;

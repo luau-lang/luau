@@ -182,8 +182,6 @@ DataFlowGraph DataFlowGraphBuilder::build(AstStatBlock* block, NotNull<InternalE
 {
     LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
 
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
     DataFlowGraphBuilder builder;
     builder.handle = handle;
     DfgScope* moduleScope = builder.makeChildScope(block->location);
@@ -208,8 +206,6 @@ std::pair<std::shared_ptr<DataFlowGraph>, std::vector<std::unique_ptr<DfgScope>>
 
     LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
 
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
     DataFlowGraphBuilder builder;
     builder.handle = handle;
     DfgScope* moduleScope = builder.makeChildScope(block->location);
@@ -224,56 +220,6 @@ std::pair<std::shared_ptr<DataFlowGraph>, std::vector<std::unique_ptr<DfgScope>>
     }
 
     return {std::make_shared<DataFlowGraph>(std::move(builder.graph)), std::move(builder.scopes)};
-}
-
-DataFlowGraph DataFlowGraphBuilder::updateGraph(
-    const DataFlowGraph& staleGraph,
-    const std::vector<std::unique_ptr<DfgScope>>& scopes,
-    AstStatBlock* fragment,
-    const Position& cursorPos,
-    NotNull<InternalErrorReporter> handle
-)
-{
-    LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
-    DataFlowGraphBuilder builder;
-    builder.handle = handle;
-    // Generate a list of prepopulated locals
-    ReferencedDefFinder finder;
-    fragment->visit(&finder);
-    for (AstLocal* loc : finder.referencedLocalDefs)
-    {
-        if (staleGraph.localDefs.contains(loc))
-        {
-            builder.graph.localDefs[loc] = *staleGraph.localDefs.find(loc);
-        }
-    }
-
-    // Figure out which scope we should start re-accumulating DFG information from again
-    DfgScope* nearest = nullptr;
-    for (auto& sc : scopes)
-    {
-        if (nearest == nullptr || (sc->location.begin <= cursorPos && nearest->location.begin < sc->location.begin))
-            nearest = sc.get();
-    }
-
-    // The scope stack should start with the nearest enclosing scope so we can resume DFG'ing correctly
-    PushScope ps{builder.scopeStack, nearest};
-    // Conspire for the current scope in the scope stack to be a fresh dfg scope, parented to the above nearest enclosing scope, so any insertions are
-    // isolated there
-    DfgScope* scope = builder.makeChildScope(fragment->location);
-    PushScope psAgain{builder.scopeStack, scope};
-
-    builder.visitBlockWithoutChildScope(fragment);
-
-    if (FFlag::DebugLuauFreezeArena)
-    {
-        builder.defArena->allocator.freeze();
-        builder.keyArena->allocator.freeze();
-    }
-
-    return std::move(builder.graph);
 }
 
 void DataFlowGraphBuilder::resolveCaptures()
@@ -982,7 +928,6 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIndexName* i)
 {
     auto [parentDef, parentKey] = visitExpr(i->expr);
-
     std::string index = i->index.value;
 
     DefId def = lookup(parentDef, index);

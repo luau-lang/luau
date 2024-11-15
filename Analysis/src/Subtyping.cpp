@@ -22,7 +22,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauRetrySubtypingWithoutHiddenPack)
 
 namespace Luau
@@ -1395,17 +1394,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope)
 {
-    if (DFInt::LuauTypeSolverRelease >= 646)
-    {
-        return isCovariantWith(env, subMt->table, superMt->table, scope)
-            .withBothComponent(TypePath::TypeField::Table)
-            .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
-    }
-    else
-    {
-        return isCovariantWith(env, subMt->table, superMt->table, scope)
-            .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
-    }
+    return isCovariantWith(env, subMt->table, superMt->table, scope)
+        .withBothComponent(TypePath::TypeField::Table)
+        .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope)

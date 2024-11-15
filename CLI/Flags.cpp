@@ -2,13 +2,10 @@
 #include "Luau/Common.h"
 #include "Luau/ExperimentalFlags.h"
 
-#include <limits> // TODO: remove with LuauTypeSolverRelease
 #include <string_view>
 
 #include <stdio.h>
 #include <string.h>
-
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 static void setLuauFlag(std::string_view name, bool state)
 {
@@ -26,13 +23,6 @@ static void setLuauFlag(std::string_view name, bool state)
 
 static void setLuauFlags(bool state)
 {
-    if (state)
-    {
-        // Setting flags to 'true' means enabling all Luau flags including new type solver
-        // In that case, it is provided with all fixes enabled (as if each fix had its own boolean flag)
-        DFInt::LuauTypeSolverRelease.value = std::numeric_limits<int>::max();
-    }
-
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
         if (strncmp(flag->name, "Luau", 4) == 0)
             flag->value = state;

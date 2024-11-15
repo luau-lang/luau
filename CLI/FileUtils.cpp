@@ -108,6 +108,7 @@ std::string resolvePath(std::string_view path, std::string_view baseFilePath)
     // - if relative (when path and baseFilePath are both relative), resolvedPathPrefix remains empty
     // - if absolute (if either path or baseFilePath are absolute), resolvedPathPrefix is "C:\", "/", etc.
     std::string resolvedPathPrefix;
+    bool isResolvedPathRelative = false;
 
     if (isAbsolutePath(path))
     {
@@ -118,19 +119,19 @@ std::string resolvePath(std::string_view path, std::string_view baseFilePath)
     }
     else
     {
-        pathComponents = splitPath(path);
+        size_t afterPrefix = baseFilePath.find_first_of("\\/") + 1;
+        baseFilePathComponents = splitPath(baseFilePath.substr(afterPrefix));
         if (isAbsolutePath(baseFilePath))
         {
             // path is relative and baseFilePath is absolute, we use baseFilePath's prefix
-            size_t afterPrefix = baseFilePath.find_first_of("\\/") + 1;
             resolvedPathPrefix = baseFilePath.substr(0, afterPrefix);
-            baseFilePathComponents = splitPath(baseFilePath.substr(afterPrefix));
         }
         else
         {
             // path and baseFilePath are both relative, we do not set a prefix (resolved path will be relative)
-            baseFilePathComponents = splitPath(baseFilePath);
+            isResolvedPathRelative = true;
         }
+        pathComponents = splitPath(path);
     }
 
     // Remove filename from components
@@ -145,7 +146,7 @@ std::string resolvePath(std::string_view path, std::string_view baseFilePath)
         {
             if (baseFilePathComponents.empty())
             {
-                if (resolvedPathPrefix.empty()) // only when final resolved path will be relative
+                if (isResolvedPathRelative)
                     numPrependedParents++;      // "../" will later be added to the beginning of the resolved path
             }
             else if (baseFilePathComponents.back() != "..")
@@ -159,13 +160,25 @@ std::string resolvePath(std::string_view path, std::string_view baseFilePath)
         }
     }
 
+    // Create resolved path prefix for relative paths
+    if (isResolvedPathRelative)
+    {
+        if (numPrependedParents > 0)
+        {
+            resolvedPathPrefix.reserve(numPrependedParents * 3);
+            for (int i = 0; i < numPrependedParents; i++)
+            {
+                resolvedPathPrefix += "../";
+            }
+        }
+        else
+        {
+            resolvedPathPrefix = "./";
+        }
+    }
+
     // Join baseFilePathComponents to form the resolved path
     std::string resolvedPath = resolvedPathPrefix;
-    // Only when resolvedPath will be relative
-    for (int i = 0; i < numPrependedParents; i++)
-    {
-        resolvedPath += "../";
-    }
     for (auto iter = baseFilePathComponents.begin(); iter != baseFilePathComponents.end(); ++iter)
     {
         if (iter != baseFilePathComponents.begin())

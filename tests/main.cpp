@@ -27,12 +27,9 @@
 #include <sys/sysctl.h>
 #endif
 
-#include <limits> // TODO: remove with LuauTypeSolverRelease
 #include <optional>
 
 #include <stdio.h>
-
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 // Indicates if verbose output is enabled; can be overridden via --verbose
 // Currently, this enables output from 'print', but other verbose output could be enabled eventually.
@@ -414,12 +411,6 @@ int main(int argc, char** argv)
         randomSeed = unsigned(time(nullptr));
         printf("Using RNG seed %u\n", *randomSeed);
     }
-
-    // New Luau type solver uses a temporary scheme where fixes are made under a single version flag
-    // When flags are enabled, new solver is enabled with all new features and fixes
-    // When it's disabled, this value should have no effect (all uses under a new solver)
-    // Flag setup argument can still be used to override this to a specific value if desired
-    DFInt::LuauTypeSolverRelease.value = std::numeric_limits<int>::max();
 
     if (std::vector<doctest::String> flags; doctest::parseCommaSepArgs(argc, argv, "--fflags=", flags))
         setFastFlags(flags);

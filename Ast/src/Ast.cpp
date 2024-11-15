@@ -3,12 +3,7 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauNativeAttribute);
-
-// The default value here is 643 because the first release in which this was implemented is 644,
-// and actively we want new changes to be off by default until they're enabled consciously.
-// The flag is placed in AST project here to be common in all Luau libraries
-LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSolverRelease, 643)
+LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {

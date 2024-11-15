@@ -32,7 +32,8 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+
+LUAU_FASTFLAGVARIABLE(LuauTableKeysAreRValues)
 
 namespace Luau
 {
@@ -1625,10 +1626,6 @@ void TypeChecker2::indexExprMetatableHelper(AstExprIndexExpr* indexExpr, const M
         indexExprMetatableHelper(indexExpr, mtmt, exprType, indexType);
     else
     {
-        if (!(DFInt::LuauTypeSolverRelease >= 647))
-        {
-            LUAU_ASSERT(tt || get<PrimitiveType>(follow(metaTable->table)));
-        }
         // CLI-122161: We're not handling unions correctly (probably).
         reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
@@ -1836,11 +1833,18 @@ void TypeChecker2::visit(AstExprFunction* fn)
 
 void TypeChecker2::visit(AstExprTable* expr)
 {
-    // TODO!
     for (const AstExprTable::Item& item : expr->items)
     {
-        if (item.key)
-            visit(item.key, ValueContext::LValue);
+        if (FFlag::LuauTableKeysAreRValues)
+        {
+            if (item.key)
+                visit(item.key, ValueContext::RValue);
+        }
+        else
+        {
+            if (item.key)
+                visit(item.key, ValueContext::LValue);
+        }
         visit(item.value, ValueContext::RValue);
     }
 }
