@@ -68,6 +68,9 @@ struct Module
 {
     ~Module();
 
+    // TODO: Clip this when we clip FFlagLuauSolverV2
+    bool checkedInNewSolver = false;
+
     ModuleName name;
     std::string humanReadableName;
 

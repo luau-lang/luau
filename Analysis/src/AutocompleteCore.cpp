@@ -21,7 +21,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(AutocompleteRequirePathSuggestions2)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 

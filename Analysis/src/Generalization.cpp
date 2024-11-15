@@ -9,8 +9,6 @@
 #include "Luau/TypePack.h"
 #include "Luau/VisitType.h"
 
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-
 namespace Luau
 {
 
@@ -528,12 +526,7 @@ struct TypeCacher : TypeOnceVisitor
     DenseHashSet<TypePackId> uncacheablePacks{nullptr};
 
     explicit TypeCacher(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        // CLI-120975: once we roll out release 646, we _want_ to visit bound
-        // types to ensure they're marked as uncacheable if the types they are
-        // bound to are also uncacheable. Hence: if LuauTypeSolverRelease is
-        // less than 646, skip bound types (the prior behavior). Otherwise, 
-        // do not skip bound types.
-        : TypeOnceVisitor(/* skipBoundTypes */ DFInt::LuauTypeSolverRelease < 646)
+        : TypeOnceVisitor(/* skipBoundTypes */ false)
         , cachedTypes(cachedTypes)
     {
     }
@@ -570,33 +563,19 @@ struct TypeCacher : TypeOnceVisitor
 
     bool visit(TypeId ty) override
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
-        {
-            // NOTE: `TypeCacher` should explicitly visit _all_ types and type packs,
-            // otherwise it's prone to marking types that cannot be cached as
-            // cacheable.
-            LUAU_ASSERT(false);
-            LUAU_UNREACHABLE();
-        }
-        else
-        {
-            return true;
-        }
+        // NOTE: `TypeCacher` should explicitly visit _all_ types and type packs,
+        // otherwise it's prone to marking types that cannot be cached as
+        // cacheable.
+        LUAU_ASSERT(false);
+        LUAU_UNREACHABLE();
     }
 
     bool visit(TypeId ty, const BoundType& btv) override
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
-        {
-            traverse(btv.boundTo);
-            if (isUncacheable(btv.boundTo))
-                markUncacheable(ty);
-            return false;
-        }
-        else
-        {
-            return true;
-        }
+        traverse(btv.boundTo);
+        if (isUncacheable(btv.boundTo))
+            markUncacheable(ty);
+        return false;
     }
 
     bool visit(TypeId ty, const FreeType& ft) override
@@ -623,15 +602,8 @@ struct TypeCacher : TypeOnceVisitor
 
     bool visit(TypeId ty, const ErrorType&) override
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
-        {
-            cache(ty);
-            return false;
-        }
-        else
-        {
-            return true;
-        }
+        cache(ty);
+        return false;
     }
 
     bool visit(TypeId ty, const PrimitiveType&) override
@@ -773,20 +745,13 @@ struct TypeCacher : TypeOnceVisitor
 
     bool visit(TypeId ty, const MetatableType& mtv) override
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
-        {
-            traverse(mtv.table);
-            traverse(mtv.metatable);
-            if (isUncacheable(mtv.table) || isUncacheable(mtv.metatable))
-                markUncacheable(ty);
-            else
-                cache(ty);
-            return false;
-        }
+        traverse(mtv.table);
+        traverse(mtv.metatable);
+        if (isUncacheable(mtv.table) || isUncacheable(mtv.metatable))
+            markUncacheable(ty);
         else
-        {
-            return true;
-        }
+            cache(ty);
+        return false;
     }
 
     bool visit(TypeId ty, const ClassType&) override
@@ -911,18 +876,11 @@ struct TypeCacher : TypeOnceVisitor
 
     bool visit(TypePackId tp) override
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
-        {
-            // NOTE: `TypeCacher` should explicitly visit _all_ types and type packs,
-            // otherwise it's prone to marking types that cannot be cached as
-            // cacheable, which will segfault down the line.
-            LUAU_ASSERT(false);
-            LUAU_UNREACHABLE();
-        }
-        else
-        {
-            return true;
-        }
+        // NOTE: `TypeCacher` should explicitly visit _all_ types and type packs,
+        // otherwise it's prone to marking types that cannot be cached as
+        // cacheable, which will segfault down the line.
+        LUAU_ASSERT(false);
+        LUAU_UNREACHABLE();
     }
 
     bool visit(TypePackId tp, const FreeTypePack&) override
@@ -967,35 +925,28 @@ struct TypeCacher : TypeOnceVisitor
     }
 
     bool visit(TypePackId tp, const BoundTypePack& btp) override {
-        if (DFInt::LuauTypeSolverRelease >= 645) {
-            traverse(btp.boundTo);
-            if (isUncacheable(btp.boundTo))
-                markUncacheable(tp);
-            return false;
-        }
-        return true;
+        traverse(btp.boundTo);
+        if (isUncacheable(btp.boundTo))
+            markUncacheable(tp);
+        return false;
     }
 
     bool visit(TypePackId tp, const TypePack& typ) override
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
+        bool uncacheable = false;
+        for (TypeId ty : typ.head)
         {
-            bool uncacheable = false;
-            for (TypeId ty : typ.head)
-            {
-                traverse(ty);
-                uncacheable |= isUncacheable(ty);
-            }
-            if (typ.tail)
-            {
-                traverse(*typ.tail);
-                uncacheable |= isUncacheable(*typ.tail);
-            }
-            if (uncacheable)
-                markUncacheable(tp);
-            return false;
+            traverse(ty);
+            uncacheable |= isUncacheable(ty);
         }
-        return true;
+        if (typ.tail)
+        {
+            traverse(*typ.tail);
+            uncacheable |= isUncacheable(*typ.tail);
+        }
+        if (uncacheable)
+            markUncacheable(tp);
+        return false;
     }
 };
 
