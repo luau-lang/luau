@@ -3735,7 +3735,7 @@ TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")
     CHECK_EQ(unionTy->types.size, 3);
     // NOTE: These are `const char*` so we can compare them to `AstName`s later.
     std::vector<const char*> expectedTypes{"number", "boolean", "string"};
-    for (auto i = 0; i < expectedTypes.size(); i++)
+    for (size_t i = 0; i < expectedTypes.size(); i++)
     {
         auto ty = unionTy->types.data[i]->as<AstTypeReference>();
         LUAU_ASSERT(ty);
