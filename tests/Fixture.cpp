@@ -26,7 +26,6 @@ static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
 
@@ -243,21 +242,21 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
     return result.root;
 }
 
-CheckResult Fixture::check(Mode mode, const std::string& source)
+CheckResult Fixture::check(Mode mode, const std::string& source, std::optional<FrontendOptions> options)
 {
     ModuleName mm = fromString(mainModuleName);
     configResolver.defaultConfig.mode = mode;
     fileResolver.source[mm] = std::move(source);
     frontend.markDirty(mm);
 
-    CheckResult result = frontend.check(mm);
+    CheckResult result = frontend.check(mm, options);
 
     return result;
 }
 
-CheckResult Fixture::check(const std::string& source)
+CheckResult Fixture::check(const std::string& source, std::optional<FrontendOptions> options)
 {
-    return check(Mode::Strict, source);
+    return check(Mode::Strict, source, options);
 }
 
 LintResult Fixture::lint(const std::string& source, const std::optional<LintOptions>& lintOptions)

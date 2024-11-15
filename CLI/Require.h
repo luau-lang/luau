@@ -1,64 +1,84 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "lua.h"
-#include "lualib.h"
-
 #include "Luau/Config.h"
 
+#include <functional>
 #include <string>
 #include <string_view>
 
 class RequireResolver
 {
 public:
-    std::string chunkname;
-    std::string absolutePath;
-    std::string sourceCode;
-
     enum class ModuleStatus
     {
         Cached,
         FileRead,
-        Ambiguous,
-        NotFound
+        ErrorReported
     };
 
     struct ResolvedRequire
     {
         ModuleStatus status;
-        std::string chunkName;
+        std::string identifier;
         std::string absolutePath;
         std::string sourceCode;
     };
 
-    [[nodiscard]] ResolvedRequire static resolveRequire(lua_State* L, std::string path);
+    struct RequireContext
+    {
+        virtual ~RequireContext() = default;
+        virtual std::string getPath() = 0;
+        virtual bool isRequireAllowed() = 0;
+        virtual bool isStdin() = 0;
+        virtual std::string createNewIdentifer(const std::string& path) = 0;
+    };
+
+    struct CacheManager
+    {
+        virtual ~CacheManager() = default;
+        virtual bool isCached(const std::string& path)
+        {
+            return false;
+        }
+    };
+
+    struct ErrorHandler
+    {
+        virtual ~ErrorHandler() = default;
+        virtual void reportError(const std::string message) {}
+    };
+
+    RequireResolver(std::string pathToResolve, RequireContext& requireContext, CacheManager& cacheManager, ErrorHandler& errorHandler);
+
+    [[nodiscard]] ResolvedRequire resolveRequire(std::function<void(const ModuleStatus)> completionCallback = nullptr);
 
 private:
     std::string pathToResolve;
-    std::string_view sourceChunkname;
 
-    RequireResolver(lua_State* L, std::string path);
+    RequireContext& requireContext;
+    CacheManager& cacheManager;
+    ErrorHandler& errorHandler;
 
-    ModuleStatus findModule();
-    lua_State* L;
+    ResolvedRequire resolvedRequire;
+    bool isRequireResolved = false;
+
     Luau::Config config;
     std::string lastSearchedDir;
     bool isConfigFullyResolved = false;
 
-    bool isRequireAllowed(std::string_view sourceChunkname);
-    bool isPrefixValid();
+    [[nodiscard]] bool initialize();
 
-    void resolveAndStoreDefaultPaths();
+    ModuleStatus findModule();
     ModuleStatus findModuleImpl();
-    bool isPathAmbiguous(const std::string& path);
 
+    [[nodiscard]] bool resolveAndStoreDefaultPaths();
     std::optional<std::string> getRequiringContextAbsolute();
     std::string getRequiringContextRelative();
 
-    void substituteAliasIfPresent(std::string& path);
+    [[nodiscard]] bool substituteAliasIfPresent(std::string& path);
     std::optional<std::string> getAlias(std::string alias);
 
-    void parseNextConfig();
-    void parseConfigInDirectory(const std::string& path);
+    [[nodiscard]] bool parseNextConfig();
+    [[nodiscard]] bool parseConfigInDirectory(const std::string& directory);
 };

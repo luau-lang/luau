@@ -3,6 +3,8 @@
 
 #include "Luau/Common.h"
 
+#include <limits>
+
 namespace Luau::EqSat
 {
 

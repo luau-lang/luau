@@ -32,7 +32,6 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauAcceptIndexingTableUnionsIntersections)
 LUAU_FASTFLAGVARIABLE(LuauMetatableFollow)
 LUAU_FASTFLAGVARIABLE(LuauRequireCyclesDontAlwaysReturnAny)
 
@@ -3490,7 +3489,6 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         }
     }
 
-    if (FFlag::LuauAcceptIndexingTableUnionsIntersections)
     {
         // We're going to have a whole vector.
         std::vector<TableType*> tableTypes{};
@@ -3640,57 +3638,6 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         }
 
         return addType(IntersectionType{{resultTypes.begin(), resultTypes.end()}});
-    }
-    else
-    {
-        TableType* exprTable = getMutableTableType(exprType);
-        if (!exprTable)
-        {
-            reportError(TypeError{expr.expr->location, NotATable{exprType}});
-            return errorRecoveryType(scope);
-        }
-
-        if (value)
-        {
-            const auto& it = exprTable->props.find(value->value.data);
-            if (it != exprTable->props.end())
-            {
-                return it->second.type();
-            }
-            else if ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free)
-            {
-                TypeId resultType = freshType(scope);
-                Property& property = exprTable->props[value->value.data];
-                property.setType(resultType);
-                property.location = expr.index->location;
-                return resultType;
-            }
-        }
-
-        if (exprTable->indexer)
-        {
-            const TableIndexer& indexer = *exprTable->indexer;
-            unify(indexType, indexer.indexType, scope, expr.index->location);
-            return indexer.indexResultType;
-        }
-        else if ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free)
-        {
-            TypeId indexerType = freshType(exprTable->level);
-            unify(indexType, indexerType, scope, expr.location);
-            TypeId indexResultType = freshType(exprTable->level);
-
-            exprTable->indexer = TableIndexer{anyIfNonstrict(indexerType), anyIfNonstrict(indexResultType)};
-            return indexResultType;
-        }
-        else
-        {
-            /*
-             * If we use [] indexing to fetch a property from a sealed table that
-             * has no indexer, we have no idea if it will work so we just return any
-             * and hope for the best.
-             */
-            return anyType;
-        }
     }
 }
 

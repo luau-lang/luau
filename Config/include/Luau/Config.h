@@ -21,10 +21,10 @@ constexpr const char* kConfigName = ".luaurc";
 struct Config
 {
     Config();
-    Config(const Config& other) noexcept;
-    Config& operator=(const Config& other) noexcept;
-    Config(Config&& other) noexcept = default;
-    Config& operator=(Config&& other) noexcept = default;
+    Config(const Config& other);
+    Config& operator=(const Config& other);
+    Config(Config&& other) = default;
+    Config& operator=(Config&& other) = default;
 
     Mode mode = Mode::Nonstrict;
 

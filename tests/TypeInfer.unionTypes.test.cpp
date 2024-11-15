@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -645,10 +644,7 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     // this is a cyclic union of number arrays, so it _is_ a table, even if it's a nonsense type.
     // no need to generate a NotATable error here. The new solver automatically handles this and
     // correctly reports no errors.
-    if (FFlag::LuauAcceptIndexingTableUnionsIntersections || FFlag::LuauSolverV2)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")

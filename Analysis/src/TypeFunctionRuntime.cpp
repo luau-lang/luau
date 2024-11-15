@@ -14,7 +14,6 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
 
@@ -699,13 +698,10 @@ static int setTableIndexer(lua_State* L)
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     TypeFunctionTypeId value = getTypeUserData(L, 3);
 
-    if (DFInt::LuauTypeSolverRelease >= 646)
+    if (auto tfnt = get<TypeFunctionNeverType>(key))
     {
-        if (auto tfnt = get<TypeFunctionNeverType>(key))
-        {
-            tftt->indexer = std::nullopt;
-            return 0;
-        }
+        tftt->indexer = std::nullopt;
+        return 0;
     }
 
     tftt->indexer = TypeFunctionTableIndexer{key, value};

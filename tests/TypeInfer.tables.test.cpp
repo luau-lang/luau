@@ -18,10 +18,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
 LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
-
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
+LUAU_FASTFLAG(LuauTableKeysAreRValues)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -4802,8 +4800,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
 {
-    ScopedFastFlag sff{FFlag::LuauAcceptIndexingTableUnionsIntersections, true};
-
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
         local test2 = test[1]
@@ -4820,8 +4816,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table2")
 {
-    ScopedFastFlag sff{FFlag::LuauAcceptIndexingTableUnionsIntersections, true};
-
     CheckResult result = check(R"(
         local test = if true then {} else {}
         local test2 = test[1]
@@ -4934,6 +4928,28 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
             ['stringField']='Heyo'
         })
     )"));
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_property_reads")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauTableKeysAreRValues, true};
+
+    // none of the `t.id` accesses here should error
+    auto result = check(R"(
+        --!strict
+        type readonlyTable = {read id: number}
+        local t:readonlyTable = {id = 1}
+
+        local _:{number} = {[t.id] = 1}
+        local _:{number} = {[t.id::number] = 1}
+
+        local arr:{number} = {}
+        arr[t.id] = 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

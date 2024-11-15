@@ -31,7 +31,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
@@ -919,19 +918,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     auto bindResult = [this, &c, constraint](TypeId result)
     {
-        if (DFInt::LuauTypeSolverRelease >= 646)
-        {
-            auto cTarget = follow(c.target);
-            LUAU_ASSERT(get<PendingExpansionType>(cTarget));
-            shiftReferences(cTarget, result);
-            bind(constraint, cTarget, result);
-        }
-        else
-        {
-            LUAU_ASSERT(get<PendingExpansionType>(c.target));
-            shiftReferences(c.target, result);
-            bind(constraint, c.target, result);
-        }
+        auto cTarget = follow(c.target);
+        LUAU_ASSERT(get<PendingExpansionType>(cTarget));
+        shiftReferences(cTarget, result);
+        bind(constraint, cTarget, result);
     };
 
     std::optional<TypeFun> tf = (petv->prefix) ? constraint->scope->lookupImportedType(petv->prefix->value, petv->name.value)
@@ -959,7 +949,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // Due to how pending expansion types and TypeFun's are created
     // If this check passes, we have created a cyclic / corecursive type alias
     // of size 0
-    TypeId lhs = DFInt::LuauTypeSolverRelease >= 646 ? follow(c.target) : c.target;
+    TypeId lhs = follow(c.target);
     TypeId rhs = tf->type;
     if (occursCheck(lhs, rhs))
     {
@@ -1343,21 +1333,18 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     if (isBlocked(argsPack))
         return true;
 
-    if (DFInt::LuauTypeSolverRelease >= 648)
+    // This is expensive as we need to traverse a (potentially large)
+    // literal up front in order to determine if there are any blocked
+    // types, otherwise we may run `matchTypeLiteral` multiple times,
+    // which right now may fail due to being non-idempotent (it
+    // destructively updates the underlying literal type).
+    auto blockedTypes = findBlockedArgTypesIn(c.callSite, c.astTypes);
+    for (const auto ty : blockedTypes)
     {
-        // This is expensive as we need to traverse a (potentially large)
-        // literal up front in order to determine if there are any blocked
-        // types, otherwise we may run `matchTypeLiteral` multiple times,
-        // which right now may fail due to being non-idempotent (it
-        // destructively updates the underlying literal type).
-        auto blockedTypes = findBlockedArgTypesIn(c.callSite, c.astTypes);
-        for (const auto ty : blockedTypes)
-        {
-            block(ty, constraint);
-        }
-        if (!blockedTypes.empty())
-            return false;
+        block(ty, constraint);
     }
+    if (!blockedTypes.empty())
+        return false;
 
     // We know the type of the function and the arguments it expects to receive.
     // We also know the TypeIds of the actual arguments that will be passed.
@@ -1453,17 +1440,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
             std::vector<TypeId> toBlock;
             (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, expectedArgTy, actualArgTy, expr, toBlock);
-            if (DFInt::LuauTypeSolverRelease >= 648)
-            {
-                LUAU_ASSERT(toBlock.empty());
-            }
-            else
-            {
-                for (auto t : toBlock)
-                    block(t, constraint);
-                if (!toBlock.empty())
-                    return false;
-            }
+            LUAU_ASSERT(toBlock.empty());
         }
     }
 
@@ -1497,17 +1474,9 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
     else if (expectedType && maybeSingleton(*expectedType))
         bindTo = freeType->lowerBound;
 
-    if (DFInt::LuauTypeSolverRelease >= 645)
-    {
-        auto ty = follow(c.freeType);
-        shiftReferences(ty, bindTo);
-        bind(constraint, ty, bindTo);
-    }
-    else
-    {
-        shiftReferences(c.freeType, bindTo);
-        bind(constraint, c.freeType, bindTo);
-    }
+    auto ty = follow(c.freeType);
+    shiftReferences(ty, bindTo);
+    bind(constraint, ty, bindTo);
 
     return true;
 }
@@ -1792,7 +1761,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
     if (auto lhsFree = getMutable<FreeType>(lhsType))
     {
-        auto lhsFreeUpperBound = DFInt::LuauTypeSolverRelease >= 648 ? follow(lhsFree->upperBound) : lhsFree->upperBound;
+        auto lhsFreeUpperBound = follow(lhsFree->upperBound);
         if (get<TableType>(lhsFreeUpperBound) || get<MetatableType>(lhsFreeUpperBound))
             lhsType = lhsFreeUpperBound;
         else
