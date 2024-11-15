@@ -163,6 +163,8 @@ const char* getCmdName(IrCmd cmd)
         return "DIV_VEC";
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
+    case IrCmd::DOT_VEC:
+        return "DOT_VEC";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::CMP_ANY:

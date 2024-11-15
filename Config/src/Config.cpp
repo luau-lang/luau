@@ -17,7 +17,7 @@ Config::Config()
     enabledLint.setDefaults();
 }
 
-Config::Config(const Config& other) noexcept
+Config::Config(const Config& other)
     : mode(other.mode)
     , parseOptions(other.parseOptions)
     , enabledLint(other.enabledLint)
@@ -40,7 +40,7 @@ Config::Config(const Config& other) noexcept
     }
 }
 
-Config& Config::operator=(const Config& other) noexcept
+Config& Config::operator=(const Config& other)
 {
     if (this != &other)
     {
