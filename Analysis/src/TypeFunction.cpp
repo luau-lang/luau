@@ -53,8 +53,6 @@ LUAU_FASTFLAG(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionResetState)
 LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
 
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
-
 namespace Luau
 {
 
@@ -848,8 +846,7 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
         return {ctx->builtins->numberType, false, {}, {}};
 
     // we use the normalized operand here in case there was an intersection or union.
-    TypeId normalizedOperand =
-        DFInt::LuauTypeSolverRelease >= 646 ? follow(ctx->normalizer->typeFromNormal(*normTy)) : ctx->normalizer->typeFromNormal(*normTy);
+    TypeId normalizedOperand = follow(ctx->normalizer->typeFromNormal(*normTy));
     if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
         return {ctx->builtins->numberType, false, {}, {}};
 

@@ -29,7 +29,6 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
 

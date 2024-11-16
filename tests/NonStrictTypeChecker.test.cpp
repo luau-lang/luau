@@ -4,6 +4,7 @@
 #include "Fixture.h"
 
 #include "Luau/Ast.h"
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/IostreamHelpers.h"
 #include "Luau/ModuleResolver.h"
@@ -12,6 +13,8 @@
 #include "ScopedFlags.h"
 #include "doctest.h"
 #include <iostream>
+
+LUAU_FASTFLAG(LuauCountSelfCallsNonstrict)
 
 using namespace Luau;
 
@@ -573,6 +576,27 @@ local b = buffer.create(100)
 buffer.writef64(b, 0, 5)
 buffer.readi8(b, 0)
 )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
+{
+    ScopedFastFlag sff{FFlag::LuauCountSelfCallsNonstrict, true};
+
+    Luau::unfreeze(frontend.globals.globalTypes);
+    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
+
+    registerBuiltinGlobals(frontend, frontend.globals);
+    registerTestTypes();
+
+    Luau::freeze(frontend.globals.globalTypes);
+    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
+
+    CheckResult result = checkNonStrict(R"(
+        local test = "test"
+        test:lower()
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

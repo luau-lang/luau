@@ -225,8 +225,8 @@ TEST_CASE("PathResolution")
 
     CHECK(resolvePath("../module", "") == "../module");
     CHECK(resolvePath("../../module", "") == "../../module");
-    CHECK(resolvePath("../module/..", "") == "..");
-    CHECK(resolvePath("../module/../..", "") == "../..");
+    CHECK(resolvePath("../module/..", "") == "../");
+    CHECK(resolvePath("../module/../..", "") == "../../");
 
     CHECK(resolvePath("../dependency", prefix + "Users/modules/module.luau") == prefix + "Users/dependency");
     CHECK(resolvePath("../dependency/", prefix + "Users/modules/module.luau") == prefix + "Users/dependency");
@@ -398,6 +398,13 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "CheckCacheAfterRequireInitLua")
     luaL_findtable(L, LUA_REGISTRYINDEX, "_MODULES", 1);
     lua_getfield(L, -1, (absolutePath + "/init.lua").c_str());
     REQUIRE_FALSE_MESSAGE(lua_isnil(L, -1), "Cache did not contain module result");
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "CheckCachedResult")
+{
+    std::string relativePath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/validate_cache";
+    runProtectedRequire(relativePath);
+    assertOutputContainsAll({"true"});
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "LoadStringRelative")

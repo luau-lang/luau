@@ -23,6 +23,7 @@
 #include <vector>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSimplification)
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSimplificationToDot)
 LUAU_FASTFLAGVARIABLE(DebugLuauExtraEqSatSanityChecks)
 
 namespace Luau::EqSatSimplification
@@ -2327,7 +2328,7 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
     int count = 0;
     const int MAX_COUNT = 1000;
 
-    if (FFlag::DebugLuauLogSimplification)
+    if (FFlag::DebugLuauLogSimplificationToDot)
         std::ofstream("begin.dot") << toDot(simplifier->stringCache, simplifier->egraph);
 
     auto& egraph = simplifier->egraph;
@@ -2409,11 +2410,11 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
 
                 ++count;
 
-                if (FFlag::DebugLuauLogSimplification)
-                {
-                    if (isFresh)
-                        std::cout << "count=" << std::setw(3) << count << "\t" << subst.desc << '\n';
+                if (FFlag::DebugLuauLogSimplification && isFresh)
+                    std::cout << "count=" << std::setw(3) << count << "\t" << subst.desc << '\n';
 
+                if (FFlag::DebugLuauLogSimplificationToDot)
+                {
                     std::string filename = format("step%03d.dot", count);
                     std::ofstream(filename) << toDot(simplifier->stringCache, egraph);
                 }

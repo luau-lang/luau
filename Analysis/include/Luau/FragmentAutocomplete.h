@@ -49,14 +49,20 @@ struct FragmentAutocompleteResult
 
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* root, const Position& cursorPos);
 
-FragmentParseResult parseFragment(const SourceModule& srcModule, std::string_view src, const Position& cursorPos);
+FragmentParseResult parseFragment(
+    const SourceModule& srcModule,
+    std::string_view src,
+    const Position& cursorPos,
+    std::optional<Position> fragmentEndPosition
+);
 
 FragmentTypeCheckResult typecheckFragment(
     Frontend& frontend,
     const ModuleName& moduleName,
     const Position& cursorPos,
     std::optional<FrontendOptions> opts,
-    std::string_view src
+    std::string_view src,
+    std::optional<Position> fragmentEndPosition
 );
 
 FragmentAutocompleteResult fragmentAutocomplete(
@@ -65,7 +71,8 @@ FragmentAutocompleteResult fragmentAutocomplete(
     const ModuleName& moduleName,
     Position cursorPosition,
     std::optional<FrontendOptions> opts,
-    StringCompletionCallback callback
+    StringCompletionCallback callback,
+    std::optional<Position> fragmentEndPosition = std::nullopt
 );
 
 

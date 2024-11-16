@@ -32,7 +32,6 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_DYNAMIC_FASTINT(LuauTypeSolverRelease)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues)
@@ -225,8 +224,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 
     Checkpoint start = checkpoint(this);
 
-    ControlFlow cf =
-        DFInt::LuauTypeSolverRelease >= 646 ? visitBlockWithoutChildScope(scope, block) : visitBlockWithoutChildScope_DEPRECATED(scope, block);
+    ControlFlow cf = visitBlockWithoutChildScope(scope, block);
     if (cf == ControlFlow::None)
         addConstraint(scope, block->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, rootScope->returnType});
 
@@ -876,123 +874,6 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
     return firstControlFlow.value_or(ControlFlow::None);
 }
 
-ControlFlow ConstraintGenerator::visitBlockWithoutChildScope_DEPRECATED(const ScopePtr& scope, AstStatBlock* block)
-{
-    RecursionCounter counter{&recursionCount};
-
-    if (recursionCount >= FInt::LuauCheckRecursionLimit)
-    {
-        reportCodeTooComplex(block->location);
-        return ControlFlow::None;
-    }
-
-    std::unordered_map<Name, Location> aliasDefinitionLocations;
-
-    // In order to enable mutually-recursive type aliases, we need to
-    // populate the type bindings before we actually check any of the
-    // alias statements.
-    for (AstStat* stat : block->body)
-    {
-        if (auto alias = stat->as<AstStatTypeAlias>())
-        {
-            if (scope->exportedTypeBindings.count(alias->name.value) || scope->privateTypeBindings.count(alias->name.value))
-            {
-                auto it = aliasDefinitionLocations.find(alias->name.value);
-                LUAU_ASSERT(it != aliasDefinitionLocations.end());
-                reportError(alias->location, DuplicateTypeDefinition{alias->name.value, it->second});
-                continue;
-            }
-
-            // A type alias might have no name if the code is syntactically
-            // illegal. We mustn't prepopulate anything in this case.
-            if (alias->name == kParseNameError || alias->name == "typeof")
-                continue;
-
-            ScopePtr defnScope = childScope(alias, scope);
-
-            TypeId initialType = arena->addType(BlockedType{});
-            TypeFun initialFun{initialType};
-
-            for (const auto& [name, gen] : createGenerics(defnScope, alias->generics, /* useCache */ true))
-            {
-                initialFun.typeParams.push_back(gen);
-            }
-
-            for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks, /* useCache */ true))
-            {
-                initialFun.typePackParams.push_back(genPack);
-            }
-
-            if (alias->exported)
-                scope->exportedTypeBindings[alias->name.value] = std::move(initialFun);
-            else
-                scope->privateTypeBindings[alias->name.value] = std::move(initialFun);
-
-            astTypeAliasDefiningScopes[alias] = defnScope;
-            aliasDefinitionLocations[alias->name.value] = alias->location;
-        }
-        else if (auto function = stat->as<AstStatTypeFunction>())
-        {
-            // If a type function w/ same name has already been defined, error for having duplicates
-            if (scope->exportedTypeBindings.count(function->name.value) || scope->privateTypeBindings.count(function->name.value))
-            {
-                auto it = aliasDefinitionLocations.find(function->name.value);
-                LUAU_ASSERT(it != aliasDefinitionLocations.end());
-                reportError(function->location, DuplicateTypeDefinition{function->name.value, it->second});
-                continue;
-            }
-
-            if (scope->parent != globalScope)
-            {
-                reportError(function->location, GenericError{"Local user-defined functions are not supported yet"});
-                continue;
-            }
-
-            ScopePtr defnScope = childScope(function, scope);
-
-            // Create TypeFunctionInstanceType
-
-            std::vector<TypeId> typeParams;
-            typeParams.reserve(function->body->args.size);
-
-            std::vector<GenericTypeDefinition> quantifiedTypeParams;
-            quantifiedTypeParams.reserve(function->body->args.size);
-
-            for (size_t i = 0; i < function->body->args.size; i++)
-            {
-                std::string name = format("T%zu", i);
-                TypeId ty = arena->addType(GenericType{name});
-                typeParams.push_back(ty);
-
-                GenericTypeDefinition genericTy{ty};
-                quantifiedTypeParams.push_back(genericTy);
-            }
-
-            if (std::optional<std::string> error = typeFunctionRuntime->registerFunction(function))
-                reportError(function->location, GenericError{*error});
-
-            TypeId typeFunctionTy =
-                arena->addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions().userFunc}, std::move(typeParams), {}, function->name, {}});
-
-            TypeFun typeFunction{std::move(quantifiedTypeParams), typeFunctionTy};
-
-            // Set type bindings and definition locations for this user-defined type function
-            scope->privateTypeBindings[function->name.value] = std::move(typeFunction);
-            aliasDefinitionLocations[function->name.value] = function->location;
-        }
-    }
-
-    std::optional<ControlFlow> firstControlFlow;
-    for (AstStat* stat : block->body)
-    {
-        ControlFlow cf = visit(scope, stat);
-        if (cf != ControlFlow::None && !firstControlFlow)
-            firstControlFlow = cf;
-    }
-
-    return firstControlFlow.value_or(ControlFlow::None);
-}
-
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStat* stat)
 {
     RecursionLimiter limiter{&recursionCount, FInt::LuauCheckRecursionLimit};
@@ -1336,10 +1217,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatRepeat* rep
 {
     ScopePtr repeatScope = childScope(repeat, scope);
 
-    if (DFInt::LuauTypeSolverRelease >= 646)
-        visitBlockWithoutChildScope(repeatScope, repeat->body);
-    else
-        visitBlockWithoutChildScope_DEPRECATED(repeatScope, repeat->body);
+    visitBlockWithoutChildScope(repeatScope, repeat->body);
 
     check(repeatScope, repeat->condition);
 
@@ -1513,8 +1391,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatBlock* bloc
 {
     ScopePtr innerScope = childScope(block, scope);
 
-    ControlFlow flow = DFInt::LuauTypeSolverRelease >= 646 ? visitBlockWithoutChildScope(innerScope, block)
-                                                           : visitBlockWithoutChildScope_DEPRECATED(innerScope, block);
+    ControlFlow flow = visitBlockWithoutChildScope(innerScope, block);
 
     // An AstStatBlock has linear control flow, i.e. one entry and one exit, so we can inherit
     // all the changes to the environment occurred by the statements in that block.
@@ -1705,7 +1582,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     TypeFun typeFunction = bindingIt->second;
 
     // Adding typeAliasExpansionConstraint on user-defined type function for the constraint solver
-    if (auto typeFunctionTy = get<TypeFunctionInstanceType>(DFInt::LuauTypeSolverRelease >= 646 ? follow(typeFunction.type) : typeFunction.type))
+    if (auto typeFunctionTy = get<TypeFunctionInstanceType>(follow(typeFunction.type)))
     {
         TypeId expansionTy = arena->addType(PendingExpansionType{{}, function->name, typeFunctionTy->typeArguments, typeFunctionTy->packArguments});
         addConstraint(scope, function->location, TypeAliasExpansionConstraint{/* target */ expansionTy});
@@ -3026,32 +2903,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
     {
         Unifier2 unifier{arena, builtinTypes, NotNull{scope.get()}, ice};
         std::vector<TypeId> toBlock;
-        if (DFInt::LuauTypeSolverRelease >= 648)
-        {
-            // This logic is incomplete as we want to re-run this
-            // _after_ blocked types have resolved, but this
-            // allows us to do some bidirectional inference.
-            toBlock = findBlockedTypesIn(expr, NotNull{&module->astTypes});
-            if (toBlock.empty())
-            {
-                matchLiteralType(
-                    NotNull{&module->astTypes},
-                    NotNull{&module->astExpectedTypes},
-                    builtinTypes,
-                    arena,
-                    NotNull{&unifier},
-                    *expectedType,
-                    ty,
-                    expr,
-                    toBlock
-                );
-                // The visitor we ran prior should ensure that there are no
-                // blocked types that we would encounter while matching on
-                // this expression.
-                LUAU_ASSERT(toBlock.empty());
-            }
-        }
-        else
+        // This logic is incomplete as we want to re-run this
+        // _after_ blocked types have resolved, but this
+        // allows us to do some bidirectional inference.
+        toBlock = findBlockedTypesIn(expr, NotNull{&module->astTypes});
+
+        if (toBlock.empty())
         {
             matchLiteralType(
                 NotNull{&module->astTypes},
@@ -3063,7 +2920,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                 ty,
                 expr,
                 toBlock
-            );
+                );
+                // The visitor we ran prior should ensure that there are no
+                // blocked types that we would encounter while matching on
+                // this expression.
+                LUAU_ASSERT(toBlock.empty());
         }
     }
 
@@ -3265,8 +3126,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 void ConstraintGenerator::checkFunctionBody(const ScopePtr& scope, AstExprFunction* fn)
 {
     // If it is possible for execution to reach the end of the function, the return type must be compatible with ()
-    ControlFlow cf =
-        DFInt::LuauTypeSolverRelease >= 646 ? visitBlockWithoutChildScope(scope, fn->body) : visitBlockWithoutChildScope_DEPRECATED(scope, fn->body);
+    ControlFlow cf = visitBlockWithoutChildScope(scope, fn->body);
     if (cf == ControlFlow::None)
         addConstraint(scope, fn->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, scope->returnType});
 }
@@ -3745,11 +3605,18 @@ struct FragmentTypeCheckGlobalPrepopulator : AstVisitor
     const NotNull<Scope> globalScope;
     const NotNull<Scope> currentScope;
     const NotNull<const DataFlowGraph> dfg;
+    const NotNull<TypeArena> arena;
 
-    FragmentTypeCheckGlobalPrepopulator(NotNull<Scope> globalScope, NotNull<Scope> currentScope, NotNull<const DataFlowGraph> dfg)
+    FragmentTypeCheckGlobalPrepopulator(
+        NotNull<Scope> globalScope,
+        NotNull<Scope> currentScope,
+        NotNull<const DataFlowGraph> dfg,
+        NotNull<TypeArena> arena
+    )
         : globalScope(globalScope)
         , currentScope(currentScope)
         , dfg(dfg)
+        , arena(arena)
     {
     }
 
@@ -3760,6 +3627,32 @@ struct FragmentTypeCheckGlobalPrepopulator : AstVisitor
             DefId def = dfg->getDef(global);
             // We only want to write into the current scope the type of the global
             currentScope->lvalueTypes[def] = *ty;
+        }
+        else if (auto ty = currentScope->lookup(global->name))
+        {
+            // We are trying to create a binding for a brand new function, so we actually do have to write it into the scope.
+            DefId def = dfg->getDef(global);
+            // We only want to write into the current scope the type of the global
+            currentScope->lvalueTypes[def] = *ty;
+        }
+
+        return true;
+    }
+
+    bool visit(AstStatFunction* function) override
+    {
+        if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
+        {
+            if (auto ty = globalScope->lookup(g->name))
+            {
+                currentScope->bindings[g->name] = Binding{*ty};
+            }
+            else
+            {
+                // Hasn't existed since a previous typecheck
+                TypeId bt = arena->addType(BlockedType{});
+                currentScope->bindings[g->name] = Binding{bt};
+            }
         }
 
         return true;
@@ -3814,7 +3707,7 @@ struct GlobalPrepopulator : AstVisitor
 
 void ConstraintGenerator::prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program)
 {
-    FragmentTypeCheckGlobalPrepopulator gp{NotNull{globalScope.get()}, NotNull{resumeScope.get()}, dfg};
+    FragmentTypeCheckGlobalPrepopulator gp{NotNull{globalScope.get()}, NotNull{resumeScope.get()}, dfg, arena};
     if (prepareModuleScope)
         prepareModuleScope(module->name, resumeScope);
     program->visit(&gp);
