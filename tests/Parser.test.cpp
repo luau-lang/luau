@@ -768,7 +768,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_continue")
 
 TEST_CASE_FIXTURE(Fixture, "continue_not_last_error")
 {
-    CHECK_EQ(matchParseError("while true do continue print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
+    matchParseError("while true do continue print(5) end", "Expected 'end' (to close 'do' at column 12), got 'print'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_export_type")
@@ -811,7 +811,7 @@ TEST_CASE_FIXTURE(Fixture, "export_is_an_identifier_only_when_followed_by_type")
 
 TEST_CASE_FIXTURE(Fixture, "incomplete_statement_error")
 {
-    CHECK_EQ(matchParseError("fiddlesticks"), "Incomplete statement: expected assignment or a function call");
+    matchParseError("fiddlesticks", "Incomplete statement: expected assignment or a function call");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment")
