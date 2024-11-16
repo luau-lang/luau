@@ -23,15 +23,17 @@ LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAG(LuauCompileVectorTypeInfo)
+LUAU_FASTFLAG(LuauCompileOptimizeRevArith)
 
 using namespace Luau;
 
-static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
+static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, int typeInfoLevel = 0, bool enableVectors = false)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
+    options.typeInfoLevel = typeInfoLevel;
     if (enableVectors)
     {
         options.vectorLib = "Vector3";
@@ -4931,32 +4933,32 @@ L0: RETURN R3 -1
 
 TEST_CASE("VectorLiterals")
 {
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, 0, /*enableVectors*/ true), R"(
 LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, 0, /*enableVectors*/ true), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3]
 CALL R0 1 0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, 0, /*enableVectors*/ true), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3, 4]
 CALL R0 1 0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, 0, /*enableVectors*/ true), R"(
 LOADK R0 K0 [0, 0, 0]
 LOADK R1 K1 [-0, 0, 0]
 RETURN R0 2
 )");
 
-    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, 0, /*enableVectors*/ true), R"(
 LOADK R0 K0 ['vector']
 RETURN R0 1
 )");
@@ -8845,8 +8847,9 @@ RETURN R0 1
 
 TEST_CASE("ArithRevK")
 {
-    // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
-    // other operators are not important enough to optimize reverse constant forms for
+    ScopedFastFlag sff(FFlag::LuauCompileOptimizeRevArith, true);
+
+    // - and / have special optimized form for reverse constants; in absence of type information, we can't optimize other ops
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local x: number = unknown
@@ -8859,6 +8862,34 @@ ADD R1 R2 R0
 SUBRK R2 K2 [2] R0
 LOADN R4 2
 MUL R3 R4 R0
+DIVRK R4 K2 [2] R0
+LOADN R6 2
+MOD R5 R6 R0
+LOADN R7 2
+IDIV R6 R7 R0
+LOADN R8 2
+POW R7 R8 R0
+RETURN R1 7
+)"
+    );
+
+    // the same code with type information can optimize commutative operators (+ and *) as well
+    // other operators are not important enough to optimize reverse constant forms for
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x: number = unknown
+return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
+)",
+                   0,
+                   2,
+                   1
+               ),
+        R"(
+GETIMPORT R0 1 [unknown]
+ADDK R1 R0 K2 [2]
+SUBRK R2 K2 [2] R0
+MULK R3 R0 K2 [2]
 DIVRK R4 K2 [2] R0
 LOADN R6 2
 MOD R5 R6 R0
