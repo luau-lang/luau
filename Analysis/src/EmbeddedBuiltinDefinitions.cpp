@@ -455,7 +455,11 @@ declare buffer: {
 static const std::string kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
 
 -- TODO: this will be replaced with a built-in primitive type
-declare class vector end
+declare class vector
+    x: number,
+    y: number,
+    z: number,
+end
 
 declare vector: {
     create: @checked (x: number, y: number, z: number) -> vector,
