@@ -447,62 +447,38 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
 {
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: (number, number) -> (string
-        )"),
-        "Expected ')' (to close '(' at line 2), got <eof>"
-    );
+    matchParseError(R"(
+        local a: (number, number) -> (string
+    )", "Expected ')' (to close '(' at line 2), got <eof>");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: (number, number) -> (
-                string
-        )"),
-        "Expected ')' (to close '(' at line 2), got <eof>"
-    );
+    matchParseError(R"(
+        local a: (number, number) -> (
+            string
+    )", "Expected ')' (to close '(' at line 2), got <eof>");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: (number, number)
-        )"),
-        "Expected '->' when parsing function type, got <eof>"
-    );
+    matchParseError(R"(
+        local a: (number, number)
+    )", "Expected '->' when parsing function type, got <eof>");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: (number, number
-        )"),
-        "Expected ')' (to close '(' at line 2), got <eof>"
-    );
+    matchParseError(R"(
+        local a: (number, number
+    )", "Expected ')' (to close '(' at line 2), got <eof>");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: {foo: string,
-        )"),
-        "Expected identifier when parsing table field, got <eof>"
-    );
+    matchParseError(R"(
+        local a: {foo: string,
+    )", "Expected identifier when parsing table field, got <eof>");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: {foo: string
-        )"),
-        "Expected '}' (to close '{' at line 2), got <eof>"
-    );
+    matchParseError(R"(
+        local a: {foo: string
+    )", "Expected '}' (to close '{' at line 2), got <eof>");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: { [string]: number, [number]: string }
-        )"),
-        "Cannot have more than one table indexer"
-    );
+    matchParseError(R"(
+        local a: { [string]: number, [number]: string }
+    )", "Cannot have more than one table indexer");
 
-    CHECK_EQ(
-        matchParseError(R"(
-            type T = <a>foo
-        )"),
-        "Expected '(' when parsing function parameters, got 'foo'"
-    );
+    matchParseError(R"(
+        type T = <a>foo
+    )", "Expected '(' when parsing function parameters, got 'foo'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_intersection_and_union_not_allowed")
@@ -530,10 +506,10 @@ TEST_CASE_FIXTURE(Fixture, "cannot_write_multiple_values_in_type_groups")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_error_messages")
 {
-    CHECK_EQ(matchParseError("type 5 = number"), "Expected identifier when parsing type name, got '5'");
-    CHECK_EQ(matchParseError("type A"), "Expected '=' when parsing type alias, got <eof>");
-    CHECK_EQ(matchParseError("type A<"), "Expected identifier, got <eof>");
-    CHECK_EQ(matchParseError("type A<B"), "Expected '>' (to close '<' at column 7), got <eof>");
+    matchParseError("type 5 = number", "Expected identifier when parsing type name, got '5'");
+    matchParseError("type A", "Expected '=' when parsing type alias, got <eof>");
+    matchParseError("type A<", "Expected identifier, got <eof>");
+    matchParseError("type A<B", "Expected '>' (to close '<' at column 7), got <eof>");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expression")
@@ -637,12 +613,9 @@ TEST_CASE_FIXTURE(Fixture, "vertical_space")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_name")
 {
-    CHECK_EQ(
-        matchParseError(R"(
-            local a: Foo.=
-        )"),
-        "Expected identifier when parsing field name, got '='"
-    );
+    matchParseError(R"(
+        local a: Foo.=
+    )", "Expected identifier when parsing field name, got '='");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
@@ -688,28 +661,25 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
-    CHECK_EQ(matchParseError("return 0b123"), "Malformed number");
-    CHECK_EQ(matchParseError("return 123x"), "Malformed number");
-    CHECK_EQ(matchParseError("return 0xg"), "Malformed number");
-    CHECK_EQ(matchParseError("return 0x0x123"), "Malformed number");
-    CHECK_EQ(matchParseError("return 0xffffffffffffffffffffllllllg"), "Malformed number");
-    CHECK_EQ(matchParseError("return 0x0xffffffffffffffffffffffffffff"), "Malformed number");
+    matchParseError("return 0b123", "Malformed number");
+    matchParseError("return 123x", "Malformed number");
+    matchParseError("return 0xg", "Malformed number");
+    matchParseError("return 0x0x123", "Malformed number");
+    matchParseError("return 0xffffffffffffffffffffllllllg", "Malformed number");
+    matchParseError("return 0x0xffffffffffffffffffffffffffff", "Malformed number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
 {
-    CHECK_EQ(matchParseError("return 0 print(5)"), "Expected <eof>, got 'print'");
-    CHECK_EQ(matchParseError("while true do break print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
+    matchParseError("return 0 print(5)", "Expected <eof>, got 'print'");
+    matchParseError("while true do break print(5) end", "Expected 'end' (to close 'do' at column 12), got 'print'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_unicode")
 {
-    CHECK_EQ(
         matchParseError(R"(
             local ☃ = 10
-        )"),
-        "Expected identifier when parsing variable name, got Unicode character U+2603"
-    );
+        )", "Expected identifier when parsing variable name, got Unicode character U+2603");
 }
 
 TEST_CASE_FIXTURE(Fixture, "allow_unicode_in_string")
@@ -720,20 +690,17 @@ TEST_CASE_FIXTURE(Fixture, "allow_unicode_in_string")
 
 TEST_CASE_FIXTURE(Fixture, "error_on_confusable")
 {
-    CHECK_EQ(
-        matchParseError(R"(
-            local pi = 3․13
-        )"),
-        "Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)"
-    );
+    matchParseError(R"(
+        local pi = 3․13
+    )", "Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_non_utf8_sequence")
 {
     const char* expected = "Expected identifier when parsing expression, got invalid UTF-8 sequence";
 
-    CHECK_EQ(matchParseError("local pi = \xFF!"), expected);
-    CHECK_EQ(matchParseError("local pi = \xE2!"), expected);
+    matchParseError("local pi = \xFF!", expected);
+    matchParseError("local pi = \xE2!", expected);
 }
 
 TEST_CASE_FIXTURE(Fixture, "lex_broken_unicode")
