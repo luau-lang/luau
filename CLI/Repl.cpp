@@ -712,7 +712,7 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
     // new thread needs to have the globals sandboxed
     luaL_sandboxthread(L);
 
-    std::string chunkname = "=" + std::string(name);
+    std::string chunkname = "@" + std::string(name);
 
     std::string bytecode = Luau::compile(*source, copts());
     int status = 0;
