@@ -1635,7 +1635,7 @@ struct Compiler
                         {
                             uint8_t rr = compileExprAuto(expr->right, rs);
 
-                            bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, uint8_t(rr), uint8_t(lc));
+                            bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
 
                             hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
                             return;
