@@ -36,4 +36,4 @@ function test()
     end
 end
 
-bench.runCode(test, "vector math")
+bench.runCode(test, "vector-math")
