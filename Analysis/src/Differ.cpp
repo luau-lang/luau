@@ -719,7 +719,7 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
         env.popVisiting();
         return diffRes;
     }
-    if (auto le = get<Luau::Unifiable::Error>(left))
+    if (auto le = get<ErrorType>(left))
     {
         // TODO: return debug-friendly result state
         env.popVisiting();

@@ -10,6 +10,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete);
 
 namespace Luau
 {
@@ -331,7 +332,7 @@ TypePack extendTypePack(
 
             return result;
         }
-        else if (const Unifiable::Error* etp = getMutable<Unifiable::Error>(pack))
+        else if (auto etp = getMutable<ErrorTypePack>(pack))
         {
             while (result.head.size() < length)
                 result.head.push_back(builtinTypes->errorRecoveryType());
@@ -426,7 +427,7 @@ TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauSolverV2);
+    LUAU_ASSERT(FFlag::LuauSolverV2 || FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
     std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
 
     if (!normType)

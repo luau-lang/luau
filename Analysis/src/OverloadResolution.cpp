@@ -417,8 +417,8 @@ std::optional<TypeId> selectOverload(
     TypePackId argsPack
 )
 {
-    OverloadResolver resolver{builtinTypes, arena, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location};
-    auto [status, overload] = resolver.selectOverload(fn, argsPack);
+    auto resolver = std::make_unique<OverloadResolver>(builtinTypes, arena, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
+    auto [status, overload] = resolver->selectOverload(fn, argsPack);
 
     if (status == OverloadResolver::Analysis::Ok)
         return overload;
@@ -456,9 +456,9 @@ SolveResult solveFunctionCall(
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
-        Instantiation2 instantiation{arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions)};
+        auto instantiation = std::make_unique<Instantiation2>(arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions));
 
-        std::optional<TypePackId> subst = instantiation.substitute(resultPack);
+        std::optional<TypePackId> subst = instantiation->substitute(resultPack);
 
         if (!subst)
             return {SolveResult::CodeTooComplex};

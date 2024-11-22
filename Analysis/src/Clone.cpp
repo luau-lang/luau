@@ -257,8 +257,7 @@ private:
             LUAU_ASSERT(!"Item holds neither TypeId nor TypePackId when enqueuing its children?");
     }
 
-    // ErrorType and ErrorTypePack is an alias to this type.
-    void cloneChildren(Unifiable::Error* t)
+    void cloneChildren(ErrorType* t)
     {
         // noop.
     }
@@ -426,6 +425,11 @@ private:
     void cloneChildren(BoundTypePack* t)
     {
         t->boundTo = shallowClone(t->boundTo);
+    }
+
+    void cloneChildren(ErrorTypePack* t)
+    {
+        // noop.
     }
 
     void cloneChildren(VariadicTypePack* t)

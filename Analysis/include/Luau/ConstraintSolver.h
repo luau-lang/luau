@@ -59,6 +59,25 @@ struct HashInstantiationSignature
     size_t operator()(const InstantiationSignature& signature) const;
 };
 
+
+struct TablePropLookupResult
+{
+    // What types are we blocked on for determining this type?
+    std::vector<TypeId> blockedTypes;
+    // The type of the property (if we were able to determine it).
+    std::optional<TypeId> propType;
+    // Whether or not this is _definitely_ derived as the result of an indexer.
+    // We use this to determine whether or not code like:
+    //
+    //   t.lol = nil;
+    //
+    // ... is legal. If `t: { [string]: ~nil }` then this is legal as
+    // there's no guarantee on whether "lol" specifically exists.
+    // However, if `t: { lol: ~nil }`, then we cannot allow assignment as
+    // that would remove "lol" from the table entirely.
+    bool isIndex = false;
+};
+
 struct ConstraintSolver
 {
     NotNull<TypeArena> arena;
@@ -211,7 +230,7 @@ public:
     // for a, ... in next_function, t, ... do
     bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint);
 
-    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
+    TablePropLookupResult lookupTableProp(
         NotNull<const Constraint> constraint,
         TypeId subjectType,
         const std::string& propName,
@@ -219,7 +238,8 @@ public:
         bool inConditional = false,
         bool suppressSimplification = false
     );
-    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
+
+    TablePropLookupResult lookupTableProp(
         NotNull<const Constraint> constraint,
         TypeId subjectType,
         const std::string& propName,

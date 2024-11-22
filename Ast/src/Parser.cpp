@@ -18,13 +18,12 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauNativeAttribute)
-LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
 LUAU_FASTFLAGVARIABLE(LuauPortableStringZeroCheck)
 LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
+LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
 
 namespace Luau
 {
@@ -724,10 +723,6 @@ std::pair<bool, AstAttr::Type> Parser::validateAttribute(const char* attributeNa
         if (found)
         {
             type = kAttributeEntries[i].type;
-
-            if (!FFlag::LuauNativeAttribute && type == AstAttr::Type::Native)
-                found = false;
-
             break;
         }
     }
@@ -1278,6 +1273,19 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     MatchLexeme matchParen = lexer.current();
     expectAndConsume('(', "function");
 
+    // NOTE: This was added in conjunction with passing `searchForMissing` to
+    // `expectMatchAndConsume` inside `parseTableType` so that the behavior of
+    // parsing code like below (note the missing `}`):
+    //
+    //  function (t: { a: number  ) end
+    //
+    // ... will still parse as (roughly):
+    //
+    //  function (t: { a: number }) end
+    //
+    if (FFlag::LuauErrorRecoveryForTableTypes)
+        matchRecoveryStopOnToken[')']++;
+
     TempVector<Binding> args(scratchBinding);
 
     bool vararg = false;
@@ -1293,6 +1301,9 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
         argLocation = Location(matchParen.position, lexer.current().location.end);
 
     expectMatchAndConsume(')', matchParen, true);
+
+    if (FFlag::LuauErrorRecoveryForTableTypes)
+        matchRecoveryStopOnToken[')']--;
 
     std::optional<AstTypeList> typelist = parseOptionalReturnType();
 
@@ -1678,7 +1689,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
     Location end = lexer.current().location;
 
-    if (!expectMatchAndConsume('}', matchBrace))
+    if (!expectMatchAndConsume('}', matchBrace, /* searchForMissing = */ FFlag::LuauErrorRecoveryForTableTypes))
         end = lexer.previousLocation();
 
     return allocator.alloc<AstTypeTable>(Location(start, end), copy(props), indexer);
@@ -2526,7 +2537,7 @@ AstExpr* Parser::parseSimpleExpr()
 
     AstArray<AstAttr*> attributes{nullptr, 0};
 
-    if (FFlag::LuauAttributeSyntaxFunExpr && lexer.current().type == Lexeme::Attribute)
+    if (lexer.current().type == Lexeme::Attribute)
     {
         attributes = parseAttributes();
 

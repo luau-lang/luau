@@ -762,7 +762,7 @@ struct NegationType
     TypeId ty;
 };
 
-using ErrorType = Unifiable::Error;
+using ErrorType = Unifiable::Error<TypeId>;
 
 using TypeVariant = Unifiable::Variant<
     TypeId,

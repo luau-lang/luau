@@ -1,6 +1,9 @@
 -- This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 print('testing vector library')
 
+-- detect vector size
+local vector_size = if pcall(function() return vector(0, 0, 0).w end) then 4 else 3
+
 function ecall(fn, ...)
     local ok, err = pcall(fn, ...)
     assert(not ok)
@@ -155,5 +158,33 @@ assert(vector.min(vector.create(1, 2, 3),vector.create(2, 3, 4),vector.create(3,
 assert(vector.clamp(vector.create(1, 1, 1), vector.create(0, 1, 2), vector.create(3, 3, 3)) == vector.create(1, 1, 2))
 assert(vector.clamp(vector.create(1, 1, 1), vector.create(-1, -1, -1), vector.create(0, 1, 2)) == vector.create(0, 1, 1))
 assert(select("#", vector.clamp(vector.zero, vector.zero, vector.one)) == 1)
+
+-- validate component access
+assert(vector.create(1, 2, 3).x == 1)
+assert(vector.create(1, 2, 3).X == 1)
+assert(vector.create(1, 2, 3)['X'] == 1)
+assert(vector.create(1, 2, 3).y == 2)
+assert(vector.create(1, 2, 3).Y == 2)
+assert(vector.create(1, 2, 3)['Y'] == 2)
+assert(vector.create(1, 2, 3).z == 3)
+assert(vector.create(1, 2, 3).Z == 3)
+assert(vector.create(1, 2, 3)['Z'] == 3)
+
+local function getcomp(v: vector, field: string)
+    return v[field]
+end
+
+assert(getcomp(vector.create(1, 2, 3), 'x') == 1)
+assert(getcomp(vector.create(1, 2, 3), 'y') == 2)
+assert(getcomp(vector.create(1, 2, 3), 'z') == 3)
+
+assert(ecall(function() return vector.create(1, 2, 3).zz end) == "attempt to index vector with 'zz'")
+
+-- additional checks for 4-component vectors
+if vector_size == 4 then
+	assert(vector.create(1, 2, 3, 4).w == 4)
+	assert(vector.create(1, 2, 3, 4).W == 4)
+	assert(vector.create(1, 2, 3, 4)['W'] == 4)
+end
 
 return 'OK'

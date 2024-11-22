@@ -7,6 +7,8 @@
 
 #include <stdarg.h>
 
+LUAU_FASTFLAG(LuauVectorLibNativeDot);
+
 namespace Luau
 {
 namespace CodeGen
@@ -164,6 +166,7 @@ const char* getCmdName(IrCmd cmd)
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
     case IrCmd::DOT_VEC:
+        LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
         return "DOT_VEC";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";

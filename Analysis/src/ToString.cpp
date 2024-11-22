@@ -20,6 +20,7 @@
 #include <string>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauSyntheticErrors)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -998,7 +999,15 @@ struct TypeStringifier
     void operator()(TypeId, const ErrorType& tv)
     {
         state.result.error = true;
-        state.emit("*error-type*");
+
+        if (FFlag::LuauSyntheticErrors && tv.synthetic)
+        {
+            state.emit("*error-type<");
+            stringify(*tv.synthetic);
+            state.emit(">*");
+        }
+        else
+            state.emit("*error-type*");
     }
 
     void operator()(TypeId, const LazyType& ltv)
@@ -1173,10 +1182,18 @@ struct TypePackStringifier
         state.unsee(&tp);
     }
 
-    void operator()(TypePackId, const Unifiable::Error& error)
+    void operator()(TypePackId, const ErrorTypePack& error)
     {
         state.result.error = true;
-        state.emit("*error-type*");
+
+        if (FFlag::LuauSyntheticErrors && error.synthetic)
+        {
+            state.emit("*");
+            stringify(*error.synthetic);
+            state.emit("*");
+        }
+        else
+            state.emit("*error-type*");
     }
 
     void operator()(TypePackId, const VariadicTypePack& pack)

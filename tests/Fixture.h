@@ -139,7 +139,7 @@ struct Fixture
 
     void registerTestTypes();
 
-    LoadDefinitionFileResult loadDefinition(const std::string& source);
+    LoadDefinitionFileResult loadDefinition(const std::string& source, bool forAutocomplete = false);
 };
 
 struct BuiltinsFixture : Fixture

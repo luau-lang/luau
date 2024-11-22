@@ -15,12 +15,12 @@
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 
 
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauAllowFragmentParsing);
-LUAU_FASTFLAG(LuauStoreDFGOnModule2);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 LUAU_FASTFLAG(LuauSymbolEquality);
 LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
@@ -46,12 +46,11 @@ static FrontendOptions getOptions()
 template<class BaseType>
 struct FragmentAutocompleteFixtureImpl : BaseType
 {
-    ScopedFastFlag sffs[5] = {
+    ScopedFastFlag sffs[4] = {
         {FFlag::LuauAllowFragmentParsing, true},
-        {FFlag::LuauStoreDFGOnModule2, true},
         {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
         {FFlag::LuauStoreSolverTypeOnModule, true},
-        {FFlag::LuauSymbolEquality, true}
+        {FFlag::LuauSymbolEquality, true},
     };
 
     FragmentAutocompleteFixtureImpl()
@@ -140,6 +139,25 @@ struct FragmentAutocompleteFixture : FragmentAutocompleteFixtureImpl<Fixture>
 
 struct FragmentAutocompleteBuiltinsFixture : FragmentAutocompleteFixtureImpl<BuiltinsFixture>
 {
+    FragmentAutocompleteBuiltinsFixture()
+        : FragmentAutocompleteFixtureImpl<BuiltinsFixture>()
+    {
+        const std::string fakeVecDecl = R"(
+declare class FakeVec
+    function dot(self, x: FakeVec) : FakeVec
+    zero : FakeVec
+end
+)";
+        // The old solver always performs a strict mode check and populates the module resolver and globals
+        // for autocomplete.
+        // The new solver just populates the globals and the moduleResolver.
+        // Because these tests run in both the old solver and the new solver, and the test suite
+        // now picks the module resolver as appropriate in order to better mimic the studio code path,
+        // we have to load the definition file into both the 'globals'/'resolver' and the equivalent
+        // 'for autocomplete'.
+        loadDefinition(fakeVecDecl);
+        loadDefinition(fakeVecDecl, /* For Autocomplete Module */ true);
+    }
 };
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTraversalTests");
@@ -316,11 +334,11 @@ local z = x + y
         Position{3, 15}
     );
 
-    CHECK_EQ("\nlocal z = x + y", fragment.fragmentToParse);
+    CHECK_EQ("local y = 5\nlocal z = x + y", fragment.fragmentToParse);
     CHECK_EQ(5, fragment.ancestry.size());
     REQUIRE(fragment.root);
-    CHECK_EQ(1, fragment.root->body.size);
-    auto stat = fragment.root->body.data[0]->as<AstStatLocal>();
+    CHECK_EQ(2, fragment.root->body.size);
+    auto stat = fragment.root->body.data[1]->as<AstStatLocal>();
     REQUIRE(stat);
     CHECK_EQ(1, stat->vars.size);
     CHECK_EQ(1, stat->values.size);
@@ -422,7 +440,7 @@ abc("bar")
         Position{1, 10}
     );
 
-    CHECK_EQ("\nabc(\"foo\")", callFragment.fragmentToParse);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", callFragment.fragmentToParse);
     CHECK(callFragment.nearestStatement->is<AstStatFunction>());
 
     CHECK_GE(callFragment.ancestry.size(), 2);
@@ -447,7 +465,7 @@ abc("bar")
         Position{1, 9}
     );
 
-    CHECK_EQ("\nabc(\"foo\"", stringFragment.fragmentToParse);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\"", stringFragment.fragmentToParse);
     CHECK(stringFragment.nearestStatement->is<AstStatFunction>());
 
     CHECK_GE(stringFragment.ancestry.size(), 1);
@@ -482,7 +500,7 @@ abc("bar")
         Position{3, 1}
     );
 
-    CHECK_EQ("\nabc(\n\"foo\"\n)", fragment.fragmentToParse);
+    CHECK_EQ("function abc(foo: string) end\nabc(\n\"foo\"\n)", fragment.fragmentToParse);
     CHECK(fragment.nearestStatement->is<AstStatFunction>());
 
     CHECK_GE(fragment.ancestry.size(), 2);
@@ -1219,6 +1237,142 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "method_call_inside_function_body
 
             LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "math");
             CHECK_EQ(ac.context, AutocompleteContext::Property);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tbl_function_parameter")
+{
+    const std::string source = R"(
+--!strict
+type Foo = {x : number, y : number}
+local function func(abc : Foo)
+   abc.
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{4, 7},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK_EQ(2, result.acResults.entryMap.size());
+            CHECK(result.acResults.entryMap.count("x"));
+            CHECK(result.acResults.entryMap.count("y"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tbl_local_function_parameter")
+{
+    const std::string source = R"(
+--!strict
+type Foo = {x : number, y : number}
+local function func(abc : Foo)
+   abc.
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{4, 7},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK_EQ(2, result.acResults.entryMap.size());
+            CHECK(result.acResults.entryMap.count("x"));
+            CHECK(result.acResults.entryMap.count("y"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "vec3_function_parameter")
+{
+    const std::string source = R"(
+--!strict
+local function func(abc : FakeVec)
+   abc.
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 7},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK_EQ(2, result.acResults.entryMap.size());
+            CHECK(result.acResults.entryMap.count("zero"));
+            CHECK(result.acResults.entryMap.count("dot"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "vec3_local_function_parameter")
+{
+    const std::string source = R"(
+--!strict
+local function func(abc : FakeVec)
+   abc.
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 7},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK_EQ(2, result.acResults.entryMap.size());
+            CHECK(result.acResults.entryMap.count("zero"));
+            CHECK(result.acResults.entryMap.count("dot"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "function_parameter_not_recommending_out_of_scope_argument")
+{
+    const std::string source = R"(
+--!strict
+local function foo(abd: FakeVec)
+end
+local function bar(abc : FakeVec)
+   a
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{5, 5},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.count("abc"));
+            CHECK(!result.acResults.entryMap.count("abd"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "bad_range")
+{
+    const std::string source = R"(
+l
+)";
+    const std::string updated = R"(
+local t = 1
+t
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        updated,
+        Position{2, 1},
+        [](FragmentAutocompleteResult& result)
+        {
+            auto opt = linearSearchForBinding(result.freshScope, "t");
+            REQUIRE(opt);
+            CHECK_EQ("number", toString(*opt));
         }
     );
 }

@@ -17,7 +17,6 @@ LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauAttribute)
-LUAU_FASTFLAG(LuauNativeAttribute)
 LUAU_FASTFLAGVARIABLE(LintRedundantNativeAttribute)
 
 namespace Luau
@@ -3239,7 +3238,6 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
 
 static bool hasNativeCommentDirective(const std::vector<HotComment>& hotcomments)
 {
-    LUAU_ASSERT(FFlag::LuauNativeAttribute);
     LUAU_ASSERT(FFlag::LintRedundantNativeAttribute);
 
     for (const HotComment& hc : hotcomments)
@@ -3265,7 +3263,6 @@ struct LintRedundantNativeAttribute : AstVisitor
 public:
     LUAU_NOINLINE static void process(LintContext& context)
     {
-        LUAU_ASSERT(FFlag::LuauNativeAttribute);
         LUAU_ASSERT(FFlag::LintRedundantNativeAttribute);
 
         LintRedundantNativeAttribute pass;
@@ -3389,7 +3386,7 @@ std::vector<LintWarning> lint(
     if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence))
         LintComparisonPrecedence::process(context);
 
-    if (FFlag::LuauNativeAttribute && FFlag::LintRedundantNativeAttribute && context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
+    if (FFlag::LintRedundantNativeAttribute && context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
     {
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);

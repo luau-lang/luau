@@ -9,6 +9,8 @@
 #include "Luau/TypePack.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
+
 namespace Luau
 {
 
@@ -445,7 +447,7 @@ struct FreeTypeSearcher : TypeVisitor
                 traverse(*prop.readTy);
             else
             {
-                LUAU_ASSERT(prop.isShared());
+                LUAU_ASSERT(prop.isShared() || FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
 
                 Polarity p = polarity;
                 polarity = Both;
@@ -894,7 +896,7 @@ struct TypeCacher : TypeOnceVisitor
         return true;
     }
 
-    bool visit(TypePackId tp, const Unifiable::Error& etp) override
+    bool visit(TypePackId tp, const ErrorTypePack& etp) override
     {
         return true;
     }

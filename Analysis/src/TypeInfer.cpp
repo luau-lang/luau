@@ -964,7 +964,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assig
         else if (auto tail = valueIter.tail())
         {
             TypePackId tailPack = follow(*tail);
-            if (get<Unifiable::Error>(tailPack))
+            if (get<ErrorTypePack>(tailPack))
                 right = errorRecoveryType(scope);
             else if (auto vtp = get<VariadicTypePack>(tailPack))
                 right = vtp->ty;
@@ -1244,7 +1244,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             iterTy = freshType(scope);
             unify(callRetPack, addTypePack({{iterTy}, freshTypePack(scope)}), scope, forin.location);
         }
-        else if (get<Unifiable::Error>(callRetPack) || !first(callRetPack))
+        else if (get<ErrorTypePack>(callRetPack) || !first(callRetPack))
         {
             for (TypeId var : varTypes)
                 unify(errorRecoveryType(scope), var, scope, forin.location);
@@ -1972,7 +1972,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         *asMutable(varargPack) = TypePack{{head}, tail};
         return WithPredicate{head};
     }
-    if (get<ErrorType>(varargPack))
+    if (get<ErrorTypePack>(varargPack))
         return WithPredicate{errorRecoveryType(scope)};
     else if (auto vtp = get<VariadicTypePack>(varargPack))
         return WithPredicate{vtp->ty};
@@ -2002,7 +2002,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         unify(pack, retPack, scope, expr.location);
         return {head, std::move(result.predicates)};
     }
-    if (get<Unifiable::Error>(retPack))
+    if (get<ErrorTypePack>(retPack))
         return {errorRecoveryType(scope), std::move(result.predicates)};
     else if (auto vtp = get<VariadicTypePack>(retPack))
         return {vtp->ty, std::move(result.predicates)};
@@ -4093,7 +4093,7 @@ void TypeChecker::checkArgumentList(
             if (argIter.tail())
             {
                 TypePackId tail = *argIter.tail();
-                if (state.log.getMutable<Unifiable::Error>(tail))
+                if (state.log.getMutable<ErrorTypePack>(tail))
                 {
                     // Unify remaining parameters so we don't leave any free-types hanging around.
                     while (paramIter != endIter)
@@ -4178,7 +4178,7 @@ void TypeChecker::checkArgumentList(
             }
             TypePackId tail = state.log.follow(*paramIter.tail());
 
-            if (state.log.getMutable<Unifiable::Error>(tail))
+            if (state.log.getMutable<ErrorTypePack>(tail))
             {
                 // Function is variadic.  Ok.
                 return;
@@ -4314,7 +4314,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
         WithPredicate<TypePackId> argListResult = checkExprList(scope, expr.location, expr.args, false, {}, expectedTypes);
         TypePackId argPack = argListResult.type;
 
-        if (get<Unifiable::Error>(argPack))
+        if (get<ErrorTypePack>(argPack))
             return WithPredicate{errorRecoveryTypePack(scope)};
 
         TypePack* args = nullptr;
@@ -4904,7 +4904,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
 
     TypePackId modulePack = module->returnType;
 
-    if (get<Unifiable::Error>(modulePack))
+    if (get<ErrorTypePack>(modulePack))
         return errorRecoveryType(scope);
 
     std::optional<TypeId> moduleType = first(modulePack);

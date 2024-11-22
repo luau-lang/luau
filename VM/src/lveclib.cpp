@@ -6,6 +6,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauVectorMetatable)
+
 static int vector_create(lua_State* L)
 {
     double x = luaL_checknumber(L, 1);
@@ -254,6 +256,35 @@ static int vector_max(lua_State* L)
     return 1;
 }
 
+static int vector_index(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::LuauVectorMetatable);
+
+    const float* v = luaL_checkvector(L, 1);
+    size_t namelen = 0;
+    const char* name = luaL_checklstring(L, 2, &namelen);
+
+    // field access implementation mirrors the fast-path we have in the VM
+    if (namelen == 1)
+    {
+        int ic = (name[0] | ' ') - 'x';
+
+#if LUA_VECTOR_SIZE == 4
+        // 'w' is before 'x' in ascii, so ic is -1 when indexing with 'w'
+        if (ic == -1)
+            ic = 3;
+#endif
+
+        if (unsigned(ic) < LUA_VECTOR_SIZE)
+        {
+            lua_pushnumber(L, v[ic]);
+            return 1;
+        }
+    }
+
+    luaL_error(L, "attempt to index vector with '%s'", name);
+}
+
 static const luaL_Reg vectorlib[] = {
     {"create", vector_create},
     {"magnitude", vector_magnitude},
@@ -271,6 +302,30 @@ static const luaL_Reg vectorlib[] = {
     {NULL, NULL},
 };
 
+static void createmetatable(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::LuauVectorMetatable);
+
+    lua_createtable(L, 0, 1); // create metatable for vectors
+
+    // push dummy vector
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
+
+    lua_pushvalue(L, -2);
+    lua_setmetatable(L, -2); // set vector metatable
+    lua_pop(L, 1);           // pop dummy vector
+
+    lua_pushcfunction(L, vector_index, nullptr);
+    lua_setfield(L, -2, "__index");
+
+    lua_setreadonly(L, -1, true);
+    lua_pop(L, 1); // pop the metatable
+}
+
 int luaopen_vector(lua_State* L)
 {
     luaL_register(L, LUA_VECLIBNAME, vectorlib);
@@ -286,6 +341,9 @@ int luaopen_vector(lua_State* L)
     lua_pushvector(L, 1.0f, 1.0f, 1.0f);
     lua_setfield(L, -2, "one");
 #endif
+
+    if (FFlag::LuauVectorMetatable)
+        createmetatable(L);
 
     return 1;
 }
