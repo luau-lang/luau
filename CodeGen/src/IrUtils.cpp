@@ -12,6 +12,8 @@
 #include <limits.h>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauVectorLibNativeDot);
+
 namespace Luau
 {
 namespace CodeGen
@@ -75,6 +77,9 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::UNM_VEC:
         return IrValueKind::Tvalue;
+    case IrCmd::DOT_VEC:
+        LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
+        return IrValueKind::Double;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
         return IrValueKind::Int;

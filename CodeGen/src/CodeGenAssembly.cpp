@@ -12,8 +12,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauNativeAttribute)
-
 namespace Luau
 {
 namespace CodeGen
@@ -155,10 +153,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
     }
 
     std::vector<Proto*> protos;
-    if (FFlag::LuauNativeAttribute)
-        gatherFunctions(protos, root, options.compilationOptions.flags, root->flags & LPF_NATIVE_FUNCTION);
-    else
-        gatherFunctions_DEPRECATED(protos, root, options.compilationOptions.flags);
+    gatherFunctions(protos, root, options.compilationOptions.flags, root->flags & LPF_NATIVE_FUNCTION);
 
     protos.erase(
         std::remove_if(

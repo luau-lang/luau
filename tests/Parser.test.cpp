@@ -16,10 +16,10 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
+LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
 
 namespace
 {
@@ -3351,8 +3351,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntaxFunExpr, true}};
-
     AstStatBlock* stat1 = parse(R"(
 local function invoker(f)
     return f(1)
@@ -3521,8 +3519,6 @@ function foo1 () @checked return 'a' end
 
 TEST_CASE_FIXTURE(Fixture, "dont_parse_attribute_on_argument_non_function")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntaxFunExpr, true}};
-
     ParseResult pr = tryParse(R"(
 local function invoker(f, y)
     return f(y)
@@ -3735,12 +3731,25 @@ TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")
     CHECK_EQ(unionTy->types.size, 3);
     // NOTE: These are `const char*` so we can compare them to `AstName`s later.
     std::vector<const char*> expectedTypes{"number", "boolean", "string"};
-    for (auto i = 0; i < expectedTypes.size(); i++)
+    for (size_t i = 0; i < expectedTypes.size(); i++)
     {
         auto ty = unionTy->types.data[i]->as<AstTypeReference>();
         LUAU_ASSERT(ty);
         CHECK_EQ(ty->name, expectedTypes[i]);
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "recover_from_bad_table_type")
+{
+    ScopedFastFlag _{FFlag::LuauErrorRecoveryForTableTypes, true};
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = true;
+    const auto result = tryParse(R"(
+        declare class Widget
+            state: {string: function(string, Widget)}
+        end
+    )", opts);
+    CHECK_EQ(result.errors.size(), 2);
 }
 
 

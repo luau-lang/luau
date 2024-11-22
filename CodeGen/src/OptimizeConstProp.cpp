@@ -18,6 +18,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauVectorLibNativeDot);
 
 namespace Luau
 {
@@ -1342,6 +1343,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SUB_VEC:
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
+    case IrCmd::DOT_VEC:
+        if (inst.cmd == IrCmd::DOT_VEC)
+            LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
+
         if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
             replace(function, inst.a, a->a);
 

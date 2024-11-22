@@ -135,9 +135,6 @@ struct Module
 
     TypePackId returnType = nullptr;
     std::unordered_map<Name, TypeFun> exportedTypeBindings;
-    // We also need to keep DFG data alive between runs
-    std::shared_ptr<DataFlowGraph> dataFlowGraph = nullptr;
-    std::vector<std::unique_ptr<DfgScope>> dfgScopes;
 
     bool hasModuleScope() const;
     ScopePtr getModuleScope() const;

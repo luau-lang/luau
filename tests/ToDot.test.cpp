@@ -431,7 +431,7 @@ n1 [label="FreeTypePack 1"];
 
 TEST_CASE_FIXTURE(Fixture, "error_pack")
 {
-    TypePackVar pack{TypePackVariant{Unifiable::Error{}}};
+    TypePackVar pack{TypePackVariant{ErrorTypePack{}}};
 
     ToDotOptions opts;
     opts.showPointers = false;

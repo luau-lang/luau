@@ -68,13 +68,11 @@ struct TypeGuard
     std::string type;
 };
 
-static std::optional<TypeGuard> matchTypeGuard(const AstExprBinary* binary)
+static std::optional<TypeGuard> matchTypeGuard(const AstExprBinary::Op op, AstExpr* left, AstExpr* right)
 {
-    if (binary->op != AstExprBinary::CompareEq && binary->op != AstExprBinary::CompareNe)
+    if (op != AstExprBinary::CompareEq && op != AstExprBinary::CompareNe)
         return std::nullopt;
 
-    AstExpr* left = binary->left;
-    AstExpr* right = binary->right;
     if (right->is<AstExprCall>())
         std::swap(left, right);
 
@@ -1431,8 +1429,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* ass
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
 {
-    AstExprBinary binop = AstExprBinary{assign->location, assign->op, assign->var, assign->value};
-    TypeId resultTy = check(scope, &binop).ty;
+    TypeId resultTy = checkAstExprBinary(scope, assign->location, assign->op, assign->var, assign->value, std::nullopt).ty;
     module->astCompoundAssignResultTypes[assign] = resultTy;
 
     TypeId lhsType = check(scope, assign->var).ty;
@@ -2394,63 +2391,75 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprUnary* unary)
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType)
 {
-    auto [leftType, rightType, refinement] = checkBinary(scope, binary, expectedType);
+    return checkAstExprBinary(scope, binary->location, binary->op, binary->left, binary->right, expectedType);
+}
 
-    switch (binary->op)
+Inference ConstraintGenerator::checkAstExprBinary(
+    const ScopePtr& scope,
+    const Location& location,
+    AstExprBinary::Op op,
+    AstExpr* left,
+    AstExpr* right,
+    std::optional<TypeId> expectedType
+)
+{
+    auto [leftType, rightType, refinement] = checkBinary(scope, op, left, right, expectedType);
+
+    switch (op)
     {
     case AstExprBinary::Op::Add:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().addFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().addFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Sub:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().subFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().subFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Mul:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().mulFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().mulFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Div:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().divFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().divFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::FloorDiv:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().idivFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().idivFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Pow:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().powFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().powFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Mod:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().modFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().modFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Concat:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().concatFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().concatFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::And:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().andFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().andFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Or:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().orFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().orFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareLt:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().ltFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().ltFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareGe:
@@ -2460,13 +2469,13 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
             {rightType, leftType}, // lua decided that `__ge(a, b)` is instead just `__lt(b, a)`
             {},
             scope,
-            binary->location
+            location
         );
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareLe:
     {
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().leFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().leFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareGt:
@@ -2476,15 +2485,15 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
             {rightType, leftType}, // lua decided that `__gt(a, b)` is instead just `__le(b, a)`
             {},
             scope,
-            binary->location
+            location
         );
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareEq:
     case AstExprBinary::Op::CompareNe:
     {
-        DefId leftDef = dfg->getDef(binary->left);
-        DefId rightDef = dfg->getDef(binary->right);
+        DefId leftDef = dfg->getDef(left);
+        DefId rightDef = dfg->getDef(right);
         bool leftSubscripted = containsSubscriptedDefinition(leftDef);
         bool rightSubscripted = containsSubscriptedDefinition(rightDef);
 
@@ -2493,11 +2502,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
             // we cannot add nil in this case because then we will blindly accept comparisons that we should not.
         }
         else if (leftSubscripted)
-            leftType = makeUnion(scope, binary->location, leftType, builtinTypes->nilType);
+            leftType = makeUnion(scope, location, leftType, builtinTypes->nilType);
         else if (rightSubscripted)
-            rightType = makeUnion(scope, binary->location, rightType, builtinTypes->nilType);
+            rightType = makeUnion(scope, location, rightType, builtinTypes->nilType);
 
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().eqFunc, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().eqFunc, {leftType, rightType}, {}, scope, location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Op__Count:
@@ -2543,44 +2552,46 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInterpString*
 
 std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
     const ScopePtr& scope,
-    AstExprBinary* binary,
+    AstExprBinary::Op op,
+    AstExpr* left,
+    AstExpr* right,
     std::optional<TypeId> expectedType
 )
 {
-    if (binary->op == AstExprBinary::And)
+    if (op == AstExprBinary::And)
     {
         std::optional<TypeId> relaxedExpectedLhs;
 
         if (expectedType)
             relaxedExpectedLhs = arena->addType(UnionType{{builtinTypes->falsyType, *expectedType}});
 
-        auto [leftType, leftRefinement] = check(scope, binary->left, relaxedExpectedLhs);
+        auto [leftType, leftRefinement] = check(scope, left, relaxedExpectedLhs);
 
-        ScopePtr rightScope = childScope(binary->right, scope);
-        applyRefinements(rightScope, binary->right->location, leftRefinement);
-        auto [rightType, rightRefinement] = check(rightScope, binary->right, expectedType);
+        ScopePtr rightScope = childScope(right, scope);
+        applyRefinements(rightScope, right->location, leftRefinement);
+        auto [rightType, rightRefinement] = check(rightScope, right, expectedType);
 
         return {leftType, rightType, refinementArena.conjunction(leftRefinement, rightRefinement)};
     }
-    else if (binary->op == AstExprBinary::Or)
+    else if (op == AstExprBinary::Or)
     {
         std::optional<TypeId> relaxedExpectedLhs;
 
         if (expectedType)
             relaxedExpectedLhs = arena->addType(UnionType{{builtinTypes->falsyType, *expectedType}});
 
-        auto [leftType, leftRefinement] = check(scope, binary->left, relaxedExpectedLhs);
+        auto [leftType, leftRefinement] = check(scope, left, relaxedExpectedLhs);
 
-        ScopePtr rightScope = childScope(binary->right, scope);
-        applyRefinements(rightScope, binary->right->location, refinementArena.negation(leftRefinement));
-        auto [rightType, rightRefinement] = check(rightScope, binary->right, expectedType);
+        ScopePtr rightScope = childScope(right, scope);
+        applyRefinements(rightScope, right->location, refinementArena.negation(leftRefinement));
+        auto [rightType, rightRefinement] = check(rightScope, right, expectedType);
 
         return {leftType, rightType, refinementArena.disjunction(leftRefinement, rightRefinement)};
     }
-    else if (auto typeguard = matchTypeGuard(binary))
+    else if (auto typeguard = matchTypeGuard(op, left, right))
     {
-        TypeId leftType = check(scope, binary->left).ty;
-        TypeId rightType = check(scope, binary->right).ty;
+        TypeId leftType = check(scope, left).ty;
+        TypeId rightType = check(scope, right).ty;
 
         const RefinementKey* key = dfg->getRefinementKey(typeguard->target);
         if (!key)
@@ -2622,24 +2633,24 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
         }
 
         RefinementId proposition = refinementArena.proposition(key, discriminantTy);
-        if (binary->op == AstExprBinary::CompareEq)
+        if (op == AstExprBinary::CompareEq)
             return {leftType, rightType, proposition};
-        else if (binary->op == AstExprBinary::CompareNe)
+        else if (op == AstExprBinary::CompareNe)
             return {leftType, rightType, refinementArena.negation(proposition)};
         else
             ice->ice("matchTypeGuard should only return a Some under `==` or `~=`!");
     }
-    else if (binary->op == AstExprBinary::CompareEq || binary->op == AstExprBinary::CompareNe)
+    else if (op == AstExprBinary::CompareEq || op == AstExprBinary::CompareNe)
     {
         // We are checking a binary expression of the form a op b
         // Just because a op b is epxected to return a bool, doesn't mean a, b are expected to be bools too
-        TypeId leftType = check(scope, binary->left, {}, true).ty;
-        TypeId rightType = check(scope, binary->right, {}, true).ty;
+        TypeId leftType = check(scope, left, {}, true).ty;
+        TypeId rightType = check(scope, right, {}, true).ty;
 
-        RefinementId leftRefinement = refinementArena.proposition(dfg->getRefinementKey(binary->left), rightType);
-        RefinementId rightRefinement = refinementArena.proposition(dfg->getRefinementKey(binary->right), leftType);
+        RefinementId leftRefinement = refinementArena.proposition(dfg->getRefinementKey(left), rightType);
+        RefinementId rightRefinement = refinementArena.proposition(dfg->getRefinementKey(right), leftType);
 
-        if (binary->op == AstExprBinary::CompareNe)
+        if (op == AstExprBinary::CompareNe)
         {
             leftRefinement = refinementArena.negation(leftRefinement);
             rightRefinement = refinementArena.negation(rightRefinement);
@@ -2649,8 +2660,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
     }
     else
     {
-        TypeId leftType = check(scope, binary->left).ty;
-        TypeId rightType = check(scope, binary->right).ty;
+        TypeId leftType = check(scope, left).ty;
+        TypeId rightType = check(scope, right).ty;
         return {leftType, rightType, nullptr};
     }
 }

@@ -84,7 +84,6 @@ struct DfgScope
 
     DfgScope* parent;
     ScopeType scopeType;
-    Location location;
 
     using Bindings = DenseHashMap<Symbol, const Def*>;
     using Props = DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>>;
@@ -156,7 +155,7 @@ private:
     DenseHashMap<Symbol, FunctionCapture> captures{Symbol{}};
     void resolveCaptures();
 
-    DfgScope* makeChildScope(Location loc, DfgScope::ScopeType scopeType = DfgScope::Linear);
+    DfgScope* makeChildScope(DfgScope::ScopeType scopeType = DfgScope::Linear);
 
     void join(DfgScope* p, DfgScope* a, DfgScope* b);
     void joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b);

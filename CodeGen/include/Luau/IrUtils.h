@@ -5,6 +5,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
+LUAU_FASTFLAG(LuauVectorLibNativeDot);
+
 namespace Luau
 {
 namespace CodeGen
@@ -176,6 +178,10 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::SUB_VEC:
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
+    case IrCmd::DOT_VEC:
+        if (cmd == IrCmd::DOT_VEC)
+            LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
+        LUAU_FALLTHROUGH;
     case IrCmd::UNM_VEC:
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:

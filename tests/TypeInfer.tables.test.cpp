@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(LuauTableKeysAreRValues)
+LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -1925,18 +1926,128 @@ TEST_CASE_FIXTURE(Fixture, "type_mismatch_on_massive_table_is_cut_short")
 
 TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_even_on_non_lvalue_base_expr")
 {
-    // CLI-100076 Assigning nil to an indexer should always succeed
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
 
-    CheckResult result = check(R"(
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(): { [string]: number }
             return { ["foo"] = 1 }
         end
 
         f()["foo"] = nil
+    )"));
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(
+            t: {known_prop: boolean, [string]: number}, 
+            key: string
+        )
+            t[key] = nil
+            t["hello"] = nil
+            t.undefined = nil
+        end
+    )"));
+
+    auto result = check(R"(
+        local function f(t: {known_prop: boolean, [string]: number, })
+            t.known_prop = nil
+        end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(Location{{2, 27}, {2, 30}}, result.errors[0].location);
+    CHECK_EQ("Type 'nil' could not be converted into 'boolean'", toString(result.errors[0]));
+
+    loadDefinition(R"(
+        declare class FancyHashtable
+            [string]: number
+            real_property: string
+        end
+     )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function removekey(fh: FancyHashtable, other_key: string)
+            fh["hmmm"] = nil
+            fh[other_key] = nil
+            fh.dne = nil
+        end
+    )"));
+
+    result = check(R"(
+        local function removekey(fh: FancyHashtable)
+            fh.real_property = nil
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location, Location{{2, 31}, {2, 34}});
+    CHECK_EQ(toString(result.errors[0]), "Type 'nil' could not be converted into 'string'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_on_generic_map")
+{
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type MyMap<K, V> = { [K]: V }
+        function set<K, V>(m: MyMap<K, V>, k: K, v: V)
+            m[k] = v
+        end
+        function unset<K, V>(m: MyMap<K, V>, k: K)
+            m[k] = nil
+        end
+        local m: MyMap<string, boolean> = {}
+        set(m, "foo", true)
+        unset(m, "foo")
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "key_setting_inference_given_nil_upper_bound")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function setkey_object(t: { [string]: number }, v)
+            t.foo = v
+            t.foo = nil
+        end
+        local function setkey_constindex(t: { [string]: number }, v)
+            t["foo"] = v
+            t["foo"] = nil
+        end
+        local function setkey_unknown(t: { [string]: number }, k, v)
+            t[k] = v
+            t[k] = nil
+        end
+    )"));
+    CHECK_EQ(toString(requireType("setkey_object")), "({ [string]: number }, number) -> ()");
+    CHECK_EQ(toString(requireType("setkey_constindex")), "({ [string]: number }, number) -> ()");
+    CHECK_EQ(toString(requireType("setkey_unknown")), "({ [string]: number }, string, number) -> ()");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function on_number(v: number): () end
+        local function setkey_object(t: { [string]: number }, v)
+            t.foo = v
+            on_number(v)
+        end
+    )"));
+    CHECK_EQ(toString(requireType("setkey_object")), "({ [string]: number }, number) -> ()");
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicit_nil_indexer")
+{
+
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    auto result = check(R"(
+        local function _(t: { [string]: number? }): number
+            return t.hello
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location, Location{{2, 12}, {2, 26}});
+    CHECK(get<TypePackMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ok_to_provide_a_subtype_during_construction")
@@ -2843,17 +2954,20 @@ TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "wrong_assign_does_hit_indexer")
 {
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
+
     CheckResult result = check(R"(
         local a = {}
         a[0] = 7
         a[0] = 't'
+        a[0] = nil
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK((Location{Position{3, 15}, Position{3, 18}}) == result.errors[0].location);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK(tm->wantedType == builtinTypes->numberType);
+    CHECK_EQ("number?", toString(tm->wantedType));
     CHECK(tm->givenType == builtinTypes->stringType);
 }
 

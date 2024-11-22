@@ -295,11 +295,25 @@ private:
     Inference check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType, bool generalize);
     Inference check(const ScopePtr& scope, AstExprUnary* unary);
     Inference check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
+    Inference checkAstExprBinary(
+        const ScopePtr& scope,
+        const Location& location,
+        AstExprBinary::Op op,
+        AstExpr* left,
+        AstExpr* right,
+        std::optional<TypeId> expectedType
+    );
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
-    std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
+    std::tuple<TypeId, TypeId, RefinementId> checkBinary(
+        const ScopePtr& scope,
+        AstExprBinary::Op op,
+        AstExpr* left,
+        AstExpr* right,
+        std::optional<TypeId> expectedType
+    );
 
     void visitLValue(const ScopePtr& scope, AstExpr* expr, TypeId rhsType);
     void visitLValue(const ScopePtr& scope, AstExprLocal* local, TypeId rhsType);

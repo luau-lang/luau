@@ -10,7 +10,6 @@
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauBoundLazyTypes2)
 LUAU_FASTFLAG(LuauSolverV2)
 
 namespace Luau
@@ -190,7 +189,7 @@ struct GenericTypeVisitor
     {
         return visit(tp);
     }
-    virtual bool visit(TypePackId tp, const Unifiable::Error& etp)
+    virtual bool visit(TypePackId tp, const ErrorTypePack& etp)
     {
         return visit(tp);
     }
@@ -461,7 +460,7 @@ struct GenericTypeVisitor
         else if (auto gtv = get<GenericTypePack>(tp))
             visit(tp, *gtv);
 
-        else if (auto etv = get<Unifiable::Error>(tp))
+        else if (auto etv = get<ErrorTypePack>(tp))
             visit(tp, *etv);
 
         else if (auto pack = get<TypePack>(tp))

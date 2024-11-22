@@ -1616,9 +1616,9 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             log.replace(subTp, Unifiable::Bound<TypePackId>(superTp));
         }
     }
-    else if (log.getMutable<Unifiable::Error>(superTp))
+    else if (log.getMutable<ErrorTypePack>(superTp))
         tryUnifyWithAny(subTp, superTp);
-    else if (log.getMutable<Unifiable::Error>(subTp))
+    else if (log.getMutable<ErrorTypePack>(subTp))
         tryUnifyWithAny(superTp, subTp);
     else if (log.getMutable<VariadicTypePack>(superTp))
         tryUnifyVariadics(subTp, superTp, false);
@@ -2741,7 +2741,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
                 else
                     log.replace(tail, BoundTypePack{superTp});
             }
-            else if (get<Unifiable::Error>(tail))
+            else if (get<ErrorTypePack>(tail))
             {
                 // Nothing to do here.
             }
@@ -2845,7 +2845,7 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
 
 void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 {
-    LUAU_ASSERT(get<Unifiable::Error>(anyTp));
+    LUAU_ASSERT(get<ErrorTypePack>(anyTp));
 
     const TypeId anyTy = builtinTypes->errorRecoveryType();
 
@@ -2997,7 +2997,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 
     RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
-    while (!log.getMutable<ErrorType>(haystack))
+    while (!log.getMutable<ErrorTypePack>(haystack))
     {
         if (needle == haystack)
             return true;

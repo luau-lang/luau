@@ -26,7 +26,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAG(LuauNativeAttribute)
+LUAU_FASTFLAGVARIABLE(LuauCompileOptimizeRevArith)
 
 namespace Luau
 {
@@ -285,7 +285,7 @@ struct Compiler
         if (func->functionDepth == 0 && !hasLoops)
             protoflags |= LPF_NATIVE_COLD;
 
-        if (FFlag::LuauNativeAttribute && func->hasNativeAttribute())
+        if (func->hasNativeAttribute())
             protoflags |= LPF_NATIVE_FUNCTION;
 
         bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags);
@@ -1621,6 +1621,24 @@ struct Compiler
 
                         hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
                         return;
+                    }
+                }
+                else if (FFlag::LuauCompileOptimizeRevArith && options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
+                {
+                    // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
+                    if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                    {
+                        int32_t lc = getConstantNumber(expr->left);
+
+                        if (lc >= 0 && lc <= 255)
+                        {
+                            uint8_t rr = compileExprAuto(expr->right, rs);
+
+                            bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+
+                            hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                            return;
+                        }
                     }
                 }
 
@@ -3908,7 +3926,7 @@ struct Compiler
             // this makes sure all functions that are used when compiling this one have been already added to the vector
             functions.push_back(node);
 
-            if (FFlag::LuauNativeAttribute && !hasNativeFunction && node->hasNativeAttribute())
+            if (!hasNativeFunction && node->hasNativeAttribute())
                 hasNativeFunction = true;
 
             return false;
@@ -4253,7 +4271,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
 
         // If a function has native attribute and the whole module is not native, we set  LPF_NATIVE_FUNCTION flag
         // This ensures that LPF_NATIVE_MODULE and LPF_NATIVE_FUNCTION are exclusive.
-        if (FFlag::LuauNativeAttribute && (protoflags & LPF_NATIVE_FUNCTION) && !(mainFlags & LPF_NATIVE_MODULE))
+        if ((protoflags & LPF_NATIVE_FUNCTION) && !(mainFlags & LPF_NATIVE_MODULE))
             mainFlags |= LPF_NATIVE_FUNCTION;
     }
 

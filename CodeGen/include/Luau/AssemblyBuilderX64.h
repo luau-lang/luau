@@ -167,6 +167,8 @@ public:
     void vpshufps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t shuffle);
     void vpinsrd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t offset);
 
+    void vdpps(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mask);
+
     // Run final checks
     bool finalize();
 

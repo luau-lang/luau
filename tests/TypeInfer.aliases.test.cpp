@@ -10,7 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1154,7 +1153,7 @@ type Foo<T> = Foo<T> | string
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_adds_reduce_constraint_for_type_function")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauUserDefinedTypeFunctions2)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1164,20 +1163,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_adds_reduce_constraint_for_type_f
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "user_defined_type_function_errors")
-{
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag noUDTFimpl{FFlag::LuauUserDefinedTypeFunctions2, false};
-
-    CheckResult result = check(R"(
-    type function foo()
-        return nil
-    end
-    )");
-    LUAU_CHECK_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == "This syntax is not supported");
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_type_in_alias_segfault")

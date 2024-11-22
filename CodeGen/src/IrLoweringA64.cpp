@@ -11,6 +11,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauVectorLibNativeDot);
+
 namespace Luau
 {
 namespace CodeGen
@@ -726,6 +728,23 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a});
 
         build.fneg(inst.regA64, regOp(inst.a));
+        break;
+    }
+    case IrCmd::DOT_VEC:
+    {
+        LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
+
+        inst.regA64 = regs.allocReg(KindA64::d, index);
+
+        RegisterA64 temp = regs.allocTemp(KindA64::q);
+        RegisterA64 temps = castReg(KindA64::s, temp);
+        RegisterA64 regs = castReg(KindA64::s, inst.regA64);
+
+        build.fmul(temp, regOp(inst.a), regOp(inst.b));
+        build.faddp(regs, temps); // x+y
+        build.dup_4s(temp, temp, 2);
+        build.fadd(regs, regs, temps); // +z
+        build.fcvt(inst.regA64, regs);
         break;
     }
     case IrCmd::NOT_ANY:
