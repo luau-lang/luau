@@ -14,7 +14,6 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
@@ -510,10 +509,7 @@ template<typename AssemblyBuilder>
         return CompilationResult{CodeGenCompilationResult::CodeGenNotInitialized};
 
     std::vector<Proto*> protos;
-    if (FFlag::LuauNativeAttribute)
-        gatherFunctions(protos, root, options.flags, root->flags & LPF_NATIVE_FUNCTION);
-    else
-        gatherFunctions_DEPRECATED(protos, root, options.flags);
+    gatherFunctions(protos, root, options.flags, root->flags & LPF_NATIVE_FUNCTION);
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     protos.erase(

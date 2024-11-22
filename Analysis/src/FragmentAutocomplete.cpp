@@ -27,7 +27,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauAllowFragmentParsing);
-LUAU_FASTFLAG(LuauStoreDFGOnModule2);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 namespace
@@ -89,6 +88,25 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* ro
                     {
                         localStack.push_back(locFun->name);
                         localMap[locFun->name->name] = locFun->name;
+                        if (locFun->location.contains(cursorPos))
+                        {
+                            for (AstLocal* loc : locFun->func->args)
+                            {
+                                localStack.push_back(loc);
+                                localMap[loc->name] = loc;
+                            }
+                        }
+                    }
+                    else if (auto globFun = stat->as<AstStatFunction>())
+                    {
+                        if (globFun->location.contains(cursorPos))
+                        {
+                            for (AstLocal* loc : globFun->func->args)
+                            {
+                                localStack.push_back(loc);
+                                localMap[loc->name] = loc;
+                            }
+                        }
                     }
                 }
             }
@@ -234,9 +252,9 @@ FragmentParseResult parseFragment(
     // If we added to the end of the sourceModule, use the end of the nearest location
     if (appended && multiline)
         startPos = nearestStatement->location.end;
-    // Statement spans one line && cursorPos is on a different line
-    else if (!multiline && cursorPos.line != nearestStatement->location.end.line)
-        startPos = nearestStatement->location.end;
+    // Statement spans one line && cursorPos is either on the same line or after
+    else if (!multiline && cursorPos.line >= nearestStatement->location.end.line)
+        startPos = nearestStatement->location.begin;
     else if (multiline && nearestStatement->location.end.line < cursorPos.line)
         startPos = nearestStatement->location.end;
     else
@@ -300,6 +318,7 @@ struct MixedModeIncrementalTCDefFinder : public AstVisitor
         referencedLocalDefs.push_back({local->local, local});
         return true;
     }
+
     // ast defs is just a mapping from expr -> def in general
     // will get built up by the dfg builder
 
@@ -495,7 +514,6 @@ FragmentAutocompleteResult fragmentAutocomplete(
 )
 {
     LUAU_ASSERT(FFlag::LuauAllowFragmentParsing);
-    LUAU_ASSERT(FFlag::LuauStoreDFGOnModule2);
     LUAU_ASSERT(FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
 
     const SourceModule* sourceModule = frontend.getSourceModule(moduleName);

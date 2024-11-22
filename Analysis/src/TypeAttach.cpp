@@ -329,7 +329,7 @@ public:
             Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
         );
     }
-    AstType* operator()(const Unifiable::Error&)
+    AstType* operator()(const ErrorType&)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("Unifiable<Error>"), std::nullopt, Location());
     }
@@ -458,7 +458,7 @@ public:
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("free"));
     }
 
-    AstTypePack* operator()(const Unifiable::Error&) const
+    AstTypePack* operator()(const ErrorTypePack&) const
     {
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("Unifiable<Error>"));
     }

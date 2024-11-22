@@ -13,7 +13,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAttributeSyntax);
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -969,7 +968,7 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
 
     Type tv{tftt};
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauUserDefinedTypeFunctions2)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(&tv, {}), "woohoo<number>");
 }
 

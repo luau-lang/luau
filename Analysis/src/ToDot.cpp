@@ -420,7 +420,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
         finishNodeLabel(tp);
         finishNode();
     }
-    else if (get<Unifiable::Error>(tp))
+    else if (get<ErrorTypePack>(tp))
     {
         formatAppend(result, "ErrorTypePack %d", index);
         finishNodeLabel(tp);

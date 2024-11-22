@@ -46,8 +46,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctions2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAG(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionResetState)
@@ -634,12 +632,9 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
         }
     }
 
-    if (FFlag::LuauUserDefinedTypeFunctionNoEvaluation)
-    {
-        // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
-        if (!ctx->typeFunctionRuntime->allowEvaluation)
-            return {ctx->builtins->errorRecoveryType(), false, {}, {}};
-    }
+    // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
+    if (!ctx->typeFunctionRuntime->allowEvaluation)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
 
     for (auto typeParam : typeParams)
     {
@@ -994,12 +989,9 @@ TypeFunctionRuntime::~TypeFunctionRuntime() {}
 
 std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunction* function)
 {
-    if (FFlag::LuauUserDefinedTypeFunctionNoEvaluation)
-    {
-        // If evaluation is disabled, we do not generate additional error messages
-        if (!allowEvaluation)
-            return std::nullopt;
-    }
+    // If evaluation is disabled, we do not generate additional error messages
+    if (!allowEvaluation)
+        return std::nullopt;
 
     prepareState();
 

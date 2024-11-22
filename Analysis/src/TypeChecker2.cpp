@@ -31,7 +31,6 @@
 #include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
 
 LUAU_FASTFLAGVARIABLE(LuauTableKeysAreRValues)
 
@@ -1200,8 +1199,6 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 void TypeChecker2::visit(AstStatTypeFunction* stat)
 {
     // TODO: add type checking for user-defined type functions
-    if (!FFlag::LuauUserDefinedTypeFunctions2)
-        reportError(TypeError{stat->location, GenericError{"This syntax is not supported"}});
 }
 
 void TypeChecker2::visit(AstTypeList types)
@@ -2353,7 +2350,7 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
 
         return result;
     }
-    else if (get<Unifiable::Error>(pack))
+    else if (get<ErrorTypePack>(pack))
         return builtinTypes->errorRecoveryType();
     else if (finite(pack) && size(pack) == 0)
         return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`

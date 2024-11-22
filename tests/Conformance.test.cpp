@@ -34,11 +34,13 @@ void luaC_validate(lua_State* L);
 LUAU_FASTFLAG(LuauMathMap)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauNativeAttribute)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
 LUAU_FASTFLAG(LuauVectorDefinitions)
 LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoInvArgLeftovers)
 LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
+LUAU_FASTFLAG(LuauVectorLibNativeDot)
+LUAU_FASTFLAG(LuauVectorBuiltins)
+LUAU_FASTFLAG(LuauVectorMetatable)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -889,7 +891,10 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
+    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
+    ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
+    ScopedFastFlag luauVectorMetatable{FFlag::LuauVectorMetatable, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -2950,8 +2955,6 @@ TEST_CASE("NativeAttribute")
 {
     if (!codegen || !luau_codegen_supported())
         return;
-
-    ScopedFastFlag sffs[] = {{FFlag::LuauNativeAttribute, true}};
 
     std::string source = R"R(
         @native

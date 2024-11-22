@@ -28,15 +28,7 @@ Config::Config(const Config& other)
 {
     for (const auto& [alias, aliasInfo] : other.aliases)
     {
-        std::string configLocation = std::string(aliasInfo.configLocation);
-
-        if (!configLocationCache.contains(configLocation))
-            configLocationCache[configLocation] = std::make_unique<std::string>(configLocation);
-
-        AliasInfo newAliasInfo;
-        newAliasInfo.value = aliasInfo.value;
-        newAliasInfo.configLocation = *configLocationCache[configLocation];
-        aliases[alias] = std::move(newAliasInfo);
+        setAlias(alias, aliasInfo.value, std::string(aliasInfo.configLocation));
     }
 }
 
@@ -50,10 +42,10 @@ Config& Config::operator=(const Config& other)
     return *this;
 }
 
-void Config::setAlias(std::string alias, const std::string& value, const std::string configLocation)
+void Config::setAlias(std::string alias, std::string value, const std::string& configLocation)
 {
     AliasInfo& info = aliases[alias];
-    info.value = value;
+    info.value = std::move(value);
 
     if (!configLocationCache.contains(configLocation))
         configLocationCache[configLocation] = std::make_unique<std::string>(configLocation);

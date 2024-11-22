@@ -218,7 +218,7 @@ struct NonStrictTypeChecker
 
             return result;
         }
-        else if (get<Unifiable::Error>(pack))
+        else if (get<ErrorTypePack>(pack))
             return builtinTypes->errorRecoveryType();
         else if (finite(pack) && size(pack) == 0)
             return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`

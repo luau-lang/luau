@@ -562,12 +562,14 @@ void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
     }
 }
 
-LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
+LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source, bool forAutocomplete)
 {
-    unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result =
-        frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, source, "@test", /* captureComments */ false);
-    freeze(frontend.globals.globalTypes);
+    GlobalTypes& globals = forAutocomplete ? frontend.globalsForAutocomplete : frontend.globals;
+    unfreeze(globals.globalTypes);
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
+        globals, globals.globalScope, source, "@test", /* captureComments */ false, /* typecheckForAutocomplete */ forAutocomplete
+    );
+    freeze(globals.globalTypes);
 
     if (result.module)
         dumpErrors(result.module);

@@ -199,14 +199,14 @@ TEST_CASE_FIXTURE(TypePackFixture, "std_distance")
 
 TEST_CASE("content_reassignment")
 {
-    TypePackVar myError{Unifiable::Error{}, /*presistent*/ true};
+    TypePackVar myError{ErrorTypePack{}, /*presistent*/ true};
 
     TypeArena arena;
 
     TypePackId futureError = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
     asMutable(futureError)->reassign(myError);
 
-    CHECK(get<ErrorType>(futureError) != nullptr);
+    CHECK(get<ErrorTypePack>(futureError) != nullptr);
     CHECK(!futureError->persistent);
     CHECK(futureError->owningArena == &arena);
 }

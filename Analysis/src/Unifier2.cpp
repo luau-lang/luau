@@ -908,7 +908,7 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePack
 
     RecursionLimiter _ra(&recursionCount, recursionLimit);
 
-    while (!getMutable<Unifiable::Error>(haystack))
+    while (!getMutable<ErrorTypePack>(haystack))
     {
         if (needle == haystack)
             return OccursCheckResult::Fail;

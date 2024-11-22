@@ -9,8 +9,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctionNoEvaluation)
 LUAU_FASTFLAG(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAG(LuauUserTypeFunFixMetatable)
@@ -25,7 +23,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_nil_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_nil(arg)
@@ -42,7 +39,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_nil_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getnil()
@@ -63,7 +59,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unknown_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_unknown(arg)
@@ -80,7 +75,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unknown_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getunknown()
@@ -101,7 +95,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_never_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_never(arg)
@@ -118,7 +111,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_never_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getnever()
@@ -139,7 +131,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_any_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_any(arg)
@@ -156,7 +147,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_any_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getany()
@@ -177,7 +167,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolean_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_bool(arg)
@@ -194,7 +183,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolean_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getboolean()
@@ -215,7 +203,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_number_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_num(arg)
@@ -232,7 +219,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_number_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getnumber()
@@ -253,7 +239,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_string_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_str(arg)
@@ -270,7 +255,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_string_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getstring()
@@ -291,7 +275,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolsingleton_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_boolsingleton(arg)
@@ -308,7 +291,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolsingleton_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getboolsingleton()
@@ -329,7 +311,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strsingleton_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_strsingleton(arg)
@@ -346,7 +327,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strsingleton_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getstrsingleton()
@@ -367,7 +347,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_union(arg)
@@ -388,7 +367,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getunion()
@@ -418,7 +396,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_intersection(arg)
@@ -439,7 +416,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getintersection()
@@ -475,7 +451,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getnegation()
@@ -501,7 +476,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_table(arg)
@@ -522,7 +496,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function gettable()
@@ -562,7 +535,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getmetatable()
@@ -596,7 +568,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_func(arg)
@@ -613,7 +584,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_methods_work")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getfunction()
@@ -644,7 +614,6 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_class(arg)
@@ -660,7 +629,6 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_methods_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
 
     CheckResult result = check(R"(
@@ -684,7 +652,6 @@ TEST_CASE_FIXTURE(ClassFixture, "write_of_readonly_is_nil")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag udtfRwFix{FFlag::LuauUserTypeFunFixNoReadWrite, true};
 
 
@@ -714,7 +681,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function checkmut()
@@ -747,7 +713,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function getcopy()
@@ -781,7 +746,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_simple_cyclic_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_cycle(arg)
@@ -803,7 +767,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function badmetatable()
@@ -825,7 +788,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_complex_cyclic_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function serialize_cycle2(arg)
@@ -855,7 +817,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function errors_if_string(arg)
@@ -878,7 +839,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_call_metamethod")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function hello(arg)
@@ -897,7 +857,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_eq_metamethod")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function hello()
@@ -923,7 +882,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_type_cant_call_get_props")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function hello(arg)
@@ -945,7 +903,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -967,7 +924,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -996,7 +952,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserDefinedTypeFunctionResetState{FFlag::LuauUserDefinedTypeFunctionResetState, true};
 
     CheckResult result = check(R"(
@@ -1013,7 +968,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function optionify(tbl)
@@ -1043,7 +997,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function illegal(arg)
@@ -1065,7 +1018,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_recursion_and_gc")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function foo(tbl)
@@ -1091,8 +1043,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_recovery_no_upvalues")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
     ScopedFastFlag userDefinedTypeFunctionsSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag userDefinedTypeFunctions{FFlag::LuauUserDefinedTypeFunctions2, true};
-    ScopedFastFlag userDefinedTypeFunctionNoEvaluation{FFlag::LuauUserDefinedTypeFunctionNoEvaluation, true};
 
     CheckResult result = check(R"(
         local var
@@ -1116,7 +1066,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_follow")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
     ScopedFastFlag userDefinedTypeFunctionsSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag userDefinedTypeFunctions{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type t0 = any
@@ -1133,7 +1082,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strip_indexer")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
 
     CheckResult result = check(R"(
         type function stripindexer(tbl)
@@ -1159,7 +1107,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_type_methods_on_types")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
 
     CheckResult result = check(R"(
@@ -1177,7 +1124,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_types_functions_on_type")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
 
     CheckResult result = check(R"(
@@ -1195,7 +1141,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_metatable_writes")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
 
     CheckResult result = check(R"(
@@ -1215,7 +1160,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_eq_field")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
 
     CheckResult result = check(R"(
@@ -1233,7 +1177,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
 
     CheckResult result = check(R"(
@@ -1256,7 +1199,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
     ScopedFastFlag luauUserTypeFunFixMetatable{FFlag::LuauUserTypeFunFixMetatable, true};
 
@@ -1288,7 +1230,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonstrict_mode")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
     ScopedFastFlag luauUserTypeFunNonstrict{FFlag::LuauUserTypeFunNonstrict, true};
 
@@ -1304,7 +1245,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "implicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
     ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
@@ -1335,7 +1275,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "local_scope")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
     ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
@@ -1361,7 +1300,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-    ScopedFastFlag udtf{FFlag::LuauUserDefinedTypeFunctions2, true};
     ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
     ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
     ScopedFastFlag luauUserDefinedTypeFunParseExport{FFlag::LuauUserDefinedTypeFunParseExport, true};
