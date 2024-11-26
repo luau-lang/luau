@@ -1224,6 +1224,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 if (*k == 1.0) // a / 1.0 = a
                     substitute(function, inst, inst.a);
+                else if (*k == -1.0) // a / -1.0 = -a
+                    replace(function, block, index, {IrCmd::UNM_NUM, inst.a});
                 else if (int exp = 0; frexp(*k, &exp) == 0.5 && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
                     replace(function, block, index, {IrCmd::MUL_NUM, inst.a, build.constDouble(1.0 / *k)});
                 else
