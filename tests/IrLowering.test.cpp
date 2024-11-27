@@ -540,7 +540,7 @@ TEST_CASE("VectorCustomAccess")
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3magn(a: vector)
-    return a.Magnitude * 2
+    return a.Magnitude * 3
 end
 )"),
         R"(
@@ -560,7 +560,7 @@ bb_bytecode_1:
   %12 = ADD_NUM %9, %10
   %13 = ADD_NUM %12, %11
   %14 = SQRT_NUM %13
-  %20 = MUL_NUM %14, 2
+  %20 = MUL_NUM %14, 3
   STORE_DOUBLE R1, %20
   STORE_TAG R1, tnumber
   INTERRUPT 3u
@@ -1167,7 +1167,7 @@ local function inl(v: vector, s: number)
 end
 
 local function getsum(x)
-    return inl(x, 2) + inl(x, 5)
+    return inl(x, 3) + inl(x, 5)
 end
 )",
                    /* includeIrTypes */ true
@@ -1195,7 +1195,7 @@ bb_bytecode_1:
 bb_bytecode_0:
   CHECK_TAG R0, tvector, exit(0)
   %2 = LOAD_FLOAT R0, 4i
-  %8 = MUL_NUM %2, 2
+  %8 = MUL_NUM %2, 3
   %13 = LOAD_FLOAT R0, 4i
   %19 = MUL_NUM %13, 5
   %28 = ADD_NUM %8, %19
