@@ -1194,9 +1194,26 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
+        state.substituteOrRecord(inst, index);
+        break;
     case IrCmd::ADD_NUM:
     case IrCmd::SUB_NUM:
-        state.substituteOrRecord(inst, index);
+        if (FFlag::LuauCodeGenArithOpt)
+        {
+            if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
+            {
+                // a + 0.0 and a - (-0.0) can't be folded since the behavior is different for negative zero
+                // however, a - 0.0 and a + (-0.0) can be folded into a
+                if (*k == 0.0 && bool(signbit(*k)) == (inst.cmd == IrCmd::ADD_NUM))
+                    substitute(function, inst, inst.a);
+                else
+                    state.substituteOrRecord(inst, index);
+            }
+            else
+                state.substituteOrRecord(inst, index);
+        }
+        else
+            state.substituteOrRecord(inst, index);
         break;
     case IrCmd::MUL_NUM:
         if (FFlag::LuauCodeGenArithOpt)
