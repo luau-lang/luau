@@ -96,6 +96,7 @@ assert((function() local a = 1 a = a / 2 return a end)() == 0.5)
 -- argument is passed into anonymous function to prevent constant folding
 assert((function(a) return tostring(a + 0) end)(-0) == "0")
 assert((function(a) return tostring(a - 0) end)(-0) == "-0")
+assert((function(a) return tostring(0 - a) end)(0) == "0")
 assert((function(a) return tostring(a - a) end)(1 / 0) == "nan")
 assert((function(a) return tostring(a * 0) end)(0 / 0) == "nan")
 assert((function(a) return tostring(a / (2^1000)) end)(2^1000) == "1")
