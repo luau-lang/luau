@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauMetatableFollow)
 LUAU_FASTFLAGVARIABLE(LuauRequireCyclesDontAlwaysReturnAny)
+LUAU_FASTFLAGVARIABLE(LuauNilInForLoops)
 
 namespace Luau
 {
@@ -1285,7 +1286,18 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
                 unify(iterTable->indexer->indexType, varTypes[0], scope, forin.location);
 
             if (varTypes.size() > 1)
-                unify(iterTable->indexer->indexResultType, varTypes[1], scope, forin.location);
+            {
+                if (FFlag::LuauNilInForLoops)
+                {
+                    std::optional<TypeId> withoutNilTy = tryStripUnionFromNil(iterTable->indexer->indexResultType);
+
+                    unify(withoutNilTy ? *withoutNilTy : iterTable->indexer->indexResultType, varTypes[1], scope, forin.location);
+                }
+                else
+                {
+                    unify(iterTable->indexer->indexResultType, varTypes[1], scope, forin.location);
+                }
+            }
 
             for (size_t i = 2; i < varTypes.size(); ++i)
                 unify(nilType, varTypes[i], scope, forin.location);
