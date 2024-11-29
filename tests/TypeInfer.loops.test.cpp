@@ -15,6 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauNilInForLoops)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1253,6 +1254,36 @@ local function foo(Instance)
 	end
 end
     )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "nil_in_for_loops")
+{
+    ScopedFastFlag sff = {FFlag::LuauNilInForLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function f(x: { [string]: string? })
+            for key, value in x do
+                local v: string = value
+            end
+        end
+    )"));
+}
+
+// Custom iterators can return nil, just not without
+TEST_CASE_FIXTURE(BuiltinsFixture, "nil_in_for_loops_iter")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type T = typeof(setmetatable({}, {} :: {
+            __iter: (any) -> () -> (boolean, string?)
+        }))
+
+        local function f(x: T)
+            for a: boolean, b: string? in x do
+            end
+        end
+    )"));
 }
 
 TEST_SUITE_END();
