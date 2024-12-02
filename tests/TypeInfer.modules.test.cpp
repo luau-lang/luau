@@ -11,7 +11,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauRequireCyclesDontAlwaysReturnAny)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
@@ -756,8 +755,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
 {
-    ScopedFastFlag sff{FFlag::LuauRequireCyclesDontAlwaysReturnAny, true};
-
     fileResolver.source["game/A"] = R"(
         --!strict
         local module = {}

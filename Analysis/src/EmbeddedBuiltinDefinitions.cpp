@@ -4,6 +4,7 @@
 LUAU_FASTFLAG(LuauMathMap)
 
 LUAU_FASTFLAGVARIABLE(LuauVectorDefinitions)
+LUAU_FASTFLAGVARIABLE(LuauVectorDefinitionsExtra)
 
 namespace Luau
 {
@@ -452,10 +453,40 @@ declare buffer: {
 
 )BUILTIN_SRC";
 
-static const std::string kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+static const std::string kBuiltinDefinitionVectorSrc_DEPRECATED = R"BUILTIN_SRC(
 
 -- TODO: this will be replaced with a built-in primitive type
 declare class vector end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number) -> vector,
+    magnitude: @checked (vec: vector) -> number,
+    normalize: @checked (vec: vector) -> vector,
+    cross: @checked (vec1: vector, vec2: vector) -> vector,
+    dot: @checked (vec1: vector, vec2: vector) -> number,
+    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
+    floor: @checked (vec: vector) -> vector,
+    ceil: @checked (vec: vector) -> vector,
+    abs: @checked (vec: vector) -> vector,
+    sign: @checked (vec: vector) -> vector,
+    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
+    max: @checked (vector, ...vector) -> vector,
+    min: @checked (vector, ...vector) -> vector,
+
+    zero: vector,
+    one: vector,
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver class handling covers most of the properties
+declare class vector
+    x: number
+    y: number
+    z: number
+end
 
 declare vector: {
     create: @checked (x: number, y: number, z: number) -> vector,
@@ -482,8 +513,10 @@ std::string getBuiltinDefinitionSource()
 {
     std::string result = FFlag::LuauMathMap ? kBuiltinDefinitionLuaSrcChecked : kBuiltinDefinitionLuaSrcChecked_DEPRECATED;
 
-    if (FFlag::LuauVectorDefinitions)
+    if (FFlag::LuauVectorDefinitionsExtra)
         result += kBuiltinDefinitionVectorSrc;
+    else if (FFlag::LuauVectorDefinitions)
+        result += kBuiltinDefinitionVectorSrc_DEPRECATED;
 
     return result;
 }

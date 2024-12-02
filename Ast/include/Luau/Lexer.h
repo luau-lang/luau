@@ -153,7 +153,7 @@ private:
 class Lexer
 {
 public:
-    Lexer(const char* buffer, std::size_t bufferSize, AstNameTable& names);
+    Lexer(const char* buffer, std::size_t bufferSize, AstNameTable& names, Position startPosition = {0, 0});
 
     void setSkipComments(bool skip);
     void setReadNames(bool read);
@@ -229,6 +229,17 @@ private:
 
     bool skipComments;
     bool readNames;
+
+    // This offset represents a column offset to be applied to any positions created by the lexer until the next new line.
+    // For example:
+    //     local x = 4
+    //     local y = 5
+    // If we start lexing from the position of `l` in `local x = 4`, the line number will be 1, and the column will be 4
+    // However, because the lexer calculates line offsets by 'index in source buffer where there is a newline', the column
+    // count will start at 0. For this reason, for just the first line, we'll need to store the offset.
+    unsigned int lexResumeOffset;
+
+
 
     enum class BraceType
     {
