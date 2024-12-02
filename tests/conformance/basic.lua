@@ -92,6 +92,16 @@ assert((function() local a = 1 a = a - 2 return a end)() == -1)
 assert((function() local a = 1 a = a * 2 return a end)() == 2)
 assert((function() local a = 1 a = a / 2 return a end)() == 0.5)
 
+-- binary ops with fp specials, neg zero, large constants
+-- argument is passed into anonymous function to prevent constant folding
+assert((function(a) return tostring(a + 0) end)(-0) == "0")
+assert((function(a) return tostring(a - 0) end)(-0) == "-0")
+assert((function(a) return tostring(0 - a) end)(0) == "0")
+assert((function(a) return tostring(a - a) end)(1 / 0) == "nan")
+assert((function(a) return tostring(a * 0) end)(0 / 0) == "nan")
+assert((function(a) return tostring(a / (2^1000)) end)(2^1000) == "1")
+assert((function(a) return tostring(a / (2^-1000)) end)(2^-1000) == "1")
+
 -- floor division should always round towards -Infinity
 assert((function() local a = 1 a = a // 2 return a end)() == 0)
 assert((function() local a = 3 a = a // 2 return a end)() == 1)
@@ -290,7 +300,7 @@ assert((function() local t = {[1] = 1, [2] = 2} return t[1] + t[2] end)() == 3)
 assert((function() return table.concat({}, ',') end)() == "")
 assert((function() return table.concat({1}, ',') end)() == "1")
 assert((function() return table.concat({1,2}, ',') end)() == "1,2")
-assert((function() return table.concat({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, ',') end)() == 
+assert((function() return table.concat({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, ',') end)() ==
     "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15")
 assert((function() return table.concat({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, ',') end)() == "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16")
 assert((function() return table.concat({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}, ',') end)() == "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17")
@@ -770,7 +780,7 @@ assert(tostring(0) == "0")
 assert(tostring(-0) == "-0")
 
 -- test newline handling in long strings
-assert((function() 
+assert((function()
     local s1 = [[
 ]]
     local s2 = [[
