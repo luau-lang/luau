@@ -194,6 +194,7 @@ struct Frontend
     );
 
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
+    std::vector<ModuleName> getRequiredScripts(const ModuleName& name);
 
 private:
     ModulePtr check(

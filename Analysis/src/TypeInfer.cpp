@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauMetatableFollow)
-LUAU_FASTFLAGVARIABLE(LuauRequireCyclesDontAlwaysReturnAny)
 
 namespace Luau
 {
@@ -264,18 +263,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     ScopePtr parentScope = environmentScope.value_or(globalScope);
     ScopePtr moduleScope = std::make_shared<Scope>(parentScope);
 
-    if (FFlag::LuauRequireCyclesDontAlwaysReturnAny)
-    {
-        moduleScope->returnType = freshTypePack(moduleScope);
-    }
-    else
-    {
-        if (module.cyclic)
-            moduleScope->returnType = addTypePack(TypePack{{anyType}, std::nullopt});
-        else
-            moduleScope->returnType = freshTypePack(moduleScope);
-    }
-
+    moduleScope->returnType = freshTypePack(moduleScope);
     moduleScope->varargPack = anyTypePack;
 
     currentModule->scopes.push_back(std::make_pair(module.root->location, moduleScope));

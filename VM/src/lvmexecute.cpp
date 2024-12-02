@@ -2923,10 +2923,13 @@ reentry:
                 {
                     VM_PROTECT_PC(); // f may fail due to OOM
 
-                    setobj2s(L, L->top, arg2);
-                    setobj2s(L, L->top + 1, arg3);
+                    // note: it's safe to push arguments past top for complicated reasons (see top of the file)
+                    LUAU_ASSERT(L->top + 2 < L->stack + L->stacksize);
+                    StkId top = L->top;
+                    setobj2s(L, top, arg2);
+                    setobj2s(L, top + 1, arg3);
 
-                    int n = f(L, ra, arg1, nresults, L->top, nparams);
+                    int n = f(L, ra, arg1, nresults, top, nparams);
 
                     if (n >= 0)
                     {

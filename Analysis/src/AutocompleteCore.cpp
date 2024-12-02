@@ -1701,7 +1701,7 @@ AutocompleteResult autocomplete_(
     NotNull<BuiltinTypes> builtinTypes,
     TypeArena* typeArena,
     std::vector<AstNode*>& ancestry,
-    Scope* globalScope,
+    Scope* globalScope, // [TODO] This is unused argument, do we really need this?
     const ScopePtr& scopeAtPosition,
     Position position,
     FileResolver* fileResolver,
