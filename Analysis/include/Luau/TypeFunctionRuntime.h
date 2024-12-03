@@ -31,6 +31,8 @@ struct TypeFunctionPrimitiveType
         Boolean,
         Number,
         String,
+        Thread,
+        Buffer,
     };
 
     Type type;

@@ -12,6 +12,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauVectorDefinitions)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeInferPrimitives");
@@ -118,6 +120,36 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "property_of_buffers")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "properties_of_vectors")
+{
+    CheckResult result = check(R"(
+        local a = vector.create(1, 2, 3)
+        local b = vector.create(4, 5, 6)
+
+        local t1 = {
+            a + b,
+            a - b,
+            a * 3,
+            a * b,
+            3 * b,
+            a / 3,
+            a / b,
+            3 / b,
+            a // 4,
+            a // b,
+            4 // b,
+            -a,
+        }
+        local t2 = {
+            a.x,
+            a.y,
+            a.z,
+        }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

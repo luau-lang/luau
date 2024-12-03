@@ -21,6 +21,7 @@ struct FragmentParseResumeSettings
 {
     DenseHashMap<AstName, AstLocal*> localMap{AstName()};
     std::vector<AstLocal*> localStack;
+    Position resumePosition;
 };
 
 struct ParseOptions

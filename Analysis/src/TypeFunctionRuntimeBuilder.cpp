@@ -21,6 +21,7 @@
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixMetatable)
+LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
 
 namespace Luau
 {
@@ -147,10 +148,10 @@ private:
         {
             switch (p->type)
             {
-            case PrimitiveType::Type::NilType:
+            case PrimitiveType::NilType:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType));
                 break;
-            case PrimitiveType::Type::Boolean:
+            case PrimitiveType::Boolean:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Boolean));
                 break;
             case PrimitiveType::Number:
@@ -160,9 +161,29 @@ private:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
             case PrimitiveType::Thread:
+                if (FFlag::LuauUserTypeFunThreadBuffer)
+                {
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
+                }
+                else
+                {
+                    std::string error = format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str());
+                    state->errors.push_back(error);
+                }
+                break;
+            case PrimitiveType::Buffer:
+                if (FFlag::LuauUserTypeFunThreadBuffer)
+                {
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
+                }
+                else
+                {
+                    std::string error = format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str());
+                    state->errors.push_back(error);
+                }
+                break;
             case PrimitiveType::Function:
             case PrimitiveType::Table:
-            case PrimitiveType::Buffer:
             default:
             {
                 std::string error = format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str());
@@ -564,6 +585,18 @@ private:
                 break;
             case TypeFunctionPrimitiveType::Type::String:
                 target = state->ctx->builtins->stringType;
+                break;
+            case TypeFunctionPrimitiveType::Type::Thread:
+                if (FFlag::LuauUserTypeFunThreadBuffer)
+                    target = state->ctx->builtins->threadType;
+                else
+                    state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
+                break;
+            case TypeFunctionPrimitiveType::Type::Buffer:
+                if (FFlag::LuauUserTypeFunThreadBuffer)
+                    target = state->ctx->builtins->bufferType;
+                else
+                    state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
                 break;
             default:
                 state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");

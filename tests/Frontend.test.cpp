@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauRequireCyclesDontAlwaysReturnAny);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 
@@ -313,11 +312,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
     REQUIRE(bool(cExports));
 
     if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ a: { hello: any }, b: { hello: any } }", toString(*cExports));
-    else if (FFlag::LuauRequireCyclesDontAlwaysReturnAny)
-        CHECK("{| a: any, b: any |}, {| a: {| hello: any |}, b: {| hello: any |} |}" == toString(*cExports));
+        CHECK("{ a: { hello: any }, b: { hello: any } }" == toString(*cExports));
     else
-        CHECK_EQ("{| a: any, b: any |}", toString(*cExports));
+        CHECK("{| a: {| hello: any |}, b: {| hello: any |} |}" == toString(*cExports));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_detection_disabled_in_nocheck")
@@ -1455,6 +1452,74 @@ TEST_CASE_FIXTURE(Fixture, "exported_tables_have_position_metadata")
     const Property& prop = tt->props.find("abc")->second;
 
     CHECK(Location{Position{1, 17}, Position{1, 20}} == prop.location);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "get_required_scripts")
+{
+    fileResolver.source["game/workspace/MyScript"] = R"(
+        local MyModuleScript = require(game.workspace.MyModuleScript)
+        local MyModuleScript2 = require(game.workspace.MyModuleScript2)
+        MyModuleScript.myPrint()
+    )";
+
+    fileResolver.source["game/workspace/MyModuleScript"] = R"(
+        local module = {}
+        function module.myPrint()
+            print("Hello World")
+        end
+        return module
+    )";
+
+    fileResolver.source["game/workspace/MyModuleScript2"] = R"(
+        local module = {}
+        return module
+    )";
+
+    // isDirty(name) is true, getRequiredScripts should not hit the cache.
+    frontend.markDirty("game/workspace/MyScript");
+    std::vector<ModuleName> requiredScripts = frontend.getRequiredScripts("game/workspace/MyScript");
+    REQUIRE(requiredScripts.size() == 2);
+    CHECK(requiredScripts[0] == "game/workspace/MyModuleScript");
+    CHECK(requiredScripts[1] == "game/workspace/MyModuleScript2");
+
+    // Call frontend.check first, then getRequiredScripts should hit the cache because isDirty(name) is false.
+    frontend.check("game/workspace/MyScript");
+    requiredScripts = frontend.getRequiredScripts("game/workspace/MyScript");
+    REQUIRE(requiredScripts.size() == 2);
+    CHECK(requiredScripts[0] == "game/workspace/MyModuleScript");
+    CHECK(requiredScripts[1] == "game/workspace/MyModuleScript2");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "get_required_scripts_dirty")
+{
+    fileResolver.source["game/workspace/MyScript"] = R"(
+        print("Hello World")
+    )";
+
+    fileResolver.source["game/workspace/MyModuleScript"] = R"(
+        local module = {}
+        function module.myPrint()
+            print("Hello World")
+        end
+        return module
+    )";
+
+    frontend.check("game/workspace/MyScript");
+    std::vector<ModuleName> requiredScripts = frontend.getRequiredScripts("game/workspace/MyScript");
+    REQUIRE(requiredScripts.size() == 0);
+
+    fileResolver.source["game/workspace/MyScript"] = R"(
+        local MyModuleScript = require(game.workspace.MyModuleScript)
+        MyModuleScript.myPrint()
+    )";
+
+    requiredScripts = frontend.getRequiredScripts("game/workspace/MyScript");
+    REQUIRE(requiredScripts.size() == 0);
+
+    frontend.markDirty("game/workspace/MyScript");
+    requiredScripts = frontend.getRequiredScripts("game/workspace/MyScript");
+    REQUIRE(requiredScripts.size() == 1);
+    CHECK(requiredScripts[0] == "game/workspace/MyModuleScript");
 }
 
 TEST_SUITE_END();

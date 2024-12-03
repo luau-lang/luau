@@ -364,7 +364,7 @@ struct ConstPropState
             return;
 
         // To avoid captured register invalidation tracking in lowering later, values from loads from captured registers are not propagated
-        // This prevents the case where load value location is linked to memory in case of a spill and is then cloberred in a user call
+        // This prevents the case where load value location is linked to memory in case of a spill and is then clobbered in a user call
         if (function.cfg.captured.regs.test(vmRegOp(loadInst.a)))
             return;
 
@@ -378,7 +378,7 @@ struct ConstPropState
             if (!instLink.contains(*prevIdx))
                 createRegLink(*prevIdx, loadInst.a);
 
-            // Substitute load instructon with the previous value
+            // Substitute load instruction with the previous value
             substitute(function, loadInst, IrOp{IrOpKind::Inst, *prevIdx});
             return;
         }
@@ -401,7 +401,7 @@ struct ConstPropState
             return;
 
         // To avoid captured register invalidation tracking in lowering later, values from stores into captured registers are not propagated
-        // This prevents the case where store creates an alternative value location in case of a spill and is then cloberred in a user call
+        // This prevents the case where store creates an alternative value location in case of a spill and is then clobbered in a user call
         if (function.cfg.captured.regs.test(vmRegOp(storeInst.a)))
             return;
 

@@ -8,6 +8,7 @@
 
 #include <limits.h>
 
+LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition)
 namespace Luau
 {
 
@@ -303,16 +304,20 @@ static char unescape(char ch)
     }
 }
 
-Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names)
+Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Position startPosition)
     : buffer(buffer)
     , bufferSize(bufferSize)
     , offset(0)
-    , line(0)
+    , line(FFlag::LexerResumesFromPosition ? startPosition.line : 0)
     , lineOffset(0)
-    , lexeme(Location(Position(0, 0), 0), Lexeme::Eof)
+    , lexeme(
+          (FFlag::LexerResumesFromPosition ? Location(Position(startPosition.line, startPosition.column), 0) : Location(Position(0, 0), 0)),
+          Lexeme::Eof
+      )
     , names(names)
     , skipComments(false)
     , readNames(true)
+    , lexResumeOffset(FFlag::LexerResumesFromPosition ? startPosition.column : 0)
 {
 }
 
@@ -367,6 +372,7 @@ Lexeme Lexer::lookahead()
     Location currentPrevLocation = prevLocation;
     size_t currentBraceStackSize = braceStack.size();
     BraceType currentBraceType = braceStack.empty() ? BraceType::Normal : braceStack.back();
+    unsigned int currentLexResumeOffset = lexResumeOffset;
 
     Lexeme result = next();
 
@@ -375,6 +381,7 @@ Lexeme Lexer::lookahead()
     lineOffset = currentLineOffset;
     lexeme = currentLexeme;
     prevLocation = currentPrevLocation;
+    lexResumeOffset = currentLexResumeOffset;
 
     if (braceStack.size() < currentBraceStackSize)
         braceStack.push_back(currentBraceType);
@@ -407,7 +414,7 @@ char Lexer::peekch(unsigned int lookahead) const
 
 Position Lexer::position() const
 {
-    return Position(line, offset - lineOffset);
+    return Position(line, offset - lineOffset + (FFlag::LexerResumesFromPosition ? lexResumeOffset : 0));
 }
 
 LUAU_FORCEINLINE
@@ -426,6 +433,9 @@ void Lexer::consumeAny()
     {
         line++;
         lineOffset = offset + 1;
+        // every new line, we reset
+        if (FFlag::LexerResumesFromPosition)
+            lexResumeOffset = 0;
     }
 
     offset++;

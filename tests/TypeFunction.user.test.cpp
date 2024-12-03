@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauUserDefinedTypeFunctionResetState)
 LUAU_FASTFLAG(LuauUserTypeFunNonstrict)
 LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
+LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -233,6 +234,36 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_number_methods_work")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "thread_and_buffer_types")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtfSyntax{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
+    ScopedFastFlag luauUserTypeFunFixRegister{FFlag::LuauUserTypeFunFixRegister, true};
+    ScopedFastFlag luauUserTypeFunThreadBuffer{FFlag::LuauUserTypeFunThreadBuffer, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type function work_with_thread(x)
+            if x:is("thread") then
+                return types.thread
+            end
+            return types.string
+        end
+        type X = thread
+        local function ok(idx: work_with_thread<X>): thread return idx end
+    )"));
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type function work_with_buffer(x)
+            if x:is("buffer") then
+                return types.buffer
+            end
+            return types.string
+        end
+        type X = buffer
+        local function ok(idx: work_with_buffer<X>): buffer return idx end
+    )"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_string_serialization_works")

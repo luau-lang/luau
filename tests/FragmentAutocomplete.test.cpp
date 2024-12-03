@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauAllowFragmentParsing);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 LUAU_FASTFLAG(LuauSymbolEquality);
 LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
+LUAU_FASTFLAG(LexerResumesFromPosition)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -46,11 +47,12 @@ static FrontendOptions getOptions()
 template<class BaseType>
 struct FragmentAutocompleteFixtureImpl : BaseType
 {
-    ScopedFastFlag sffs[4] = {
+    ScopedFastFlag sffs[5] = {
         {FFlag::LuauAllowFragmentParsing, true},
         {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
         {FFlag::LuauStoreSolverTypeOnModule, true},
         {FFlag::LuauSymbolEquality, true},
+        {FFlag::LexerResumesFromPosition, true}
     };
 
     FragmentAutocompleteFixtureImpl()
@@ -288,6 +290,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
     check("local a =");
     auto fragment = parseFragment("local a =", Position(0, 10));
     CHECK_EQ("local a =", fragment.fragmentToParse);
+    CHECK_EQ(Location{Position{0, 0}, 9}, fragment.root->location);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_non_null")
@@ -333,6 +336,8 @@ local z = x + y
 )",
         Position{3, 15}
     );
+
+    CHECK_EQ(Location{Position{2, 0}, Position{3, 15}}, fragment.root->location);
 
     CHECK_EQ("local y = 5\nlocal z = x + y", fragment.fragmentToParse);
     CHECK_EQ(5, fragment.ancestry.size());
@@ -380,6 +385,7 @@ local y = 5
     CHECK_EQ("local z = x + y", fragment.fragmentToParse);
     CHECK_EQ(5, fragment.ancestry.size());
     REQUIRE(fragment.root);
+    CHECK_EQ(Location{Position{2, 0}, Position{2, 15}}, fragment.root->location);
     CHECK_EQ(1, fragment.root->body.size);
     auto stat = fragment.root->body.data[0]->as<AstStatLocal>();
     REQUIRE(stat);
@@ -421,7 +427,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
         Position{6, 0}
     );
 
-    CHECK_EQ("\n", fragment.fragmentToParse);
+    CHECK_EQ("\n  ", fragment.fragmentToParse);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_single_line_fragment_override")
@@ -465,7 +471,7 @@ abc("bar")
         Position{1, 9}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\"", stringFragment.fragmentToParse);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", stringFragment.fragmentToParse);
     CHECK(stringFragment.nearestStatement->is<AstStatFunction>());
 
     CHECK_GE(stringFragment.ancestry.size(), 1);

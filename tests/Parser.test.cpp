@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
+LUAU_FASTFLAG(LuauErrorRecoveryForClassNames)
 
 namespace
 {
@@ -2083,6 +2084,20 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
 
     matchParseError("declare function foo(...)", "All declaration parameters must be annotated");
     matchParseError("declare class Foo function a(self, ...) end", "All declaration parameters aside from 'self' must be annotated");
+}
+
+TEST_CASE_FIXTURE(Fixture, "missing_declaration_prop")
+{
+    ScopedFastFlag luauErrorRecoveryForClassNames{FFlag::LuauErrorRecoveryForClassNames, true};
+
+    matchParseError(
+        R"(
+        declare class Foo
+            a: number,
+        end
+    )",
+        "Expected identifier when parsing property name, got ','"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")

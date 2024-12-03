@@ -31,8 +31,8 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
-
-LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2);
+LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2)
+LUAU_FASTFLAG(LuauVectorDefinitionsExtra)
 
 namespace Luau
 {
@@ -299,6 +299,31 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     LUAU_ASSERT(it != stringMetatableTable->props.end());
 
     addGlobalBinding(globals, "string", it->second.type(), "@luau");
+
+    // Setup 'vector' metatable
+    if (FFlag::LuauVectorDefinitionsExtra)
+    {
+        if (auto it = globals.globalScope->exportedTypeBindings.find("vector"); it != globals.globalScope->exportedTypeBindings.end())
+        {
+            TypeId vectorTy = it->second.type;
+            ClassType* vectorCls = getMutable<ClassType>(vectorTy);
+
+            vectorCls->metatable = arena.addType(TableType{{}, std::nullopt, TypeLevel{}, TableState::Sealed});
+            TableType* metatableTy = Luau::getMutable<TableType>(vectorCls->metatable);
+
+            metatableTy->props["__add"] = {makeFunction(arena, vectorTy, {vectorTy}, {vectorTy})};
+            metatableTy->props["__sub"] = {makeFunction(arena, vectorTy, {vectorTy}, {vectorTy})};
+            metatableTy->props["__unm"] = {makeFunction(arena, vectorTy, {}, {vectorTy})};
+
+            std::initializer_list<TypeId> mulOverloads{
+                makeFunction(arena, vectorTy, {vectorTy}, {vectorTy}),
+                makeFunction(arena, vectorTy, {builtinTypes->numberType}, {vectorTy}),
+            };
+            metatableTy->props["__mul"] = {makeIntersection(arena, mulOverloads)};
+            metatableTy->props["__div"] = {makeIntersection(arena, mulOverloads)};
+            metatableTy->props["__idiv"] = {makeIntersection(arena, mulOverloads)};
+        }
+    }
 
     // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
     TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(builtinTypes, arena, genericK)}});

@@ -16,6 +16,7 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixRegister)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunThreadBuffer)
 
 namespace Luau
 {
@@ -133,6 +134,12 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "number";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
         return "string";
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty);
+             FFlag::LuauUserTypeFunThreadBuffer && s && s->type == TypeFunctionPrimitiveType::Type::Thread)
+        return "thread";
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty);
+             FFlag::LuauUserTypeFunThreadBuffer && s && s->type == TypeFunctionPrimitiveType::Type::Buffer)
+        return "buffer";
     else if (get<TypeFunctionUnknownType>(ty))
         return "unknown";
     else if (get<TypeFunctionNeverType>(ty))
@@ -208,6 +215,22 @@ static int createNumber(lua_State* L)
 static int createString(lua_State* L)
 {
     allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::String});
+
+    return 1;
+}
+
+// Luau: `type.thread`
+static int createThread(lua_State* L)
+{
+    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Thread});
+
+    return 1;
+}
+
+// Luau: `type.buffer`
+static int createBuffer(lua_State* L)
+{
+    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Buffer});
 
     return 1;
 }
@@ -1394,6 +1417,8 @@ void registerTypesLibrary(lua_State* L)
         {"boolean", createBoolean},
         {"number", createNumber},
         {"string", createString},
+        {FFlag::LuauUserTypeFunThreadBuffer ? "thread" : nullptr, FFlag::LuauUserTypeFunThreadBuffer ? createThread : nullptr},
+        {FFlag::LuauUserTypeFunThreadBuffer ? "buffer" : nullptr, FFlag::LuauUserTypeFunThreadBuffer ? createBuffer : nullptr},
         {nullptr, nullptr}
     };
 
@@ -2118,10 +2143,10 @@ private:
         {
             switch (p->type)
             {
-            case TypeFunctionPrimitiveType::Type::NilType:
+            case TypeFunctionPrimitiveType::NilType:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType));
                 break;
-            case TypeFunctionPrimitiveType::Type::Boolean:
+            case TypeFunctionPrimitiveType::Boolean:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Boolean));
                 break;
             case TypeFunctionPrimitiveType::Number:
@@ -2129,6 +2154,14 @@ private:
                 break;
             case TypeFunctionPrimitiveType::String:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
+                break;
+            case TypeFunctionPrimitiveType::Thread:
+                if (FFlag::LuauUserTypeFunThreadBuffer)
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
+                break;
+            case TypeFunctionPrimitiveType::Buffer:
+                if (FFlag::LuauUserTypeFunThreadBuffer)
+                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
                 break;
             default:
                 break;
