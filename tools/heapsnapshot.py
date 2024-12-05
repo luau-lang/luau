@@ -101,6 +101,7 @@ def convertToSnapshot(data):
         edgeCount = 0
 
         if obj["type"] == "table":
+            # TODO: support weak references
             name = f"Registry ({address})" if address == data["roots"]["registry"] else f"Luau table ({address})"
             if "pairs" in obj:
                 for i in range(0, len(obj["pairs"]), 2):
