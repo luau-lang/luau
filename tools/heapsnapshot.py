@@ -111,18 +111,19 @@ def convertToSnapshot(data):
                         continue
                     elif key is None:
                         edgeCount += 1
-                        addEdge([edgeTypeToMetaIndex["property"], getStringSnapshotIndex("Luau table key (value type)"), getNodeSnapshotIndex(value)])
-                    elif data["objects"][key]["type"] == "string":
-                        edgeCount += 1
-                        # This is a special case where the key is a string, so we can use it as the property name
-                        addEdge([edgeTypeToMetaIndex["property"], getStringSnapshotIndex(data["objects"][key]["data"]), getNodeSnapshotIndex(value if value is not None else key)])
+                        addEdge([edgeTypeToMetaIndex["property"], getStringSnapshotIndex("(Luau table key value type)"), getNodeSnapshotIndex(value)])
                     elif value is None:
                         edgeCount += 1
-                        addEdge([edgeTypeToMetaIndex["property"], getStringSnapshotIndex(f'{data["objects"][key]["type"]} ({key})'), getNodeSnapshotIndex(key)])
+                        addEdge([edgeTypeToMetaIndex["internal"], getStringSnapshotIndex(f'Luau table key ref: {data["objects"][key]["type"]} ({key})'), getNodeSnapshotIndex(key)])
+                    elif data["objects"][key]["type"] == "string":
+                        edgeCount += 2
+                        # This is a special case where the key is a string, so we can use it as the edge name
+                        addEdge([edgeTypeToMetaIndex["property"], getStringSnapshotIndex(data["objects"][key]["data"]), getNodeSnapshotIndex(value)])
+                        addEdge([edgeTypeToMetaIndex["internal"], getStringSnapshotIndex(f'Luau table key ref: {data["objects"][key]["type"]} ({key})'), getNodeSnapshotIndex(key)])
                     else:
                         edgeCount += 2
                         addEdge([edgeTypeToMetaIndex["property"], getStringSnapshotIndex(f'{data["objects"][key]["type"]} ({key})'), getNodeSnapshotIndex(value)])
-                        addEdge([edgeTypeToMetaIndex["internal"], getStringSnapshotIndex(f'{data["objects"][key]["type"]} ({key})'), getNodeSnapshotIndex(key)])
+                        addEdge([edgeTypeToMetaIndex["internal"], getStringSnapshotIndex(f'Luau table key ref: {data["objects"][key]["type"]} ({key})'), getNodeSnapshotIndex(key)])
             if "array" in obj:
                 for i, element in enumerate(obj["array"]):
                     edgeCount += 1
@@ -130,6 +131,7 @@ def convertToSnapshot(data):
             if "metatable" in obj:
                 edgeCount += 1
                 addEdge([edgeTypeToMetaIndex["internal"], getStringSnapshotIndex(f'metatable ({obj["metatable"]})'), getNodeSnapshotIndex(obj["metatable"])])
+            # TODO: consider distinguishing "object" and "array" node types
             addNode([nodeTypeToMetaIndex["object"], getStringSnapshotIndex(name), getUniqueId(address), obj["size"], edgeCount, 0, 0])
         elif obj["type"] == "thread":
             name = f'Luau thread: {obj["source"]}:{obj["line"]} ({address})' if "source" in obj else f"Luau thread ({address})"
