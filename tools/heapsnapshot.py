@@ -74,6 +74,7 @@ def convertToSnapshot(data):
     stringToSnapshotIndex = {}
 
     def getUniqueId(address):
+        # TODO: we should hash this to an int32 instead of using the address directly
         # Addresses are hexadecimal strings
         return int(address, 16)
 
