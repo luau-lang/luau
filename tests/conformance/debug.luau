@@ -1,5 +1,5 @@
 -- This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-print "testing debug library"
+print("testing debug library")
 
 -- traceback
 function foo(...)
@@ -35,7 +35,7 @@ end
 local co2 = coroutine.create(halp)
 coroutine.resume(co2, 0 / 0, 42)
 
-assert(debug.traceback(co2) == "debug.lua:31 function halp\n")
+assert(debug.traceback(co2) == "debug.luau:31 function halp\n")
 assert(debug.info(co2, 0, "l") == 31)
 assert(debug.info(co2, 0, "f") == halp)
 
@@ -64,7 +64,7 @@ assert(baz(1, "n") == "baz")
 assert(baz(2, "n") == "") -- main/anonymous
 assert(baz(3, "n") == nil)
 assert(baz(0, "s") == "[C]")
-assert(baz(1, "s") == "debug.lua")
+assert(baz(1, "s") == "debug.luau")
 assert(baz(0, "l") == -1)
 assert(baz(1, "l") > 42)
 assert(baz(0, "f") == debug.info)
@@ -76,18 +76,22 @@ assert(baz(co, 2, "n") == nil)
 assert(baz(math.sqrt, "n") == "sqrt")
 assert(baz(math.sqrt, "f") == math.sqrt) -- yes this is pointless
 
-local t = { foo = function() return 1 end }
+local t = {
+	foo = function()
+		return 1
+	end,
+}
 assert(baz(t.foo, "n") == "foo")
 
 -- info multi-arg returns
 function quux(...)
-	return {debug.info(...)}
+	return { debug.info(...) }
 end
 
 assert(#(quux(1, "nlsf")) == 4)
 assert(quux(1, "nlsf")[1] == "quux")
 assert(quux(1, "nlsf")[2] > 64)
-assert(quux(1, "nlsf")[3] == "debug.lua")
+assert(quux(1, "nlsf")[3] == "debug.luau")
 assert(quux(1, "nlsf")[4] == quux)
 
 -- info arity
@@ -114,7 +118,9 @@ testlinedefined()
 -- don't leave garbage on the other thread
 local wrapped1 = coroutine.create(function()
 	local thread = coroutine.create(function(target)
-		for i = 1, 100 do pcall(debug.info, target, 0, "llf") end
+		for i = 1, 100 do
+			pcall(debug.info, target, 0, "llf")
+		end
 		return 123
 	end)
 
@@ -127,7 +133,9 @@ coroutine.resume(wrapped1)
 
 local wrapped2 = coroutine.create(function()
 	local thread = coroutine.create(function(target)
-		for i = 1, 100 do pcall(debug.info, target, 0, "ff") end
+		for i = 1, 100 do
+			pcall(debug.info, target, 0, "ff")
+		end
 		return 123
 	end)
 
@@ -140,7 +148,9 @@ coroutine.resume(wrapped2)
 
 local wrapped3 = coroutine.create(function()
 	local thread = coroutine.create(function(target)
-		for i = 1, 100 do pcall(debug.info, target, 0, "?f") end
+		for i = 1, 100 do
+			pcall(debug.info, target, 0, "?f")
+		end
 		return 123
 	end)
 
@@ -151,4 +161,4 @@ end)
 
 coroutine.resume(wrapped3)
 
-return 'OK'
+return "OK"

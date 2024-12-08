@@ -61,28 +61,28 @@ jobs:
           filter() {
             awk '/.*I\s+refs:\s+[0-9,]+/ {gsub(",", "", $4); X=$4} END {print "SUCCESS: '$1' : " X/1e7 "ms +/- 0% on luau-analyze"}'
           }
-          valgrind --tool=callgrind ./luau-analyze --mode=nonstrict bench/other/LuauPolyfillMap.lua 2>&1 | filter map-nonstrict | tee -a analyze-output.txt
-          valgrind --tool=callgrind ./luau-analyze --mode=strict bench/other/LuauPolyfillMap.lua 2>&1 | filter map-strict | tee -a analyze-output.txt
-          valgrind --tool=callgrind ./luau-analyze --mode=strict --fflags=LuauSolverV2 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-dcr | tee -a analyze-output.txt
-          valgrind --tool=callgrind ./luau-analyze --mode=nonstrict bench/other/regex.lua 2>&1 | filter regex-nonstrict | tee -a analyze-output.txt
-          valgrind --tool=callgrind ./luau-analyze --mode=strict bench/other/regex.lua 2>&1 | filter regex-strict | tee -a analyze-output.txt
-          valgrind --tool=callgrind ./luau-analyze --mode=strict --fflags=LuauSolverV2 bench/other/regex.lua 2>&1 | filter regex-dcr | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=nonstrict bench/other/LuauPolyfillMap.luau 2>&1 | filter map-nonstrict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=strict bench/other/LuauPolyfillMap.luau 2>&1 | filter map-strict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=strict --fflags=LuauSolverV2 bench/other/LuauPolyfillMap.luau 2>&1 | filter map-dcr | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=nonstrict bench/other/regex.luau 2>&1 | filter regex-nonstrict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=strict bench/other/regex.luau 2>&1 | filter regex-strict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=strict --fflags=LuauSolverV2 bench/other/regex.luau 2>&1 | filter regex-dcr | tee -a analyze-output.txt
 
       - name: Run benchmark (compile)
         run: |
           filter() {
             awk '/.*I\s+refs:\s+[0-9,]+/ {gsub(",", "", $4); X=$4} END {print "SUCCESS: '$1' : " X/1e7 "ms +/- 0% on luau-compile"}'
           }
-          valgrind --tool=callgrind ./luau-compile --null -O0 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O0 | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --null -O1 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O1 | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --null -O2 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O2 | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --codegennull -O2 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O2-codegen | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --codegennull -O2 -t1 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O2-t1-codegen | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --null -O0 bench/other/regex.lua 2>&1 | filter regex-O0 | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --null -O1 bench/other/regex.lua 2>&1 | filter regex-O1 | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --null -O2 bench/other/regex.lua 2>&1 | filter regex-O2 | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --codegennull -O2 bench/other/regex.lua 2>&1 | filter regex-O2-codegen | tee -a compile-output.txt
-          valgrind --tool=callgrind ./luau-compile --codegennull -O2 -t1 bench/other/regex.lua 2>&1 | filter regex-O2-t1-codegen | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --null -O0 bench/other/LuauPolyfillMap.luau 2>&1 | filter map-O0 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --null -O1 bench/other/LuauPolyfillMap.luau 2>&1 | filter map-O1 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --null -O2 bench/other/LuauPolyfillMap.luau 2>&1 | filter map-O2 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --codegennull -O2 bench/other/LuauPolyfillMap.luau 2>&1 | filter map-O2-codegen | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --codegennull -O2 -t1 bench/other/LuauPolyfillMap.luau 2>&1 | filter map-O2-t1-codegen | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --null -O0 bench/other/regex.luau 2>&1 | filter regex-O0 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --null -O1 bench/other/regex.luau 2>&1 | filter regex-O1 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --null -O2 bench/other/regex.luau 2>&1 | filter regex-O2 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --codegennull -O2 bench/other/regex.luau 2>&1 | filter regex-O2-codegen | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau-compile --codegennull -O2 -t1 bench/other/regex.luau 2>&1 | filter regex-O2-t1-codegen | tee -a compile-output.txt
 
       - name: Checkout benchmark results
         uses: actions/checkout@v3
