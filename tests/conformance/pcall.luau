@@ -302,7 +302,7 @@ checkresults(
 
 -- xpcall error handling after yields
 checkresults(
-	{ "yield", "return", false, "pcall.luau:314: foo" },
+	{ "yield", "return", false, "pcall.luau:309: foo" },
 	colog(function()
 		return xpcall(function()
 			coroutine.yield()
