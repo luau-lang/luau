@@ -185,7 +185,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "yield", "return", false, "pcall.luau:192: bar" },
+	{ "yield", "yield", "return", false, "pcall.luau:196: bar" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
