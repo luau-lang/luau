@@ -291,7 +291,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ false, "pcall.luau:296: foo\npcall.luau:296\npcall.luau:296\n" },
+	{ false, "pcall.luau:296: foo\npcall.luau:293\npcall.luau:296\n" },
 	xpcall(function()
 		error("foo")
 	end, debug.traceback)
