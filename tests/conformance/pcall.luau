@@ -164,7 +164,7 @@ checkresults(
 
 -- error after yield tests
 checkresults(
-	{ "yield", "return", false, "pcall.luau:167: foo" },
+	{ "yield", "return", false, "pcall.luau:171: foo" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
@@ -173,7 +173,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "yield", "return", true, false, "pcall.luau:176: foo" },
+	{ "yield", "yield", "return", true, false, "pcall.luau:182: foo" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
@@ -185,7 +185,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "yield", "return", false, "pcall.luau:188: bar" },
+	{ "yield", "yield", "return", false, "pcall.luau:192: bar" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
@@ -267,7 +267,7 @@ checkresults(
 
 -- xpcall immediate error handling
 checkresults(
-	{ false, "pcall.luau:270: foo" },
+	{ false, "pcall.luau:272: foo" },
 	xpcall(function()
 		error("foo")
 	end, function(err)
@@ -291,7 +291,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ false, "pcall.luau:106: foo\npcall.luau:106\npcall.luau:106\n" },
+	{ false, "pcall.luau:296: foo\npcall.luau:296\npcall.luau:296\n" },
 	xpcall(function()
 		error("foo")
 	end, debug.traceback)
@@ -307,7 +307,7 @@ checkresults(
 
 -- xpcall error handling after yields
 checkresults(
-	{ "yield", "return", false, "pcall.luau:110: foo" },
+	{ "yield", "return", false, "pcall.luau:314: foo" },
 	colog(function()
 		return xpcall(function()
 			coroutine.yield()
@@ -318,7 +318,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "return", false, "pcall.luau:111: foo\npcall.luau:111\npcall.luau:111\n" },
+	{ "yield", "return", false, "pcall.luau:325: foo\npcall.luau:325\npcall.luau:325\n" },
 	colog(function()
 		return xpcall(function()
 			coroutine.yield()
@@ -377,7 +377,7 @@ function weird()
 end
 
 checkresults(
-	{ false, "pcall.luau:129: cannot resume dead coroutine" },
+	{ false, "pcall.luau:382: cannot resume dead coroutine" },
 	pcall(function()
 		for _ in coroutine.wrap(pcall), weird do
 		end
