@@ -889,7 +889,7 @@ def run(args, argsubcb):
         all_files = [subdir + os.sep + filename for subdir, dirs, files in os.walk(arguments.folder) for filename in files]
         for filepath in sorted(all_files):
             subdir, filename = os.path.split(filepath)
-            if filename.endswith(".lua"):
+            if filename.endswith(".luau"):
                 if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
                     runTest(subdir, filename, filepath)
 
