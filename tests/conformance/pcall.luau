@@ -364,7 +364,7 @@ function weird()
 end
 
 checkresults(
-	{ false, "pcall.luau:382: cannot resume dead coroutine" },
+	{ false, "pcall.luau:369: cannot resume dead coroutine" },
 	pcall(function()
 		for _ in coroutine.wrap(pcall), weird do
 		end
