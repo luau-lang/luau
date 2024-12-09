@@ -35,7 +35,7 @@ end
 local co2 = coroutine.create(halp)
 coroutine.resume(co2, 0 / 0, 42)
 
-assert(debug.traceback(co2) == "debug.lua:31 function halp\n")
+assert(debug.traceback(co2) == "debug.luau:31 function halp\n")
 assert(debug.info(co2, 0, "l") == 31)
 assert(debug.info(co2, 0, "f") == halp)
 
@@ -64,7 +64,7 @@ assert(baz(1, "n") == "baz")
 assert(baz(2, "n") == "") -- main/anonymous
 assert(baz(3, "n") == nil)
 assert(baz(0, "s") == "[C]")
-assert(baz(1, "s") == "debug.lua")
+assert(baz(1, "s") == "debug.luau")
 assert(baz(0, "l") == -1)
 assert(baz(1, "l") > 42)
 assert(baz(0, "f") == debug.info)
@@ -87,7 +87,7 @@ end
 assert(#(quux(1, "nlsf")) == 4)
 assert(quux(1, "nlsf")[1] == "quux")
 assert(quux(1, "nlsf")[2] > 64)
-assert(quux(1, "nlsf")[3] == "debug.lua")
+assert(quux(1, "nlsf")[3] == "debug.luau")
 assert(quux(1, "nlsf")[4] == quux)
 
 -- info arity
