@@ -1,1 +1,1 @@
-return { "result from init.luau" }
+return { "result from init.lua" }

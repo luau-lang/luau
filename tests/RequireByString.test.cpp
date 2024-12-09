@@ -349,7 +349,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "CheckCacheAfterRequireLua")
     std::string absolutePath = getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/lua_dependency";
 
     luaL_findtable(L, LUA_REGISTRYINDEX, "_MODULES", 1);
-    lua_getfield(L, -1, (absolutePath + ".luau").c_str());
+    lua_getfield(L, -1, (absolutePath + ".lua").c_str());
     REQUIRE_MESSAGE(lua_isnil(L, -1), "Cache already contained module result");
 
     runProtectedRequire(relativePath);
