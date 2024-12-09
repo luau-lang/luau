@@ -290,12 +290,7 @@ checkresults(
 		return 1, 2
 	end)
 )
-checkresults(
-{ false, "pcall.luau:296: foo\npcall.luau:296\npcall.luau:293\n" },
-	xpcall(function()
-		error("foo")
-	end, debug.traceback)
-)
+checkresults({ false, "pcall.luau:293: foo\npcall.luau:293\npcall.luau:293\n" }, xpcall(function() error("foo") end, debug.traceback))
 checkresults(
 	{ false, "error in error handling" },
 	xpcall(function()
@@ -317,15 +312,7 @@ checkresults(
 		end)
 	end)
 )
-checkresults(
-	{ "yield", "return", false, "pcall.luau:325: foo\npcall.luau:325\npcall.luau:320\n" },
-	colog(function()
-		return xpcall(function()
-			coroutine.yield()
-			error("foo")
-		end, debug.traceback)
-	end)
-)
+checkresults({ "yield", "return", false, "pcall.luau:315: foo\npcall.luau:315\npcall.luau:315\n" }, colog(function() return xpcall(function() coroutine.yield() error("foo") end, debug.traceback) end))
 
 -- xpcall error handling during error handling inside xpcall after yields
 checkresults(
