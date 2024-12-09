@@ -291,7 +291,7 @@ checkresults(
 	end)
 )
 checkresults(
-{ false, "pcall.luau:296: foo\npcall.luau:295\npcall.luau:293\n" },
+{ false, "pcall.luau:296: foo\npcall.luau:296\npcall.luau:293\n" },
 	xpcall(function()
 		error("foo")
 	end, debug.traceback)
@@ -318,7 +318,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "return", false, "pcall.luau:325: foo\npcall.luau:323\npcall.luau:320\n" },
+	{ "yield", "return", false, "pcall.luau:325: foo\npcall.luau:325\npcall.luau:320\n" },
 	colog(function()
 		return xpcall(function()
 			coroutine.yield()
