@@ -60,8 +60,8 @@ assert(concat(pcall(function()
 	return 1, 2, 3
 end)) == "true,1,2,3")
 assert(concat(pcall(function()
-	error("oops")
-end)) == "false,basic.luau:39: oops")
+    error("oops")
+end)) == "false,basic.luau:63: oops")
 
 -- assignments
 assert((function()

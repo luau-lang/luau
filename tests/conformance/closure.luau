@@ -340,7 +340,7 @@ function foo()
 	error("foo")
 end
 
-local fooerr = "closure.luau:284: foo"
+local fooerr = "closure.luau:351: foo"
 
 function goo()
 	foo()

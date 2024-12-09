@@ -164,7 +164,7 @@ checkresults(
 
 -- error after yield tests
 checkresults(
-	{ "yield", "return", false, "pcall.luau:80: foo" },
+	{ "yield", "return", false, "pcall.luau:167: foo" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
@@ -173,7 +173,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "yield", "return", true, false, "pcall.luau:81: foo" },
+	{ "yield", "yield", "return", true, false, "pcall.luau:176: foo" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
@@ -185,7 +185,7 @@ checkresults(
 	end)
 )
 checkresults(
-	{ "yield", "yield", "return", false, "pcall.luau:82: bar" },
+	{ "yield", "yield", "return", false, "pcall.luau:188: bar" },
 	colog(function()
 		return pcall(function()
 			coroutine.yield()
@@ -267,7 +267,7 @@ checkresults(
 
 -- xpcall immediate error handling
 checkresults(
-	{ false, "pcall.luau:103: foo" },
+	{ false, "pcall.luau:270: foo" },
 	xpcall(function()
 		error("foo")
 	end, function(err)
