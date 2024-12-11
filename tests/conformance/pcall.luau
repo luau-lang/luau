@@ -77,9 +77,9 @@ checkresults({ "yield", "return", true, 1, 2, 3}, colog(function() return pcall(
 checkresults({ "yield", 1, "yield", 2, "return", true, true, 3}, colog(function() return pcall(function() coroutine.yield(1) return pcall(function() coroutine.yield(2) return 3 end) end) end))
 
 -- error after yield tests
-checkresults({ "yield", "return", false, "pcall.lua:80: foo" }, colog(function() return pcall(function() coroutine.yield() error("foo") end) end))
-checkresults({ "yield", "yield", "return", true, false, "pcall.lua:81: foo" }, colog(function() return pcall(function() coroutine.yield() return pcall(function() coroutine.yield() error("foo") end) end) end))
-checkresults({ "yield", "yield", "return", false, "pcall.lua:82: bar" }, colog(function() return pcall(function() coroutine.yield() pcall(function() coroutine.yield() error("foo") end) error("bar") end) end))
+checkresults({ "yield", "return", false, "pcall.luau:80: foo" }, colog(function() return pcall(function() coroutine.yield() error("foo") end) end))
+checkresults({ "yield", "yield", "return", true, false, "pcall.luau:81: foo" }, colog(function() return pcall(function() coroutine.yield() return pcall(function() coroutine.yield() error("foo") end) end) end))
+checkresults({ "yield", "yield", "return", false, "pcall.luau:82: bar" }, colog(function() return pcall(function() coroutine.yield() pcall(function() coroutine.yield() error("foo") end) error("bar") end) end))
 
 -- returning lots of results (past MINSTACK limits)
 local res = {pcall(function() return table.unpack(table.create(100, 'a')) end)}
@@ -100,15 +100,15 @@ checkresults({ true, 2 }, xpcall(function(...) return select('#', ...) end, erro
 checkresults({ "yield", "return", true, 42 }, colog(function() return xpcall(function() coroutine.yield() return 42 end, error) end))
 
 -- xpcall immediate error handling
-checkresults({ false, "pcall.lua:103: foo" }, xpcall(function() error("foo") end, function(err) return err end))
+checkresults({ false, "pcall.luau:103: foo" }, xpcall(function() error("foo") end, function(err) return err end))
 checkresults({ false, "bar" }, xpcall(function() error("foo") end, function(err) return "bar" end))
 checkresults({ false, 1 }, xpcall(function() error("foo") end, function(err) return 1, 2 end))
-checkresults({ false, "pcall.lua:106: foo\npcall.lua:106\npcall.lua:106\n" }, xpcall(function() error("foo") end, debug.traceback))
+checkresults({ false, "pcall.luau:106: foo\npcall.luau:106\npcall.luau:106\n" }, xpcall(function() error("foo") end, debug.traceback))
 checkresults({ false, "error in error handling" }, xpcall(function() error("foo") end, function(err) error("bar") end))
 
 -- xpcall error handling after yields
-checkresults({ "yield", "return", false, "pcall.lua:110: foo" }, colog(function() return xpcall(function() coroutine.yield() error("foo") end, function(err) return err end) end))
-checkresults({ "yield", "return", false, "pcall.lua:111: foo\npcall.lua:111\npcall.lua:111\n" }, colog(function() return xpcall(function() coroutine.yield() error("foo") end, debug.traceback) end))
+checkresults({ "yield", "return", false, "pcall.luau:110: foo" }, colog(function() return xpcall(function() coroutine.yield() error("foo") end, function(err) return err end) end))
+checkresults({ "yield", "return", false, "pcall.luau:111: foo\npcall.luau:111\npcall.luau:111\n" }, colog(function() return xpcall(function() coroutine.yield() error("foo") end, debug.traceback) end))
 
 -- xpcall error handling during error handling inside xpcall after yields
 checkresults({ "yield", "return", true, false, "error in error handling" }, colog(function() return xpcall(function() return xpcall(function() coroutine.yield() error("foo") end, function(err) error("bar") end) end, error) end))
@@ -126,7 +126,7 @@ coroutine.yield(weird)
 weird()
 end
 
-checkresults({ false, "pcall.lua:129: cannot resume dead coroutine" }, pcall(function() for _ in coroutine.wrap(pcall), weird do end end))
+checkresults({ false, "pcall.luau:129: cannot resume dead coroutine" }, pcall(function() for _ in coroutine.wrap(pcall), weird do end end))
 
 -- c++ exception
 checkresults({ false, "oops" }, pcall(cxxthrow))

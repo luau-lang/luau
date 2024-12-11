@@ -36,7 +36,7 @@ assert(foo(1, 2, 3) == 2)
 assert(concat(pcall(function () end)) ==  "true")
 assert(concat(pcall(function () return nil end)) ==  "true,nil")
 assert(concat(pcall(function () return 1,2,3 end)) ==  "true,1,2,3")
-assert(concat(pcall(function () error("oops") end)) ==  "false,basic.lua:39: oops")
+assert(concat(pcall(function () error("oops") end)) ==  "false,basic.luau:39: oops")
 
 -- assignments
 assert((function() local a = 1 a = 2 return a end)() == 2)
