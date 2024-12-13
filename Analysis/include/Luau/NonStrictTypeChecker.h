@@ -15,6 +15,7 @@ struct TypeCheckLimits;
 
 void checkNonStrict(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> ice,
     NotNull<UnifierSharedState> unifierState,

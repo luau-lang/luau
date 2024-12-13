@@ -42,6 +42,7 @@ struct Config
     {
         std::string value;
         std::string_view configLocation;
+        std::string originalCase; // The alias in its original case.
     };
 
     DenseHashMap<std::string, AliasInfo> aliases{""};

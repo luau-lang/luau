@@ -26,9 +26,9 @@ Config::Config(const Config& other)
     , typeErrors(other.typeErrors)
     , globals(other.globals)
 {
-    for (const auto& [alias, aliasInfo] : other.aliases)
+    for (const auto& [_, aliasInfo] : other.aliases)
     {
-        setAlias(alias, aliasInfo.value, std::string(aliasInfo.configLocation));
+        setAlias(aliasInfo.originalCase, aliasInfo.value, std::string(aliasInfo.configLocation));
     }
 }
 
@@ -44,8 +44,20 @@ Config& Config::operator=(const Config& other)
 
 void Config::setAlias(std::string alias, std::string value, const std::string& configLocation)
 {
-    AliasInfo& info = aliases[alias];
+    std::string lowercasedAlias = alias;
+    std::transform(
+        lowercasedAlias.begin(),
+        lowercasedAlias.end(),
+        lowercasedAlias.begin(),
+        [](unsigned char c)
+        {
+            return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
+        }
+    );
+
+    AliasInfo& info = aliases[lowercasedAlias];
     info.value = std::move(value);
+    info.originalCase = std::move(alias);
 
     if (!configLocationCache.contains(configLocation))
         configLocationCache[configLocation] = std::make_unique<std::string>(configLocation);
@@ -175,7 +187,7 @@ bool isValidAlias(const std::string& alias)
 
 static Error parseAlias(
     Config& config,
-    std::string aliasKey,
+    const std::string& aliasKey,
     const std::string& aliasValue,
     const std::optional<ConfigOptions::AliasOptions>& aliasOptions
 )
@@ -183,21 +195,11 @@ static Error parseAlias(
     if (!isValidAlias(aliasKey))
         return Error{"Invalid alias " + aliasKey};
 
-    std::transform(
-        aliasKey.begin(),
-        aliasKey.end(),
-        aliasKey.begin(),
-        [](unsigned char c)
-        {
-            return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
-        }
-    );
-
     if (!aliasOptions)
         return Error("Cannot parse aliases without alias options");
 
     if (aliasOptions->overwriteAliases || !config.aliases.contains(aliasKey))
-        config.setAlias(std::move(aliasKey), aliasValue, aliasOptions->configLocation);
+        config.setAlias(aliasKey, aliasValue, aliasOptions->configLocation);
 
     return std::nullopt;
 }

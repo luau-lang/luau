@@ -15,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver);
 
 namespace
 {
@@ -1520,6 +1521,24 @@ TEST_CASE_FIXTURE(FrontendFixture, "get_required_scripts_dirty")
     requiredScripts = frontend.getRequiredScripts("game/workspace/MyScript");
     REQUIRE(requiredScripts.size() == 1);
     CHECK(requiredScripts[0] == "game/workspace/MyModuleScript");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_allocator")
+{
+    ScopedFastFlag sff{FFlag::LuauReferenceAllocatorInNewSolver, true};
+    fileResolver.source["game/workspace/MyScript"] = R"(
+        print("Hello World")
+    )";
+
+    frontend.check("game/workspace/MyScript");
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/workspace/MyScript");
+    SourceModule* source = frontend.getSourceModule("game/workspace/MyScript");
+    CHECK(module);
+    CHECK(source);
+
+    CHECK_EQ(module->allocator.get(), source->allocator.get());
+    CHECK_EQ(module->names.get(), source->names.get());
 }
 
 TEST_SUITE_END();

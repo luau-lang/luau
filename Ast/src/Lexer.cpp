@@ -8,7 +8,7 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition)
+LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition2)
 namespace Luau
 {
 
@@ -308,16 +308,15 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Positio
     : buffer(buffer)
     , bufferSize(bufferSize)
     , offset(0)
-    , line(FFlag::LexerResumesFromPosition ? startPosition.line : 0)
-    , lineOffset(0)
+    , line(FFlag::LexerResumesFromPosition2 ? startPosition.line : 0)
+    , lineOffset(FFlag::LexerResumesFromPosition2 ? 0u - startPosition.column : 0)
     , lexeme(
-          (FFlag::LexerResumesFromPosition ? Location(Position(startPosition.line, startPosition.column), 0) : Location(Position(0, 0), 0)),
+          (FFlag::LexerResumesFromPosition2 ? Location(Position(startPosition.line, startPosition.column), 0) : Location(Position(0, 0), 0)),
           Lexeme::Eof
       )
     , names(names)
     , skipComments(false)
     , readNames(true)
-    , lexResumeOffset(FFlag::LexerResumesFromPosition ? startPosition.column : 0)
 {
 }
 
@@ -372,7 +371,6 @@ Lexeme Lexer::lookahead()
     Location currentPrevLocation = prevLocation;
     size_t currentBraceStackSize = braceStack.size();
     BraceType currentBraceType = braceStack.empty() ? BraceType::Normal : braceStack.back();
-    unsigned int currentLexResumeOffset = lexResumeOffset;
 
     Lexeme result = next();
 
@@ -381,7 +379,6 @@ Lexeme Lexer::lookahead()
     lineOffset = currentLineOffset;
     lexeme = currentLexeme;
     prevLocation = currentPrevLocation;
-    lexResumeOffset = currentLexResumeOffset;
 
     if (braceStack.size() < currentBraceStackSize)
         braceStack.push_back(currentBraceType);
@@ -412,9 +409,10 @@ char Lexer::peekch(unsigned int lookahead) const
     return (offset + lookahead < bufferSize) ? buffer[offset + lookahead] : 0;
 }
 
+LUAU_FORCEINLINE
 Position Lexer::position() const
 {
-    return Position(line, offset - lineOffset + (FFlag::LexerResumesFromPosition ? lexResumeOffset : 0));
+    return Position(line, offset - lineOffset);
 }
 
 LUAU_FORCEINLINE
@@ -433,9 +431,6 @@ void Lexer::consumeAny()
     {
         line++;
         lineOffset = offset + 1;
-        // every new line, we reset
-        if (FFlag::LexerResumesFromPosition)
-            lexResumeOffset = 0;
     }
 
     offset++;

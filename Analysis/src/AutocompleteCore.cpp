@@ -150,6 +150,7 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 {
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
+    SimplifierPtr simplifier = newSimplifier(NotNull{typeArena}, builtinTypes);
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
 
     if (FFlag::LuauSolverV2)
@@ -162,7 +163,9 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
         unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
         unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
 
-        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}};
+        Subtyping subtyping{
+            builtinTypes, NotNull{typeArena}, NotNull{simplifier.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}
+        };
 
         return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
     }

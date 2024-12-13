@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(LuauDontRefCountTypesInTypeFunctions)
+LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 

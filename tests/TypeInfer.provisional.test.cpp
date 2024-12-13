@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(DebugLuauEqSatSimplification);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauTarjanChildLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
@@ -65,8 +66,20 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    if (FFlag::LuauSolverV2)
+    const std::string expectedWithEqSat = R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean'then
+                local a1:never=a
+            elseif a.fn()then
+                local a2:{fn:()->(unknown,...unknown)}=a
+            end
+        end
+    )";
+
+    if (FFlag::LuauSolverV2 && !FFlag::DebugLuauEqSatSimplification)
         CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
+    else if (FFlag::LuauSolverV2 && FFlag::DebugLuauEqSatSimplification)
+        CHECK_EQ(expectedWithEqSat, decorateWithTypes(code));
     else
         CHECK_EQ(expected, decorateWithTypes(code));
 }
@@ -653,13 +666,15 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
+        SimplifierPtr simplifier = newSimplifier(NotNull{&getMainModule()->internalTypes}, builtinTypes);
+
         ModulePtr module = getMainModule();
         REQUIRE(module);
 
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, NotNull{simplifier.get()}, ice);
     }
 };
 } // namespace

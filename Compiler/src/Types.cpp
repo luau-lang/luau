@@ -4,6 +4,7 @@
 #include "Luau/BytecodeBuilder.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorTypeInfo)
+LUAU_FASTFLAG(LuauCompileLibraryConstants)
 
 namespace Luau
 {
@@ -175,16 +176,32 @@ static bool isMatchingGlobal(const DenseHashMap<AstName, Compile::Global>& globa
     return false;
 }
 
+static bool isMatchingGlobalMember(
+    const DenseHashMap<AstName, Compile::Global>& globals,
+    AstExprIndexName* expr,
+    const char* library,
+    const char* member
+)
+{
+    LUAU_ASSERT(FFlag::LuauCompileLibraryConstants);
+
+    if (AstExprGlobal* object = expr->expr->as<AstExprGlobal>())
+        return getGlobalState(globals, object->name) == Compile::Global::Default && object->name == library && expr->index == member;
+
+    return false;
+}
+
 struct TypeMapVisitor : AstVisitor
 {
     DenseHashMap<AstExprFunction*, std::string>& functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes;
     DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes;
-    const char* hostVectorType;
+    const char* hostVectorType = nullptr;
     const DenseHashMap<AstName, uint8_t>& userdataTypes;
     const BuiltinAstTypes& builtinTypes;
     const DenseHashMap<AstExprCall*, int>& builtinCalls;
     const DenseHashMap<AstName, Compile::Global>& globals;
+    LibraryMemberTypeCallback libraryMemberTypeCb = nullptr;
     BytecodeBuilder& bytecode;
 
     DenseHashMap<AstName, AstStatTypeAlias*> typeAliases;
@@ -201,6 +218,7 @@ struct TypeMapVisitor : AstVisitor
         const BuiltinAstTypes& builtinTypes,
         const DenseHashMap<AstExprCall*, int>& builtinCalls,
         const DenseHashMap<AstName, Compile::Global>& globals,
+        LibraryMemberTypeCallback libraryMemberTypeCb,
         BytecodeBuilder& bytecode
     )
         : functionTypes(functionTypes)
@@ -211,6 +229,7 @@ struct TypeMapVisitor : AstVisitor
         , builtinTypes(builtinTypes)
         , builtinCalls(builtinCalls)
         , globals(globals)
+        , libraryMemberTypeCb(libraryMemberTypeCb)
         , bytecode(bytecode)
         , typeAliases(AstName())
         , resolvedLocals(nullptr)
@@ -461,7 +480,53 @@ struct TypeMapVisitor : AstVisitor
             if (*typeBcPtr == LBC_TYPE_VECTOR)
             {
                 if (node->index == "X" || node->index == "Y" || node->index == "Z")
+                {
                     recordResolvedType(node, &builtinTypes.numberType);
+
+                    if (FFlag::LuauCompileLibraryConstants)
+                        return false;
+                }
+            }
+        }
+
+        if (FFlag::LuauCompileLibraryConstants)
+        {
+            if (isMatchingGlobalMember(globals, node, "vector", "zero") || isMatchingGlobalMember(globals, node, "vector", "one"))
+            {
+                recordResolvedType(node, &builtinTypes.vectorType);
+                return false;
+            }
+
+            if (libraryMemberTypeCb)
+            {
+                if (AstExprGlobal* object = node->expr->as<AstExprGlobal>())
+                {
+                    if (LuauBytecodeType ty = LuauBytecodeType(libraryMemberTypeCb(object->name.value, node->index.value)); ty != LBC_TYPE_ANY)
+                    {
+                        // TODO: 'resolvedExprs' is more limited than 'exprTypes' which limits full inference of more complex types that a user
+                        // callback can return
+                        switch (ty)
+                        {
+                        case LBC_TYPE_BOOLEAN:
+                            resolvedExprs[node] = &builtinTypes.booleanType;
+                            break;
+                        case LBC_TYPE_NUMBER:
+                            resolvedExprs[node] = &builtinTypes.numberType;
+                            break;
+                        case LBC_TYPE_STRING:
+                            resolvedExprs[node] = &builtinTypes.stringType;
+                            break;
+                        case LBC_TYPE_VECTOR:
+                            resolvedExprs[node] = &builtinTypes.vectorType;
+                            break;
+                        default:
+                            break;
+                        }
+
+                        exprTypes[node] = ty;
+                        return false;
+                    }
+                }
             }
         }
 
@@ -733,10 +798,13 @@ void buildTypeMap(
     const BuiltinAstTypes& builtinTypes,
     const DenseHashMap<AstExprCall*, int>& builtinCalls,
     const DenseHashMap<AstName, Compile::Global>& globals,
+    LibraryMemberTypeCallback libraryMemberTypeCb,
     BytecodeBuilder& bytecode
 )
 {
-    TypeMapVisitor visitor(functionTypes, localTypes, exprTypes, hostVectorType, userdataTypes, builtinTypes, builtinCalls, globals, bytecode);
+    TypeMapVisitor visitor(
+        functionTypes, localTypes, exprTypes, hostVectorType, userdataTypes, builtinTypes, builtinCalls, globals, libraryMemberTypeCb, bytecode
+    );
     root->visit(&visitor);
 }
 

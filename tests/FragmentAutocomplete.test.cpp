@@ -24,7 +24,7 @@ LUAU_FASTFLAG(LuauAllowFragmentParsing);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 LUAU_FASTFLAG(LuauSymbolEquality);
 LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
-LUAU_FASTFLAG(LexerResumesFromPosition)
+LUAU_FASTFLAG(LexerResumesFromPosition2)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -52,7 +52,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
         {FFlag::LuauStoreSolverTypeOnModule, true},
         {FFlag::LuauSymbolEquality, true},
-        {FFlag::LexerResumesFromPosition, true}
+        {FFlag::LexerResumesFromPosition2, true}
     };
 
     FragmentAutocompleteFixtureImpl()

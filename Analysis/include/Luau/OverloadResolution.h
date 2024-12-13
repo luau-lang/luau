@@ -2,12 +2,13 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/InsertionOrderedMap.h"
-#include "Luau/NotNull.h"
-#include "Luau/TypeFwd.h"
-#include "Luau/Location.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
+#include "Luau/InsertionOrderedMap.h"
+#include "Luau/Location.h"
+#include "Luau/NotNull.h"
 #include "Luau/Subtyping.h"
+#include "Luau/TypeFwd.h"
 
 namespace Luau
 {
@@ -34,6 +35,7 @@ struct OverloadResolver
     OverloadResolver(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> arena,
+        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> scope,
@@ -44,6 +46,7 @@ struct OverloadResolver
 
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
+    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<Scope> scope;
@@ -110,6 +113,7 @@ struct SolveResult
 SolveResult solveFunctionCall(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter,

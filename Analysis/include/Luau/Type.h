@@ -608,7 +608,8 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap<Name, AstStatTypeFunction*> environment{""};
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environment{""};
+    DenseHashMap<Name, AstStatTypeFunction*> environment_DEPRECATED{""};
 };
 
 /**
