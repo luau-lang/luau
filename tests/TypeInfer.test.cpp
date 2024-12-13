@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTFLAG(LuauNewSolverVisitErrorExprLvalues)
 LUAU_FASTFLAG(LuauDontRefCountTypesInTypeFunctions)
+LUAU_FASTFLAG(InferGlobalTypes)
 
 using namespace Luau;
 
@@ -877,7 +878,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions1")
     CheckResult result = check(R"(local a = if true then "true" else "false")");
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::String);
+    CHECK("string" == toString(aType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions2")
@@ -888,7 +889,7 @@ local a = if false then "a" elseif false then "b" else "c"
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::String);
+    CHECK("string" == toString(aType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")
@@ -1727,7 +1728,7 @@ TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
     // in lvalue positions.
     LUAU_REQUIRE_ERRORS(check(R"(
         --!strict
-        (::, 
+        (::,
     )"));
 }
 
@@ -1761,6 +1762,23 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
             message = "invalid alternate fiber: " .. (name or "UNNAMED alternate")
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
+{
+    ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff_InferGlobalTypes{FFlag::InferGlobalTypes, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        foo = 5
+        print(foo)
+    )");
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 14})));
+
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Unknown global 'foo'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

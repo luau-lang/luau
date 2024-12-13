@@ -1,5 +1,5 @@
 --!nonstrict
-local function prequire(name) local success, result = pcall(require, name); return if success then result else nil end
+local function prequire(name) local success, result = pcall(require, name); return success and result end
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../bench_support")
 
 local stretchTreeDepth = 18 -- about 16Mb

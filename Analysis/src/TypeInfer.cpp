@@ -32,7 +32,7 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauMetatableFollow)
+LUAU_FASTFLAGVARIABLE(LuauOldSolverCreatesChildScopePointers)
 
 namespace Luau
 {
@@ -2866,7 +2866,7 @@ TypeId TypeChecker::checkRelationalOperation(
             std::optional<TypeId> metamethod = findMetatableEntry(lhsType, metamethodName, expr.location, /* addErrors= */ true);
             if (metamethod)
             {
-                if (const FunctionType* ftv = get<FunctionType>(FFlag::LuauMetatableFollow ? follow(*metamethod) : *metamethod))
+                if (const FunctionType* ftv = get<FunctionType>(follow(*metamethod)))
                 {
                     if (isEquality)
                     {
@@ -5205,6 +5205,13 @@ LUAU_NOINLINE void TypeChecker::reportErrorCodeTooComplex(const Location& locati
 ScopePtr TypeChecker::childFunctionScope(const ScopePtr& parent, const Location& location, int subLevel)
 {
     ScopePtr scope = std::make_shared<Scope>(parent, subLevel);
+    if (FFlag::LuauOldSolverCreatesChildScopePointers)
+    {
+        scope->location = location;
+        scope->returnType = parent->returnType;
+        parent->children.emplace_back(scope.get());
+    }
+
     currentModule->scopes.push_back(std::make_pair(location, scope));
     return scope;
 }
@@ -5215,6 +5222,12 @@ ScopePtr TypeChecker::childScope(const ScopePtr& parent, const Location& locatio
     ScopePtr scope = std::make_shared<Scope>(parent);
     scope->level = parent->level;
     scope->varargPack = parent->varargPack;
+    if (FFlag::LuauOldSolverCreatesChildScopePointers)
+    {
+        scope->location = location;
+        scope->returnType = parent->returnType;
+        parent->children.emplace_back(scope.get());
+    }
 
     currentModule->scopes.push_back(std::make_pair(location, scope));
     return scope;

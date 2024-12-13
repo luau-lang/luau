@@ -198,8 +198,7 @@ private:
     {
         // An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
         // canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
-        for (Id& id : enode.mutableOperands())
-            id = find(id);
+        Luau::EqSat::canonicalize(enode, [&](Id id) { return find(id); });
     }
 
     bool isCanonical(const L& enode) const

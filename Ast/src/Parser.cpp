@@ -18,10 +18,8 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
-LUAU_FASTFLAGVARIABLE(LuauPortableStringZeroCheck)
 LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForClassNames)
@@ -910,11 +908,8 @@ AstStat* Parser::parseReturn()
 AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
 {
     // parsing a type function
-    if (FFlag::LuauUserDefinedTypeFunctionsSyntax2)
-    {
-        if (lexer.current().type == Lexeme::ReservedFunction)
-            return parseTypeFunction(start, exported);
-    }
+    if (lexer.current().type == Lexeme::ReservedFunction)
+        return parseTypeFunction(start, exported);
 
     // parsing a type alias
 
@@ -1134,8 +1129,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 AstType* type = parseType();
 
                 // since AstName contains a char*, it can't contain null
-                bool containsNull = chars && (FFlag::LuauPortableStringZeroCheck ? memchr(chars->data, 0, chars->size) != nullptr
-                                                                                 : strnlen(chars->data, chars->size) < chars->size);
+                bool containsNull = chars && (memchr(chars->data, 0, chars->size) != nullptr);
 
                 if (chars && !containsNull)
                 {
@@ -1647,8 +1641,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             AstType* type = parseType();
 
             // since AstName contains a char*, it can't contain null
-            bool containsNull = chars && (FFlag::LuauPortableStringZeroCheck ? memchr(chars->data, 0, chars->size) != nullptr
-                                                                             : strnlen(chars->data, chars->size) < chars->size);
+            bool containsNull = chars && (memchr(chars->data, 0, chars->size) != nullptr);
 
             if (chars && !containsNull)
                 props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
@@ -2352,11 +2345,8 @@ AstExpr* Parser::parseNameExpr(const char* context)
     {
         AstLocal* local = *value;
 
-        if (FFlag::LuauUserDefinedTypeFunctionsSyntax2)
-        {
-            if (local->functionDepth < typeFunctionDepth)
-                return reportExprError(lexer.current().location, {}, "Type function cannot reference outer local '%s'", local->name.value);
-        }
+        if (local->functionDepth < typeFunctionDepth)
+            return reportExprError(lexer.current().location, {}, "Type function cannot reference outer local '%s'", local->name.value);
 
         return allocator.alloc<AstExprLocal>(name->location, local, local->functionDepth != functionStack.size() - 1);
     }

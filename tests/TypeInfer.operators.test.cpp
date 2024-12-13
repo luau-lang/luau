@@ -17,7 +17,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauMetatableFollow)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1614,8 +1613,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_operator_on_upvalue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_operator_follow")
 {
-    ScopedFastFlag luauMetatableFollow{FFlag::LuauMetatableFollow, true};
-
     CheckResult result = check(R"(
 local t1 = {}
 local t2 = {}

@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 
 TEST_SUITE_BEGIN("TypeAliases");
 

@@ -143,6 +143,62 @@ static bool isTerminal(const EType& node)
            node.get<TNever>() || node.get<TNoRefine>();
 }
 
+static bool areTerminalAndDefinitelyDisjoint(const EType& lhs, const EType& rhs)
+{
+    // If either node is non-terminal, then we early exit: we're not going to
+    // do a state space search for whether something like:
+    //  (A | B | C | D) & (E | F | G | H)
+    // ... is a disjoint intersection.
+    if (!isTerminal(lhs) || !isTerminal(rhs))
+        return false;
+
+    // Special case some types that aren't strict, disjoint subsets.
+    if (lhs.get<TTopClass>() || lhs.get<TClass>())
+        return !(rhs.get<TTopClass>() || rhs.get<TClass>());
+
+    // Handling strings / booleans: these are the types for which we
+    // expect something like:
+    //
+    //  "foo" & ~"bar"
+    //
+    // ... to simplify to "foo".
+    if (lhs.get<TString>())
+        return !(rhs.get<TString>() || rhs.get<SString>());
+
+    if (lhs.get<TBoolean>())
+        return !(rhs.get<TBoolean>() || rhs.get<SBoolean>());
+
+    if (auto lhsSString = lhs.get<SString>())
+    {
+        auto rhsSString = rhs.get<SString>();
+        if (!rhsSString)
+            return !rhs.get<TString>();
+        return lhsSString->value() != rhsSString->value();
+    }
+
+    if (auto lhsSBoolean = lhs.get<SBoolean>())
+    {
+        auto rhsSBoolean = rhs.get<SBoolean>();
+        if (!rhsSBoolean)
+            return !rhs.get<TBoolean>();
+        return lhsSBoolean->value() != rhsSBoolean->value();
+    }
+
+    // At this point:
+    // - We know both nodes are terminal
+    // - We know that the LHS is not any boolean, string, or class
+    // At this point, we have two classes of checks left:
+    // - Whether the two enodes are exactly the same set (now that the static
+    //   sets have been covered).
+    // - Whether one of the enodes is a large semantic set such as TAny,
+    //   TUnknown, or TError.
+    return !(
+        lhs.index() == rhs.index() ||
+        lhs.get<TUnknown>() || rhs.get<TUnknown>() || lhs.get<TAny>() || rhs.get<TAny>() || lhs.get<TNoRefine>() || rhs.get<TNoRefine>() ||
+        lhs.get<TError>() || rhs.get<TError>() || lhs.get<TOpaque>() || rhs.get<TOpaque>()
+    );
+}
+
 static bool isTerminal(const EGraph& egraph, Id eclass)
 {
     const auto& nodes = egraph[eclass].nodes;
@@ -336,10 +392,20 @@ Id toId(
         LUAU_ASSERT(tfun->packArguments.empty());
 
         std::vector<Id> parts;
+        parts.reserve(tfun->typeArguments.size());
         for (TypeId part : tfun->typeArguments)
             parts.push_back(toId(egraph, builtinTypes, mappingIdToClass, typeToMappingId, boundNodes, strings, part));
 
-        return cache(egraph.add(TTypeFun{tfun->function.get(), std::move(parts)}));
+        // This looks sily, but we're making a copy of the specific
+        // `TypeFunctionInstanceType` outside of the provided arena so that
+        // we can access the members without fear of the specific TFIT being
+        // overwritten with a bound type.
+        return cache(egraph.add(TTypeFun{
+            std::make_shared<const TypeFunctionInstanceType>(
+                tfun->function, tfun->typeArguments, tfun->packArguments, tfun->userFuncName, tfun->userFuncData
+            ),
+            std::move(parts)
+        }));
     }
     else if (get<NoRefineType>(ty))
         return egraph.add(TNoRefine{});
@@ -574,18 +640,24 @@ TypeId flattenTableNode(
             // If a TTable is its own basis, it must be the case that some other
             // node on this eclass is a TImportedTable.  Let's use that.
 
+            bool found = false;
+
             for (size_t i = 0; i < eclass.nodes.size(); ++i)
             {
                 if (eclass.nodes[i].get<TImportedTable>())
                 {
+                    found = true;
                     index = i;
                     break;
                 }
             }
 
-            // If we couldn't find one, we don't know what to do.  Use ErrorType.
-            LUAU_ASSERT(0);
-            return builtinTypes->errorType;
+            if (!found)
+            {
+                // If we couldn't find one, we don't know what to do.  Use ErrorType.
+                LUAU_ASSERT(0);
+                return builtinTypes->errorType;
+            }
         }
 
         const auto& node = eclass.nodes[index];
@@ -703,7 +775,20 @@ TypeId fromId(
         if (parts.empty())
             return builtinTypes->neverType;
         else if (parts.size() == 1)
-            return fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, parts[0]);
+        {
+            TypeId placeholder = arena->addType(BlockedType{});
+            seen[rootId] = placeholder;
+            auto result = fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, parts[0]);
+            if (follow(result) == placeholder)
+            {
+                emplaceType<GenericType>(asMutable(placeholder), "EGRAPH-SINGLETON-CYCLE");
+            }
+            else
+            {
+                emplaceType<BoundType>(asMutable(placeholder), result);
+            }
+            return result;
+        }
         else
         {
             TypeId res = arena->addType(BlockedType{});
@@ -768,7 +853,11 @@ TypeId fromId(
         for (Id part : tfun->operands())
             args.push_back(fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, part));
 
-        asMutable(res)->ty.emplace<TypeFunctionInstanceType>(*tfun->value(), std::move(args));
+        auto oldInstance = tfun->value();
+
+        asMutable(res)->ty.emplace<TypeFunctionInstanceType>(
+            oldInstance->function, std::move(args), std::vector<TypePackId>(), oldInstance->userFuncName, oldInstance->userFuncData
+        );
 
         newTypeFunctions.push_back(res);
 
@@ -906,7 +995,7 @@ static std::string getNodeName(const StringCache& strings, const EType& node)
     else if (node.get<TNever>())
         return "never";
     else if (auto tfun = node.get<TTypeFun>())
-        return "tfun " + tfun->value()->name;
+        return "tfun " + tfun->value()->function->name;
     else if (node.get<Negation>())
         return "~";
     else if (node.get<Invalid>())
@@ -1552,11 +1641,6 @@ std::optional<EType> intersectOne(EGraph& egraph, Id hereId, const EType* hereNo
         thereNode->get<Intersection>() || thereNode->get<Negation>() || hereNode->get<TOpaque>() || thereNode->get<TOpaque>())
         return std::nullopt;
 
-    if (hereNode->get<TAny>())
-        return *thereNode;
-    if (thereNode->get<TAny>())
-        return *hereNode;
-
     if (hereNode->get<TUnknown>())
         return *thereNode;
     if (thereNode->get<TUnknown>())
@@ -1836,6 +1920,74 @@ void Simplifier::intersectWithNegatedClass(Id id)
 
         trySubst(0, 1);
         trySubst(1, 0);
+    }
+}
+
+void Simplifier::intersectWithNegatedAtom(Id id)
+{
+    // Let I and ~J be two arbitrary distinct operands of an intersection where
+    // I and J are terminal but are not type variables. (free, generic, or
+    // otherwise opaque)
+    //
+    // If I and J are equal, then the whole intersection is equivalent to never.
+    //
+    // If I and J are inequal, then J & ~I == J
+
+    for (const auto [intersection, intersectionIndex] : Query<Intersection>(&egraph, id))
+    {
+        const Slice<const Id>& intersectionOperands = intersection->operands();
+        for (size_t i = 0; i < intersectionOperands.size(); ++i)
+        {
+            for (const auto [negation, negationIndex] : Query<Negation>(&egraph, intersectionOperands[i]))
+            {
+                for (size_t negationOperandIndex = 0; negationOperandIndex < egraph[negation->operands()[0]].nodes.size(); ++negationOperandIndex)
+                {
+                    const EType* negationOperand = &egraph[negation->operands()[0]].nodes[negationOperandIndex];
+                    if (!isTerminal(*negationOperand) || negationOperand->get<TOpaque>())
+                        continue;
+
+                    for (size_t j = 0; j < intersectionOperands.size(); ++j)
+                    {
+                        if (j == i)
+                            continue;
+
+                        for (size_t jNodeIndex = 0; jNodeIndex < egraph[intersectionOperands[j]].nodes.size(); ++jNodeIndex)
+                        {
+                            const EType* jNode = &egraph[intersectionOperands[j]].nodes[jNodeIndex];
+                            if (!isTerminal(*jNode) || jNode->get<TOpaque>())
+                                continue;
+
+                            if (*negationOperand == *jNode)
+                            {
+                                // eg "Hello" & ~"Hello"
+                                // or boolean & ~boolean
+                                subst(
+                                    id,
+                                    egraph.add(TNever{}),
+                                    "intersectWithNegatedAtom",
+                                    {{id, intersectionIndex}, {intersectionOperands[i], negationIndex}, {intersectionOperands[j], jNodeIndex}}
+                                );
+                                return;
+                            }
+                            else if (areTerminalAndDefinitelyDisjoint(*jNode, *negationOperand))
+                            {
+                                // eg "Hello" & ~"World"
+                                // or boolean & ~string
+                                std::vector<Id> newOperands(intersectionOperands.begin(), intersectionOperands.end());
+                                newOperands.erase(newOperands.begin() + std::vector<Id>::difference_type(i));
+
+                                subst(
+                                    id,
+                                    egraph.add(Intersection{newOperands}),
+                                    "intersectWithNegatedAtom",
+                                    {{id, intersectionIndex}, {intersectionOperands[i], negationIndex}, {intersectionOperands[j], jNodeIndex}}
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2160,7 +2312,7 @@ void Simplifier::intersectTableProperty(Id id)
 
                             subst(
                                 id,
-                                egraph.add(Intersection{std::move(newIntersectionParts)}),
+                                mkIntersection(egraph, std::move(newIntersectionParts)),
                                 "intersectTableProperty",
                                 {{id, intersectionIndex}, {iId, table1Index}, {jId, table2Index}}
                             );
@@ -2250,7 +2402,7 @@ void Simplifier::builtinTypeFunctions(Id id)
         if (args.size() != 2)
             continue;
 
-        const std::string& name = tfun->value()->name;
+        const std::string& name = tfun->value()->function->name;
         if (name == "add" || name == "sub" || name == "mul" || name == "div" || name == "idiv" || name == "pow" || name == "mod")
         {
             if (isTag<TNumber>(args[0]) && isTag<TNumber>(args[1]))
@@ -2272,12 +2424,40 @@ void Simplifier::iffyTypeFunctions(Id id)
     {
         const Slice<const Id>& args = tfun->operands();
 
-        const std::string& name = tfun->value()->name;
+        const std::string& name = tfun->value()->function->name;
 
         if (name == "union")
             subst(id, add(Union{std::vector(args.begin(), args.end())}), "iffyTypeFunctions", {{id, index}});
-        else if (name == "intersect" || name == "refine")
+        else if (name == "intersect")
             subst(id, add(Intersection{std::vector(args.begin(), args.end())}), "iffyTypeFunctions", {{id, index}});
+    }
+}
+
+// Replace instances of `lt<X, Y>` and `le<X, Y>` when either X or Y is `number`
+// or `string` with `boolean`. Lua semantics are that if we see the expression:
+//
+//   x < y
+//
+// ... we error if `x` and `y` don't have the same type. We know that for
+// `string` and `number`, comparisons will always return a boolean. So if either
+// of the arguments to `lt<>` are equivalent to `number` or `string`, then the
+// type is effectively `boolean`: either the other type is equivalent, in which
+// case we eval to `boolean`, or we diverge (raise an error).
+void Simplifier::strictMetamethods(Id id)
+{
+    for (const auto [tfun, index] : Query<TTypeFun>(&egraph, id))
+    {
+        const Slice<const Id>& args = tfun->operands();
+
+        const std::string& name = tfun->value()->function->name;
+
+        if (!(name == "lt" || name == "le") || args.size() != 2)
+            continue;
+
+        if (isTag<TNumber>(args[0]) || isTag<TString>(args[0]) || isTag<TNumber>(args[1]) || isTag<TString>(args[1]))
+        {
+            subst(id, add(TBoolean{}), __FUNCTION__, {{id, index}});
+        }
     }
 }
 
@@ -2308,6 +2488,7 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
         &Simplifier::simplifyUnion,
         &Simplifier::uninhabitedIntersection,
         &Simplifier::intersectWithNegatedClass,
+        &Simplifier::intersectWithNegatedAtom,
         &Simplifier::intersectWithNoRefine,
         &Simplifier::cyclicIntersectionOfUnion,
         &Simplifier::cyclicUnionOfIntersection,
@@ -2318,6 +2499,7 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
         &Simplifier::unneededTableModification,
         &Simplifier::builtinTypeFunctions,
         &Simplifier::iffyTypeFunctions,
+        &Simplifier::strictMetamethods,
     };
 
     std::unordered_set<Id> seen;

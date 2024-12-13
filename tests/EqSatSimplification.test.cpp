@@ -640,6 +640,20 @@ TEST_CASE_FIXTURE(ESFixture, "string & (\"hi\" | \"bye\")")
     }})));
 }
 
+TEST_CASE_FIXTURE(ESFixture, "(\"err\" | \"ok\") & ~\"ok\"")
+{
+    TypeId err = arena->addType(SingletonType{StringSingleton{"err"}});
+    TypeId ok1 = arena->addType(SingletonType{StringSingleton{"ok"}});
+    TypeId ok2 = arena->addType(SingletonType{StringSingleton{"ok"}});
+
+    TypeId ty = arena->addType(IntersectionType{{
+        arena->addType(UnionType{{err, ok1}}),
+        arena->addType(NegationType{ok2})
+    }});
+
+    CHECK("\"err\"" == simplifyStr(ty));
+}
+
 TEST_CASE_FIXTURE(ESFixture, "(Child | Unrelated) & ~Child")
 {
     const TypeId ty = arena->addType(IntersectionType{{
@@ -715,6 +729,38 @@ TEST_CASE_FIXTURE(ESFixture, "Child & intersect<Child | AnotherChild | string, P
     const TypeId intersection = arena->addType(IntersectionType{{childClass, intersectTf}});
 
     CHECK("Child" == simplifyStr(intersection));
+}
+
+TEST_CASE_FIXTURE(ESFixture, "lt<number, _> == boolean")
+{
+    std::vector<std::pair<TypeId, TypeId>> cases{
+        {builtinTypes->numberType, arena->addType(BlockedType{})},
+        {builtinTypes->stringType, arena->addType(BlockedType{})},
+        {arena->addType(BlockedType{}), builtinTypes->numberType},
+        {arena->addType(BlockedType{}), builtinTypes->stringType},
+    };
+
+    for (const auto& [lhs, rhs] : cases) {
+        const TypeId tfun = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions().ltFunc, {lhs, rhs}});
+        CHECK("boolean" == simplifyStr(tfun));
+    }
+}
+
+TEST_CASE_FIXTURE(ESFixture, "unknown & ~string")
+{
+    CHECK_EQ(
+        "~string", simplifyStr(arena->addType(IntersectionType{{builtinTypes->unknownType, arena->addType(NegationType{builtinTypes->stringType})}}))
+    );
+}
+
+TEST_CASE_FIXTURE(ESFixture, "string & ~\"foo\"")
+{
+    CHECK_EQ(
+        "string & ~\"foo\"",
+        simplifyStr(arena->addType(
+            IntersectionType{{builtinTypes->stringType, arena->addType(NegationType{arena->addType(SingletonType{StringSingleton{"foo"}})})}}
+        ))
+    );
 }
 
 // {someKey: ~any}

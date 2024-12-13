@@ -386,8 +386,12 @@ public:
     }
     AstType* operator()(const NegationType& ntv)
     {
-        // FIXME: do the same thing we do with ErrorType
-        throw InternalCompilerError("Cannot convert NegationType into AstNode");
+        AstArray<AstTypeOrPack> params;
+        params.size = 1;
+        params.data = static_cast<AstTypeOrPack*>(allocator->allocate(sizeof(AstType*)));
+        params.data[0] = AstTypeOrPack{Luau::visit(*this, ntv.ty->ty), nullptr};
+
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("negate"), std::nullopt, Location(), true, params);
     }
     AstType* operator()(const TypeFunctionInstanceType& tfit)
     {

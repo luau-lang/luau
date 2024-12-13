@@ -20,7 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixMetatable)
 LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
 
 namespace Luau
@@ -383,21 +382,9 @@ private:
 
     void serializeChildren(const MetatableType* m1, TypeFunctionTableType* m2)
     {
-        if (FFlag::LuauUserTypeFunFixMetatable)
-        {
-            // Serialize main part of the metatable immediately
-            if (auto tableTy = get<TableType>(m1->table))
-                serializeChildren(tableTy, m2);
-        }
-        else
-        {
-            auto tmpTable = get<TypeFunctionTableType>(shallowSerialize(m1->table));
-            if (!tmpTable)
-                state->ctx->ice->ice("Serializing user defined type function arguments: metatable's table is not a TableType");
-
-            m2->props = tmpTable->props;
-            m2->indexer = tmpTable->indexer;
-        }
+        // Serialize main part of the metatable immediately
+        if (auto tableTy = get<TableType>(m1->table))
+            serializeChildren(tableTy, m2);
 
         m2->metatable = shallowSerialize(m1->metatable);
     }

@@ -35,6 +35,7 @@ LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauAllowNilAssignmentToIndexer)
+LUAU_FASTFLAG(LuauUserTypeFunNoExtraConstraint)
 
 namespace Luau
 {
@@ -939,12 +940,14 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (auto typeFn = get<TypeFunctionInstanceType>(follow(tf->type)))
         pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
 
-    // If there are no parameters to the type function we can just use the type
-    // directly.
-    if (tf->typeParams.empty() && tf->typePackParams.empty())
+    if (!FFlag::LuauUserTypeFunNoExtraConstraint)
     {
-        bindResult(tf->type);
-        return true;
+        // If there are no parameters to the type function we can just use the type directly
+        if (tf->typeParams.empty() && tf->typePackParams.empty())
+        {
+            bindResult(tf->type);
+            return true;
+        }
     }
 
     // Due to how pending expansion types and TypeFun's are created
@@ -957,6 +960,16 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         reportError(OccursCheckFailed{}, constraint->location);
         bindResult(errorRecoveryType());
         return true;
+    }
+
+    if (FFlag::LuauUserTypeFunNoExtraConstraint)
+    {
+        // If there are no parameters to the type function we can just use the type directly
+        if (tf->typeParams.empty() && tf->typePackParams.empty())
+        {
+            bindResult(tf->type);
+            return true;
+        }
     }
 
     auto [typeArguments, packArguments] = saturateArguments(arena, builtinTypes, *tf, petv->typeArguments, petv->packArguments);
@@ -1263,6 +1276,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     OverloadResolver resolver{
         builtinTypes,
         NotNull{arena},
+        simplifier,
         normalizer,
         typeFunctionRuntime,
         constraint->scope,
@@ -2102,6 +2116,11 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 
     if (force || reductionFinished)
     {
+        for (auto& message : result.messages)
+        {
+            reportError(std::move(message));
+        }
+
         // if we're completely dispatching this constraint, we want to record any uninhabited type functions to unblock.
         for (auto error : result.errors)
         {

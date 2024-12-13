@@ -13,6 +13,16 @@ struct ParseResult;
 class BytecodeBuilder;
 class BytecodeEncoder;
 
+using CompileConstant = void*;
+
+// return a type identifier for a global library member
+// values are defined by 'enum LuauBytecodeType' in Bytecode.h
+using LibraryMemberTypeCallback = int (*)(const char* library, const char* member);
+
+// setup a value of a constant for a global library member
+// use setCompileConstant*** set of functions for values
+using LibraryMemberConstantCallback = void (*)(const char* library, const char* member, CompileConstant* constant);
+
 // Note: this structure is duplicated in luacode.h, don't forget to change these in sync!
 struct CompileOptions
 {
@@ -49,6 +59,15 @@ struct CompileOptions
 
     // null-terminated array of userdata types that will be included in the type information
     const char* const* userdataTypes = nullptr;
+
+    // null-terminated array of globals which act as libraries and have members with known type and/or constant value
+    // when an import of one of these libraries is accessed, callbacks below will be called to receive that information
+    const char* const* librariesWithKnownMembers = nullptr;
+    LibraryMemberTypeCallback libraryMemberTypeCb = nullptr;
+    LibraryMemberConstantCallback libraryMemberConstantCb = nullptr;
+
+    // null-terminated array of library functions that should not be compiled into a built-in fastcall ("name" "lib.name")
+    const char* const* disabledBuiltins = nullptr;
 };
 
 class CompileError : public std::exception
@@ -80,5 +99,11 @@ std::string compile(
     const ParseOptions& parseOptions = {},
     BytecodeEncoder* encoder = nullptr
 );
+
+void setCompileConstantNil(CompileConstant* constant);
+void setCompileConstantBoolean(CompileConstant* constant, bool b);
+void setCompileConstantNumber(CompileConstant* constant, double n);
+void setCompileConstantVector(CompileConstant* constant, float x, float y, float z, float w);
+void setCompileConstantString(CompileConstant* constant, const char* s, size_t l);
 
 } // namespace Luau

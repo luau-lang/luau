@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lua.h"
 #include "lualib.h"
+#include "luacode.h"
 
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/CodeGen.h"
@@ -15,10 +16,67 @@
 #include <memory>
 #include <string_view>
 
-static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
-{
-    Luau::CodeGen::AssemblyOptions options;
+LUAU_FASTFLAG(LuauCompileLibraryConstants)
 
+static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
+{
+    // While 'vector' library constants are a Luau built-in, their constant value depends on the embedder LUA_VECTOR_SIZE value
+    if (strcmp(library, "vector") == 0)
+    {
+        if (strcmp(member, "zero") == 0)
+            return Luau::setCompileConstantVector(constant, 0.0f, 0.0f, 0.0f, 0.0f);
+
+        if (strcmp(member, "one") == 0)
+            return Luau::setCompileConstantVector(constant, 1.0f, 1.0f, 1.0f, 0.0f);
+    }
+
+    if (strcmp(library, "Vector3") == 0)
+    {
+        if (strcmp(member, "xAxis") == 0)
+            return Luau::setCompileConstantVector(constant, 1.0f, 0.0f, 0.0f, 0.0f);
+
+        if (strcmp(member, "yAxis") == 0)
+            return Luau::setCompileConstantVector(constant, 0.0f, 1.0f, 0.0f, 0.0f);
+    }
+}
+
+static void luauLibraryConstantLookupC(const char* library, const char* member, lua_CompileConstant* constant)
+{
+    if (strcmp(library, "test") == 0)
+    {
+        if (strcmp(member, "some_nil") == 0)
+            return luau_set_compile_constant_nil(constant);
+
+        if (strcmp(member, "some_boolean") == 0)
+            return luau_set_compile_constant_boolean(constant, 1);
+
+        if (strcmp(member, "some_number") == 0)
+            return luau_set_compile_constant_number(constant, 4.75);
+
+        if (strcmp(member, "some_vector") == 0)
+            return luau_set_compile_constant_vector(constant, 1.0f, 2.0f, 4.0f, 8.0f);
+
+        if (strcmp(member, "some_string") == 0)
+            return luau_set_compile_constant_string(constant, "test", 4);
+    }
+}
+
+static int luauLibraryTypeLookup(const char* library, const char* member)
+{
+    if (strcmp(library, "Vector3") == 0)
+    {
+        if (strcmp(member, "xAxis") == 0)
+            return LuauBytecodeType::LBC_TYPE_VECTOR;
+
+        if (strcmp(member, "yAxis") == 0)
+            return LuauBytecodeType::LBC_TYPE_VECTOR;
+    }
+
+    return LuauBytecodeType::LBC_TYPE_ANY;
+}
+
+static void setupAssemblyOptions(Luau::CodeGen::AssemblyOptions& options, bool includeIrTypes)
+{
     options.compilationOptions.hooks.vectorAccessBytecodeType = vectorAccessBytecodeType;
     options.compilationOptions.hooks.vectorNamecallBytecodeType = vectorNamecallBytecodeType;
     options.compilationOptions.hooks.vectorAccess = vectorAccess;
@@ -44,35 +102,10 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
     options.includeUseInfo = Luau::CodeGen::IncludeUseInfo::No;
     options.includeCfgInfo = Luau::CodeGen::IncludeCfgInfo::No;
     options.includeRegFlowInfo = Luau::CodeGen::IncludeRegFlowInfo::No;
+}
 
-    Luau::Allocator allocator;
-    Luau::AstNameTable names(allocator);
-    Luau::ParseResult result = Luau::Parser::parse(source, strlen(source), names, allocator);
-
-    if (!result.errors.empty())
-        throw Luau::ParseErrors(result.errors);
-
-    Luau::CompileOptions copts = {};
-
-    copts.optimizationLevel = 2;
-    copts.debugLevel = debugLevel;
-    copts.typeInfoLevel = 1;
-    copts.vectorCtor = "vector";
-    copts.vectorType = "vector";
-
-    static const char* kUserdataCompileTypes[] = {"vec2", "color", "mat3", nullptr};
-    copts.userdataTypes = kUserdataCompileTypes;
-
-    Luau::BytecodeBuilder bcb;
-    Luau::compileOrThrow(bcb, result, names, copts);
-
-    std::string bytecode = bcb.getBytecode();
-    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
-    lua_State* L = globalState.get();
-
-    // Runtime mapping is specifically created to NOT match the compilation mapping
-    options.compilationOptions.userdataTypes = kUserdataRunTypes;
-
+static void initializeCodegen(lua_State* L)
+{
     if (Luau::CodeGen::isSupported())
     {
         // Type remapper requires the codegen runtime
@@ -101,9 +134,95 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
             }
         );
     }
+}
+
+static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
+{
+    Luau::Allocator allocator;
+    Luau::AstNameTable names(allocator);
+    Luau::ParseResult result = Luau::Parser::parse(source, strlen(source), names, allocator);
+
+    if (!result.errors.empty())
+        throw Luau::ParseErrors(result.errors);
+
+    Luau::CompileOptions copts = {};
+
+    copts.optimizationLevel = 2;
+    copts.debugLevel = debugLevel;
+    copts.typeInfoLevel = 1;
+    copts.vectorCtor = "vector";
+    copts.vectorType = "vector";
+
+    static const char* kUserdataCompileTypes[] = {"vec2", "color", "mat3", nullptr};
+    copts.userdataTypes = kUserdataCompileTypes;
+
+    static const char* kLibrariesWithConstants[] = {"vector", "Vector3", nullptr};
+    copts.librariesWithKnownMembers = kLibrariesWithConstants;
+
+    copts.libraryMemberTypeCb = luauLibraryTypeLookup;
+    copts.libraryMemberConstantCb = luauLibraryConstantLookup;
+
+    Luau::BytecodeBuilder bcb;
+    Luau::compileOrThrow(bcb, result, names, copts);
+
+    std::string bytecode = bcb.getBytecode();
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    initializeCodegen(L);
 
     if (luau_load(L, "name", bytecode.data(), bytecode.size(), 0) == 0)
+    {
+        Luau::CodeGen::AssemblyOptions options;
+        setupAssemblyOptions(options, includeIrTypes);
+
+        // Runtime mapping is specifically created to NOT match the compilation mapping
+        options.compilationOptions.userdataTypes = kUserdataRunTypes;
+
         return Luau::CodeGen::getAssembly(L, -1, options, nullptr);
+    }
+
+    FAIL("Failed to load bytecode");
+    return "";
+}
+
+static std::string getCodegenAssemblyUsingCApi(const char* source, bool includeIrTypes = false, int debugLevel = 1)
+{
+    lua_CompileOptions copts = {};
+
+    copts.optimizationLevel = 2;
+    copts.debugLevel = debugLevel;
+    copts.typeInfoLevel = 1;
+
+    static const char* kLibrariesWithConstants[] = {"test", nullptr};
+    copts.librariesWithKnownMembers = kLibrariesWithConstants;
+
+    copts.libraryMemberTypeCb = luauLibraryTypeLookup;
+    copts.libraryMemberConstantCb = luauLibraryConstantLookupC;
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), &copts, &bytecodeSize);
+    REQUIRE(bytecode);
+
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    initializeCodegen(L);
+
+    if (luau_load(L, "name", bytecode, bytecodeSize, 0) == 0)
+    {
+        free(bytecode);
+
+        Luau::CodeGen::AssemblyOptions options;
+        setupAssemblyOptions(options, includeIrTypes);
+
+        // Runtime mapping is specifically created to NOT match the compilation mapping
+        options.compilationOptions.userdataTypes = kUserdataRunTypes;
+
+        return Luau::CodeGen::getAssembly(L, -1, options, nullptr);
+    }
+
+    free(bytecode);
 
     FAIL("Failed to load bytecode");
     return "";
@@ -1990,6 +2109,111 @@ bb_bytecode_1:
   STORE_TAG R3, tuserdata
   INTERRUPT 3u
   RETURN R3, 1i
+)"
+    );
+}
+
+TEST_CASE("LibraryFieldTypesAndConstants")
+{
+    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a: vector)
+    return Vector3.xAxis * a + Vector3.yAxis
+end
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo($arg0) line 2
+; R0: vector [argument]
+; R2: vector from 3 to 4
+; R3: vector from 1 to 2
+; R3: vector from 3 to 4
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %4 = LOAD_TVALUE K0, 0i, tvector
+  %11 = LOAD_TVALUE R0
+  %12 = MUL_VEC %4, %11
+  %15 = LOAD_TVALUE K1, 0i, tvector
+  %23 = ADD_VEC %12, %15
+  %24 = TAG_VECTOR %23
+  STORE_TVALUE R1, %24
+  INTERRUPT 4u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("LibraryFieldTypesAndConstants")
+{
+    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a: vector)
+    local x = vector.zero
+    x += a
+    return x
+end
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo($arg0) line 2
+; R0: vector [argument]
+; R1: vector from 0 to 3
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %4 = LOAD_TVALUE K0, 0i, tvector
+  %11 = LOAD_TVALUE R0
+  %12 = ADD_VEC %4, %11
+  %13 = TAG_VECTOR %12
+  STORE_TVALUE R1, %13
+  INTERRUPT 2u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("LibraryFieldTypesAndConstantsCApi")
+{
+    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssemblyUsingCApi(
+                   R"(
+local function foo()
+    return test.some_nil, test.some_boolean, test.some_number, test.some_vector, test.some_string
+end
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo() line 2
+bb_bytecode_0:
+  STORE_TAG R0, tnil
+  STORE_INT R1, 1i
+  STORE_TAG R1, tboolean
+  STORE_DOUBLE R2, 4.75
+  STORE_TAG R2, tnumber
+  %5 = LOAD_TVALUE K1, 0i, tvector
+  STORE_TVALUE R3, %5
+  %7 = LOAD_TVALUE K2, 0i, tstring
+  STORE_TVALUE R4, %7
+  INTERRUPT 5u
+  RETURN R0, 5i
 )"
     );
 }

@@ -10,12 +10,14 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
+LUAU_FASTFLAGVARIABLE(LuauGeneralizationRemoveRecursiveUpperBound)
 
 namespace Luau
 {
 
 struct MutatingGeneralizer : TypeOnceVisitor
 {
+    NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
 
     NotNull<Scope> scope;
@@ -29,6 +31,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
     bool avoidSealingTables = false;
 
     MutatingGeneralizer(
+        NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<Scope> scope,
         NotNull<DenseHashSet<TypeId>> cachedTypes,
@@ -37,6 +40,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
         bool avoidSealingTables
     )
         : TypeOnceVisitor(/* skipBoundTypes */ true)
+        , arena(arena)
         , builtinTypes(builtinTypes)
         , scope(scope)
         , cachedTypes(cachedTypes)
@@ -229,6 +233,53 @@ struct MutatingGeneralizer : TypeOnceVisitor
         else
         {
             TypeId ub = follow(ft->upperBound);
+            if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound)
+            {
+
+                // If the upper bound is a union type or an intersection type,
+                // and one of it's members is the free type we're
+                // generalizing, don't include it in the upper bound. For a
+                // free type such as:
+                //
+                //  t1 where t1 = D <: 'a <: (A | B | C | t1)
+                //
+                // Naively replacing it with it's upper bound creates:
+                //
+                //  t1 where t1 = A | B | C | t1
+                //
+                // It makes sense to just optimize this and exclude the
+                // recursive component by semantic subtyping rules.
+
+                if (auto itv = get<IntersectionType>(ub))
+                {
+                    std::vector<TypeId> newIds;
+                    newIds.reserve(itv->parts.size());
+                    for (auto part : itv)
+                    {
+                        if (part != ty)
+                            newIds.push_back(part);
+                    }
+                    if (newIds.size() == 1)
+                        ub = newIds[0];
+                    else if (newIds.size() > 0)
+                        ub = arena->addType(IntersectionType{std::move(newIds)});
+                }
+                else if (auto utv = get<UnionType>(ub))
+                {
+                    std::vector<TypeId> newIds;
+                    newIds.reserve(utv->options.size());
+                    for (auto part : utv)
+                    {
+                        if (part != ty)
+                            newIds.push_back(part);
+                    }
+                    if (newIds.size() == 1)
+                        ub = newIds[0];
+                    else if (newIds.size() > 0)
+                        ub = arena->addType(UnionType{std::move(newIds)});
+                }
+            }
+
             if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == ty)
                 upperFree->lowerBound = builtinTypes->neverType;
             else
@@ -969,7 +1020,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    MutatingGeneralizer gen{builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes), avoidSealingTables};
+    MutatingGeneralizer gen{arena, builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes), avoidSealingTables};
 
     gen.traverse(ty);
 

@@ -53,7 +53,7 @@ LUAU_EQSAT_NODE_SET(Intersection);
 
 LUAU_EQSAT_NODE_ARRAY(Negation, 1);
 
-LUAU_EQSAT_NODE_ATOM_WITH_VECTOR(TTypeFun, const TypeFunction*);
+LUAU_EQSAT_NODE_ATOM_WITH_VECTOR(TTypeFun, std::shared_ptr<const TypeFunctionInstanceType>);
 
 LUAU_EQSAT_UNIT(TNoRefine);
 LUAU_EQSAT_UNIT(Invalid);
@@ -218,6 +218,7 @@ struct Simplifier
     void simplifyUnion(Id id);
     void uninhabitedIntersection(Id id);
     void intersectWithNegatedClass(Id id);
+    void intersectWithNegatedAtom(Id id);
     void intersectWithNoRefine(Id id);
     void cyclicIntersectionOfUnion(Id id);
     void cyclicUnionOfIntersection(Id id);
@@ -228,6 +229,7 @@ struct Simplifier
     void unneededTableModification(Id id);
     void builtinTypeFunctions(Id id);
     void iffyTypeFunctions(Id id);
+    void strictMetamethods(Id id);
 };
 
 template<typename Tag>
