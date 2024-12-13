@@ -33,11 +33,15 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
+LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunExportedAndLocal)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunNoExtraConstraint)
+
+LUAU_FASTFLAGVARIABLE(InferGlobalTypes)
 
 namespace Luau
 {
@@ -819,9 +823,10 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                 }
 
                 // Fill it with all visible type functions
-                if (mainTypeFun)
+                if (FFlag::LuauUserTypeFunUpdateAllEnvs && mainTypeFun)
                 {
                     UserDefinedFunctionData& userFuncData = mainTypeFun->userFuncData;
+                    size_t level = 0;
 
                     for (Scope* curr = scope.get(); curr; curr = curr->parent.get())
                     {
@@ -831,7 +836,7 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                                 continue;
 
                             if (auto ty = get<TypeFunctionInstanceType>(tf.type); ty && ty->userFuncData.definition)
-                                userFuncData.environment[name] = ty->userFuncData.definition;
+                                userFuncData.environment[name] = std::make_pair(ty->userFuncData.definition, level);
                         }
 
                         for (auto& [name, tf] : curr->exportedTypeBindings)
@@ -840,7 +845,34 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                                 continue;
 
                             if (auto ty = get<TypeFunctionInstanceType>(tf.type); ty && ty->userFuncData.definition)
-                                userFuncData.environment[name] = ty->userFuncData.definition;
+                                userFuncData.environment[name] = std::make_pair(ty->userFuncData.definition, level);
+                        }
+
+                        level++;
+                    }
+                }
+                else if (mainTypeFun)
+                {
+                    UserDefinedFunctionData& userFuncData = mainTypeFun->userFuncData;
+
+                    for (Scope* curr = scope.get(); curr; curr = curr->parent.get())
+                    {
+                        for (auto& [name, tf] : curr->privateTypeBindings)
+                        {
+                            if (userFuncData.environment_DEPRECATED.find(name))
+                                continue;
+
+                            if (auto ty = get<TypeFunctionInstanceType>(tf.type); ty && ty->userFuncData.definition)
+                                userFuncData.environment_DEPRECATED[name] = ty->userFuncData.definition;
+                        }
+
+                        for (auto& [name, tf] : curr->exportedTypeBindings)
+                        {
+                            if (userFuncData.environment_DEPRECATED.find(name))
+                                continue;
+
+                            if (auto ty = get<TypeFunctionInstanceType>(tf.type); ty && ty->userFuncData.definition)
+                                userFuncData.environment_DEPRECATED[name] = ty->userFuncData.definition;
                         }
                     }
                 }
@@ -1571,18 +1603,22 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunction* function)
 {
-    // If a type function with the same name was already defined, we skip over
-    auto bindingIt = scope->privateTypeBindings.find(function->name.value);
-    if (bindingIt == scope->privateTypeBindings.end())
-        return ControlFlow::None;
-
-    TypeFun typeFunction = bindingIt->second;
-
-    // Adding typeAliasExpansionConstraint on user-defined type function for the constraint solver
-    if (auto typeFunctionTy = get<TypeFunctionInstanceType>(follow(typeFunction.type)))
+    if (!FFlag::LuauUserTypeFunNoExtraConstraint)
     {
-        TypeId expansionTy = arena->addType(PendingExpansionType{{}, function->name, typeFunctionTy->typeArguments, typeFunctionTy->packArguments});
-        addConstraint(scope, function->location, TypeAliasExpansionConstraint{/* target */ expansionTy});
+        // If a type function with the same name was already defined, we skip over
+        auto bindingIt = scope->privateTypeBindings.find(function->name.value);
+        if (bindingIt == scope->privateTypeBindings.end())
+            return ControlFlow::None;
+
+        TypeFun typeFunction = bindingIt->second;
+
+        // Adding typeAliasExpansionConstraint on user-defined type function for the constraint solver
+        if (auto typeFunctionTy = get<TypeFunctionInstanceType>(follow(typeFunction.type)))
+        {
+            TypeId expansionTy =
+                arena->addType(PendingExpansionType{{}, function->name, typeFunctionTy->typeArguments, typeFunctionTy->packArguments});
+            addConstraint(scope, function->location, TypeAliasExpansionConstraint{/* target */ expansionTy});
+        }
     }
 
     return ControlFlow::None;
@@ -2790,6 +2826,14 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         DefId def = dfg->getDef(global);
         rootScope->lvalueTypes[def] = rhsType;
 
+        if (FFlag::InferGlobalTypes)
+        {
+            // Sketchy: We're specifically looking for BlockedTypes that were
+            // initially created by ConstraintGenerator::prepopulateGlobalScope.
+            if (auto bt = get<BlockedType>(follow(*annotatedTy)); bt && !bt->getOwner())
+                emplaceType<BoundType>(asMutable(*annotatedTy), rhsType);
+        }
+
         addConstraint(scope, global->location, SubtypeConstraint{rhsType, *annotatedTy});
     }
 }
@@ -3182,9 +3226,9 @@ TypeId ConstraintGenerator::resolveReferenceType(
 
     if (alias.has_value())
     {
-        // If the alias is not generic, we don't need to set up a blocked
-        // type and an instantiation constraint.
-        if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty())
+        // If the alias is not generic, we don't need to set up a blocked type and an instantiation constraint
+        if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty() &&
+            (!FFlag::LuauUserTypeFunNoExtraConstraint || !ref->hasParameterList))
         {
             result = alias->type;
         }
@@ -3689,6 +3733,26 @@ struct GlobalPrepopulator : AstVisitor
         {
             DefId def = dfg->getDef(global);
             globalScope->lvalueTypes[def] = *ty;
+        }
+
+        return true;
+    }
+
+    bool visit(AstStatAssign* assign) override
+    {
+        if (FFlag::InferGlobalTypes)
+        {
+            for (const Luau::AstExpr* expr : assign->vars)
+            {
+                if (const AstExprGlobal* g = expr->as<AstExprGlobal>())
+                {
+                    if (!globalScope->lookup(g->name))
+                        globalScope->globalsToWarn.insert(g->name.value);
+
+                    TypeId bt = arena->addType(BlockedType{});
+                    globalScope->bindings[g->name] = Binding{bt, g->location};
+                }
+            }
         }
 
         return true;

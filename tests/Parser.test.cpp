@@ -16,7 +16,6 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctionsSyntax2)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
@@ -2342,7 +2341,6 @@ TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 
 TEST_CASE_FIXTURE(Fixture, "parse_user_defined_type_functions")
 {
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
     ScopedFastFlag sff2{FFlag::LuauUserDefinedTypeFunParseExport, true};
 
     AstStat* stat = parse(R"(
@@ -2363,8 +2361,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_user_defined_type_functions")
 
 TEST_CASE_FIXTURE(Fixture, "parse_nested_type_function")
 {
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-
     AstStat* stat = parse(R"(
         local v1 = 1
         type function foo()
@@ -2386,8 +2382,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_type_function")
 
 TEST_CASE_FIXTURE(Fixture, "invalid_user_defined_type_functions")
 {
-    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctionsSyntax2, true};
-
     matchParseError("local foo = 1; type function bar() print(foo) end", "Type function cannot reference outer local 'foo'");
     matchParseError("type function foo() local v1 = 1; type function bar() print(v1) end end", "Type function cannot reference outer local 'v1'");
 }

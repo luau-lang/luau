@@ -27,3 +27,28 @@ char* luau_compile(const char* source, size_t size, lua_CompileOptions* options,
     *outsize = result.size();
     return copy;
 }
+
+void luau_set_compile_constant_nil(lua_CompileConstant* constant)
+{
+    Luau::setCompileConstantNil(constant);
+}
+
+void luau_set_compile_constant_boolean(lua_CompileConstant* constant, int b)
+{
+    Luau::setCompileConstantBoolean(constant, b != 0);
+}
+
+void luau_set_compile_constant_number(lua_CompileConstant* constant, double n)
+{
+    Luau::setCompileConstantNumber(constant, n);
+}
+
+void luau_set_compile_constant_vector(lua_CompileConstant* constant, float x, float y, float z, float w)
+{
+    Luau::setCompileConstantVector(constant, x, y, z, w);
+}
+
+void luau_set_compile_constant_string(lua_CompileConstant* constant, const char* s, size_t l)
+{
+    Luau::setCompileConstantString(constant, s, l);
+}

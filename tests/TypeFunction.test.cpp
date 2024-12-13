@@ -33,20 +33,20 @@ struct TypeFunctionFixture : Fixture
 
                 if (isString(param))
                 {
-                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->numberType, false, {}, {}};
+                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
                 }
                 else if (isNumber(param))
                 {
-                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->stringType, false, {}, {}};
+                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
                 }
                 else if (is<BlockedType>(param) || is<PendingExpansionType>(param) || is<TypeFunctionInstanceType>(param) ||
                          (ctx->solver && ctx->solver->hasUnresolvedConstraints(param)))
                 {
-                    return TypeFunctionReductionResult<TypeId>{std::nullopt, false, {param}, {}};
+                    return TypeFunctionReductionResult<TypeId>{std::nullopt, Reduction::MaybeOk, {param}, {}};
                 }
                 else
                 {
-                    return TypeFunctionReductionResult<TypeId>{std::nullopt, true, {}, {}};
+                    return TypeFunctionReductionResult<TypeId>{std::nullopt, Reduction::Erroneous, {}, {}};
                 }
             }
         };

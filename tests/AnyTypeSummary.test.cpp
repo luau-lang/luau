@@ -111,7 +111,7 @@ TEST_CASE_FIXTURE(ATSFixture, "typepacks_no_ret")
 -- TODO: if partially typed, we'd want to know too
 local function fallible(t: number)
 	if t > 0 then
-		return true, t 
+		return true, t
 	end
 	return false, "must be positive"
 end
@@ -911,7 +911,7 @@ TEST_CASE_FIXTURE(ATSFixture, "type_alias_any")
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
     type Clear = any
-    local z: Clear = "zip"  
+    local z: Clear = "zip"
 )";
 
     CheckResult result1 = frontend.check("game/Gui/Modules/A");
@@ -938,7 +938,7 @@ TEST_CASE_FIXTURE(ATSFixture, "multi_module_any")
     fileResolver.source["game/B"] = R"(
     local MyFunc = require(script.Parent.A)
     type Clear = any
-    local z: Clear = "zip"  
+    local z: Clear = "zip"
 )";
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -972,7 +972,7 @@ TEST_CASE_FIXTURE(ATSFixture, "cast_on_cyclic_req")
     fileResolver.source["game/B"] = R"(
     local MyFunc = require(script.Parent.A) :: any
     type Clear = any
-    local z: Clear = "zip"  
+    local z: Clear = "zip"
 )";
 
     CheckResult result = frontend.check("game/B");

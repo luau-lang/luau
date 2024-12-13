@@ -41,7 +41,8 @@ void analyzeBuiltins(
     const DenseHashMap<AstName, Global>& globals,
     const DenseHashMap<AstLocal*, Variable>& variables,
     const CompileOptions& options,
-    AstNode* root
+    AstNode* root,
+    const AstNameTable& names
 );
 
 struct BuiltinInfo

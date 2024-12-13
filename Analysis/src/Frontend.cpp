@@ -50,6 +50,8 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAGVARIABLE(LuauStoreSolverTypeOnModule)
 
+LUAU_FASTFLAGVARIABLE(LuauReferenceAllocatorInNewSolver)
+
 namespace Luau
 {
 
@@ -1317,6 +1319,11 @@ ModulePtr check(
     result->mode = mode;
     result->internalTypes.owningModule = result.get();
     result->interfaceTypes.owningModule = result.get();
+    if (FFlag::LuauReferenceAllocatorInNewSolver)
+    {
+        result->allocator = sourceModule.allocator;
+        result->names = sourceModule.names;
+    }
 
     iceHandler->moduleName = sourceModule.name;
 
@@ -1427,6 +1434,7 @@ ModulePtr check(
         case Mode::Nonstrict:
             Luau::checkNonStrict(
                 builtinTypes,
+                NotNull{simplifier.get()},
                 NotNull{&typeFunctionRuntime},
                 iceHandler,
                 NotNull{&unifierState},
@@ -1440,7 +1448,14 @@ ModulePtr check(
             // fallthrough intentional
         case Mode::Strict:
             Luau::check(
-                builtinTypes, NotNull{&typeFunctionRuntime}, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get()
+                builtinTypes,
+                NotNull{simplifier.get()},
+                NotNull{&typeFunctionRuntime},
+                NotNull{&unifierState},
+                NotNull{&limits},
+                logger.get(),
+                sourceModule,
+                result.get()
             );
             break;
         case Mode::NoCheck:

@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Compiler.h"
+
 #include "ValueTracking.h"
 
 namespace Luau
@@ -49,7 +51,8 @@ void foldConstants(
     DenseHashMap<AstLocal*, Variable>& variables,
     DenseHashMap<AstLocal*, Constant>& locals,
     const DenseHashMap<AstExprCall*, int>* builtins,
-    bool foldMathK,
+    bool foldLibraryK,
+    LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root
 );
 

@@ -14,7 +14,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixRegister)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunThreadBuffer)
 
@@ -1408,8 +1408,6 @@ static int isEqualToType(lua_State* L)
 
 void registerTypesLibrary(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauUserTypeFunFixRegister);
-
     luaL_Reg fields[] = {
         {"unknown", createUnknown},
         {"never", createNever},
@@ -1464,167 +1462,96 @@ static int typeUserdataIndex(lua_State* L)
 
 void registerTypeUserData(lua_State* L)
 {
-    if (FFlag::LuauUserTypeFunFixRegister)
-    {
-        luaL_Reg typeUserdataMethods[] = {
-            {"is", checkTag},
+    luaL_Reg typeUserdataMethods[] = {
+        {"is", checkTag},
 
-            // Negation type methods
-            {"inner", getNegatedValue},
+        // Negation type methods
+        {"inner", getNegatedValue},
 
-            // Singleton type methods
-            {"value", getSingletonValue},
+        // Singleton type methods
+        {"value", getSingletonValue},
 
-            // Table type methods
-            {"setproperty", setTableProp},
-            {"setreadproperty", setReadTableProp},
-            {"setwriteproperty", setWriteTableProp},
-            {"readproperty", readTableProp},
-            {"writeproperty", writeTableProp},
-            {"properties", getProps},
-            {"setindexer", setTableIndexer},
-            {"setreadindexer", setTableReadIndexer},
-            {"setwriteindexer", setTableWriteIndexer},
-            {"indexer", getIndexer},
-            {"readindexer", getReadIndexer},
-            {"writeindexer", getWriteIndexer},
-            {"setmetatable", setTableMetatable},
-            {"metatable", getMetatable},
+        // Table type methods
+        {"setproperty", setTableProp},
+        {"setreadproperty", setReadTableProp},
+        {"setwriteproperty", setWriteTableProp},
+        {"readproperty", readTableProp},
+        {"writeproperty", writeTableProp},
+        {"properties", getProps},
+        {"setindexer", setTableIndexer},
+        {"setreadindexer", setTableReadIndexer},
+        {"setwriteindexer", setTableWriteIndexer},
+        {"indexer", getIndexer},
+        {"readindexer", getReadIndexer},
+        {"writeindexer", getWriteIndexer},
+        {"setmetatable", setTableMetatable},
+        {"metatable", getMetatable},
 
-            // Function type methods
-            {"setparameters", setFunctionParameters},
-            {"parameters", getFunctionParameters},
-            {"setreturns", setFunctionReturns},
-            {"returns", getFunctionReturns},
+        // Function type methods
+        {"setparameters", setFunctionParameters},
+        {"parameters", getFunctionParameters},
+        {"setreturns", setFunctionReturns},
+        {"returns", getFunctionReturns},
 
-            // Union and Intersection type methods
-            {"components", getComponents},
+        // Union and Intersection type methods
+        {"components", getComponents},
 
-            // Class type methods
-            {"parent", getClassParent},
+        // Class type methods
+        {"parent", getClassParent},
 
-            {nullptr, nullptr}
-        };
+        {nullptr, nullptr}
+    };
 
-        // Create and register metatable for type userdata
-        luaL_newmetatable(L, "type");
+    // Create and register metatable for type userdata
+    luaL_newmetatable(L, "type");
 
-        // Protect metatable from being changed
-        lua_pushstring(L, "The metatable is locked");
-        lua_setfield(L, -2, "__metatable");
+    // Protect metatable from being changed
+    lua_pushstring(L, "The metatable is locked");
+    lua_setfield(L, -2, "__metatable");
 
-        lua_pushcfunction(L, isEqualToType, "__eq");
-        lua_setfield(L, -2, "__eq");
+    lua_pushcfunction(L, isEqualToType, "__eq");
+    lua_setfield(L, -2, "__eq");
 
-        // Indexing will be a dynamic function because some type fields are dynamic
-        lua_newtable(L);
-        luaL_register(L, nullptr, typeUserdataMethods);
-        lua_setreadonly(L, -1, true);
-        lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
-        lua_setfield(L, -2, "__index");
+    // Indexing will be a dynamic function because some type fields are dynamic
+    lua_newtable(L);
+    luaL_register(L, nullptr, typeUserdataMethods);
+    lua_setreadonly(L, -1, true);
+    lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
+    lua_setfield(L, -2, "__index");
 
-        lua_setreadonly(L, -1, true);
-        lua_pop(L, 1);
-    }
-    else
-    {
-        // List of fields for type userdata
-        luaL_Reg typeUserdataFields[] = {
-            {"unknown", createUnknown},
-            {"never", createNever},
-            {"any", createAny},
-            {"boolean", createBoolean},
-            {"number", createNumber},
-            {"string", createString},
-            {nullptr, nullptr}
-        };
-
-        // List of methods for type userdata
-        luaL_Reg typeUserdataMethods[] = {
-            {"singleton", createSingleton},
-            {"negationof", createNegation},
-            {"unionof", createUnion},
-            {"intersectionof", createIntersection},
-            {"newtable", createTable},
-            {"newfunction", createFunction},
-            {"copy", deepCopy},
-
-            // Common methods
-            {"is", checkTag},
-
-            // Negation type methods
-            {"inner", getNegatedValue},
-
-            // Singleton type methods
-            {"value", getSingletonValue},
-
-            // Table type methods
-            {"setproperty", setTableProp},
-            {"setreadproperty", setReadTableProp},
-            {"setwriteproperty", setWriteTableProp},
-            {"readproperty", readTableProp},
-            {"writeproperty", writeTableProp},
-            {"properties", getProps},
-            {"setindexer", setTableIndexer},
-            {"setreadindexer", setTableReadIndexer},
-            {"setwriteindexer", setTableWriteIndexer},
-            {"indexer", getIndexer},
-            {"readindexer", getReadIndexer},
-            {"writeindexer", getWriteIndexer},
-            {"setmetatable", setTableMetatable},
-            {"metatable", getMetatable},
-
-            // Function type methods
-            {"setparameters", setFunctionParameters},
-            {"parameters", getFunctionParameters},
-            {"setreturns", setFunctionReturns},
-            {"returns", getFunctionReturns},
-
-            // Union and Intersection type methods
-            {"components", getComponents},
-
-            // Class type methods
-            {"parent", getClassParent},
-            {"indexer", getIndexer},
-            {nullptr, nullptr}
-        };
-
-        // Create and register metatable for type userdata
-        luaL_newmetatable(L, "type");
-
-        // Protect metatable from being fetched.
-        lua_pushstring(L, "The metatable is locked");
-        lua_setfield(L, -2, "__metatable");
-
-        // Set type userdata metatable's __eq to type_equals()
-        lua_pushcfunction(L, isEqualToType, "__eq");
-        lua_setfield(L, -2, "__eq");
-
-        // Set type userdata metatable's __index to itself
-        lua_pushvalue(L, -1); // Push a copy of type userdata metatable
-        lua_setfield(L, -2, "__index");
-
-        luaL_register(L, nullptr, typeUserdataMethods);
-
-        // Set fields for type userdata
-        for (luaL_Reg* l = typeUserdataFields; l->name; l++)
-        {
-            l->func(L);
-            lua_setfield(L, -2, l->name);
-        }
-
-        // Set types library as a global name "types"
-        lua_setglobal(L, "types");
-    }
+    lua_setreadonly(L, -1, true);
+    lua_pop(L, 1);
 
     // Sets up a destructor for the type userdata.
     lua_setuserdatadtor(L, kTypeUserdataTag, deallocTypeUserData);
 }
 
 // Used to redirect all the removed global functions to say "this function is unsupported"
-int unsupportedFunction(lua_State* L)
+static int unsupportedFunction(lua_State* L)
 {
     luaL_errorL(L, "this function is not supported in type functions");
+    return 0;
+}
+
+static int print(lua_State* L)
+{
+    std::string result;
+
+    int n = lua_gettop(L);
+    for (int i = 1; i <= n; i++)
+    {
+        size_t l = 0;
+        const char* s = luaL_tolstring(L, i, &l); // convert to string using __tostring et al
+        if (i > 1)
+            result.append('\t', 1);
+        result.append(s, l);
+        lua_pop(L, 1);
+    }
+
+    auto ctx = getTypeFunctionRuntime(L);
+
+    ctx->messages.push_back(std::move(result));
+
     return 0;
 }
 
@@ -1659,12 +1586,28 @@ void setTypeFunctionEnvironment(lua_State* L)
     luaopen_base(L);
     lua_pop(L, 1);
 
-    // Remove certain global functions from the base library
-    static const std::string unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
-    for (auto& name : unavailableGlobals)
+    if (FFlag::LuauUserTypeFunPrintToError)
     {
-        lua_pushcfunction(L, unsupportedFunction, "Removing global function from type function environment");
-        lua_setglobal(L, name.c_str());
+        // Remove certain global functions from the base library
+        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
+        for (auto& name : unavailableGlobals)
+        {
+            lua_pushcfunction(L, unsupportedFunction, name);
+            lua_setglobal(L, name);
+        }
+
+        lua_pushcfunction(L, print, "print");
+        lua_setglobal(L, "print");
+    }
+    else
+    {
+        // Remove certain global functions from the base library
+        static const std::string unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
+        for (auto& name : unavailableGlobals)
+        {
+            lua_pushcfunction(L, unsupportedFunction, "Removing global function from type function environment");
+            lua_setglobal(L, name.c_str());
+        }
     }
 }
 
