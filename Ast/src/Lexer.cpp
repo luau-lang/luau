@@ -317,6 +317,7 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Positio
       )
     , names(names)
     , skipComments(false)
+    , skipWhitespace(true)
     , readNames(true)
 {
 }
@@ -326,6 +327,11 @@ void Lexer::setSkipComments(bool skip)
     skipComments = skip;
 }
 
+void Lexer::setSkipWhitespace(bool skip)
+{
+    skipWhitespace = skip;
+}
+
 void Lexer::setReadNames(bool read)
 {
     readNames = read;
@@ -333,10 +339,10 @@ void Lexer::setReadNames(bool read)
 
 const Lexeme& Lexer::next()
 {
-    return next(this->skipComments, true);
+    return next(this->skipComments, this->skipWhitespace, true);
 }
 
-const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
+const Lexeme& Lexer::next(bool skipComments, bool skipWhitespace, bool updatePrevLocation)
 {
     // in skipComments mode we reject valid comments
     do
@@ -353,7 +359,7 @@ const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
 
         lexeme = readNext();
         updatePrevLocation = false;
-    } while (skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment || lexeme.type == Lexeme::Whitespace));
+    } while ((skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment)) || (skipWhitespace && lexeme.type == Lexeme::Whitespace));
 
     return lexeme;
 }

@@ -157,6 +157,7 @@ public:
     Lexer(const char* buffer, std::size_t bufferSize, AstNameTable& names, Position startPosition = {0, 0});
 
     void setSkipComments(bool skip);
+    void setSkipWhitespace(bool skip);
     void setReadNames(bool read);
 
     const Location& previousLocation() const
@@ -165,7 +166,7 @@ public:
     }
 
     const Lexeme& next();
-    const Lexeme& next(bool skipComments, bool updatePrevLocation);
+    const Lexeme& next(bool skipComments, bool skipWhitespace, bool updatePrevLocation);
     void nextline();
 
     Lexeme lookahead();
@@ -229,6 +230,7 @@ private:
     AstNameTable& names;
 
     bool skipComments;
+    bool skipWhitespace;
     bool readNames;
 
     enum class BraceType

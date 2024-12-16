@@ -3572,7 +3572,7 @@ AstTypeError* Parser::reportMissingTypeError(const Location& parseErrorLocation,
 
 void Parser::nextLexeme()
 {
-    Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
+    Lexeme::Type type = lexer.next(/* skipComments= */ false, /* skipWhitespace= */ false, true).type;
 
     while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment || type == Lexeme::Whitespace)
     {
@@ -3598,7 +3598,7 @@ void Parser::nextLexeme()
             hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
         }
 
-        type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
+        type = lexer.next(/* skipComments= */ false, /* skipWhitespace= */ false, /* updatePrevLocation= */ false).type;
     }
 }
 

@@ -252,6 +252,7 @@ TEST_CASE("lexer_tokenizes_whitespace")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
+    lexer.setSkipWhitespace(false);
 
     CHECK_EQ(lexer.next().type, Lexeme::ReservedLocal);
     CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
@@ -282,6 +283,7 @@ TEST_CASE("lexer_tokenizes_multiline_whitespace")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
+    lexer.setSkipWhitespace(false);
 
     CHECK_EQ(lexer.next().type, Lexeme::ReservedLocal);
     CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
