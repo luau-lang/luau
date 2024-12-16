@@ -2,6 +2,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(LuauMathMap)
+LUAU_FASTFLAG(LuauVector2Constructor)
 
 LUAU_FASTFLAGVARIABLE(LuauVectorDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauVectorDefinitionsExtra)
@@ -513,10 +514,22 @@ std::string getBuiltinDefinitionSource()
 {
     std::string result = FFlag::LuauMathMap ? kBuiltinDefinitionLuaSrcChecked : kBuiltinDefinitionLuaSrcChecked_DEPRECATED;
 
+    std::string vectorSrc; 
     if (FFlag::LuauVectorDefinitionsExtra)
-        result += kBuiltinDefinitionVectorSrc;
+        vectorSrc = kBuiltinDefinitionVectorSrc;
     else if (FFlag::LuauVectorDefinitions)
-        result += kBuiltinDefinitionVectorSrc_DEPRECATED;
+        vectorSrc = kBuiltinDefinitionVectorSrc_DEPRECATED;
+
+    if (FFlag::LuauVector2Constructor && !vectorSrc.empty())
+    {
+        std::string what = "create: @checked (x: number, y: number, z: number) -> vector";
+        std::string replacement = "create: @checked (x: number, y: number, z: number?) -> vector";
+        std::string::size_type pos = vectorSrc.find(what);
+        LUAU_ASSERT(pos != std::string::npos);
+        vectorSrc.replace(pos, what.size(), replacement);
+    }
+
+    result += vectorSrc;
 
     return result;
 }
