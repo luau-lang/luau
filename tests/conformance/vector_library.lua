@@ -11,6 +11,7 @@ function ecall(fn, ...)
 end
 
 -- make sure we cover both builtin and C impl
+assert(vector.create(1, 2) == vector.create("1", "2"))
 assert(vector.create(1, 2, 4) == vector.create("1", "2", "4"))
 
 -- 'create'

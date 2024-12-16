@@ -25,6 +25,8 @@
 #endif
 #endif
 
+LUAU_FASTFLAG(LuauVector2Constructor)
+
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -1055,25 +1057,25 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 
 static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    int minparams = FFlag::LuauVector2Constructor ? 2 : 3;
+
+    if (nparams >= minparams && nparams <= LUA_VECTOR_SIZE && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        double x = nvalue(arg0);
-        double y = nvalue(args);
-        double z = nvalue(args + 1);
+        float value[4];
+        value[0] = (float)nvalue(arg0);
+        value[1] = (float)nvalue(args);
+        value[2] = 0.0;
+        value[3] = 0.0;
 
-#if LUA_VECTOR_SIZE == 4
-        double w = 0.0;
-        if (nparams >= 4)
+        for (int i = 2; i < nparams; i++)
         {
-            if (!ttisnumber(args + 2))
+            StkId a = args + i - 1;
+            if (!ttisnumber(a))
                 return -1;
-            w = nvalue(args + 2);
+            value[i] = (float)nvalue(a);
         }
-        setvvalue(res, float(x), float(y), float(z), float(w));
-#else
-        setvvalue(res, float(x), float(y), float(z), 0.0f);
-#endif
 
+        setvvalue(res, value[0], value[1], value[2], value[3]);
         return 1;
     }
 
