@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
 LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
 LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
+LUAU_FASTFLAG(LuauUserTypeFunTypeofReturnsType)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1391,6 +1392,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
     CHECK(toString(result.errors[1]) == R"(string)");
     CHECK(toString(result.errors[2]) == R"('t0' type function: returned a non-type value)");
     CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_type_userdata_returns_type")
+{
+    ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
+    ScopedFastFlag luauUserTypeFunTypeofReturnsType{FFlag::LuauUserTypeFunTypeofReturnsType, true};
+
+    CheckResult result = check(R"(
+type function test(t)
+    print(typeof(t))
+    return t
+end
+
+local _:test<number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == R"(type)");
 }
 
 TEST_SUITE_END();
