@@ -316,14 +316,14 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Positio
           Lexeme::Eof
       )
     , names(names)
-    , skipTrivia(false)
+    , skipComments(false)
     , readNames(true)
 {
 }
 
-void Lexer::setSkipTrivia(bool skip)
+void Lexer::setSkipComments(bool skip)
 {
-    skipTrivia = skip;
+    skipComments = skip;
 }
 
 void Lexer::setReadNames(bool read)
@@ -333,12 +333,12 @@ void Lexer::setReadNames(bool read)
 
 const Lexeme& Lexer::next()
 {
-    return next(this->skipTrivia, true);
+    return next(this->skipComments, true);
 }
 
-const Lexeme& Lexer::next(bool skipTrivia, bool updatePrevLocation)
+const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
 {
-    // in skipTrivia mode we reject valid comments
+    // in skipComments mode we reject valid comments
     do
     {
         if (!FFlag::LuauLexerTokenizesWhitespace)
@@ -353,7 +353,7 @@ const Lexeme& Lexer::next(bool skipTrivia, bool updatePrevLocation)
 
         lexeme = readNext();
         updatePrevLocation = false;
-    } while (skipTrivia && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment || lexeme.type == Lexeme::Whitespace));
+    } while (skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment || lexeme.type == Lexeme::Whitespace));
 
     return lexeme;
 }

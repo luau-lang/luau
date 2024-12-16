@@ -40,7 +40,7 @@ TEST_CASE("broken_comment_kept")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipTrivia(true);
+    lexer.setSkipComments(true);
     CHECK_EQ(lexer.next().type, Lexeme::Type::BrokenComment);
 }
 
@@ -50,7 +50,7 @@ TEST_CASE("comment_skipped")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipTrivia(true);
+    lexer.setSkipComments(true);
     CHECK_EQ(lexer.next().type, Lexeme::Type::Eof);
 }
 
@@ -105,7 +105,7 @@ TEST_CASE("lookahead")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipTrivia(true);
+    lexer.setSkipComments(true);
     lexer.next(); // must call next() before reading data from lexer at least once
 
     CHECK_EQ(lexer.current().type, Lexeme::Name);
