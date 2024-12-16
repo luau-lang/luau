@@ -208,7 +208,7 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     matchRecoveryStopOnToken[Lexeme::Type::Eof] = 1;
 
     // required for lookahead() to work across a comment boundary and for nextLexeme() to work when captureComments is false
-    lexer.setSkipComments(true);
+    lexer.setSkipTrivia(true);
 
     // read first lexeme (any hot comments get .header = true)
     LUAU_ASSERT(hotcommentHeader);
@@ -3572,13 +3572,13 @@ AstTypeError* Parser::reportMissingTypeError(const Location& parseErrorLocation,
 
 void Parser::nextLexeme()
 {
-    Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
+    Lexeme::Type type = lexer.next(/* skipTrivia= */ false, true).type;
 
-    while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
+    while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment || type == Lexeme::Whitespace)
     {
         const Lexeme& lexeme = lexer.current();
 
-        if (options.captureComments)
+        if (options.captureComments && type != Lexeme::Whitespace)
             commentLocations.push_back(Comment{lexeme.type, lexeme.location});
 
         // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
@@ -3598,7 +3598,7 @@ void Parser::nextLexeme()
             hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
         }
 
-        type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
+        type = lexer.next(/* skipTrivia= */ false, /* updatePrevLocation= */ false).type;
     }
 }
 

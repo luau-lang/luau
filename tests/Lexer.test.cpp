@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLexerTokenizesWhitespace)
+
 TEST_SUITE_BEGIN("LexerTests");
 
 TEST_CASE("broken_string_works")
@@ -38,7 +40,7 @@ TEST_CASE("broken_comment_kept")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipComments(true);
+    lexer.setSkipTrivia(true);
     CHECK_EQ(lexer.next().type, Lexeme::Type::BrokenComment);
 }
 
@@ -48,7 +50,7 @@ TEST_CASE("comment_skipped")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipComments(true);
+    lexer.setSkipTrivia(true);
     CHECK_EQ(lexer.next().type, Lexeme::Type::Eof);
 }
 
@@ -103,7 +105,7 @@ TEST_CASE("lookahead")
     Luau::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipComments(true);
+    lexer.setSkipTrivia(true);
     lexer.next(); // must call next() before reading data from lexer at least once
 
     CHECK_EQ(lexer.current().type, Lexeme::Name);
@@ -239,6 +241,50 @@ TEST_CASE("string_interpolation_with_unicode_escape")
     Lexer lexer(testInput.c_str(), testInput.size(), table);
 
     CHECK_EQ(lexer.next().type, Lexeme::InterpStringSimple);
+    CHECK_EQ(lexer.next().type, Lexeme::Eof);
+}
+
+TEST_CASE("lexer_tokenizes_whitespace")
+{
+    ScopedFastFlag sff{FFlag::LuauLexerTokenizesWhitespace, true};
+
+    const std::string testInput = "local x = 1";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, Lexeme::ReservedLocal);
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, Lexeme::Name);
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, '=');
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, Lexeme::Number);
+    CHECK_EQ(lexer.next().type, Lexeme::Eof);
+}
+
+TEST_CASE("lexer_tokenizes_multiline_whitespace")
+{
+    ScopedFastFlag sff{FFlag::LuauLexerTokenizesWhitespace, true};
+
+    const std::string testInput = R"(local x
+
+    y = 2
+    )";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, Lexeme::ReservedLocal);
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, Lexeme::Name);
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, Lexeme::Name);
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, '=');
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+    CHECK_EQ(lexer.next().type, Lexeme::Number);
+    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
     CHECK_EQ(lexer.next().type, Lexeme::Eof);
 }
 
