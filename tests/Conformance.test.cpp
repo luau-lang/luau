@@ -41,6 +41,7 @@ LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_FASTFLAG(LuauVectorBuiltins)
 LUAU_FASTFLAG(LuauVectorMetatable)
+LUAU_FASTFLAG(LuauVector2Constructor)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -895,6 +896,7 @@ TEST_CASE("VectorLibrary")
     ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
     ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
     ScopedFastFlag luauVectorMetatable{FFlag::LuauVectorMetatable, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     lua_CompileOptions copts = defaultOptions();
 

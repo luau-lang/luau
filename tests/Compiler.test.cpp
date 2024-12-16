@@ -28,7 +28,7 @@ LUAU_FASTFLAG(LuauCompileOptimizeRevArith)
 LUAU_FASTFLAG(LuauCompileLibraryConstants)
 LUAU_FASTFLAG(LuauVectorBuiltins)
 LUAU_FASTFLAG(LuauVectorFolding)
-LUAU_FASTFLAG(LuauVector2Constructor)
+LUAU_FASTFLAG(LuauVector2Constants)
 LUAU_FASTFLAG(LuauCompileDisabledBuiltins)
 
 using namespace Luau;
@@ -5106,7 +5106,7 @@ L0: RETURN R3 -1
 TEST_CASE("VectorConstants")
 {
     ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
-    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
+    ScopedFastFlag luauVector2Constants{FFlag::LuauVector2Constants, true};
 
     CHECK_EQ("\n" + compileFunction("return vector.create(1, 2)", 0, 2, 0, /*enableVectors*/ true), R"(
 LOADK R0 K0 [1, 2, 0]
