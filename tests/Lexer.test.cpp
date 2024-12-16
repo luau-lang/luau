@@ -256,9 +256,17 @@ TEST_CASE("lexer_tokenizes_whitespace")
     CHECK_EQ(lexer.next().type, Lexeme::ReservedLocal);
     CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
     CHECK_EQ(lexer.next().type, Lexeme::Name);
-    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+
+    auto space = lexer.next();
+    CHECK_EQ(space.type, Lexeme::Whitespace);
+    CHECK_EQ(std::string(space.data, space.getLength()), std::string(" "));
+
     CHECK_EQ(lexer.next().type, '=');
-    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+
+    auto space2 = lexer.next();
+    CHECK_EQ(space2.type, Lexeme::Whitespace);
+    CHECK_EQ(std::string(space2.data, space2.getLength()), std::string(" "));
+
     CHECK_EQ(lexer.next().type, Lexeme::Number);
     CHECK_EQ(lexer.next().type, Lexeme::Eof);
 }
@@ -278,13 +286,21 @@ TEST_CASE("lexer_tokenizes_multiline_whitespace")
     CHECK_EQ(lexer.next().type, Lexeme::ReservedLocal);
     CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
     CHECK_EQ(lexer.next().type, Lexeme::Name);
-    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+
+    auto multilineSpace = lexer.next();
+    CHECK_EQ(multilineSpace.type, Lexeme::Whitespace);
+    CHECK_EQ(std::string(multilineSpace.data, multilineSpace.getLength()), std::string("\n\n    "));
+
     CHECK_EQ(lexer.next().type, Lexeme::Name);
     CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
     CHECK_EQ(lexer.next().type, '=');
     CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
     CHECK_EQ(lexer.next().type, Lexeme::Number);
-    CHECK_EQ(lexer.next().type, Lexeme::Whitespace);
+
+    auto multilineSpace2 = lexer.next();
+    CHECK_EQ(multilineSpace2.type, Lexeme::Whitespace);
+    CHECK_EQ(std::string(multilineSpace2.data, multilineSpace2.getLength()), std::string("\n    "));
+
     CHECK_EQ(lexer.next().type, Lexeme::Eof);
 }
 
