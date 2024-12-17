@@ -1064,7 +1064,6 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
             float x = (float)nvalue(arg0);
             float y = (float)nvalue(args);
             float z = 0.0f;
-            float w = 0.0f;
 
             if (nparams >= 3)
             {
@@ -1074,15 +1073,18 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
             }
 
 #if LUA_VECTOR_SIZE == 4
+            float w = 0.0f;
             if (nparams >= 4)
             {
                 if (!ttisnumber(args + 2))
                     return -1;
                 w = (float)nvalue(args + 2);
             }
+            setvvalue(res, x, y, z, w);
+#else
+            setvvalue(res, x, y, z, 0.0f);
 #endif
 
-            setvvalue(res, x, y, z, w);
             return 1;
         }
     }
