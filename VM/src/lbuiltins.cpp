@@ -1057,26 +1057,58 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 
 static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    int minparams = FFlag::LuauVector2Constructor ? 2 : 3;
-
-    if (nparams >= minparams && nparams <= LUA_VECTOR_SIZE && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
+    if (FFlag::LuauVector2Constructor)
     {
-        float value[4];
-        value[0] = (float)nvalue(arg0);
-        value[1] = (float)nvalue(args);
-        value[2] = 0.0;
-        value[3] = 0.0;
-
-        for (int i = 2; i < nparams; i++)
+        if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
         {
-            StkId a = args + i - 1;
-            if (!ttisnumber(a))
-                return -1;
-            value[i] = (float)nvalue(a);
-        }
+            float x = (float)nvalue(arg0);
+            float y = (float)nvalue(args);
+            float z = 0.0f;
+            float w = 0.0f;
 
-        setvvalue(res, value[0], value[1], value[2], value[3]);
-        return 1;
+            if (nparams >= 3)
+            {
+                if (!ttisnumber(args + 1))
+                    return -1;
+                z = (float)nvalue(args + 1);
+            }
+
+#if LUA_VECTOR_SIZE == 4
+            if (nparams >= 4)
+            {
+                if (!ttisnumber(args + 2))
+                    return -1;
+                w = (float)nvalue(args + 2);
+            }
+#endif
+
+            setvvalue(res, x, y, z, w);
+            return 1;
+        }
+    }
+    else
+    {
+        if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+        {
+            double x = nvalue(arg0);
+            double y = nvalue(args);
+            double z = nvalue(args + 1);
+
+#if LUA_VECTOR_SIZE == 4
+            double w = 0.0;
+            if (nparams >= 4)
+            {
+                if (!ttisnumber(args + 2))
+                    return -1;
+                w = nvalue(args + 2);
+            }
+            setvvalue(res, float(x), float(y), float(z), float(w));
+#else
+            setvvalue(res, float(x), float(y), float(z), 0.0f);
+#endif
+
+            return 1;
+        }
     }
 
     return -1;
