@@ -389,36 +389,38 @@ target_sources(isocline PRIVATE
 
 # Common sources shared between all CLI apps
 target_sources(Luau.CLI.lib PRIVATE
-    CLI/FileUtils.cpp
-    CLI/Flags.cpp
-    CLI/Flags.h
-    CLI/FileUtils.h
+    CLI/include/Luau/FileUtils.h
+    CLI/include/Luau/Flags.h
+
+    CLI/src/FileUtils.cpp
+    CLI/src/Flags.cpp
 )
 
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
-        CLI/Coverage.h
-        CLI/Coverage.cpp
-        CLI/Profiler.h
-        CLI/Profiler.cpp
-        CLI/Repl.cpp
-        CLI/ReplEntry.cpp
-        CLI/Require.cpp)
+        CLI/include/Luau/Coverage.h
+        CLI/include/Luau/Profiler.h
+
+        CLI/src/Coverage.cpp
+        CLI/src/Profiler.cpp
+        CLI/src/Repl.cpp
+        CLI/src/ReplEntry.cpp
+        CLI/src/Require.cpp)
 endif()
 
 if(TARGET Luau.Analyze.CLI)
     # Luau.Analyze.CLI Sources
     target_sources(Luau.Analyze.CLI PRIVATE
-        CLI/Analyze.cpp
-        CLI/Require.cpp
+        CLI/src/Analyze.cpp
+        CLI/src/Require.cpp
     )
 endif()
 
 if(TARGET Luau.Ast.CLI)
     # Luau.Ast.CLI Sources
     target_sources(Luau.Ast.CLI PRIVATE
-        CLI/Ast.cpp
+        CLI/src/Ast.cpp
     )
 endif()
 
@@ -543,12 +545,13 @@ endif()
 if(TARGET Luau.CLI.Test)
     # Luau.CLI.Test Sources
     target_sources(Luau.CLI.Test PRIVATE
-        CLI/Coverage.h
-        CLI/Coverage.cpp
-        CLI/Profiler.h
-        CLI/Profiler.cpp
-        CLI/Repl.cpp
-        CLI/Require.cpp
+        CLI/include/Luau/Coverage.h
+        CLI/include/Luau/Profiler.h
+
+        CLI/src/Coverage.cpp
+        CLI/src/Profiler.cpp
+        CLI/src/Repl.cpp
+        CLI/src/Require.cpp
 
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
@@ -560,24 +563,24 @@ endif()
 if(TARGET Luau.Web)
     # Luau.Web Sources
     target_sources(Luau.Web PRIVATE
-        CLI/Web.cpp)
+        CLI/src/Web.cpp)
 endif()
 
 if(TARGET Luau.Reduce.CLI)
     # Luau.Reduce.CLI Sources
     target_sources(Luau.Reduce.CLI PRIVATE
-        CLI/Reduce.cpp
+        CLI/src/Reduce.cpp
     )
 endif()
 
 if(TARGET Luau.Compile.CLI)
     # Luau.Compile.CLI Sources
     target_sources(Luau.Compile.CLI PRIVATE
-        CLI/Compile.cpp)
+        CLI/src/Compile.cpp)
 endif()
 
 if(TARGET Luau.Bytecode.CLI)
     # Luau.Bytecode.CLI Sources
     target_sources(Luau.Bytecode.CLI PRIVATE
-        CLI/Bytecode.cpp)
+        CLI/src/Bytecode.cpp)
 endif()

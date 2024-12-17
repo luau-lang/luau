@@ -6,8 +6,8 @@
 #include "lua.h"
 #include "lualib.h"
 
-#include "Repl.h"
-#include "FileUtils.h"
+#include "Luau/Repl.h"
+#include "Luau/FileUtils.h"
 
 #include "doctest.h"
 
