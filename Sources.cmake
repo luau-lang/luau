@@ -408,14 +408,13 @@ if(TARGET Luau.Repl.CLI)
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
         CLI/src/ReplEntry.cpp
-        CLI/src/Require.cpp)
+    )
 endif()
 
 if(TARGET Luau.Analyze.CLI)
     # Luau.Analyze.CLI Sources
     target_sources(Luau.Analyze.CLI PRIVATE
         CLI/src/Analyze.cpp
-        CLI/src/Require.cpp
     )
 endif()
 
@@ -553,7 +552,6 @@ if(TARGET Luau.CLI.Test)
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
-        CLI/src/Require.cpp
 
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
