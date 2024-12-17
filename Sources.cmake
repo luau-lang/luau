@@ -391,9 +391,11 @@ target_sources(isocline PRIVATE
 target_sources(Luau.CLI.lib PRIVATE
     CLI/include/Luau/FileUtils.h
     CLI/include/Luau/Flags.h
+    CLI/include/Luau/Require.h
 
     CLI/src/FileUtils.cpp
     CLI/src/Flags.cpp
+    CLI/src/Require.cpp
 )
 
 if(TARGET Luau.Repl.CLI)

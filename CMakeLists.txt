@@ -69,7 +69,7 @@ target_include_directories(Luau.Common INTERFACE Common/include)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
 target_include_directories(Luau.CLI.lib PUBLIC CLI/include)
-target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common)
+target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common Luau.Config)
 
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
 target_include_directories(Luau.Ast PUBLIC Ast/include)
