@@ -2,7 +2,7 @@
 #include "lua.h"
 #include "lualib.h"
 
-#include "Repl.h"
+#include "Luau/Repl.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"

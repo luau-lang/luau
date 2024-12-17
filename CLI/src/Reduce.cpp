@@ -5,7 +5,7 @@
 #include "Luau/Parser.h"
 #include "Luau/Transpiler.h"
 
-#include "FileUtils.h"
+#include "Luau/FileUtils.h"
 
 #include <algorithm>
 #include <stdio.h>

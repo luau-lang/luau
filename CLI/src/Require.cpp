@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Require.h"
+#include "Luau/Require.h"
 
-#include "FileUtils.h"
+#include "Luau/FileUtils.h"
 #include "Luau/Common.h"
 #include "Luau/Config.h"
 

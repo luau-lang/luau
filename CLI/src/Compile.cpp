@@ -8,8 +8,8 @@
 #include "Luau/Parser.h"
 #include "Luau/TimeTrace.h"
 
-#include "FileUtils.h"
-#include "Flags.h"
+#include "Luau/FileUtils.h"
+#include "Luau/Flags.h"
 
 #include <memory>
 
