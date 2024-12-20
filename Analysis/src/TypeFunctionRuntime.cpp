@@ -18,6 +18,7 @@ LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixInner)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunThreadBuffer)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypeofReturnsType)
 
 namespace Luau
 {
@@ -1516,6 +1517,12 @@ void registerTypeUserData(lua_State* L)
 
     // Create and register metatable for type userdata
     luaL_newmetatable(L, "type");
+    
+    if (FFlag::LuauUserTypeFunTypeofReturnsType)
+    {
+        lua_pushstring(L, "type");
+        lua_setfield(L, -2, "__type");
+    }
 
     // Protect metatable from being changed
     lua_pushstring(L, "The metatable is locked");
