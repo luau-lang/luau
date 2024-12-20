@@ -9,6 +9,7 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition2)
+LUAU_FASTFLAGVARIABLE(LuauLexerTokenizesWhitespace)
 namespace Luau
 {
 
@@ -36,7 +37,7 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
 {
     LUAU_ASSERT(
         type == RawString || type == QuotedString || type == InterpStringBegin || type == InterpStringMid || type == InterpStringEnd ||
-        type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment
+        type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment || type == Whitespace
     );
 }
 
@@ -53,7 +54,7 @@ unsigned int Lexeme::getLength() const
 {
     LUAU_ASSERT(
         type == RawString || type == QuotedString || type == InterpStringBegin || type == InterpStringMid || type == InterpStringEnd ||
-        type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment
+        type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment || type == Whitespace
     );
 
     return length;
@@ -316,6 +317,7 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Positio
       )
     , names(names)
     , skipComments(false)
+    , skipWhitespace(true)
     , readNames(true)
 {
 }
@@ -325,6 +327,11 @@ void Lexer::setSkipComments(bool skip)
     skipComments = skip;
 }
 
+void Lexer::setSkipWhitespace(bool skip)
+{
+    skipWhitespace = skip;
+}
+
 void Lexer::setReadNames(bool read)
 {
     readNames = read;
@@ -332,24 +339,27 @@ void Lexer::setReadNames(bool read)
 
 const Lexeme& Lexer::next()
 {
-    return next(this->skipComments, true);
+    return next(this->skipComments, this->skipWhitespace, true);
 }
 
-const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
+const Lexeme& Lexer::next(bool skipComments, bool skipWhitespace, bool updatePrevLocation)
 {
     // in skipComments mode we reject valid comments
     do
     {
-        // consume whitespace before the token
-        while (isSpace(peekch()))
-            consumeAny();
+        if (!FFlag::LuauLexerTokenizesWhitespace)
+        {
+            // consume whitespace before the token
+            while (isSpace(peekch()))
+                consumeAny();
+        }
 
         if (updatePrevLocation)
             prevLocation = lexeme.location;
 
         lexeme = readNext();
         updatePrevLocation = false;
-    } while (skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment));
+    } while ((skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment)) || (skipWhitespace && lexeme.type == Lexeme::Whitespace));
 
     return lexeme;
 }
@@ -966,6 +976,15 @@ Lexeme Lexer::readNext()
             std::pair<AstName, Lexeme::Type> name = readName();
 
             return Lexeme(Location(start, position()), name.second, name.first.value);
+        }
+        else if (FFlag::LuauLexerTokenizesWhitespace && isSpace(peekch()))
+        {
+            size_t startOffset = offset;
+
+            while (isSpace(peekch()))
+                consumeAny();
+
+            return Lexeme(Location(start, position()), Lexeme::Whitespace, &buffer[startOffset], offset - startOffset);
         }
         else if (peekch() & 0x80)
         {
