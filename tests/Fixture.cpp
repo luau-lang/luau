@@ -25,6 +25,7 @@
 static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
@@ -580,6 +581,8 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source, bool
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)
 {
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
+
     Luau::unfreeze(frontend.globals.globalTypes);
     Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
 

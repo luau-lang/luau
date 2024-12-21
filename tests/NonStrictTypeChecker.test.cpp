@@ -15,6 +15,7 @@
 #include <iostream>
 
 LUAU_FASTFLAG(LuauCountSelfCallsNonstrict)
+LUAU_FASTFLAG(LuauVector2Constructor)
 
 using namespace Luau;
 
@@ -581,7 +582,8 @@ buffer.readi8(b, 0)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 {
-    ScopedFastFlag sff{FFlag::LuauCountSelfCallsNonstrict, true};
+    ScopedFastFlag luauCountSelfCallsNonstrict{FFlag::LuauCountSelfCallsNonstrict, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     Luau::unfreeze(frontend.globals.globalTypes);
     Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
