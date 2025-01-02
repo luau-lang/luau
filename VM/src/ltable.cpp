@@ -797,7 +797,6 @@ Table* luaH_clone(lua_State* L, Table* tt)
 {
     Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
     luaC_init(L, t, LUA_TTABLE);
-    t->metatable = tt->metatable;
     t->tmcache = tt->tmcache;
     t->array = NULL;
     t->sizearray = 0;
@@ -807,6 +806,9 @@ Table* luaH_clone(lua_State* L, Table* tt)
     t->safeenv = 0;
     t->node = cast_to(LuaNode*, dummynode);
     t->lastfree = 0;
+
+    if (!luaL_getmetafield(L, 1, "__metatable"))
+        t->metatable = tt->metatable;
 
     if (tt->sizearray)
     {
