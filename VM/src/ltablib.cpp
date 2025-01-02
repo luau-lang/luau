@@ -585,7 +585,7 @@ static int tisfrozen(lua_State* L)
 static int tclone(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
-    Table* tt = luaH_clone(L, hvalue(L->base));
+    Table* tt = luaH_clone(L, hvalue(L->base), luaL_getmetafield(L, 1, "__metatable") ? true : false);
     TValue v;
     sethvalue(L, &v, tt);
     luaA_pushobject(L, &v);
