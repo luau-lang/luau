@@ -807,7 +807,7 @@ Table* luaH_clone(lua_State* L, Table* tt, bool raw)
     t->node = cast_to(LuaNode*, dummynode);
     t->lastfree = 0;
 
-    if (raw) // Prevent unauthorized assigning of locked metatables
+    if (!raw) // Prevent unauthorized assigning of locked metatables
         t->metatable = tt->metatable;
 
     if (tt->sizearray)
