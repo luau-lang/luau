@@ -27,7 +27,7 @@ LUAI_FUNC void luaH_resizehash(lua_State* L, Table* t, int nhsize);
 LUAI_FUNC void luaH_free(lua_State* L, Table* t, struct lua_Page* page);
 LUAI_FUNC int luaH_next(lua_State* L, Table* t, StkId key);
 LUAI_FUNC int luaH_getn(Table* t);
-LUAI_FUNC Table* luaH_clone(lua_State* L, Table* tt);
+LUAI_FUNC Table* luaH_clone(lua_State* L, Table* tt, bool raw);
 LUAI_FUNC void luaH_clear(Table* tt);
 
 #define luaH_setslot(L, t, slot, key) (invalidateTMcache(t), (slot == luaO_nilobject ? luaH_newkey(L, t, key) : cast_to(TValue*, slot)))
