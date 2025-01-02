@@ -585,10 +585,7 @@ static int tisfrozen(lua_State* L)
 static int tclone(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
-    luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
-
     Table* tt = luaH_clone(L, hvalue(L->base));
-
     TValue v;
     sethvalue(L, &v, tt);
     luaA_pushobject(L, &v);
