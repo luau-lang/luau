@@ -613,6 +613,9 @@ enum LuauBuiltinFunction
     LBF_VECTOR_CLAMP,
     LBF_VECTOR_MIN,
     LBF_VECTOR_MAX,
+
+    // math.lerp
+    LBF_MATH_LERP,
 };
 
 // Capture type, used in LOP_CAPTURE

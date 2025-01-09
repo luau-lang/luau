@@ -1694,6 +1694,23 @@ static int luauF_vectormax(lua_State* L, StkId res, TValue* arg0, int nresults, 
     return -1;
 }
 
+static int luauF_lerp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    {
+        double a = nvalue(arg0);
+        double b = nvalue(args);
+        double t = nvalue(args + 1);
+
+        double r = (t == 1.0) ? b : a + (b - a) * t;
+
+        setnvalue(res, r);
+        return 1;
+    }
+
+    return -1;
+}
+
 static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     return -1;
@@ -1888,6 +1905,8 @@ const luau_FastFunction luauF_table[256] = {
     luauF_vectorclamp,
     luauF_vectormin,
     luauF_vectormax,
+
+    luauF_lerp,
 
 // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
 // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.
