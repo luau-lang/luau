@@ -13,6 +13,7 @@
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_FASTFLAG(LuauCodeGenVectorDeadStoreElim)
+LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
 {
@@ -701,6 +702,20 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fcsel(inst.regA64, temp1, temp0, getConditionFP(IrCondition::Greater));
         build.fmov(temp1, -1.0);
         build.fcsel(inst.regA64, temp1, inst.regA64, getConditionFP(IrCondition::Less));
+        break;
+    }
+    case IrCmd::SELECT_NUM:
+    {
+        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
+        inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a, inst.b});
+
+        RegisterA64 temp1 = tempDouble(inst.a);
+        RegisterA64 temp2 = tempDouble(inst.b);
+        RegisterA64 temp3 = tempDouble(inst.c);
+        RegisterA64 temp4 = tempDouble(inst.d);
+
+        build.fcmp(temp3, temp4);
+        build.fcsel(inst.regA64, temp2, temp1, getConditionFP(IrCondition::Equal));
         break;
     }
     case IrCmd::ADD_VEC:

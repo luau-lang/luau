@@ -17,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_FASTFLAG(LuauCodeGenVectorDeadStoreElim)
+LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
 {
@@ -620,6 +621,30 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // If arg == 0 then tmp1 is 0 and mask-bit is 0, result is 0
         // If arg > 0 then tmp1 is 0 and mask-bit is 1, result is 1
         build.vblendvpd(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
+        break;
+    }
+    case IrCmd::SELECT_NUM:
+    {
+        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a}); // can't reuse b if a is a memory operand
+
+        ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+        if (inst.c.kind == IrOpKind::Inst)
+            build.vcmpeqsd(tmp.reg, regOp(inst.c), memRegDoubleOp(inst.d));
+        else
+        {
+            build.vmovsd(tmp.reg, memRegDoubleOp(inst.c));
+            build.vcmpeqsd(tmp.reg, tmp.reg, memRegDoubleOp(inst.d));
+        }
+
+        if (inst.a.kind == IrOpKind::Inst)
+            build.vblendvpd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b), tmp.reg);
+        else
+        {
+            build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
+            build.vblendvpd(inst.regX64, inst.regX64, memRegDoubleOp(inst.b), tmp.reg);
+        }
         break;
     }
     case IrCmd::ADD_VEC:

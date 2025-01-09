@@ -185,6 +185,11 @@ enum class IrCmd : uint8_t
     // A: double
     SIGN_NUM,
 
+    // Select B if C == D, otherwise select A
+    // A, B: double (endpoints)
+    // C, D: double (condition arguments)
+    SELECT_NUM,
+
     // Add/Sub/Mul/Div/Idiv two vectors
     // A, B: TValue
     ADD_VEC,

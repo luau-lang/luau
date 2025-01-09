@@ -160,6 +160,7 @@ public:
     void vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
+    void vcmpeqsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vcmpltsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3);
