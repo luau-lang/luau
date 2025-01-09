@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauVectorBuiltins)
 LUAU_FASTFLAGVARIABLE(LuauCompileDisabledBuiltins)
+LUAU_FASTFLAGVARIABLE(LuauCompileMathLerp)
 
 namespace Luau
 {
@@ -140,6 +141,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_MATH_SIGN;
         if (builtin.method == "round")
             return LBF_MATH_ROUND;
+        if (FFlag::LuauCompileMathLerp && builtin.method == "lerp")
+            return LBF_MATH_LERP;
     }
 
     if (builtin.object == "bit32")
@@ -556,6 +559,10 @@ BuiltinInfo getBuiltinInfo(int bfid)
     case LBF_VECTOR_MIN:
     case LBF_VECTOR_MAX:
         return {-1, 1}; // variadic
+
+    case LBF_MATH_LERP:
+        LUAU_ASSERT(FFlag::LuauCompileMathLerp);
+        return {3, 1, BuiltinInfo::Flag_NoneSafe};
     }
 
     LUAU_UNREACHABLE();

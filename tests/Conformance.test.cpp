@@ -32,6 +32,7 @@ void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(LuauMathMap)
+LUAU_FASTFLAG(LuauMathLerp)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
@@ -660,6 +661,7 @@ TEST_CASE("Buffers")
 TEST_CASE("Math")
 {
     ScopedFastFlag LuauMathMap{FFlag::LuauMathMap, true};
+    ScopedFastFlag LuauMathLerp{FFlag::LuauMathLerp, true};
 
     runConformance("math.lua");
 }
@@ -911,9 +913,7 @@ TEST_CASE("VectorLibrary")
         copts.optimizationLevel = 2;
     }
 
-    runConformance(
-        "vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts
-    );
+    runConformance("vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -988,6 +988,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 TEST_CASE("Types")
 {
     ScopedFastFlag luauVectorDefinitions{FFlag::LuauVectorDefinitions, true};
+    ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, false}; // waiting for math.lerp to be added to embedded type definitions
 
     runConformance(
         "types.lua",
