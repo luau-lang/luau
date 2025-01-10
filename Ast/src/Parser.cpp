@@ -18,7 +18,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
 LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
@@ -935,12 +934,6 @@ AstStat* Parser::parseTypeFunction(const Location& start, bool exported)
 {
     Lexeme matchFn = lexer.current();
     nextLexeme();
-
-    if (!FFlag::LuauUserDefinedTypeFunParseExport)
-    {
-        if (exported)
-            report(start, "Type function cannot be exported");
-    }
 
     // parse the name of the type function
     std::optional<Name> fnName = parseNameOpt("type function name");
@@ -2239,7 +2232,8 @@ std::optional<AstExprBinary::Op> Parser::checkBinaryConfusables(const BinaryOpPr
         report(Location(start, next.location), "Unexpected '||'; did you mean 'or'?");
         return AstExprBinary::Or;
     }
-    else if (curr.type == '!' && next.type == '=' && curr.location.end == next.location.begin && binaryPriority[AstExprBinary::CompareNe].left > limit)
+    else if (curr.type == '!' && next.type == '=' && curr.location.end == next.location.begin &&
+             binaryPriority[AstExprBinary::CompareNe].left > limit)
     {
         nextLexeme();
         report(Location(start, next.location), "Unexpected '!='; did you mean '~='?");
@@ -2587,7 +2581,8 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseNumber();
     }
-    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::InterpStringSimple)
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString ||
+             lexer.current().type == Lexeme::InterpStringSimple)
     {
         return parseString();
     }

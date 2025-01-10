@@ -420,7 +420,8 @@ static std::optional<TypeId> selectOverload(
     TypePackId argsPack
 )
 {
-    auto resolver = std::make_unique<OverloadResolver>(builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
+    auto resolver =
+        std::make_unique<OverloadResolver>(builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
     auto [status, overload] = resolver->selectOverload(fn, argsPack);
 
     if (status == OverloadResolver::Analysis::Ok)

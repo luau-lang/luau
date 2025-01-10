@@ -953,11 +953,10 @@ a = b
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected = 
-            "Type\n"
-            "    '() -> (number, ...boolean)'\n"
-            "could not be converted into\n"
-            "    '() -> (number, ...string)'; at returns().tail().variadic(), boolean is not a subtype of string";
+        const std::string expected = "Type\n"
+                                     "    '() -> (number, ...boolean)'\n"
+                                     "could not be converted into\n"
+                                     "    '() -> (number, ...string)'; at returns().tail().variadic(), boolean is not a subtype of string";
 
         CHECK(expected == toString(result.errors[0]));
     }

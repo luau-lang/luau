@@ -1480,9 +1480,8 @@ SubtypingResult Subtyping::isCovariantWith(
 
             if (auto variadic = get<VariadicTypePack>(tail); variadic && variadic->hidden)
             {
-                result.orElse(
-                    isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope).withBothComponent(TypePath::PackField::Arguments)
-                );
+                result.orElse(isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope)
+                                  .withBothComponent(TypePath::PackField::Arguments));
             }
         }
     }

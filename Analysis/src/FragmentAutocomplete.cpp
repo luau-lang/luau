@@ -245,7 +245,6 @@ FragmentParseResult parseFragment(
     opts.captureComments = true;
     opts.parseFragment = FragmentParseResumeSettings{std::move(result.localMap), std::move(result.localStack), startPos};
     ParseResult p = Luau::Parser::parse(srcStart, parseLength, *nameTbl, *fragmentResult.alloc.get(), opts);
-
     std::vector<AstNode*> fabricatedAncestry = std::move(result.ancestry);
 
     // Get the ancestry for the fragment at the offset cursor position.
@@ -258,6 +257,7 @@ FragmentParseResult parseFragment(
     fragmentResult.root = std::move(p.root);
     fragmentResult.ancestry = std::move(fabricatedAncestry);
     fragmentResult.nearestStatement = nearestStatement;
+    fragmentResult.commentLocations = std::move(p.commentLocations);
     return fragmentResult;
 }
 
@@ -444,7 +444,7 @@ FragmentTypeCheckResult typecheckFragment_(
 }
 
 
-FragmentTypeCheckResult typecheckFragment(
+std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     Frontend& frontend,
     const ModuleName& moduleName,
     const Position& cursorPos,
@@ -469,12 +469,15 @@ FragmentTypeCheckResult typecheckFragment(
     }
 
     FragmentParseResult parseResult = parseFragment(*sourceModule, src, cursorPos, fragmentEndPosition);
+    if (isWithinComment(parseResult.commentLocations, fragmentEndPosition.value_or(cursorPos)))
+        return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
+
     FrontendOptions frontendOptions = opts.value_or(frontend.options);
     const ScopePtr& closestScope = findClosestScope(module, parseResult.nearestStatement);
     FragmentTypeCheckResult result =
         typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions);
     result.ancestry = std::move(parseResult.ancestry);
-    return result;
+    return {FragmentTypeCheckStatus::Success, result};
 }
 
 
@@ -498,7 +501,14 @@ FragmentAutocompleteResult fragmentAutocomplete(
         return {};
     }
 
-    auto tcResult = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition);
+    // If the cursor is within a comment in the stale source module we should avoid providing a recommendation
+    if (isWithinComment(*sourceModule, fragmentEndPosition.value_or(cursorPosition)))
+        return {};
+
+    auto [tcStatus, tcResult] = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition);
+    if (tcStatus == FragmentTypeCheckStatus::SkipAutocomplete)
+        return {};
+
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
 
     TypeArena arenaForFragmentAutocomplete;

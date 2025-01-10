@@ -684,7 +684,7 @@ void computeCfgDominanceTreeChildren(IrFunction& function)
             info.domChildrenOffsets[domParent]++;
     }
 
-    // Convert counds to offsets using prefix sum
+    // Convert counts to offsets using prefix sum
     uint32_t total = 0;
 
     for (size_t blockIdx = 0; blockIdx < function.blocks.size(); blockIdx++)

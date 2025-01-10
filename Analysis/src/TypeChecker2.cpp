@@ -1020,7 +1020,8 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     {
         reportError(OptionalValueAccess{iteratorTy}, forInStatement->values.data[0]->location);
     }
-    else if (std::optional<TypeId> iterMmTy = findMetatableEntry(builtinTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
+    else if (std::optional<TypeId> iterMmTy =
+                 findMetatableEntry(builtinTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
     {
         Instantiation instantiation{TxnLog::empty(), &arena, builtinTypes, TypeLevel{}, scope};
 

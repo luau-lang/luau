@@ -832,7 +832,12 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     {
         if (FFlag::LuauUserTypeFunPrintToError)
             return {
-                std::nullopt, Reduction::Erroneous, {}, {}, format("'%s' type function: returned a non-type value", name.value), ctx->typeFunctionRuntime->messages
+                std::nullopt,
+                Reduction::Erroneous,
+                {},
+                {},
+                format("'%s' type function: returned a non-type value", name.value),
+                ctx->typeFunctionRuntime->messages
             };
         else
             return {std::nullopt, Reduction::Erroneous, {}, {}, format("'%s' type function: returned a non-type value", name.value)};
@@ -2064,7 +2069,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
                 if (ctx->solver)
                 {
                     for (TypeId newTf : simplifyResult->newTypeFunctions)
-                        ctx->solver->pushConstraint(ctx->scope, ctx->constraint->location, ReduceConstraint{newTf});
+                        ctx->pushConstraint(ReduceConstraint{newTf});
                 }
 
                 return {simplifyResult->result, {}};

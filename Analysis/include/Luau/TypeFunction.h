@@ -71,7 +71,7 @@ struct TypeFunctionContext
     // The constraint being reduced in this run of the reduction
     const Constraint* constraint;
 
-    std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
+    std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
 
     TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint);
 

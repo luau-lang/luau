@@ -977,7 +977,8 @@ struct TypeCacher : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypePackId tp, const BoundTypePack& btp) override {
+    bool visit(TypePackId tp, const BoundTypePack& btp) override
+    {
         traverse(btp.boundTo);
         if (isUncacheable(btp.boundTo))
             markUncacheable(tp);

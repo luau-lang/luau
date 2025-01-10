@@ -1809,7 +1809,8 @@ NormalizationResult Normalizer::unionNormalWithTy(
     }
     else if (get<UnknownType>(here.tops))
         return NormalizationResult::True;
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFunctionInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return NormalizationResult::True;
@@ -3162,7 +3163,8 @@ NormalizationResult Normalizer::intersectNormalWithTy(
         }
         return NormalizationResult::True;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFunctionInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};

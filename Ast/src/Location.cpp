@@ -4,42 +4,6 @@
 namespace Luau
 {
 
-bool Position::operator==(const Position& rhs) const
-{
-    return this->column == rhs.column && this->line == rhs.line;
-}
-
-bool Position::operator!=(const Position& rhs) const
-{
-    return !(*this == rhs);
-}
-
-bool Position::operator<(const Position& rhs) const
-{
-    if (line == rhs.line)
-        return column < rhs.column;
-    else
-        return line < rhs.line;
-}
-
-bool Position::operator>(const Position& rhs) const
-{
-    if (line == rhs.line)
-        return column > rhs.column;
-    else
-        return line > rhs.line;
-}
-
-bool Position::operator<=(const Position& rhs) const
-{
-    return *this == rhs || *this < rhs;
-}
-
-bool Position::operator>=(const Position& rhs) const
-{
-    return *this == rhs || *this > rhs;
-}
-
 void Position::shift(const Position& start, const Position& oldEnd, const Position& newEnd)
 {
     if (*this >= start)
@@ -52,16 +16,6 @@ void Position::shift(const Position& start, const Position& oldEnd, const Positi
             this->column += (newEnd.column - oldEnd.column);
         }
     }
-}
-
-bool Location::operator==(const Location& rhs) const
-{
-    return this->begin == rhs.begin && this->end == rhs.end;
-}
-
-bool Location::operator!=(const Location& rhs) const
-{
-    return !(*this == rhs);
 }
 
 bool Location::encloses(const Location& l) const

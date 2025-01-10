@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauUserTypeFunNoExtraConstraint)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 
 namespace Luau
 {
@@ -724,8 +725,20 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
         bind(constraint, c.generalizedType, builtinTypes->errorRecoveryType());
     }
 
-    for (TypeId ty : c.interiorTypes)
-        generalize(NotNull{arena}, builtinTypes, constraint->scope, generalizedTypes, ty, /* avoidSealingTables */ false);
+    if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+    {
+        // We check if this member is initialized and then access it, but
+        // clang-tidy doesn't understand this is safe.
+        if (constraint->scope->interiorFreeTypes)
+            for (TypeId ty : *constraint->scope->interiorFreeTypes) // NOLINT(bugprone-unchecked-optional-access)
+                generalize(NotNull{arena}, builtinTypes, constraint->scope, generalizedTypes, ty, /* avoidSealingTables */ false);
+    }
+    else
+    {
+        for (TypeId ty : c.interiorTypes)
+            generalize(NotNull{arena}, builtinTypes, constraint->scope, generalizedTypes, ty, /* avoidSealingTables */ false);
+    }
+
 
     return true;
 }
@@ -801,6 +814,11 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
     {
         TypeId keyTy = freshType(arena, builtinTypes, constraint->scope);
         TypeId valueTy = freshType(arena, builtinTypes, constraint->scope);
+        if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+        {
+            trackInteriorFreeType(constraint->scope, keyTy);
+            trackInteriorFreeType(constraint->scope, valueTy);
+        }
         TypeId tableTy =
             arena->addType(TableType{TableType::Props{}, TableIndexer{keyTy, valueTy}, TypeLevel{}, constraint->scope, TableState::Free});
 
@@ -1445,7 +1463,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                 }
             }
         }
-        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantNil>())
+        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
+                 expr->is<AstExprConstantNil>())
         {
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
             u2.unify(actualArgTy, expectedArgTy);
@@ -2061,6 +2080,8 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
                 // constitute any meaningful constraint, so we replace it
                 // with a free type.
                 TypeId f = freshType(arena, builtinTypes, constraint->scope);
+                if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+                    trackInteriorFreeType(constraint->scope, f);
                 shiftReferences(resultTy, f);
                 emplaceType<BoundType>(asMutable(resultTy), f);
             }
@@ -2196,6 +2217,11 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     {
         TypeId keyTy = freshType(arena, builtinTypes, constraint->scope);
         TypeId valueTy = freshType(arena, builtinTypes, constraint->scope);
+        if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+        {
+            trackInteriorFreeType(constraint->scope, keyTy);
+            trackInteriorFreeType(constraint->scope, valueTy);
+        }
         TypeId tableTy = arena->addType(TableType{TableState::Sealed, {}, constraint->scope});
         getMutable<TableType>(tableTy)->indexer = TableIndexer{keyTy, valueTy};
 
@@ -2452,6 +2478,8 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         if (ttv->state == TableState::Free)
         {
             TypeId result = freshType(arena, builtinTypes, ttv->scope);
+            if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+                trackInteriorFreeType(ttv->scope, result);
             switch (context)
             {
             case ValueContext::RValue:
@@ -2560,6 +2588,9 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         TableType* tt = getMutable<TableType>(newUpperBound);
         LUAU_ASSERT(tt);
         TypeId propType = freshType(arena, builtinTypes, scope);
+
+        if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+            trackInteriorFreeType(scope, propType);
 
         switch (context)
         {

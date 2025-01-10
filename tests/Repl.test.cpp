@@ -13,8 +13,6 @@
 #include <string>
 #include <vector>
 
-LUAU_FASTFLAG(LuauMathMap)
-
 struct Completion
 {
     std::string completion;
@@ -175,7 +173,7 @@ TEST_CASE_FIXTURE(ReplFixture, "CompleteGlobalVariables")
         CHECK(checkCompletion(completions, prefix, "myvariable1"));
         CHECK(checkCompletion(completions, prefix, "myvariable2"));
     }
-    if (FFlag::LuauMathMap)
+
     {
         // Try completing some builtin functions
         CompletionSet completions = getCompletionSet("math.m");
