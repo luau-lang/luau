@@ -262,7 +262,7 @@ static int buffer_readbits(lua_State* L)
     if (unsigned(bitcount) > 32)
         luaL_error(L, "bit count is out of range of [0; 32]");
 
-    if (uint64_t(bitoffset + bitcount) > len * 8)
+    if (uint64_t(bitoffset + bitcount) > uint64_t(len) * 8)
         luaL_error(L, "buffer access out of bounds");
 
     unsigned startbyte = unsigned(bitoffset / 8);
@@ -292,7 +292,7 @@ static int buffer_writebits(lua_State* L)
     if (unsigned(bitcount) > 32)
         luaL_error(L, "bit count is out of range of [0; 32]");
 
-    if (uint64_t(bitoffset + bitcount) > len * 8)
+    if (uint64_t(bitoffset + bitcount) > uint64_t(len) * 8)
         luaL_error(L, "buffer access out of bounds");
 
     unsigned startbyte = unsigned(bitoffset / 8);
