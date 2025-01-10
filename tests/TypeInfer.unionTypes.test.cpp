@@ -881,7 +881,9 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("(({ read x: unknown } & { x: number }) | ({ read x: unknown } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f")));
+    CHECK_EQ(
+        "(({ read x: unknown } & { x: number }) | ({ read x: unknown } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f"))
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")

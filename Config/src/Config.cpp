@@ -305,7 +305,8 @@ static Error parseJson(const std::string& contents, Action action)
                     arrayTop = (lexer.current().type == '[');
                     next(lexer);
                 }
-                else if (lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::ReservedTrue || lexer.current().type == Lexeme::ReservedFalse)
+                else if (lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::ReservedTrue ||
+                         lexer.current().type == Lexeme::ReservedFalse)
                 {
                     std::string value = lexer.current().type == Lexeme::QuotedString
                                             ? std::string(lexer.current().data, lexer.current().getLength())

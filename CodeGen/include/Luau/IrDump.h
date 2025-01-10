@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+struct Proto;
+
 namespace Luau
 {
 namespace CodeGen
@@ -23,6 +25,7 @@ struct IrToStringContext
     const std::vector<IrBlock>& blocks;
     const std::vector<IrConst>& constants;
     const CfgInfo& cfg;
+    Proto* proto = nullptr;
 };
 
 void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index);

@@ -16,7 +16,6 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryForClassNames)
@@ -447,38 +446,62 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
 {
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: (number, number) -> (string
-    )", "Expected ')' (to close '(' at line 2), got <eof>");
+    )",
+        "Expected ')' (to close '(' at line 2), got <eof>"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: (number, number) -> (
             string
-    )", "Expected ')' (to close '(' at line 2), got <eof>");
+    )",
+        "Expected ')' (to close '(' at line 2), got <eof>"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: (number, number)
-    )", "Expected '->' when parsing function type, got <eof>");
+    )",
+        "Expected '->' when parsing function type, got <eof>"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: (number, number
-    )", "Expected ')' (to close '(' at line 2), got <eof>");
+    )",
+        "Expected ')' (to close '(' at line 2), got <eof>"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: {foo: string,
-    )", "Expected identifier when parsing table field, got <eof>");
+    )",
+        "Expected identifier when parsing table field, got <eof>"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: {foo: string
-    )", "Expected '}' (to close '{' at line 2), got <eof>");
+    )",
+        "Expected '}' (to close '{' at line 2), got <eof>"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: { [string]: number, [number]: string }
-    )", "Cannot have more than one table indexer");
+    )",
+        "Cannot have more than one table indexer"
+    );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         type T = <a>foo
-    )", "Expected '(' when parsing function parameters, got 'foo'");
+    )",
+        "Expected '(' when parsing function parameters, got 'foo'"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_intersection_and_union_not_allowed")
@@ -613,9 +636,12 @@ TEST_CASE_FIXTURE(Fixture, "vertical_space")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_name")
 {
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local a: Foo.=
-    )", "Expected identifier when parsing field name, got '='");
+    )",
+        "Expected identifier when parsing field name, got '='"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
@@ -677,9 +703,12 @@ TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
 
 TEST_CASE_FIXTURE(Fixture, "error_on_unicode")
 {
-        matchParseError(R"(
+    matchParseError(
+        R"(
             local ☃ = 10
-        )", "Expected identifier when parsing variable name, got Unicode character U+2603");
+        )",
+        "Expected identifier when parsing variable name, got Unicode character U+2603"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "allow_unicode_in_string")
@@ -690,9 +719,12 @@ TEST_CASE_FIXTURE(Fixture, "allow_unicode_in_string")
 
 TEST_CASE_FIXTURE(Fixture, "error_on_confusable")
 {
-    matchParseError(R"(
+    matchParseError(
+        R"(
         local pi = 3․13
-    )", "Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)");
+    )",
+        "Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_non_utf8_sequence")
@@ -2341,8 +2373,6 @@ TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 
 TEST_CASE_FIXTURE(Fixture, "parse_user_defined_type_functions")
 {
-    ScopedFastFlag sff2{FFlag::LuauUserDefinedTypeFunParseExport, true};
-
     AstStat* stat = parse(R"(
         type function foo()
             return types.number
@@ -3656,7 +3686,7 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     auto unionTy = paramTy.type->as<AstTypeUnion>();
     LUAU_ASSERT(unionTy);
     CHECK_EQ(unionTy->types.size, 2);
-    CHECK(unionTy->types.data[0]->is<AstTypeFunction>()); // () -> ()
+    CHECK(unionTy->types.data[0]->is<AstTypeFunction>());  // () -> ()
     CHECK(unionTy->types.data[1]->is<AstTypeReference>()); // nil
 }
 
@@ -3702,11 +3732,14 @@ TEST_CASE_FIXTURE(Fixture, "recover_from_bad_table_type")
     ScopedFastFlag _{FFlag::LuauErrorRecoveryForTableTypes, true};
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    const auto result = tryParse(R"(
+    const auto result = tryParse(
+        R"(
         declare class Widget
             state: {string: function(string, Widget)}
         end
-    )", opts);
+    )",
+        opts
+    );
     CHECK_EQ(result.errors.size(), 2);
 }
 

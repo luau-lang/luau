@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAG(LuauPopIncompleteCi)
+
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -935,7 +937,14 @@ reentry:
                 // note: this reallocs stack, but we don't need to VM_PROTECT this
                 // this is because we're going to modify base/savedpc manually anyhow
                 // crucially, we can't use ra/argtop after this line
-                luaD_checkstack(L, ccl->stacksize);
+                if (DFFlag::LuauPopIncompleteCi)
+                {
+                    luaD_checkstackfornewci(L, ccl->stacksize);
+                }
+                else
+                {
+                    luaD_checkstack(L, ccl->stacksize);
+                }
 
                 LUAU_ASSERT(ci->top <= L->stack_last);
 
@@ -3071,7 +3080,14 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     L->base = ci->base;
     // Note: L->top is assigned externally
 
-    luaD_checkstack(L, ccl->stacksize);
+    if (DFFlag::LuauPopIncompleteCi)
+    {
+        luaD_checkstackfornewci(L, ccl->stacksize);
+    }
+    else
+    {
+        luaD_checkstack(L, ccl->stacksize);
+    }
     LUAU_ASSERT(ci->top <= L->stack_last);
 
     if (!ccl->isC)

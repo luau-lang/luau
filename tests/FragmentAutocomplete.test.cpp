@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 LUAU_FASTFLAG(LuauSymbolEquality);
 LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
 LUAU_FASTFLAG(LexerResumesFromPosition2)
+LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -91,7 +92,8 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
-        return Luau::typecheckFragment(this->frontend, "MainModule", cursorPos, getOptions(), document, fragmentEndPosition);
+        auto [_, result] = Luau::typecheckFragment(this->frontend, "MainModule", cursorPos, getOptions(), document, fragmentEndPosition);
+        return result;
     }
 
     FragmentAutocompleteResult autocompleteFragment(
@@ -1379,6 +1381,179 @@ t
             auto opt = linearSearchForBinding(result.freshScope, "t");
             REQUIRE(opt);
             CHECK_EQ("number", toString(*opt));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_simple")
+{
+    const std::string source = R"(
+-- sel
+-- retur
+-- fo
+-- if
+-- end
+-- the
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{4, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_blocks")
+{
+    const std::string source = R"(
+--[[
+comment 1
+]] local
+-- [[ comment 2]]
+--
+-- sdfsdfsdf
+--[[comment 3]]
+--[[
+foo
+bar
+baz
+]]
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 0},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 2},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(!result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{8, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{10, 0},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments")
+{
+    const std::string source = R"(
+-- sel
+-- retur
+-- fo
+--[[ sel ]]
+local  -- hello
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{1, 7},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{2, 9},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{4, 9},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{5, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(!result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{5, 14},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_in_incremental_fragment")
+{
+    const std::string source = R"(
+local x = 5
+if x == 5
+)";
+    const std::string updated = R"(
+local x = 5
+if x == 5 then -- a comment
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        updated,
+        Position{2, 28},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
         }
     );
 }

@@ -626,7 +626,7 @@ struct TypeFunctionInstanceType
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
 
-    std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
+    std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
     UserDefinedFunctionData userFuncData;
 
     TypeFunctionInstanceType(

@@ -611,7 +611,9 @@ static void dcrMagicFunctionTypeCheckFormat(MagicFunctionTypeCheckContext contex
     if (!fmt)
     {
         if (FFlag::LuauStringFormatArityFix)
-            context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+            context.typechecker->reportError(
+                CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
+            );
         return;
     }
 

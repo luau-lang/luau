@@ -10,6 +10,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauBufferBitMethods)
+
 // while C API returns 'size_t' for binary compatibility in case of future extensions,
 // in the current implementation, length and offset are limited to 31 bits
 // because offset is limited to an integer, a single 64bit comparison can be used and will not overflow
@@ -247,7 +249,68 @@ static int buffer_fill(lua_State* L)
     return 0;
 }
 
-static const luaL_Reg bufferlib[] = {
+static int buffer_readbits(lua_State* L)
+{
+    size_t len = 0;
+    void* buf = luaL_checkbuffer(L, 1, &len);
+    int64_t bitoffset = (int64_t)luaL_checknumber(L, 2);
+    int bitcount = luaL_checkinteger(L, 3);
+
+    if (bitoffset < 0)
+        luaL_error(L, "buffer access out of bounds");
+
+    if (unsigned(bitcount) > 32)
+        luaL_error(L, "bit count is out of range of [0; 32]");
+
+    if (uint64_t(bitoffset + bitcount) > uint64_t(len) * 8)
+        luaL_error(L, "buffer access out of bounds");
+
+    unsigned startbyte = unsigned(bitoffset / 8);
+    unsigned endbyte = unsigned((bitoffset + bitcount + 7) / 8);
+
+    uint64_t data = 0;
+    memcpy(&data, (char*)buf + startbyte, endbyte - startbyte);
+
+    uint64_t subbyteoffset = bitoffset & 0x7;
+    uint64_t mask = (1ull << bitcount) - 1;
+
+    lua_pushunsigned(L, unsigned((data >> subbyteoffset) & mask));
+    return 1;
+}
+
+static int buffer_writebits(lua_State* L)
+{
+    size_t len = 0;
+    void* buf = luaL_checkbuffer(L, 1, &len);
+    int64_t bitoffset = (int64_t)luaL_checknumber(L, 2);
+    int bitcount = luaL_checkinteger(L, 3);
+    unsigned value = luaL_checkunsigned(L, 4);
+
+    if (bitoffset < 0)
+        luaL_error(L, "buffer access out of bounds");
+
+    if (unsigned(bitcount) > 32)
+        luaL_error(L, "bit count is out of range of [0; 32]");
+
+    if (uint64_t(bitoffset + bitcount) > uint64_t(len) * 8)
+        luaL_error(L, "buffer access out of bounds");
+
+    unsigned startbyte = unsigned(bitoffset / 8);
+    unsigned endbyte = unsigned((bitoffset + bitcount + 7) / 8);
+
+    uint64_t data = 0;
+    memcpy(&data, (char*)buf + startbyte, endbyte - startbyte);
+
+    uint64_t subbyteoffset = bitoffset & 0x7;
+    uint64_t mask = ((1ull << bitcount) - 1) << subbyteoffset;
+
+    data = (data & ~mask) | ((uint64_t(value) << subbyteoffset) & mask);
+
+    memcpy((char*)buf + startbyte, &data, endbyte - startbyte);
+    return 0;
+}
+
+static const luaL_Reg bufferlib_DEPRECATED[] = {
     {"create", buffer_create},
     {"fromstring", buffer_fromstring},
     {"tostring", buffer_tostring},
@@ -275,9 +338,39 @@ static const luaL_Reg bufferlib[] = {
     {NULL, NULL},
 };
 
+static const luaL_Reg bufferlib[] = {
+    {"create", buffer_create},
+    {"fromstring", buffer_fromstring},
+    {"tostring", buffer_tostring},
+    {"readi8", buffer_readinteger<int8_t>},
+    {"readu8", buffer_readinteger<uint8_t>},
+    {"readi16", buffer_readinteger<int16_t>},
+    {"readu16", buffer_readinteger<uint16_t>},
+    {"readi32", buffer_readinteger<int32_t>},
+    {"readu32", buffer_readinteger<uint32_t>},
+    {"readf32", buffer_readfp<float, uint32_t>},
+    {"readf64", buffer_readfp<double, uint64_t>},
+    {"writei8", buffer_writeinteger<int8_t>},
+    {"writeu8", buffer_writeinteger<uint8_t>},
+    {"writei16", buffer_writeinteger<int16_t>},
+    {"writeu16", buffer_writeinteger<uint16_t>},
+    {"writei32", buffer_writeinteger<int32_t>},
+    {"writeu32", buffer_writeinteger<uint32_t>},
+    {"writef32", buffer_writefp<float, uint32_t>},
+    {"writef64", buffer_writefp<double, uint64_t>},
+    {"readstring", buffer_readstring},
+    {"writestring", buffer_writestring},
+    {"len", buffer_len},
+    {"copy", buffer_copy},
+    {"fill", buffer_fill},
+    {"readbits", buffer_readbits},
+    {"writebits", buffer_writebits},
+    {NULL, NULL},
+};
+
 int luaopen_buffer(lua_State* L)
 {
-    luaL_register(L, LUA_BUFFERLIBNAME, bufferlib);
+    luaL_register(L, LUA_BUFFERLIBNAME, FFlag::LuauBufferBitMethods ? bufferlib : bufferlib_DEPRECATED);
 
     return 1;
 }

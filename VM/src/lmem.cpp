@@ -192,7 +192,7 @@ struct SizeClassConfig
 const SizeClassConfig kSizeClassConfig;
 
 // size class for a block of size sz; returns -1 for size=0 because empty allocations take no space
-#define sizeclass(sz) (size_t((sz)-1) < kMaxSmallSizeUsed ? kSizeClassConfig.classForSize[sz] : -1)
+#define sizeclass(sz) (size_t((sz) - 1) < kMaxSmallSizeUsed ? kSizeClassConfig.classForSize[sz] : -1)
 
 // metadata for a block is stored in the first pointer of the block
 #define metadata(block) (*(void**)(block))

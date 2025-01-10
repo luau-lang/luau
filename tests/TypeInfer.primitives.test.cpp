@@ -12,8 +12,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauVectorDefinitions)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeInferPrimitives");

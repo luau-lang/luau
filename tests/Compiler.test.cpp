@@ -23,10 +23,8 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileVectorTypeInfo)
 LUAU_FASTFLAG(LuauCompileOptimizeRevArith)
 LUAU_FASTFLAG(LuauCompileLibraryConstants)
-LUAU_FASTFLAG(LuauVectorBuiltins)
 LUAU_FASTFLAG(LuauVectorFolding)
 LUAU_FASTFLAG(LuauCompileDisabledBuiltins)
 
@@ -1492,7 +1490,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorArith")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauVectorFolding{FFlag::LuauVectorFolding, true};
 
     CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a + b", 0, 2), R"(
@@ -1560,7 +1557,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorArith4Wide")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauVectorFolding{FFlag::LuauVectorFolding, true};
 
     CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a + b", 0, 2), R"(
@@ -5137,7 +5133,6 @@ RETURN R0 1
 
 TEST_CASE("VectorConstantFields")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
 
     CHECK_EQ("\n" + compileFunction("return vector.one, vector.zero", 0, 2), R"(
@@ -8666,8 +8661,6 @@ end
 
 TEST_CASE("BuiltinTypeVector")
 {
-    ScopedFastFlag luauCompileVectorTypeInfo{FFlag::LuauCompileVectorTypeInfo, true};
-
     CHECK_EQ(
         "\n" + compileTypeTable(R"(
 function myfunc(test: Instance, pos: vector)

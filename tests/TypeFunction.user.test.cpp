@@ -12,7 +12,6 @@ LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAG(LuauUserTypeFunFixInner)
 LUAU_FASTFLAG(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
 LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
 
@@ -1332,7 +1331,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
-    ScopedFastFlag luauUserDefinedTypeFunParseExport{FFlag::LuauUserDefinedTypeFunParseExport, true};
 
     fileResolver.source["game/A"] = R"(
 export type function concat(a, b)

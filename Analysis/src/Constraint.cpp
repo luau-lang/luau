@@ -62,7 +62,6 @@ struct ReferenceCountInitializer : TypeOnceVisitor
         // of this type, hence:
         return !FFlag::LuauDontRefCountTypesInTypeFunctions;
     }
-
 };
 
 bool isReferenceCountedType(const TypeId typ)

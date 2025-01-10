@@ -193,9 +193,8 @@ static bool areTerminalAndDefinitelyDisjoint(const EType& lhs, const EType& rhs)
     // - Whether one of the enodes is a large semantic set such as TAny,
     //   TUnknown, or TError.
     return !(
-        lhs.index() == rhs.index() ||
-        lhs.get<TUnknown>() || rhs.get<TUnknown>() || lhs.get<TAny>() || rhs.get<TAny>() || lhs.get<TNoRefine>() || rhs.get<TNoRefine>() ||
-        lhs.get<TError>() || rhs.get<TError>() || lhs.get<TOpaque>() || rhs.get<TOpaque>()
+        lhs.index() == rhs.index() || lhs.get<TUnknown>() || rhs.get<TUnknown>() || lhs.get<TAny>() || rhs.get<TAny>() || lhs.get<TNoRefine>() ||
+        rhs.get<TNoRefine>() || lhs.get<TError>() || rhs.get<TError>() || lhs.get<TOpaque>() || rhs.get<TOpaque>()
     );
 }
 
@@ -694,7 +693,8 @@ TypeId flattenTableNode(
             StringId propName = t->propNames[i];
             const Id propType = t->propTypes()[i];
 
-            resultTable.props[strings.asString(propName)] = Property{fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, propType)};
+            resultTable.props[strings.asString(propName)] =
+                Property{fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, propType)};
         }
     }
 
@@ -937,12 +937,20 @@ std::string mkDesc(
     const int RULE_PADDING = 35;
     const std::string rulePadding(std::max<size_t>(0, RULE_PADDING - rule.size()), ' ');
     const std::string fromIdStr = ""; // "(" + std::to_string(uint32_t(from)) + ") ";
-    const std::string toIdStr = ""; // "(" + std::to_string(uint32_t(to)) + ") ";
+    const std::string toIdStr = "";   // "(" + std::to_string(uint32_t(to)) + ") ";
 
     return rule + ":" + rulePadding + fromIdStr + toString(fromTy, opts) + " <=> " + toIdStr + toString(toTy, opts);
 }
 
-std::string mkDesc(EGraph& egraph, const StringCache& strings, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Id from, Id to, const std::string& rule)
+std::string mkDesc(
+    EGraph& egraph,
+    const StringCache& strings,
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    Id from,
+    Id to,
+    const std::string& rule
+)
 {
     if (!FFlag::DebugLuauLogSimplification)
         return "";
@@ -1879,7 +1887,12 @@ void Simplifier::intersectWithNegatedClass(Id id)
                             isTag<SBoolean>(iNode) || isTag<SString>(iNode) || isTag<TFunction>(iNode) || isTag<TNever>(iNode))
                         {
                             // eg string & ~SomeClass
-                            subst(id, iId, "intersectClassWithNegatedClass", {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}});
+                            subst(
+                                id,
+                                iId,
+                                "intersectClassWithNegatedClass",
+                                {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}}
+                            );
                             return;
                         }
 
@@ -1887,27 +1900,37 @@ void Simplifier::intersectWithNegatedClass(Id id)
                         {
                             switch (relateClasses(class_, negatedClass))
                             {
-                                case LeftSuper:
-                                    // eg Instance & ~Part
-                                    // This cannot be meaningfully reduced.
-                                    continue;
-                                case RightSuper:
-                                    subst(id, egraph.add(TNever{}), "intersectClassWithNegatedClass", {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}});
-                                    return;
-                                case Unrelated:
-                                    // Part & ~Folder == Part
+                            case LeftSuper:
+                                // eg Instance & ~Part
+                                // This cannot be meaningfully reduced.
+                                continue;
+                            case RightSuper:
+                                subst(
+                                    id,
+                                    egraph.add(TNever{}),
+                                    "intersectClassWithNegatedClass",
+                                    {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}}
+                                );
+                                return;
+                            case Unrelated:
+                                // Part & ~Folder == Part
+                                {
+                                    std::vector<Id> newParts;
+                                    newParts.reserve(intersection->operands().size() - 1);
+                                    for (Id part : intersection->operands())
                                     {
-                                        std::vector<Id> newParts;
-                                        newParts.reserve(intersection->operands().size() - 1);
-                                        for (Id part : intersection->operands())
-                                        {
-                                            if (part != jId)
-                                                newParts.push_back(part);
-                                        }
-
-                                        Id substId = egraph.add(Intersection{newParts.begin(), newParts.end()});
-                                        subst(id, substId, "intersectClassWithNegatedClass", {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}});
+                                        if (part != jId)
+                                            newParts.push_back(part);
                                     }
+
+                                    Id substId = egraph.add(Intersection{newParts.begin(), newParts.end()});
+                                    subst(
+                                        id,
+                                        substId,
+                                        "intersectClassWithNegatedClass",
+                                        {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}}
+                                    );
+                                }
                             }
                         }
                     }
