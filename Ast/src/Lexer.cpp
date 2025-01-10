@@ -9,6 +9,8 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition2)
+LUAU_FASTFLAGVARIABLE(LexerFixInterpStringStart)
+
 namespace Luau
 {
 
@@ -759,7 +761,7 @@ Lexeme Lexer::readNext()
             return Lexeme(Location(start, 1), '}');
         }
 
-        return readInterpolatedStringSection(position(), Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
+        return readInterpolatedStringSection(FFlag::LexerFixInterpStringStart ? start : position(), Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
     }
 
     case '=':

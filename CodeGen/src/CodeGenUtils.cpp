@@ -18,6 +18,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAG(LuauPopIncompleteCi)
+
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
 // This makes sure that we save the pc (in case the Lua call needs to generate a backtrace) before the call,
 // and restores the stack pointer after in case stack gets reallocated
@@ -191,7 +193,14 @@ Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults)
     // note: this reallocs stack, but we don't need to VM_PROTECT this
     // this is because we're going to modify base/savedpc manually anyhow
     // crucially, we can't use ra/argtop after this line
-    luaD_checkstack(L, ccl->stacksize);
+    if (DFFlag::LuauPopIncompleteCi)
+    {
+        luaD_checkstackfornewci(L, ccl->stacksize);
+    }
+    else
+    {
+        luaD_checkstack(L, ccl->stacksize);
+    }
 
     return ccl;
 }
@@ -261,7 +270,14 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
     // note: this reallocs stack, but we don't need to VM_PROTECT this
     // this is because we're going to modify base/savedpc manually anyhow
     // crucially, we can't use ra/argtop after this line
-    luaD_checkstack(L, ccl->stacksize);
+    if (DFFlag::LuauPopIncompleteCi)
+    {
+        luaD_checkstackfornewci(L, ccl->stacksize);
+    }
+    else
+    {
+        luaD_checkstack(L, ccl->stacksize);
+    }
 
     LUAU_ASSERT(ci->top <= L->stack_last);
 

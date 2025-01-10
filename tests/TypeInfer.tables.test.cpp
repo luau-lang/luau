@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(LuauTableKeysAreRValues)
 LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3815,6 +3816,8 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
+    ScopedFastFlag _{FFlag::LuauTrackInteriorFreeTypesOnScope, true};
+
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -3824,17 +3827,14 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
 
     if (FFlag::LuauSolverV2)
     {
-        LUAU_REQUIRE_ERROR_COUNT(4, result);
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
 
         CHECK(toString(result.errors[0]) == "Parameter 's' has been reduced to never. This function is not callable with any possible value.");
-        // FIXME: These free types should have been generalized by now.
         CHECK(
             toString(result.errors[1]) ==
-            "Parameter 's' is required to be a subtype of '{- read absolutely_no_scalar_has_this_method: ('a <: (never) -> ('b, c...)) -}' here."
+            "Parameter 's' is required to be a subtype of '{- read absolutely_no_scalar_has_this_method: (never) -> (unknown, ...unknown) -}' here."
         );
         CHECK(toString(result.errors[2]) == "Parameter 's' is required to be a subtype of 'string' here.");
-        CHECK(get<CannotCallNonFunction>(result.errors[3]));
-
         CHECK_EQ("(never) -> string", toString(requireType("f")));
     }
     else
@@ -5002,7 +5002,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  } } }'",
+        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  "
+        "} } }'",
         toString(result.errors[0])
     );
 }

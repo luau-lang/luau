@@ -800,7 +800,10 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
             "Operator '+' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __add",
             toString(result.errors[0])
         );
-        CHECK_EQ("Operator '-' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __sub", toString(result.errors[1]));
+        CHECK_EQ(
+            "Operator '-' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __sub",
+            toString(result.errors[1])
+        );
     }
     else
     {

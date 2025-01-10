@@ -95,6 +95,8 @@ struct Scope
     // we need that the generic type `T` in both cases is the same, so we use a cache.
     std::unordered_map<Name, TypeId> typeAliasTypeParameters;
     std::unordered_map<Name, TypePackId> typeAliasTypePackParameters;
+
+    std::optional<std::vector<TypeId>> interiorFreeTypes;
 };
 
 // Returns true iff the left scope encloses the right scope.  A Scope* equal to

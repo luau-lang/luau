@@ -2799,10 +2799,10 @@ TypeId TypeChecker::checkRelationalOperation(
                 reportError(
                     expr.location,
                     GenericError{
-                    format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
-                }
-                    );
-                }
+                        format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
+                    }
+                );
+            }
 
             return booleanType;
         }

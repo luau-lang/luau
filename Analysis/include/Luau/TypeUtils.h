@@ -269,8 +269,8 @@ bool isLiteral(const AstExpr* expr);
 std::vector<TypeId> findBlockedTypesIn(AstExprTable* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
 
 /**
- * Given a function call and a mapping from expression to type, determine 
- * whether the type of any argument in said call in depends on a blocked types. 
+ * Given a function call and a mapping from expression to type, determine
+ * whether the type of any argument in said call in depends on a blocked types.
  * This is used as a precondition for bidirectional inference: be warned that
  * the behavior of this algorithm is tightly coupled to that of bidirectional
  * inference.
@@ -279,5 +279,14 @@ std::vector<TypeId> findBlockedTypesIn(AstExprTable* expr, NotNull<DenseHashMap<
  * @returns A vector of blocked types
  */
 std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
+
+/**
+ * Given a scope and a free type, find the closest parent that has a present
+ * `interiorFreeTypes` and append the given type to said list. This list will
+ * be generalized when the requiste `GeneralizationConstraint` is resolved.
+ * @param scope Initial scope this free type was attached to
+ * @param ty Free type to track.
+ */
+void trackInteriorFreeType(Scope* scope, TypeId ty);
 
 } // namespace Luau

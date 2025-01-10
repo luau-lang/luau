@@ -45,4 +45,4 @@ private:
     size_t offset;
 };
 
-}
+} // namespace Luau

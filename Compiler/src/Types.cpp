@@ -3,7 +3,6 @@
 
 #include "Luau/BytecodeBuilder.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCompileVectorTypeInfo)
 LUAU_FASTFLAG(LuauCompileLibraryConstants)
 
 namespace Luau
@@ -32,7 +31,7 @@ static LuauBytecodeType getPrimitiveType(AstName name)
         return LBC_TYPE_THREAD;
     else if (name == "buffer")
         return LBC_TYPE_BUFFER;
-    else if (FFlag::LuauCompileVectorTypeInfo && name == "vector")
+    else if (name == "vector")
         return LBC_TYPE_VECTOR;
     else if (name == "any" || name == "unknown")
         return LBC_TYPE_ANY;

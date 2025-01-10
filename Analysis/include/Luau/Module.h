@@ -16,6 +16,8 @@
 #include <unordered_map>
 #include <optional>
 
+LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
+
 namespace Luau
 {
 
@@ -55,6 +57,7 @@ struct SourceModule
     }
 };
 
+bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos);
 bool isWithinComment(const SourceModule& sourceModule, Position pos);
 bool isWithinComment(const ParseResult& result, Position pos);
 

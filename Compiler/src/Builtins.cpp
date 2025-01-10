@@ -7,7 +7,6 @@
 
 #include <array>
 
-LUAU_FASTFLAGVARIABLE(LuauVectorBuiltins)
 LUAU_FASTFLAGVARIABLE(LuauCompileDisabledBuiltins)
 LUAU_FASTFLAGVARIABLE(LuauCompileMathLerp)
 
@@ -229,7 +228,7 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BUFFER_WRITEF64;
     }
 
-    if (FFlag::LuauVectorBuiltins && builtin.object == "vector")
+    if (builtin.object == "vector")
     {
         if (builtin.method == "create")
             return LBF_VECTOR;

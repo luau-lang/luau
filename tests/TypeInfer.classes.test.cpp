@@ -665,12 +665,11 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
         )");
 
         if (FFlag::LuauSolverV2)
-            CHECK(
-                "Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0))
-            );
+            CHECK("Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0)));
         else
             CHECK_EQ(
-                toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
+                toString(result.errors.at(0)),
+                "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
             );
     }
     {
@@ -680,12 +679,11 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
         )");
 
         if (FFlag::LuauSolverV2)
-            CHECK(
-                "Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0))
-            );
+            CHECK("Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0)));
         else
             CHECK_EQ(
-                toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
+                toString(result.errors.at(0)),
+                "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
             );
     }
 

@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LexerFixInterpStringStart)
+
 TEST_SUITE_BEGIN("LexerTests");
 
 TEST_CASE("broken_string_works")
@@ -153,6 +155,8 @@ TEST_CASE("string_interpolation_basic")
 
     Lexeme interpEnd = lexer.next();
     CHECK_EQ(interpEnd.type, Lexeme::InterpStringEnd);
+    // The InterpStringEnd should start with }, not `.
+    CHECK_EQ(interpEnd.location.begin.column, FFlag::LexerFixInterpStringStart ? 11 : 12);
 }
 
 TEST_CASE("string_interpolation_full")
@@ -173,6 +177,7 @@ TEST_CASE("string_interpolation_full")
     Lexeme interpMid = lexer.next();
     CHECK_EQ(interpMid.type, Lexeme::InterpStringMid);
     CHECK_EQ(interpMid.toString(), "} {");
+    CHECK_EQ(interpMid.location.begin.column, FFlag::LexerFixInterpStringStart ? 11 : 12);
 
     Lexeme quote2 = lexer.next();
     CHECK_EQ(quote2.type, Lexeme::QuotedString);
@@ -181,6 +186,7 @@ TEST_CASE("string_interpolation_full")
     Lexeme interpEnd = lexer.next();
     CHECK_EQ(interpEnd.type, Lexeme::InterpStringEnd);
     CHECK_EQ(interpEnd.toString(), "} end`");
+    CHECK_EQ(interpEnd.location.begin.column, FFlag::LexerFixInterpStringStart ? 19 : 20);
 }
 
 TEST_CASE("string_interpolation_double_brace")

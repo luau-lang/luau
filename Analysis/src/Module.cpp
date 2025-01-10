@@ -15,11 +15,12 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteCommentDetection)
 
 namespace Luau
 {
 
-static bool contains(Position pos, Comment comment)
+static bool contains_DEPRECATED(Position pos, Comment comment)
 {
     if (comment.location.contains(pos))
         return true;
@@ -32,7 +33,22 @@ static bool contains(Position pos, Comment comment)
         return false;
 }
 
-static bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
+static bool contains(Position pos, Comment comment)
+{
+    if (comment.location.contains(pos))
+        return true;
+    else if (comment.type == Lexeme::BrokenComment && comment.location.begin <= pos) // Broken comments are broken specifically because they don't
+                                                                                     // have an end
+        return true;
+    // comments actually span the whole line - in incremental mode, we could pass a cursor outside of the current parsed comment range span, but it
+    // would still be 'within' the comment So, the cursor must be on the same line and the comment itself must come strictly after the `begin`
+    else if (comment.type == Lexeme::Comment && comment.location.end.line == pos.line && comment.location.begin <= pos)
+        return true;
+    else
+        return false;
+}
+
+bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
 {
     auto iter = std::lower_bound(
         commentLocations.begin(),
@@ -40,6 +56,11 @@ static bool isWithinComment(const std::vector<Comment>& commentLocations, Positi
         Comment{Lexeme::Comment, Location{pos, pos}},
         [](const Comment& a, const Comment& b)
         {
+            if (FFlag::LuauIncrementalAutocompleteCommentDetection)
+            {
+                if (a.type == Lexeme::Comment)
+                    return a.location.end.line < b.location.end.line;
+            }
             return a.location.end < b.location.end;
         }
     );
@@ -47,7 +68,7 @@ static bool isWithinComment(const std::vector<Comment>& commentLocations, Positi
     if (iter == commentLocations.end())
         return false;
 
-    if (contains(pos, *iter))
+    if (FFlag::LuauIncrementalAutocompleteCommentDetection ? contains(pos, *iter) : contains_DEPRECATED(pos, *iter))
         return true;
 
     // Due to the nature of std::lower_bound, it is possible that iter points at a comment that ends
@@ -149,9 +170,9 @@ struct ClonePublicInterface : Substitution
                     freety->scope->location,
                     module->name,
                     InternalError{"Free type is escaping its module; please report this bug at "
-                    "https://github.com/luau-lang/luau/issues"}
-                    );
-                    result = builtinTypes->errorRecoveryType();
+                                  "https://github.com/luau-lang/luau/issues"}
+                );
+                result = builtinTypes->errorRecoveryType();
             }
             else if (auto genericty = getMutable<GenericType>(result))
             {
@@ -173,8 +194,8 @@ struct ClonePublicInterface : Substitution
                     ftp->scope->location,
                     module->name,
                     InternalError{"Free type pack is escaping its module; please report this bug at "
-                    "https://github.com/luau-lang/luau/issues"}
-                    );
+                                  "https://github.com/luau-lang/luau/issues"}
+                );
                 clonedTp = builtinTypes->errorRecoveryTypePack();
             }
             else if (auto gtp = getMutable<GenericTypePack>(clonedTp))
