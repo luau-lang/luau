@@ -311,7 +311,7 @@ static BuiltinImplResult translateBuiltinMathLerp(
     IrOp t = builtinLoadDouble(build, arg3);
 
     IrOp l = build.inst(IrCmd::ADD_NUM, a, build.inst(IrCmd::MUL_NUM, build.inst(IrCmd::SUB_NUM, b, a), t));
-    IrOp r = build.inst(IrCmd::SELECT_NUM, l, b, t, build.constDouble(1.0), build.cond(IrCondition::Equal));
+    IrOp r = build.inst(IrCmd::SELECT_NUM, l, b, t, build.constDouble(1.0)); // select on t==1.0
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), r);
 
