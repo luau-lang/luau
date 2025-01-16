@@ -793,11 +793,10 @@ int luaH_getn(Table* t)
     }
 }
 
-Table* luaH_clone(lua_State* L, Table* tt)
+Table* luaH_clone(lua_State* L, Table* tt, bool raw)
 {
     Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
     luaC_init(L, t, LUA_TTABLE);
-    t->metatable = tt->metatable;
     t->tmcache = tt->tmcache;
     t->array = NULL;
     t->sizearray = 0;
@@ -807,6 +806,9 @@ Table* luaH_clone(lua_State* L, Table* tt)
     t->safeenv = 0;
     t->node = cast_to(LuaNode*, dummynode);
     t->lastfree = 0;
+
+    if (!raw) // Prevent unauthorized assigning of locked metatables
+        t->metatable = tt->metatable;
 
     if (tt->sizearray)
     {
