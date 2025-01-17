@@ -3,6 +3,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauVectorDefinitionsExtra)
 LUAU_FASTFLAG(LuauBufferBitMethods)
+LUAU_FASTFLAG(LuauVector2Constructor)
 
 namespace Luau
 {
@@ -265,10 +266,66 @@ declare buffer: {
 
 )BUILTIN_SRC";
 
-static const std::string kBuiltinDefinitionVectorSrc_DEPRECATED = R"BUILTIN_SRC(
+static const std::string kBuiltinDefinitionVectorSrc_NoExtra_NoVector2Ctor_DEPRECATED = R"BUILTIN_SRC(
 
 -- TODO: this will be replaced with a built-in primitive type
 declare class vector end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number) -> vector,
+    magnitude: @checked (vec: vector) -> number,
+    normalize: @checked (vec: vector) -> vector,
+    cross: @checked (vec1: vector, vec2: vector) -> vector,
+    dot: @checked (vec1: vector, vec2: vector) -> number,
+    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
+    floor: @checked (vec: vector) -> vector,
+    ceil: @checked (vec: vector) -> vector,
+    abs: @checked (vec: vector) -> vector,
+    sign: @checked (vec: vector) -> vector,
+    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
+    max: @checked (vector, ...vector) -> vector,
+    min: @checked (vector, ...vector) -> vector,
+
+    zero: vector,
+    one: vector,
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionVectorSrc_NoExtra_DEPRECATED = R"BUILTIN_SRC(
+
+-- TODO: this will be replaced with a built-in primitive type
+declare class vector end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?) -> vector,
+    magnitude: @checked (vec: vector) -> number,
+    normalize: @checked (vec: vector) -> vector,
+    cross: @checked (vec1: vector, vec2: vector) -> vector,
+    dot: @checked (vec1: vector, vec2: vector) -> number,
+    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
+    floor: @checked (vec: vector) -> vector,
+    ceil: @checked (vec: vector) -> vector,
+    abs: @checked (vec: vector) -> vector,
+    sign: @checked (vec: vector) -> vector,
+    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
+    max: @checked (vector, ...vector) -> vector,
+    min: @checked (vector, ...vector) -> vector,
+
+    zero: vector,
+    one: vector,
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionVectorSrc_NoVector2Ctor_DEPRECATED = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver class handling covers most of the properties
+declare class vector
+    x: number
+    y: number
+    z: number
+end
 
 declare vector: {
     create: @checked (x: number, y: number, z: number) -> vector,
@@ -301,7 +358,7 @@ declare class vector
 end
 
 declare vector: {
-    create: @checked (x: number, y: number, z: number) -> vector,
+    create: @checked (x: number, y: number, z: number?) -> vector,
     magnitude: @checked (vec: vector) -> number,
     normalize: @checked (vec: vector) -> vector,
     cross: @checked (vec1: vector, vec2: vector) -> vector,
@@ -328,9 +385,19 @@ std::string getBuiltinDefinitionSource()
     result += FFlag::LuauBufferBitMethods ? kBuiltinDefinitionBufferSrc : kBuiltinDefinitionBufferSrc_DEPRECATED;
 
     if (FFlag::LuauVectorDefinitionsExtra)
-        result += kBuiltinDefinitionVectorSrc;
+    {
+        if (FFlag::LuauVector2Constructor)
+            result += kBuiltinDefinitionVectorSrc;
+        else
+            result += kBuiltinDefinitionVectorSrc_NoVector2Ctor_DEPRECATED;
+    }
     else
-        result += kBuiltinDefinitionVectorSrc_DEPRECATED;
+    {
+        if (FFlag::LuauVector2Constructor)
+            result += kBuiltinDefinitionVectorSrc_NoExtra_DEPRECATED;
+        else
+            result += kBuiltinDefinitionVectorSrc_NoExtra_NoVector2Ctor_DEPRECATED;
+    }
 
     return result;
 }

@@ -39,6 +39,7 @@ LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoInvArgLeftovers)
 LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_FASTFLAG(LuauVectorMetatable)
+LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAG(LuauBufferBitMethods)
 LUAU_FASTFLAG(LuauCodeGenLimitLiveSlotReuse)
 
@@ -896,6 +897,7 @@ TEST_CASE("VectorLibrary")
     ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
     ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
     ScopedFastFlag luauVectorMetatable{FFlag::LuauVectorMetatable, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -986,6 +988,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
     ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, false}; // waiting for math.lerp to be added to embedded type definitions
 
     runConformance(
