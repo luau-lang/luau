@@ -63,7 +63,7 @@ namespace Luau
 namespace CodeGen
 {
 
-bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
+bool forgLoopTableIter(lua_State* L, LuaTable* h, int index, TValue* ra)
 {
     int sizearray = h->sizearray;
 
@@ -106,7 +106,7 @@ bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
     return false;
 }
 
-bool forgLoopNodeIter(lua_State* L, Table* h, int index, TValue* ra)
+bool forgLoopNodeIter(lua_State* L, LuaTable* h, int index, TValue* ra)
 {
     int sizearray = h->sizearray;
     int sizenode = 1 << h->lsizenode;
@@ -233,7 +233,7 @@ Udata* newUserdata(lua_State* L, size_t s, int tag)
 {
     Udata* u = luaU_newudata(L, s, tag);
 
-    if (Table* h = L->global->udatamt[tag])
+    if (LuaTable* h = L->global->udatamt[tag])
     {
         // currently, we always allocate unmarked objects, so forward barrier can be skipped
         LUAU_ASSERT(!isblack(obj2gco(u)));
@@ -345,7 +345,7 @@ const Instruction* executeGETGLOBAL(lua_State* L, const Instruction* pc, StkId b
     LUAU_ASSERT(ttisstring(kv));
 
     // fast-path should already have been checked, so we skip checking for it here
-    Table* h = cl->env;
+    LuaTable* h = cl->env;
     int slot = LUAU_INSN_C(insn) & h->nodemask8;
 
     // slow-path, may invoke Lua calls via __index metamethod
@@ -368,7 +368,7 @@ const Instruction* executeSETGLOBAL(lua_State* L, const Instruction* pc, StkId b
     LUAU_ASSERT(ttisstring(kv));
 
     // fast-path should already have been checked, so we skip checking for it here
-    Table* h = cl->env;
+    LuaTable* h = cl->env;
     int slot = LUAU_INSN_C(insn) & h->nodemask8;
 
     // slow-path, may invoke Lua calls via __newindex metamethod
@@ -394,7 +394,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     // fast-path: built-in table
     if (ttistable(rb))
     {
-        Table* h = hvalue(rb);
+        LuaTable* h = hvalue(rb);
 
         // we ignore the fast path that checks for the cached slot since IrTranslation already checks for it.
 
@@ -506,7 +506,7 @@ const Instruction* executeSETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     // fast-path: built-in table
     if (ttistable(rb))
     {
-        Table* h = hvalue(rb);
+        LuaTable* h = hvalue(rb);
 
         // we ignore the fast path that checks for the cached slot since IrTranslation already checks for it.
 
@@ -591,7 +591,7 @@ const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId ba
     }
     else
     {
-        Table* mt = ttisuserdata(rb) ? uvalue(rb)->metatable : L->global->mt[ttype(rb)];
+        LuaTable* mt = ttisuserdata(rb) ? uvalue(rb)->metatable : L->global->mt[ttype(rb)];
         const TValue* tmi = 0;
 
         // fast-path: metatable with __namecall
@@ -605,7 +605,7 @@ const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId ba
         }
         else if ((tmi = fasttm(L, mt, TM_INDEX)) && ttistable(tmi))
         {
-            Table* h = hvalue(tmi);
+            LuaTable* h = hvalue(tmi);
             int slot = LUAU_INSN_C(insn) & h->nodemask8;
             LuaNode* n = &h->node[slot];
 
@@ -662,7 +662,7 @@ const Instruction* executeSETLIST(lua_State* L, const Instruction* pc, StkId bas
         L->top = L->ci->top;
     }
 
-    Table* h = hvalue(ra);
+    LuaTable* h = hvalue(ra);
 
     // TODO: we really don't need this anymore
     if (!ttistable(ra))
@@ -697,7 +697,7 @@ const Instruction* executeFORGPREP(lua_State* L, const Instruction* pc, StkId ba
     }
     else
     {
-        Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
+        LuaTable* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(LuaTable*, NULL);
 
         if (const TValue* fn = fasttm(L, mt, TM_ITER))
         {

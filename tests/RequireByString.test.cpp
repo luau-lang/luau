@@ -6,8 +6,8 @@
 #include "lua.h"
 #include "lualib.h"
 
-#include "Repl.h"
-#include "FileUtils.h"
+#include "Luau/Repl.h"
+#include "Luau/FileUtils.h"
 
 #include "doctest.h"
 
@@ -116,7 +116,7 @@ public:
         for (int i = 0; i < 20; ++i)
         {
             bool engineTestDir = isDirectory(luauDirAbs + "/Client/Luau/tests");
-            bool luauTestDir = isDirectory(luauDirAbs + "/luau/tests/require");
+            bool luauTestDir = isDirectory(luauDirAbs + "/tests/require");
 
             if (engineTestDir || luauTestDir)
             {
@@ -125,12 +125,6 @@ public:
                     luauDirRel += "/Client/Luau";
                     luauDirAbs += "/Client/Luau";
                 }
-                else
-                {
-                    luauDirRel += "/luau";
-                    luauDirAbs += "/luau";
-                }
-
 
                 if (type == PathType::Relative)
                     return luauDirRel;

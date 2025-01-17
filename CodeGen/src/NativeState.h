@@ -44,25 +44,25 @@ struct NativeContext
     void (*luaV_dolen)(lua_State* L, StkId ra, const TValue* rb) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
-    void (*luaV_getimport)(lua_State* L, Table* env, TValue* k, StkId res, uint32_t id, bool propagatenil) = nullptr;
+    void (*luaV_getimport)(lua_State* L, LuaTable* env, TValue* k, StkId res, uint32_t id, bool propagatenil) = nullptr;
     void (*luaV_concat)(lua_State* L, int total, int last) = nullptr;
 
-    int (*luaH_getn)(Table* t) = nullptr;
-    Table* (*luaH_new)(lua_State* L, int narray, int lnhash) = nullptr;
-    Table* (*luaH_clone)(lua_State* L, Table* tt) = nullptr;
-    void (*luaH_resizearray)(lua_State* L, Table* t, int nasize) = nullptr;
-    TValue* (*luaH_setnum)(lua_State* L, Table* t, int key);
+    int (*luaH_getn)(LuaTable* t) = nullptr;
+    LuaTable* (*luaH_new)(lua_State* L, int narray, int lnhash) = nullptr;
+    LuaTable* (*luaH_clone)(lua_State* L, LuaTable* tt) = nullptr;
+    void (*luaH_resizearray)(lua_State* L, LuaTable* t, int nasize) = nullptr;
+    TValue* (*luaH_setnum)(lua_State* L, LuaTable* t, int key);
 
-    void (*luaC_barriertable)(lua_State* L, Table* t, GCObject* v) = nullptr;
+    void (*luaC_barriertable)(lua_State* L, LuaTable* t, GCObject* v) = nullptr;
     void (*luaC_barrierf)(lua_State* L, GCObject* o, GCObject* v) = nullptr;
     void (*luaC_barrierback)(lua_State* L, GCObject* o, GCObject** gclist) = nullptr;
     size_t (*luaC_step)(lua_State* L, bool assist) = nullptr;
 
     void (*luaF_close)(lua_State* L, StkId level) = nullptr;
     UpVal* (*luaF_findupval)(lua_State* L, StkId level) = nullptr;
-    Closure* (*luaF_newLclosure)(lua_State* L, int nelems, Table* e, Proto* p) = nullptr;
+    Closure* (*luaF_newLclosure)(lua_State* L, int nelems, LuaTable* e, Proto* p) = nullptr;
 
-    const TValue* (*luaT_gettm)(Table* events, TMS event, TString* ename) = nullptr;
+    const TValue* (*luaT_gettm)(LuaTable* events, TMS event, TString* ename) = nullptr;
     const TString* (*luaT_objtypenamestr)(lua_State* L, const TValue* o) = nullptr;
 
     double (*libm_exp)(double) = nullptr;
@@ -87,8 +87,8 @@ struct NativeContext
     double (*libm_modf)(double, double*) = nullptr;
 
     // Helper functions
-    bool (*forgLoopTableIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;
-    bool (*forgLoopNodeIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;
+    bool (*forgLoopTableIter)(lua_State* L, LuaTable* h, int index, TValue* ra) = nullptr;
+    bool (*forgLoopNodeIter)(lua_State* L, LuaTable* h, int index, TValue* ra) = nullptr;
     bool (*forgLoopNonTableFallback)(lua_State* L, int insnA, int aux) = nullptr;
     void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;

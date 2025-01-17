@@ -31,6 +31,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
+LUAU_FASTFLAGVARIABLE(LuauStringFormatErrorSuppression)
 LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2)
 LUAU_FASTFLAG(LuauVectorDefinitionsExtra)
 
@@ -631,10 +632,29 @@ static void dcrMagicFunctionTypeCheckFormat(MagicFunctionTypeCheckContext contex
         Location location = context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
         // use subtyping instead here
         SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
+
         if (!result.isSubtype)
         {
-            Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
-            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+            if (FFlag::LuauStringFormatErrorSuppression)
+            {
+                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
+                {
+                    case ErrorSuppression::Suppress:
+                        break;
+                    case ErrorSuppression::NormalizationFailed:
+                        break;
+                    case ErrorSuppression::DoNotSuppress:
+                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+
+                        if (!reasonings.suppressed)
+                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+                }
+            }
+            else
+            {
+                Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+                context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+            }
         }
     }
 }

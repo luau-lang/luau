@@ -7,9 +7,9 @@
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
 
-#include "FileUtils.h"
-#include "Flags.h"
-#include "Require.h"
+#include "Luau/FileUtils.h"
+#include "Luau/Flags.h"
+#include "Luau/Require.h"
 
 #include <condition_variable>
 #include <functional>

@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Repl.h"
+#include "Luau/Repl.h"
 
 #include "Luau/Common.h"
 #include "lua.h"
@@ -10,11 +10,11 @@
 #include "Luau/Parser.h"
 #include "Luau/TimeTrace.h"
 
-#include "Coverage.h"
-#include "FileUtils.h"
-#include "Flags.h"
-#include "Profiler.h"
-#include "Require.h"
+#include "Luau/Coverage.h"
+#include "Luau/FileUtils.h"
+#include "Luau/Flags.h"
+#include "Luau/Profiler.h"
+#include "Luau/Require.h"
 
 #include "isocline.h"
 

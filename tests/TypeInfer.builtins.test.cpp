@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauStringFormatArityFix)
+LUAU_FASTFLAG(LuauStringFormatErrorSuppression)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1584,6 +1585,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        local x: any = "world"
+        print(string.format("Hello, %s!", x))
+    )");
+
+    if (FFlag::LuauStringFormatErrorSuppression)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_SUITE_END();

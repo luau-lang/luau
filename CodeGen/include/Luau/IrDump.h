@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/IrData.h"
-#include "Luau/CodeGen.h"
+#include "Luau/CodeGenOptions.h"
 
 #include <string>
 #include <vector>

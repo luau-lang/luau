@@ -292,7 +292,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
         Label skipResize;
 
         // Resize if h->sizearray < last
-        build.cmp(dword[table + offsetof(Table, sizearray)], last);
+        build.cmp(dword[table + offsetof(LuaTable, sizearray)], last);
         build.jcc(ConditionX64::NotBelow, skipResize);
 
         // Argument setup reordered to avoid conflicts
@@ -309,7 +309,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
     RegisterX64 arrayDst = rdx;
     RegisterX64 offset = rcx;
 
-    build.mov(arrayDst, qword[table + offsetof(Table, array)]);
+    build.mov(arrayDst, qword[table + offsetof(LuaTable, array)]);
 
     const int kUnrollSetListLimit = 4;
 
@@ -380,7 +380,7 @@ void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRep
     // &array[index]
     build.mov(dwordReg(elemPtr), dwordReg(index));
     build.shl(dwordReg(elemPtr), kTValueSizeLog2);
-    build.add(elemPtr, qword[table + offsetof(Table, array)]);
+    build.add(elemPtr, qword[table + offsetof(LuaTable, array)]);
 
     // Clear extra variables since we might have more than two
     for (int i = 2; i < aux; ++i)
@@ -391,7 +391,7 @@ void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRep
     // First we advance index through the array portion
     // while (unsigned(index) < unsigned(sizearray))
     Label arrayLoop = build.setLabel();
-    build.cmp(dwordReg(index), dword[table + offsetof(Table, sizearray)]);
+    build.cmp(dwordReg(index), dword[table + offsetof(LuaTable, sizearray)]);
     build.jcc(ConditionX64::NotBelow, skipArray);
 
     // If element is nil, we increment the index; if it's not, we still need 'index + 1' inside

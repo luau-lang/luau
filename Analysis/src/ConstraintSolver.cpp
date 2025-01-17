@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauUserTypeFunNoExtraConstraint)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAGVARIABLE(LuauAlwaysFillInFunctionCallDiscriminantTypes)
 
 namespace Luau
 {
@@ -1153,6 +1154,42 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     return true;
 }
 
+void ConstraintSolver::fillInDiscriminantTypes(
+    NotNull<const Constraint> constraint,
+    const std::vector<std::optional<TypeId>>& discriminantTypes
+)
+{
+    for (std::optional<TypeId> ty : discriminantTypes)
+    {
+        if (!ty)
+            continue;
+
+        // If the discriminant type has been transmuted, we need to unblock them.
+        if (!isBlocked(*ty))
+        {
+            unblock(*ty, constraint->location);
+            continue;
+        }
+
+        if (FFlag::LuauRemoveNotAnyHack)
+        {
+            // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
+        }
+        else
+        {
+            // We use `any` here because the discriminant type may be pointed at by both branches,
+            // where the discriminant type is not negated, and the other where it is negated, i.e.
+            // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
+            // v.s.
+            // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
+            //
+            // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
+            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
+        }
+    }
+}
+
 bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint)
 {
     TypeId fn = follow(c.fn);
@@ -1168,6 +1205,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     {
         emplaceTypePack<BoundTypePack>(asMutable(c.result), builtinTypes->anyTypePack);
         unblock(c.result, constraint->location);
+        if (FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes)
+            fillInDiscriminantTypes(constraint, c.discriminantTypes);
         return true;
     }
 
@@ -1175,12 +1214,16 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     if (get<ErrorType>(fn))
     {
         bind(constraint, c.result, builtinTypes->errorRecoveryTypePack());
+        if (FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes)
+            fillInDiscriminantTypes(constraint, c.discriminantTypes);
         return true;
     }
 
     if (get<NeverType>(fn))
     {
         bind(constraint, c.result, builtinTypes->neverTypePack);
+        if (FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes)
+            fillInDiscriminantTypes(constraint, c.discriminantTypes);
         return true;
     }
 
@@ -1261,35 +1304,44 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             emplace<FreeTypePack>(constraint, c.result, constraint->scope);
     }
 
-    for (std::optional<TypeId> ty : c.discriminantTypes)
+    if (FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes)
     {
-        if (!ty)
-            continue;
+        fillInDiscriminantTypes(constraint, c.discriminantTypes);
+    }
+    else
+    {
+        // NOTE: This is the body of the `fillInDiscriminantTypes` helper.
+        for (std::optional<TypeId> ty : c.discriminantTypes)
+        {
+            if (!ty)
+                continue;
 
-        // If the discriminant type has been transmuted, we need to unblock them.
-        if (!isBlocked(*ty))
-        {
-            unblock(*ty, constraint->location);
-            continue;
-        }
+            // If the discriminant type has been transmuted, we need to unblock them.
+            if (!isBlocked(*ty))
+            {
+                unblock(*ty, constraint->location);
+                continue;
+            }
 
-        if (FFlag::LuauRemoveNotAnyHack)
-        {
-            // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
-            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
-        }
-        else
-        {
-            // We use `any` here because the discriminant type may be pointed at by both branches,
-            // where the discriminant type is not negated, and the other where it is negated, i.e.
-            // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
-            // v.s.
-            // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
-            //
-            // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
-            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
+            if (FFlag::LuauRemoveNotAnyHack)
+            {
+                // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+                emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
+            }
+            else
+            {
+                // We use `any` here because the discriminant type may be pointed at by both branches,
+                // where the discriminant type is not negated, and the other where it is negated, i.e.
+                // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
+                // v.s.
+                // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
+                //
+                // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
+                emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
+            }
         }
     }
+
 
     OverloadResolver resolver{
         builtinTypes,

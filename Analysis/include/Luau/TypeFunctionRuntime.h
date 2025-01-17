@@ -119,7 +119,14 @@ struct TypeFunctionVariadicTypePack
     TypeFunctionTypeId type;
 };
 
-using TypeFunctionTypePackVariant = Variant<TypeFunctionTypePack, TypeFunctionVariadicTypePack>;
+struct TypeFunctionGenericTypePack
+{
+    bool isNamed = false;
+
+    std::string name;
+};
+
+using TypeFunctionTypePackVariant = Variant<TypeFunctionTypePack, TypeFunctionVariadicTypePack, TypeFunctionGenericTypePack>;
 
 struct TypeFunctionTypePackVar
 {
@@ -135,6 +142,9 @@ struct TypeFunctionTypePackVar
 
 struct TypeFunctionFunctionType
 {
+    std::vector<TypeFunctionTypeId> generics;
+    std::vector<TypeFunctionTypePackId> genericPacks;
+
     TypeFunctionTypePackId argTypes;
     TypeFunctionTypePackId retTypes;
 };
@@ -210,6 +220,14 @@ struct TypeFunctionClassType
     std::string name;
 };
 
+struct TypeFunctionGenericType
+{
+    bool isNamed = false;
+    bool isPack = false;
+
+    std::string name;
+};
+
 using TypeFunctionTypeVariant = Luau::Variant<
     TypeFunctionPrimitiveType,
     TypeFunctionAnyType,
@@ -221,7 +239,8 @@ using TypeFunctionTypeVariant = Luau::Variant<
     TypeFunctionNegationType,
     TypeFunctionFunctionType,
     TypeFunctionTableType,
-    TypeFunctionClassType>;
+    TypeFunctionClassType,
+    TypeFunctionGenericType>;
 
 struct TypeFunctionType
 {

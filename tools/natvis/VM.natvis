@@ -77,7 +77,7 @@
     <DisplayString Condition="key.tt == lua_Type::LUA_TNIL &amp;&amp; val.tt == 0">---</DisplayString>
   </Type>
 
-  <Type Name="Table">
+  <Type Name="LuaTable">
     <DisplayString>table</DisplayString>
     <Expand>
       <Item Name="metatable" Condition="metatable">metatable</Item>
