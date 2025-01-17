@@ -988,7 +988,6 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauVectorDefinitions{FFlag::LuauVectorDefinitions, true};
     ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
     ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, false}; // waiting for math.lerp to be added to embedded type definitions
 
