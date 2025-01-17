@@ -2,6 +2,7 @@
 #include "Luau/CodeBlockUnwind.h"
 
 #include "Luau/CodeAllocator.h"
+#include "Luau/CodeGenCommon.h"
 #include "Luau/UnwindBuilder.h"
 
 #include <string.h>

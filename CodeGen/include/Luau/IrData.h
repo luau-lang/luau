@@ -20,6 +20,8 @@ namespace Luau
 namespace CodeGen
 {
 
+struct LoweringStats;
+
 // IR extensions to LuauBuiltinFunction enum (these only exist inside IR, and start from 256 to avoid collisions)
 enum
 {
@@ -67,18 +69,18 @@ enum class IrCmd : uint8_t
     LOAD_ENV,
 
     // Get pointer (TValue) to table array at index
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: int
     GET_ARR_ADDR,
 
     // Get pointer (LuaNode) to table node element at the active cached slot index
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: unsigned int (pcpos)
     // C: Kn
     GET_SLOT_NODE_ADDR,
 
     // Get pointer (LuaNode) to table node element at the main position of the specified key hash
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: unsigned int (hash)
     GET_HASH_NODE_ADDR,
 
@@ -273,7 +275,7 @@ enum class IrCmd : uint8_t
     JUMP_SLOT_MATCH,
 
     // Get table length
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     TABLE_LEN,
 
     // Get string length
@@ -286,11 +288,11 @@ enum class IrCmd : uint8_t
     NEW_TABLE,
 
     // Duplicate a table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     DUP_TABLE,
 
     // Insert an integer key into a table and return the pointer to inserted value (TValue)
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: int (key)
     TABLE_SETNUM,
 
@@ -430,13 +432,13 @@ enum class IrCmd : uint8_t
     CHECK_TRUTHY,
 
     // Guard against readonly table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_READONLY,
 
     // Guard against table having a metatable
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NO_METATABLE,
@@ -447,7 +449,7 @@ enum class IrCmd : uint8_t
     CHECK_SAFE_ENV,
 
     // Guard against index overflowing the table array size
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: int (index)
     // C: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
@@ -503,11 +505,11 @@ enum class IrCmd : uint8_t
     BARRIER_OBJ,
 
     // Handle GC write barrier (backwards) for a write into a table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     BARRIER_TABLE_BACK,
 
     // Handle GC write barrier (forward) for a write into a table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: Rn (TValue that was written to the object)
     // C: tag/undef (tag of the value that was written)
     BARRIER_TABLE_FORWARD,
@@ -1048,6 +1050,8 @@ struct IrFunction
     bool variadic = false;
 
     CfgInfo cfg;
+
+    LoweringStats* stats = nullptr;
 
     IrBlock& blockOp(IrOp op)
     {

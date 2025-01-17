@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrUtils.h"
 
+#include "Luau/CodeGenOptions.h"
 #include "Luau/IrBuilder.h"
 
 #include "BitUtils.h"

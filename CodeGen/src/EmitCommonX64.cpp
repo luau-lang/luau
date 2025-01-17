@@ -120,12 +120,12 @@ void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, Regist
     CODEGEN_ASSERT(tmp != node);
     CODEGEN_ASSERT(table != node);
 
-    build.mov(node, qword[table + offsetof(Table, node)]);
+    build.mov(node, qword[table + offsetof(LuaTable, node)]);
 
     // compute cached slot
     build.mov(tmp, sCode);
     build.movzx(dwordReg(tmp), byte[tmp + pcpos * sizeof(Instruction) + kOffsetOfInstructionC]);
-    build.and_(byteReg(tmp), byte[table + offsetof(Table, nodemask8)]);
+    build.and_(byteReg(tmp), byte[table + offsetof(LuaTable, nodemask8)]);
 
     // LuaNode* n = &h->node[slot];
     build.shl(dwordReg(tmp), kLuaNodeSizeLog2);
@@ -282,7 +282,7 @@ void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, Regist
         IrCallWrapperX64 callWrap(regs, build);
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::qword, table, tableOp);
-        callWrap.addArgument(SizeX64::qword, addr[table + offsetof(Table, gclist)]);
+        callWrap.addArgument(SizeX64::qword, addr[table + offsetof(LuaTable, gclist)]);
         callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierback)]);
     }
 

@@ -101,7 +101,7 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
         const TValue* tm;
         if (ttistable(t))
         { // `t' is a table?
-            Table* h = hvalue(t);
+            LuaTable* h = hvalue(t);
 
             const TValue* res = luaH_get(h, key); // do a primitive get
 
@@ -137,7 +137,7 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
         const TValue* tm;
         if (ttistable(t))
         { // `t' is a table?
-            Table* h = hvalue(t);
+            LuaTable* h = hvalue(t);
 
             const TValue* oldval = luaH_get(h, key);
 
@@ -185,7 +185,7 @@ static int call_binTM(lua_State* L, const TValue* p1, const TValue* p2, StkId re
     return 1;
 }
 
-static const TValue* get_compTM(lua_State* L, Table* mt1, Table* mt2, TMS event)
+static const TValue* get_compTM(lua_State* L, LuaTable* mt1, LuaTable* mt2, TMS event)
 {
     const TValue* tm1 = fasttm(L, mt1, event);
     const TValue* tm2;
@@ -533,7 +533,7 @@ void luaV_dolen(lua_State* L, StkId ra, const TValue* rb)
     {
     case LUA_TTABLE:
     {
-        Table* h = hvalue(rb);
+        LuaTable* h = hvalue(rb);
         if ((tm = fasttm(L, h->metatable, TM_LEN)) == NULL)
         {
             setnvalue(ra, cast_num(luaH_getn(h)));

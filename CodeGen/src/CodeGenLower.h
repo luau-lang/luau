@@ -7,6 +7,7 @@
 #include "Luau/IrBuilder.h"
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
+#include "Luau/LoweringStats.h"
 #include "Luau/OptimizeConstProp.h"
 #include "Luau/OptimizeDeadStore.h"
 #include "Luau/OptimizeFinalX64.h"
@@ -24,6 +25,7 @@
 LUAU_FASTFLAG(DebugCodegenNoOpt)
 LUAU_FASTFLAG(DebugCodegenOptSize)
 LUAU_FASTFLAG(DebugCodegenSkipNumbering)
+LUAU_FASTFLAG(CodegenWiderLoweringStats)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
@@ -298,6 +300,9 @@ inline bool lowerFunction(
     CodeGenCompilationResult& codeGenCompilationResult
 )
 {
+    if (FFlag::CodegenWiderLoweringStats)
+        ir.function.stats = stats;
+
     killUnusedBlocks(ir.function);
 
     unsigned preOptBlockCount = 0;

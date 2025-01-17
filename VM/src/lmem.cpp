@@ -121,7 +121,7 @@ static_assert(sizeof(LuaNode) == ABISWITCH(32, 32, 32), "size mismatch for table
 
 static_assert(offsetof(TString, data) == ABISWITCH(24, 20, 20), "size mismatch for string header");
 static_assert(offsetof(Udata, data) == ABISWITCH(16, 16, 12), "size mismatch for userdata header");
-static_assert(sizeof(Table) == ABISWITCH(48, 32, 32), "size mismatch for table header");
+static_assert(sizeof(LuaTable) == ABISWITCH(48, 32, 32), "size mismatch for table header");
 static_assert(offsetof(Buffer, data) == ABISWITCH(8, 8, 8), "size mismatch for buffer header");
 
 const size_t kSizeClasses = LUA_SIZECLASSES;

@@ -2,7 +2,7 @@
 #include "Luau/BytecodeAnalysis.h"
 
 #include "Luau/BytecodeUtils.h"
-#include "Luau/CodeGen.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
