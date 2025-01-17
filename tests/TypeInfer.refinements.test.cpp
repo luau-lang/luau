@@ -451,10 +451,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
-    CHECK(Location{{ 7, 18}, {7, 19}} == result.errors[0].location);
+    CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
 
     CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
-    CHECK(Location{{ 13, 18}, {13, 19}} == result.errors[1].location);
+    CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
@@ -742,11 +742,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
     if (FFlag::LuauSolverV2)
     {
         // CLI-115281 Types produced by refinements do not consistently get simplified
-        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
-        CHECK_EQ("(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24}))); // type(v) == "nil"
+        CHECK_EQ(
+            "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))
+        ); // type(v) ~= "nil"
 
-        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
-        CHECK_EQ("(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({10, 24}))); // equivalent to type(v) == "nil"
+        CHECK_EQ(
+            "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))
+        ); // equivalent to type(v) ~= "nil"
     }
     else
     {

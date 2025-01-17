@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <math.h>
 
+#include <algorithm>
 #include <array>
 #include <utility>
 #include <vector>
@@ -18,9 +19,11 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
+LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauVectorLibNativeDot);
-LUAU_FASTFLAGVARIABLE(LuauCodeGenArithOpt);
+LUAU_FASTFLAG(LuauVectorLibNativeDot)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenArithOpt)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenLimitLiveSlotReuse)
 
 namespace Luau
 {
@@ -48,6 +51,14 @@ struct RegisterLink
 {
     uint8_t reg = 0;
     uint32_t version = 0;
+};
+
+// Reference to an instruction together with the position of that instruction in the current block chain and the last position of reuse
+struct NumberedInstruction
+{
+    uint32_t instIdx = 0;
+    uint32_t startPos = 0;
+    uint32_t finishPos = 0;
 };
 
 // Data we know about the current VM state
@@ -190,7 +201,11 @@ struct ConstPropState
     // Same goes for table array elements as well
     void invalidateHeapTableData()
     {
-        getSlotNodeCache.clear();
+        if (FFlag::LuauCodeGenLimitLiveSlotReuse)
+            getSlotNodeCache.clear();
+        else
+            getSlotNodeCache_DEPRECATED.clear();
+
         checkSlotMatchCache.clear();
 
         getArrAddrCache.clear();
@@ -409,12 +424,73 @@ struct ConstPropState
         valueMap[versionedVmRegLoad(loadCmd, storeInst.a)] = storeInst.b.index;
     }
 
+    // Used to compute the pressure of the cached value 'set' on the spill registers
+    // We want to find out the maximum live range intersection count between the cached value at 'slot' and current instruction
+    // Note that this pressure is approximate, as some values that might have been live at one point could have been marked dead later
+    int getMaxInternalOverlap(std::vector<NumberedInstruction>& set, size_t slot)
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodeGenLimitLiveSlotReuse);
+
+        // Start with one live range for the slot we want to reuse
+        int curr = 1;
+
+        // For any slots where lifetime began before the slot of interest, mark as live if lifetime end is still active
+        // This saves us from processing slots [0; slot] in the range sweep later, which requires sorting the lifetime end points
+        for (size_t i = 0; i < slot; i++)
+        {
+            if (set[i].finishPos >= set[slot].startPos)
+                curr++;
+        }
+
+        int max = curr;
+
+        // Collect lifetime end points and sort them
+        rangeEndTemp.clear();
+
+        for (size_t i = slot + 1; i < set.size(); i++)
+            rangeEndTemp.push_back(set[i].finishPos);
+
+        std::sort(rangeEndTemp.begin(), rangeEndTemp.end());
+
+        // Go over the lifetime begin/end ranges that we store as separate array and walk based on the smallest of values
+        for (size_t i1 = slot + 1, i2 = 0; i1 < set.size() && i2 < rangeEndTemp.size();)
+        {
+            if (rangeEndTemp[i2] == set[i1].startPos)
+            {
+                i1++;
+                i2++;
+            }
+            else if (rangeEndTemp[i2] < set[i1].startPos)
+            {
+                CODEGEN_ASSERT(curr > 0);
+
+                curr--;
+                i2++;
+            }
+            else
+            {
+                curr++;
+                i1++;
+
+                if (curr > max)
+                    max = curr;
+            }
+        }
+
+        // We might have unprocessed lifetime end entries, but we will never have unprocessed lifetime start entries
+        // Not that lifetime end entries can only decrease the current value and do not affect the end result (maximum)
+        return max;
+    }
+
     void clear()
     {
         for (int i = 0; i <= maxReg; ++i)
             regs[i] = RegisterInfo();
 
         maxReg = 0;
+
+        if (FFlag::LuauCodeGenLimitLiveSlotReuse)
+            instPos = 0u;
 
         inSafeEnv = false;
         checkedGc = false;
@@ -436,6 +512,9 @@ struct ConstPropState
     // For range/full invalidations, we only want to visit a limited number of data that we have recorded
     int maxReg = 0;
 
+    // Number of the instruction being processed
+    uint32_t instPos = 0;
+
     bool inSafeEnv = false;
     bool checkedGc = false;
 
@@ -447,7 +526,8 @@ struct ConstPropState
     std::vector<uint32_t> tryNumToIndexCache; // Fallback block argument might be different
 
     // Heap changes might affect table state
-    std::vector<uint32_t> getSlotNodeCache;    // Additionally, pcpos argument might be different
+    std::vector<NumberedInstruction> getSlotNodeCache; // Additionally, pcpos argument might be different
+    std::vector<uint32_t> getSlotNodeCache_DEPRECATED; // Additionally, pcpos argument might be different
     std::vector<uint32_t> checkSlotMatchCache; // Additionally, fallback block argument might be different
 
     std::vector<uint32_t> getArrAddrCache;
@@ -457,6 +537,8 @@ struct ConstPropState
 
     // Userdata tag cache can point to both NEW_USERDATA and CHECK_USERDATA_TAG instructions
     std::vector<uint32_t> useradataTagCache; // Additionally, fallback block argument might be different
+
+    std::vector<uint32_t> rangeEndTemp;
 };
 
 static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid, uint32_t firstReturnReg, int nresults)
@@ -550,6 +632,7 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_VECTOR_CLAMP:
     case LBF_VECTOR_MIN:
     case LBF_VECTOR_MAX:
+    case LBF_MATH_LERP:
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
@@ -569,6 +652,9 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
 
 static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction& function, IrBlock& block, IrInst& inst, uint32_t index)
 {
+    if (FFlag::LuauCodeGenLimitLiveSlotReuse)
+        state.instPos++;
+
     switch (inst.cmd)
     {
     case IrCmd::LOAD_TAG:
@@ -1175,19 +1261,49 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.getArrAddrCache.push_back(index);
         break;
     case IrCmd::GET_SLOT_NODE_ADDR:
-        for (uint32_t prevIdx : state.getSlotNodeCache)
+        if (FFlag::LuauCodeGenLimitLiveSlotReuse)
         {
-            const IrInst& prev = function.instructions[prevIdx];
-
-            if (prev.a == inst.a && prev.c == inst.c)
+            for (size_t i = 0; i < state.getSlotNodeCache.size(); i++)
             {
-                substitute(function, inst, IrOp{IrOpKind::Inst, prevIdx});
-                return; // Break out from both the loop and the switch
-            }
-        }
+                auto&& [prevIdx, num, lastNum] = state.getSlotNodeCache[i];
 
-        if (int(state.getSlotNodeCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
-            state.getSlotNodeCache.push_back(index);
+                const IrInst& prev = function.instructions[prevIdx];
+
+                if (prev.a == inst.a && prev.c == inst.c)
+                {
+                    // Check if this reuse will increase the overall register pressure over the limit
+                    int limit = FInt::LuauCodeGenLiveSlotReuseLimit;
+
+                    if (int(state.getSlotNodeCache.size()) > limit && state.getMaxInternalOverlap(state.getSlotNodeCache, i) > limit)
+                        return;
+
+                    // Update live range of the value from the optimization standpoint
+                    lastNum = state.instPos;
+
+                    substitute(function, inst, IrOp{IrOpKind::Inst, prevIdx});
+                    return; // Break out from both the loop and the switch
+                }
+            }
+
+            if (int(state.getSlotNodeCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
+                state.getSlotNodeCache.push_back({index, state.instPos, state.instPos});
+        }
+        else
+        {
+            for (uint32_t prevIdx : state.getSlotNodeCache_DEPRECATED)
+            {
+                const IrInst& prev = function.instructions[prevIdx];
+
+                if (prev.a == inst.a && prev.c == inst.c)
+                {
+                    substitute(function, inst, IrOp{IrOpKind::Inst, prevIdx});
+                    return; // Break out from both the loop and the switch
+                }
+            }
+
+            if (int(state.getSlotNodeCache_DEPRECATED.size()) < FInt::LuauCodeGenReuseSlotLimit)
+                state.getSlotNodeCache_DEPRECATED.push_back(index);
+        }
         break;
     case IrCmd::GET_HASH_NODE_ADDR:
     case IrCmd::GET_CLOSURE_UPVAL_ADDR:
@@ -1266,6 +1382,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SQRT_NUM:
     case IrCmd::ABS_NUM:
     case IrCmd::SIGN_NUM:
+    case IrCmd::SELECT_NUM:
     case IrCmd::NOT_ANY:
         state.substituteOrRecord(inst, index);
         break;

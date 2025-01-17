@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "FileUtils.h"
+#include "Luau/FileUtils.h"
 
 #include "Luau/Common.h"
 
@@ -147,7 +147,7 @@ std::string resolvePath(std::string_view path, std::string_view baseFilePath)
             if (baseFilePathComponents.empty())
             {
                 if (isResolvedPathRelative)
-                    numPrependedParents++;      // "../" will later be added to the beginning of the resolved path
+                    numPrependedParents++; // "../" will later be added to the beginning of the resolved path
             }
             else if (baseFilePathComponents.back() != "..")
             {

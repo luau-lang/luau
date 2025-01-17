@@ -15,6 +15,12 @@ namespace Luau
 {
 struct FrontendOptions;
 
+enum class FragmentTypeCheckStatus
+{
+    Success,
+    SkipAutocomplete,
+};
+
 struct FragmentAutocompleteAncestryResult
 {
     DenseHashMap<AstName, AstLocal*> localMap{AstName()};
@@ -29,6 +35,7 @@ struct FragmentParseResult
     AstStatBlock* root = nullptr;
     std::vector<AstNode*> ancestry;
     AstStat* nearestStatement = nullptr;
+    std::vector<Comment> commentLocations;
     std::unique_ptr<Allocator> alloc = std::make_unique<Allocator>();
 };
 
@@ -56,7 +63,7 @@ FragmentParseResult parseFragment(
     std::optional<Position> fragmentEndPosition
 );
 
-FragmentTypeCheckResult typecheckFragment(
+std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     Frontend& frontend,
     const ModuleName& moduleName,
     const Position& cursorPos,

@@ -402,6 +402,23 @@ assert(math.map(4, 4, 1, 2, 0) == 2)
 assert(math.map(-8, 0, 4, 0, 2) == -4)
 assert(math.map(16, 0, 4, 0, 2) == 8)
 
+-- lerp basics
+assert(math.lerp(1, 5, 0) == 1)
+assert(math.lerp(1, 5, 1) == 5)
+assert(math.lerp(1, 5, 0.5) == 3)
+assert(math.lerp(1, 5, 1.5) == 7)
+assert(math.lerp(1, 5, -0.5) == -1)
+assert(math.lerp(1, 5, noinline(0.5)) == 3)
+
+-- lerp properties
+local sq2, sq3 = math.sqrt(2), math.sqrt(3)
+assert(math.lerp(sq2, sq3, 0) == sq2) -- exact at 0
+assert(math.lerp(sq2, sq3, 1) == sq3) -- exact at 1
+assert(math.lerp(-sq3, sq2, 1) == sq2) -- exact at 1 (fails for a + t*(b-a))
+assert(math.lerp(sq2, sq2, sq2 / 2) <= math.lerp(sq2, sq2, 1)) -- monotonic (fails for a*t + b*(1-t))
+assert(math.lerp(-sq3, sq2, 1) <= math.sqrt(2)) -- bounded (fails for a + t*(b-a))
+assert(math.lerp(sq2, sq2, sq2 / 2) == sq2) -- consistent (fails for a*t + b*(1-t))
+
 assert(tostring(math.pow(-2, 0.5)) == "nan")
 
 -- test that fastcalls return correct number of results
@@ -464,5 +481,6 @@ assert(math.sign("2") == 1)
 assert(math.sign("-2") == -1)
 assert(math.sign("0") == 0)
 assert(math.round("1.8") == 2)
+assert(math.lerp("1", "5", 0.5) == 3)
 
 return('OK')

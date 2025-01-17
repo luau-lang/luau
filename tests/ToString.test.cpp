@@ -211,8 +211,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
         CHECK(
             "t2 where "
             "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }" ==
-            a
+            "t2 = { @metatable t1, { x: number, y: number, z: number } }" == a
         );
     }
     else

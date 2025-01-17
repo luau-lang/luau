@@ -31,15 +31,15 @@
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverVisitErrorExprLvalues)
-LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunExportedAndLocal)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunNoExtraConstraint)
+LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
 
 LUAU_FASTFLAGVARIABLE(InferGlobalTypes)
 
@@ -233,8 +233,17 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     Checkpoint end = checkpoint(this);
 
     TypeId result = arena->addType(BlockedType{});
-    NotNull<Constraint> genConstraint =
-        addConstraint(scope, block->location, GeneralizationConstraint{result, moduleFnTy, std::move(interiorTypes.back())});
+    NotNull<Constraint> genConstraint = addConstraint(
+        scope,
+        block->location,
+        GeneralizationConstraint{
+            result, moduleFnTy, FFlag::LuauTrackInteriorFreeTypesOnScope ? std::vector<TypeId>{} : std::move(interiorTypes.back())
+        }
+    );
+
+    if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+        scope->interiorFreeTypes = std::move(interiorTypes.back());
+
     getMutable<BlockedType>(result)->setOwner(genConstraint);
     forEachConstraint(
         start,
@@ -303,9 +312,19 @@ void ConstraintGenerator::visitFragmentRoot(const ScopePtr& resumeScope, AstStat
     }
 }
 
+
 TypeId ConstraintGenerator::freshType(const ScopePtr& scope)
 {
-    return Luau::freshType(arena, builtinTypes, scope.get());
+    if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+    {
+        auto ft = Luau::freshType(arena, builtinTypes, scope.get());
+        interiorTypes.back().push_back(ft);
+        return ft;
+    }
+    else
+    {
+        return Luau::freshType(arena, builtinTypes, scope.get());
+    }
 }
 
 TypePackId ConstraintGenerator::freshTypePack(const ScopePtr& scope)
@@ -2408,8 +2427,17 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
     Checkpoint endCheckpoint = checkpoint(this);
 
     TypeId generalizedTy = arena->addType(BlockedType{});
-    NotNull<Constraint> gc =
-        addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature, std::move(interiorTypes.back())});
+    NotNull<Constraint> gc = addConstraint(
+        sig.signatureScope,
+        func->location,
+        GeneralizationConstraint{
+            generalizedTy, sig.signature, FFlag::LuauTrackInteriorFreeTypesOnScope ? std::vector<TypeId>{} : std::move(interiorTypes.back())
+        }
+    );
+
+    if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+        sig.signatureScope->interiorFreeTypes = std::move(interiorTypes.back());
+
     getMutable<BlockedType>(generalizedTy)->setOwner(gc);
     interiorTypes.pop_back();
 
@@ -2975,11 +3003,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                 ty,
                 expr,
                 toBlock
-                );
-                // The visitor we ran prior should ensure that there are no
-                // blocked types that we would encounter while matching on
-                // this expression.
-                LUAU_ASSERT(toBlock.empty());
+            );
+            // The visitor we ran prior should ensure that there are no
+            // blocked types that we would encounter while matching on
+            // this expression.
+            LUAU_ASSERT(toBlock.empty());
         }
     }
 
@@ -3941,20 +3969,7 @@ TypeId ConstraintGenerator::createTypeFunctionInstance(
 
 TypeId ConstraintGenerator::simplifyUnion(const ScopePtr& scope, Location location, TypeId left, TypeId right)
 {
-    if (FFlag::DebugLuauEqSatSimplification)
-    {
-        TypeId ty = arena->addType(UnionType{{left, right}});
-        std::optional<EqSatSimplificationResult> res = eqSatSimplify(simplifier, ty);
-        if (!res)
-            return ty;
-
-        for (TypeId tyFun : res->newTypeFunctions)
-            addConstraint(scope, location, ReduceConstraint{tyFun});
-
-        return res->result;
-    }
-    else
-        return ::Luau::simplifyUnion(builtinTypes, arena, left, right).result;
+    return ::Luau::simplifyUnion(builtinTypes, arena, left, right).result;
 }
 
 std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints)

@@ -464,7 +464,9 @@ public:
         , typeFunctionRuntime(state->ctx->typeFunctionRuntime)
         , queue({})
         , types({})
-        , packs({}){};
+        , packs({})
+    {
+    }
 
     TypeId deserialize(TypeFunctionTypeId ty)
     {

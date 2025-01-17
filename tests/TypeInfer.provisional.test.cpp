@@ -69,9 +69,9 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     const std::string expectedWithEqSat = R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean'then
-                local a1:never=a
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn()then
-                local a2:{fn:()->(unknown,...unknown)}=a
+                local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
             end
         end
     )";

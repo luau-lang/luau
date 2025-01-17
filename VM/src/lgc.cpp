@@ -442,7 +442,7 @@ static void shrinkstack(lua_State* L)
     condhardstacktests(luaD_reallocCI(L, ci_used + 1));
 
     if (3 * size_t(s_used) < size_t(L->stacksize) && 2 * (BASIC_STACK_SIZE + EXTRA_STACK) < L->stacksize)
-        luaD_reallocstack(L, L->stacksize / 2); // still big enough...
+        luaD_reallocstack(L, L->stacksize / 2, 0); // still big enough...
     condhardstacktests(luaD_reallocstack(L, s_used));
 }
 

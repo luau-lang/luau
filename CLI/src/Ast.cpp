@@ -8,7 +8,7 @@
 #include "Luau/ParseOptions.h"
 #include "Luau/ToString.h"
 
-#include "FileUtils.h"
+#include "Luau/FileUtils.h"
 
 static void displayHelp(const char* argv0)
 {

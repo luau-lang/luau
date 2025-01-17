@@ -2566,10 +2566,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDontRefCountTypesInTypeFunctions, true}};
 
     // CLI-114134: This test:
     // a) Has a kind of weird result (suggesting `number | false` is not great);

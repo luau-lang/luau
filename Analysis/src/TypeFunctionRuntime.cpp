@@ -14,6 +14,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixInner)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunThreadBuffer)
@@ -413,10 +414,21 @@ static int getNegatedValue(lua_State* L)
         luaL_error(L, "type.inner: expected 1 argument, but got %d", argumentCount);
 
     TypeFunctionTypeId self = getTypeUserData(L, 1);
-    if (auto tfnt = get<TypeFunctionNegationType>(self); !tfnt)
-        allocTypeUserData(L, tfnt->type->type);
+    
+    if (FFlag::LuauUserTypeFunFixInner)
+    {
+        if (auto tfnt = get<TypeFunctionNegationType>(self); tfnt)
+            allocTypeUserData(L, tfnt->type->type);
+        else
+            luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
+    }
     else
-        luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
+    {
+        if (auto tfnt = get<TypeFunctionNegationType>(self); !tfnt)
+            allocTypeUserData(L, tfnt->type->type);
+        else
+            luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
+    }
 
     return 1;
 }

@@ -63,4 +63,4 @@ void* Allocator::allocate(size_t size)
     return page->data;
 }
 
-}
+} // namespace Luau

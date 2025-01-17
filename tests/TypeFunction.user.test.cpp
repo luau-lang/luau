@@ -9,9 +9,9 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
+LUAU_FASTFLAG(LuauUserTypeFunFixInner)
 LUAU_FASTFLAG(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
 LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
 LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
 
@@ -473,6 +473,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
     TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
     REQUIRE(tpm);
     CHECK(toString(tpm->givenTp) == "~string");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_negation_inner")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUserTypeFunFixInner{FFlag::LuauUserTypeFunFixInner, true};
+
+    CheckResult result = check(R"(
+type function pass(t)
+    return types.negationof(t):inner()
+end
+
+type function fail(t)
+    return t:inner()
+end
+
+local function ok(idx: pass<number>): number return idx end
+local function notok(idx: fail<number>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"('fail' type function errored at runtime: [string "fail"]:7: type.inner: cannot call inner method on non-negation type: `number` type)");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
@@ -1309,7 +1331,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
-    ScopedFastFlag luauUserDefinedTypeFunParseExport{FFlag::LuauUserDefinedTypeFunParseExport, true};
 
     fileResolver.source["game/A"] = R"(
 export type function concat(a, b)

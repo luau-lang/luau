@@ -1624,7 +1624,8 @@ struct Compiler
                         return;
                     }
                 }
-                else if (FFlag::LuauCompileOptimizeRevArith && options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
+                else if (FFlag::LuauCompileOptimizeRevArith && options.optimizationLevel >= 2 &&
+                         (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
                 {
                     // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
                     if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
@@ -4408,7 +4409,7 @@ void setCompileConstantString(CompileConstant* constant, const char* s, size_t l
         CompileError::raise({}, "Exceeded custom string constant length limit");
 
     target->type = Compile::Constant::Type_String;
-    target->stringLength = l;
+    target->stringLength = unsigned(l);
     target->valueString = s;
 }
 

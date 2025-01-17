@@ -1709,10 +1709,7 @@ TEST_CASE_FIXTURE(Fixture, "react_lua_follow_free_type_ub")
 
 TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNewSolverVisitErrorExprLvalues, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNewSolverVisitErrorExprLvalues, true}};
 
     // This should always fail to parse, but shouldn't assert. Previously this
     // would assert as we end up _roughly_ parsing this (with a lot of error
@@ -1734,10 +1731,7 @@ TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDontRefCountTypesInTypeFunctions, true}};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         --!strict
@@ -1750,10 +1744,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 
 TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDontRefCountTypesInTypeFunctions, true}};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         --!strict
