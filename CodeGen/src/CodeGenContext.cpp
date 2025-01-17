@@ -5,6 +5,7 @@
 #include "CodeGenLower.h"
 #include "CodeGenX64.h"
 
+#include "Luau/CodeGenCommon.h"
 #include "Luau/CodeBlockUnwind.h"
 #include "Luau/UnwindBuilder.h"
 #include "Luau/UnwindBuilderDwarf2.h"

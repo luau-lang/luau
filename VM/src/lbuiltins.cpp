@@ -1000,7 +1000,7 @@ static int luauF_rawset(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
         else if (ttisvector(key) && luai_vecisnan(vvalue(key)))
             return -1;
 
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         if (t->readonly)
             return -1;
 
@@ -1017,7 +1017,7 @@ static int luauF_tinsert(lua_State* L, StkId res, TValue* arg0, int nresults, St
 {
     if (nparams == 2 && nresults <= 0 && ttistable(arg0))
     {
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         if (t->readonly)
             return -1;
 
@@ -1034,7 +1034,7 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 {
     if (nparams >= 1 && nresults < 0 && ttistable(arg0))
     {
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         int n = -1;
 
         if (nparams == 1)
@@ -1196,7 +1196,7 @@ static int luauF_rawlen(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
     {
         if (ttistable(arg0))
         {
-            Table* h = hvalue(arg0);
+            LuaTable* h = hvalue(arg0);
             setnvalue(res, double(luaH_getn(h)));
             return 1;
         }
@@ -1240,7 +1240,7 @@ static int luauF_getmetatable(lua_State* L, StkId res, TValue* arg0, int nresult
 {
     if (nparams >= 1 && nresults <= 1)
     {
-        Table* mt = NULL;
+        LuaTable* mt = NULL;
         if (ttistable(arg0))
             mt = hvalue(arg0)->metatable;
         else if (ttisuserdata(arg0))
@@ -1275,11 +1275,11 @@ static int luauF_setmetatable(lua_State* L, StkId res, TValue* arg0, int nresult
     // note: setmetatable(_, nil) is rare so we use fallback for it to optimize the fast path
     if (nparams >= 2 && nresults <= 1 && ttistable(arg0) && ttistable(args))
     {
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         if (t->readonly || t->metatable != NULL)
             return -1; // note: overwriting non-null metatable is very rare but it requires __metatable check
 
-        Table* mt = hvalue(args);
+        LuaTable* mt = hvalue(args);
         t->metatable = mt;
         luaC_objbarrier(L, t, mt);
 

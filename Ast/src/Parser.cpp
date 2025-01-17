@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauAllowFragmentParsing)
 LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForClassNames)
+LUAU_FASTFLAGVARIABLE(LuauFixFunctionNameStartPosition)
 
 namespace Luau
 {
@@ -638,7 +639,7 @@ AstStat* Parser::parseFor()
 }
 
 // funcname ::= Name {`.' Name} [`:' Name]
-AstExpr* Parser::parseFunctionName(Location start, bool& hasself, AstName& debugname)
+AstExpr* Parser::parseFunctionName(Location start_DEPRECATED, bool& hasself, AstName& debugname)
 {
     if (lexer.current().type == Lexeme::Name)
         debugname = AstName(lexer.current().name);
@@ -658,7 +659,9 @@ AstExpr* Parser::parseFunctionName(Location start, bool& hasself, AstName& debug
         // while we could concatenate the name chain, for now let's just write the short name
         debugname = name.name;
 
-        expr = allocator.alloc<AstExprIndexName>(Location(start, name.location), expr, name.name, name.location, opPosition, '.');
+        expr = allocator.alloc<AstExprIndexName>(
+            Location(FFlag::LuauFixFunctionNameStartPosition ? expr->location : start_DEPRECATED, name.location), expr, name.name, name.location, opPosition, '.'
+        );
 
         // note: while the parser isn't recursive here, we're generating recursive structures of unbounded depth
         incrementRecursionCounter("function name");
@@ -677,7 +680,9 @@ AstExpr* Parser::parseFunctionName(Location start, bool& hasself, AstName& debug
         // while we could concatenate the name chain, for now let's just write the short name
         debugname = name.name;
 
-        expr = allocator.alloc<AstExprIndexName>(Location(start, name.location), expr, name.name, name.location, opPosition, ':');
+        expr = allocator.alloc<AstExprIndexName>(
+            Location(FFlag::LuauFixFunctionNameStartPosition ? expr->location : start_DEPRECATED, name.location), expr, name.name, name.location, opPosition, ':'
+        );
 
         hasself = true;
     }

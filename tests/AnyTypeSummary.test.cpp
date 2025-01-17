@@ -19,6 +19,8 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAG(LuauAlwaysFillInFunctionCallDiscriminantTypes)
+LUAU_FASTFLAG(LuauRemoveNotAnyHack)
 
 
 struct ATSFixture : BuiltinsFixture
@@ -410,6 +412,8 @@ TEST_CASE_FIXTURE(ATSFixture, "CannotExtendTable")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
+        {FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes, true},
+        {FFlag::LuauRemoveNotAnyHack, true},
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -425,7 +429,7 @@ end
 )";
 
     CheckResult result1 = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(3, result1);
+    LUAU_REQUIRE_ERROR_COUNT(1, result1);
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
 
@@ -502,6 +506,8 @@ TEST_CASE_FIXTURE(ATSFixture, "racing_collision_2")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
+        {FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes, true},
+        {FFlag::LuauRemoveNotAnyHack, true},
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -565,7 +571,7 @@ initialize()
 )";
 
     CheckResult result1 = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(5, result1);
+    LUAU_REQUIRE_ERROR_COUNT(3, result1);
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
 

@@ -330,7 +330,7 @@ reentry:
                 LUAU_ASSERT(ttisstring(kv));
 
                 // fast-path: value is in expected slot
-                Table* h = cl->env;
+                LuaTable* h = cl->env;
                 int slot = LUAU_INSN_C(insn) & h->nodemask8;
                 LuaNode* n = &h->node[slot];
 
@@ -361,7 +361,7 @@ reentry:
                 LUAU_ASSERT(ttisstring(kv));
 
                 // fast-path: value is in expected slot
-                Table* h = cl->env;
+                LuaTable* h = cl->env;
                 int slot = LUAU_INSN_C(insn) & h->nodemask8;
                 LuaNode* n = &h->node[slot];
 
@@ -451,7 +451,7 @@ reentry:
                 // fast-path: built-in table
                 if (LUAU_LIKELY(ttistable(rb)))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     int slot = LUAU_INSN_C(insn) & h->nodemask8;
                     LuaNode* n = &h->node[slot];
@@ -568,7 +568,7 @@ reentry:
                 // fast-path: built-in table
                 if (LUAU_LIKELY(ttistable(rb)))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     int slot = LUAU_INSN_C(insn) & h->nodemask8;
                     LuaNode* n = &h->node[slot];
@@ -642,7 +642,7 @@ reentry:
                 // fast-path: array lookup
                 if (ttistable(rb) && ttisnumber(rc))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     double indexd = nvalue(rc);
                     int index = int(indexd);
@@ -672,7 +672,7 @@ reentry:
                 // fast-path: array assign
                 if (ttistable(rb) && ttisnumber(rc))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     double indexd = nvalue(rc);
                     int index = int(indexd);
@@ -703,7 +703,7 @@ reentry:
                 // fast-path: array lookup
                 if (ttistable(rb))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     if (LUAU_LIKELY(unsigned(c) < unsigned(h->sizearray) && !h->metatable))
                     {
@@ -731,7 +731,7 @@ reentry:
                 // fast-path: array assign
                 if (ttistable(rb))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     if (LUAU_LIKELY(unsigned(c) < unsigned(h->sizearray) && !h->metatable && !h->readonly))
                     {
@@ -804,7 +804,7 @@ reentry:
 
                 if (LUAU_LIKELY(ttistable(rb)))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
                     // note: we can't use nodemask8 here because we need to query the main position of the table, and 8-bit nodemask8 only works
                     // for predictive lookups
                     LuaNode* n = &h->node[tsvalue(kv)->hash & (sizenode(h) - 1)];
@@ -844,7 +844,7 @@ reentry:
                 }
                 else
                 {
-                    Table* mt = ttisuserdata(rb) ? uvalue(rb)->metatable : L->global->mt[ttype(rb)];
+                    LuaTable* mt = ttisuserdata(rb) ? uvalue(rb)->metatable : L->global->mt[ttype(rb)];
                     const TValue* tmi = 0;
 
                     // fast-path: metatable with __namecall
@@ -858,7 +858,7 @@ reentry:
                     }
                     else if ((tmi = fasttm(L, mt, TM_INDEX)) && ttistable(tmi))
                     {
-                        Table* h = hvalue(tmi);
+                        LuaTable* h = hvalue(tmi);
                         int slot = LUAU_INSN_C(insn) & h->nodemask8;
                         LuaNode* n = &h->node[slot];
 
@@ -2126,7 +2126,7 @@ reentry:
                 // fast-path #1: tables
                 if (LUAU_LIKELY(ttistable(rb)))
                 {
-                    Table* h = hvalue(rb);
+                    LuaTable* h = hvalue(rb);
 
                     if (fastnotm(h->metatable, TM_LEN))
                     {
@@ -2196,7 +2196,7 @@ reentry:
                     L->top = L->ci->top;
                 }
 
-                Table* h = hvalue(ra);
+                LuaTable* h = hvalue(ra);
 
                 // TODO: we really don't need this anymore
                 if (!ttistable(ra))
@@ -2281,7 +2281,7 @@ reentry:
                 }
                 else
                 {
-                    Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
+                    LuaTable* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(LuaTable*, NULL);
 
                     if (const TValue* fn = fasttm(L, mt, TM_ITER))
                     {
@@ -2340,7 +2340,7 @@ reentry:
                 // TODO: remove the table check per guarantee above
                 if (ttisnil(ra) && ttistable(ra + 1))
                 {
-                    Table* h = hvalue(ra + 1);
+                    LuaTable* h = hvalue(ra + 1);
                     int index = int(reinterpret_cast<uintptr_t>(pvalue(ra + 2)));
 
                     int sizearray = h->sizearray;

@@ -78,6 +78,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/CodeBlockUnwind.h
     CodeGen/include/Luau/CodeGen.h
     CodeGen/include/Luau/CodeGenCommon.h
+    CodeGen/include/Luau/CodeGenOptions.h
     CodeGen/include/Luau/ConditionA64.h
     CodeGen/include/Luau/ConditionX64.h
     CodeGen/include/Luau/IrAnalysis.h
@@ -89,6 +90,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/IrVisitUseDef.h
     CodeGen/include/Luau/Label.h
+    CodeGen/include/Luau/LoweringStats.h
     CodeGen/include/Luau/NativeProtoExecData.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/OptimizeConstProp.h

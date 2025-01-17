@@ -244,7 +244,7 @@ static void reallymarkobject(global_State* g, GCObject* o)
     }
     case LUA_TUSERDATA:
     {
-        Table* mt = gco2u(o)->metatable;
+        LuaTable* mt = gco2u(o)->metatable;
         gray2black(o); // udata are never gray
         if (mt)
             markobject(g, mt);
@@ -292,7 +292,7 @@ static void reallymarkobject(global_State* g, GCObject* o)
     }
 }
 
-static const char* gettablemode(global_State* g, Table* h)
+static const char* gettablemode(global_State* g, LuaTable* h)
 {
     const TValue* mode = gfasttm(g, h->metatable, TM_MODE);
 
@@ -302,13 +302,13 @@ static const char* gettablemode(global_State* g, Table* h)
     return NULL;
 }
 
-static int traversetable(global_State* g, Table* h)
+static int traversetable(global_State* g, LuaTable* h)
 {
     int i;
     int weakkey = 0;
     int weakvalue = 0;
     if (h->metatable)
-        markobject(g, cast_to(Table*, h->metatable));
+        markobject(g, cast_to(LuaTable*, h->metatable));
 
     // is there a weak mode?
     if (const char* modev = gettablemode(g, h))
@@ -459,11 +459,11 @@ static size_t propagatemark(global_State* g)
     {
     case LUA_TTABLE:
     {
-        Table* h = gco2h(o);
+        LuaTable* h = gco2h(o);
         g->gray = h->gclist;
         if (traversetable(g, h)) // table is weak?
             black2gray(o);       // keep it gray
-        return sizeof(Table) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
+        return sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
     }
     case LUA_TFUNCTION:
     {
@@ -553,8 +553,8 @@ static size_t cleartable(lua_State* L, GCObject* l)
     size_t work = 0;
     while (l)
     {
-        Table* h = gco2h(l);
-        work += sizeof(Table) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
+        LuaTable* h = gco2h(l);
+        work += sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
 
         int i = h->sizearray;
         while (i--)
@@ -1155,7 +1155,7 @@ void luaC_barrierf(lua_State* L, GCObject* o, GCObject* v)
         makewhite(g, o);        // mark as white just to avoid other barriers
 }
 
-void luaC_barriertable(lua_State* L, Table* t, GCObject* v)
+void luaC_barriertable(lua_State* L, LuaTable* t, GCObject* v)
 {
     global_State* g = L->global;
     GCObject* o = obj2gco(t);

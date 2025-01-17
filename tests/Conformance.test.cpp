@@ -40,8 +40,9 @@ LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_FASTFLAG(LuauVectorMetatable)
 LUAU_FASTFLAG(LuauVector2Constructor)
-LUAU_FASTFLAG(LuauBufferBitMethods)
+LUAU_FASTFLAG(LuauBufferBitMethods2)
 LUAU_FASTFLAG(LuauCodeGenLimitLiveSlotReuse)
+LUAU_FASTFLAG(LuauMathMapDefinition)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -655,7 +656,7 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
-    ScopedFastFlag luauBufferBitMethods{FFlag::LuauBufferBitMethods, true};
+    ScopedFastFlag luauBufferBitMethods{FFlag::LuauBufferBitMethods2, true};
 
     runConformance("buffers.lua");
 }
@@ -989,7 +990,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 TEST_CASE("Types")
 {
     ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
-    ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, false}; // waiting for math.lerp to be added to embedded type definitions
+    ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, true};
+    ScopedFastFlag luauMathMapDefinition{FFlag::LuauMathMapDefinition, true};
 
     runConformance(
         "types.lua",

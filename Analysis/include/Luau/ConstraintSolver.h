@@ -420,6 +420,11 @@ public:
     void throwUserCancelError() const;
 
     ToStringOptions opts;
+
+    void fillInDiscriminantTypes(
+        NotNull<const Constraint> constraint,
+        const std::vector<std::optional<TypeId>>& discriminantTypes
+    );
 };
 
 void dump(NotNull<Scope> rootScope, struct ToStringOptions& opts);

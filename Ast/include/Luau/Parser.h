@@ -116,7 +116,7 @@ private:
     AstStat* parseFor();
 
     // funcname ::= Name {`.' Name} [`:' Name]
-    AstExpr* parseFunctionName(Location start, bool& hasself, AstName& debugname);
+    AstExpr* parseFunctionName(Location start_DEPRECATED, bool& hasself, AstName& debugname);
 
     // function funcname funcbody
     LUAU_FORCEINLINE AstStat* parseFunctionStat(const AstArray<AstAttr*>& attributes = {nullptr, 0});

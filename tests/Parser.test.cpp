@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryForClassNames)
+LUAU_FASTFLAG(LuauFixFunctionNameStartPosition)
 
 namespace
 {
@@ -3741,6 +3742,28 @@ TEST_CASE_FIXTURE(Fixture, "recover_from_bad_table_type")
         opts
     );
     CHECK_EQ(result.errors.size(), 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_name_has_correct_start_location")
+{
+    ScopedFastFlag _{FFlag::LuauFixFunctionNameStartPosition, true};
+    AstStatBlock* block = parse(R"(
+        function simple()
+        end
+
+        function T:complex()
+        end
+    )");
+
+    REQUIRE_EQ(2, block->body.size);
+
+    const auto function1 = block->body.data[0]->as<AstStatFunction>();
+    LUAU_ASSERT(function1);
+    CHECK_EQ(Position{1, 17}, function1->name->location.begin);
+
+    const auto function2 = block->body.data[1]->as<AstStatFunction>();
+    LUAU_ASSERT(function2);
+    CHECK_EQ(Position{4, 17}, function2->name->location.begin);
 }
 
 

@@ -10,7 +10,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBufferBitMethods)
+LUAU_FASTFLAGVARIABLE(LuauBufferBitMethods2)
 
 // while C API returns 'size_t' for binary compatibility in case of future extensions,
 // in the current implementation, length and offset are limited to 31 bits
@@ -370,7 +370,7 @@ static const luaL_Reg bufferlib[] = {
 
 int luaopen_buffer(lua_State* L)
 {
-    luaL_register(L, LUA_BUFFERLIBNAME, FFlag::LuauBufferBitMethods ? bufferlib : bufferlib_DEPRECATED);
+    luaL_register(L, LUA_BUFFERLIBNAME, FFlag::LuauBufferBitMethods2 ? bufferlib : bufferlib_DEPRECATED);
 
     return 1;
 }
