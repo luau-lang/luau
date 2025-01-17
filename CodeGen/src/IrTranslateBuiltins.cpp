@@ -15,6 +15,7 @@ static const int kBit32BinaryOpUnrolledParams = 5;
 
 LUAU_FASTFLAGVARIABLE(LuauVectorLibNativeCodegen);
 LUAU_FASTFLAGVARIABLE(LuauVectorLibNativeDot);
+LUAU_FASTFLAGVARIABLE(LuauCodeGenLerp);
 
 namespace Luau
 {
@@ -282,6 +283,42 @@ static BuiltinImplResult translateBuiltinMathClamp(
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
     return {BuiltinImplType::UsesFallback, 1};
+}
+
+static BuiltinImplResult translateBuiltinMathLerp(
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    IrOp fallback,
+    int pcpos
+)
+{
+    LUAU_ASSERT(FFlag::LuauCodeGenLerp);
+
+    if (nparams < 3 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    builtinCheckDouble(build, build.vmReg(arg), pcpos);
+    builtinCheckDouble(build, args, pcpos);
+    builtinCheckDouble(build, arg3, pcpos);
+
+    IrOp a = builtinLoadDouble(build, build.vmReg(arg));
+    IrOp b = builtinLoadDouble(build, args);
+    IrOp t = builtinLoadDouble(build, arg3);
+
+    IrOp l = build.inst(IrCmd::ADD_NUM, a, build.inst(IrCmd::MUL_NUM, build.inst(IrCmd::SUB_NUM, b, a), t));
+    IrOp r = build.inst(IrCmd::SELECT_NUM, l, b, t, build.constDouble(1.0)); // select on t==1.0
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), r);
+
+    if (ra != arg)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    return {BuiltinImplType::Full, 1};
 }
 
 static BuiltinImplResult translateBuiltinMathUnary(IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, int nresults, int pcpos)
@@ -1387,6 +1424,8 @@ BuiltinImplResult translateBuiltin(
     case LBF_VECTOR_MAX:
         return FFlag::LuauVectorLibNativeCodegen ? translateBuiltinVectorMap2(build, IrCmd::MAX_NUM, nparams, ra, arg, args, arg3, nresults, pcpos)
                                                  : noneResult;
+    case LBF_MATH_LERP:
+        return FFlag::LuauCodeGenLerp ? translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos) : noneResult;
     default:
         return {BuiltinImplType::None, -1};
     }

@@ -7,16 +7,19 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauVectorMetatable)
+LUAU_FASTFLAGVARIABLE(LuauVector2Constructor)
 
 static int vector_create(lua_State* L)
 {
+    // checking argument count to avoid accepting 'nil' as a valid value
+    int count = lua_gettop(L);
+
     double x = luaL_checknumber(L, 1);
     double y = luaL_checknumber(L, 2);
-    double z = luaL_checknumber(L, 3);
+    double z = FFlag::LuauVector2Constructor ? (count >= 3 ? luaL_checknumber(L, 3) : 0.0) : luaL_checknumber(L, 3);
 
 #if LUA_VECTOR_SIZE == 4
-    // checking argument count to avoid accepting 'nil' as a valid value
-    double w = lua_gettop(L) >= 4 ? luaL_checknumber(L, 4) : 0.0;
+    double w = count >= 4 ? luaL_checknumber(L, 4) : 0.0;
 
     lua_pushvector(L, float(x), float(y), float(z), float(w));
 #else

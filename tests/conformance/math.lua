@@ -408,6 +408,7 @@ assert(math.lerp(1, 5, 1) == 5)
 assert(math.lerp(1, 5, 0.5) == 3)
 assert(math.lerp(1, 5, 1.5) == 7)
 assert(math.lerp(1, 5, -0.5) == -1)
+assert(math.lerp(1, 5, noinline(0.5)) == 3)
 
 -- lerp properties
 local sq2, sq3 = math.sqrt(2), math.sqrt(3)

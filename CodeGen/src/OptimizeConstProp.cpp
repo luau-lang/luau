@@ -1382,6 +1382,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SQRT_NUM:
     case IrCmd::ABS_NUM:
     case IrCmd::SIGN_NUM:
+    case IrCmd::SELECT_NUM:
     case IrCmd::NOT_ANY:
         state.substituteOrRecord(inst, index);
         break;
