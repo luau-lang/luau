@@ -5101,7 +5101,6 @@ L0: RETURN R3 -1
 
 TEST_CASE("VectorConstants")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauVector2Constants{FFlag::LuauVector2Constants, true};
 
     CHECK_EQ("\n" + compileFunction("return vector.create(1, 2)", 0, 2, 0), R"(
