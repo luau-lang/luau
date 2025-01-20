@@ -2,9 +2,9 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAGVARIABLE(LuauVectorDefinitionsExtra)
-LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAG(LuauBufferBitMethods2)
 LUAU_FASTFLAGVARIABLE(LuauMathMapDefinition)
+LUAU_FASTFLAG(LuauVector2Constructor)
 
 namespace Luau
 {
