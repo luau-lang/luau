@@ -51,13 +51,70 @@ struct Analysis final
     }
 };
 
+template<typename L>
+struct Node
+{
+    L node;
+    bool boring = false;
+
+    struct Hash
+    {
+        size_t operator()(const Node& node) const
+        {
+            return typename L::Hash{}(node.node);
+        }
+    };
+};
+
+template <typename L>
+struct NodeIterator
+{
+private:
+    using iterator = std::vector<Node<L>>;
+    iterator iter;
+
+public:
+    L& operator*()
+    {
+        return iter->node;
+    }
+
+    const L& operator*() const
+    {
+        return iter->node;
+    }
+
+    iterator& operator++()
+    {
+        ++iter;
+        return *this;
+    }
+
+    iterator operator++(int)
+    {
+        iterator copy = *this;
+        ++*this;
+        return copy;
+    }
+
+    bool operator==(const iterator& rhs) const
+    {
+        return iter == rhs.iter;
+    }
+
+    bool operator!=(const iterator& rhs) const
+    {
+        return iter != rhs.iter;
+    }
+};
+
 /// Each e-class is a set of e-nodes representing equivalent terms from a given language,
 /// and an e-node is a function symbol paired with a list of children e-classes.
 template<typename L, typename D>
 struct EClass final
 {
     Id id;
-    std::vector<L> nodes;
+    std::vector<Node<L>> nodes;
     D data;
     std::vector<std::pair<L, Id>> parents;
 };
@@ -125,9 +182,9 @@ struct EGraph final
         std::sort(
             eclass1.nodes.begin(),
             eclass1.nodes.end(),
-            [](const L& left, const L& right)
+            [](const Node<L>& left, const Node<L>& right)
             {
-                return left.index() < right.index();
+                return left.node.index() < right.node.index();
             }
         );
 
@@ -175,6 +232,11 @@ struct EGraph final
     const std::unordered_map<Id, EClassT>& getAllClasses() const
     {
         return classes;
+    }
+
+    void markBoring(Id id, size_t index)
+    {
+        get(id).nodes[index].boring = true;
     }
 
 private:
@@ -225,7 +287,7 @@ private:
             id,
             EClassT{
                 id,
-                {enode},
+                {Node<L>{enode, false}},
                 analysis.make(*this, enode),
                 {},
             }
@@ -264,18 +326,18 @@ private:
         std::vector<std::pair<L, Id>> parents = get(id).parents;
         for (auto& pair : parents)
         {
-            L& enode = pair.first;
-            Id id = pair.second;
+            L& parentNode = pair.first;
+            Id parentId = pair.second;
 
             // By removing the old enode from the hashcons map, we will always find our new canonicalized eclass id.
-            hashcons.erase(enode);
-            canonicalize(enode);
-            hashcons.insert_or_assign(enode, find(id));
+            hashcons.erase(parentNode);
+            canonicalize(parentNode);
+            hashcons.insert_or_assign(parentNode, find(parentId));
 
-            if (auto it = newParents.find(enode); it != newParents.end())
-                merge(id, it->second);
+            if (auto it = newParents.find(parentNode); it != newParents.end())
+                merge(parentId, it->second);
 
-            newParents.insert_or_assign(enode, find(id));
+            newParents.insert_or_assign(parentNode, find(parentId));
         }
 
         // We reacquire the pointer because the prior loop potentially merges
@@ -287,22 +349,30 @@ private:
         for (const auto& [node, id] : newParents)
             eclass->parents.emplace_back(std::move(node), std::move(id));
 
-        std::unordered_set<L, typename L::Hash> newNodes;
-        for (L node : eclass->nodes)
+        std::unordered_map<L, bool, typename L::Hash> newNodes;
+        for (Node<L> node : eclass->nodes)
         {
-            canonicalize(node);
-            newNodes.insert(std::move(node));
+            canonicalize(node.node);
+
+            bool& b = newNodes[std::move(node.node)];
+            b = b || node.boring;
         }
 
-        eclass->nodes.assign(newNodes.begin(), newNodes.end());
+        eclass->nodes.clear();
+
+        while (!newNodes.empty())
+        {
+            auto n = newNodes.extract(newNodes.begin());
+            eclass->nodes.push_back(Node<L>{n.key(), n.mapped()});
+        }
 
         // FIXME: Extract into sortByTag()
         std::sort(
             eclass->nodes.begin(),
             eclass->nodes.end(),
-            [](const L& left, const L& right)
+            [](const Node<L>& left, const Node<L>& right)
             {
-                return left.index() < right.index();
+                return left.node.index() < right.node.index();
             }
         );
     }

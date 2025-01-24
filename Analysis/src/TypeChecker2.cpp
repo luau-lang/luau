@@ -1454,10 +1454,11 @@ void TypeChecker2::visitCall(AstExprCall* call)
     TypePackId argsTp = module->internalTypes.addTypePack(args);
     if (auto ftv = get<FunctionType>(follow(*originalCallTy)))
     {
-        if (ftv->dcrMagicTypeCheck)
+        if (ftv->magic)
         {
-            ftv->dcrMagicTypeCheck(MagicFunctionTypeCheckContext{NotNull{this}, builtinTypes, call, argsTp, scope});
-            return;
+            bool usedMagic = ftv->magic->typeCheck(MagicFunctionTypeCheckContext{NotNull{this}, builtinTypes, call, argsTp, scope});
+            if (usedMagic)
+                return;
         }
     }
 

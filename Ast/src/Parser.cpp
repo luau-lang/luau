@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForClassNames)
 LUAU_FASTFLAGVARIABLE(LuauFixFunctionNameStartPosition)
+LUAU_FASTFLAGVARIABLE(LuauExtendStatEndPosWithSemicolon)
 
 namespace Luau
 {
@@ -288,6 +289,10 @@ AstStatBlock* Parser::parseBlockNoScope()
         {
             nextLexeme();
             stat->hasSemicolon = true;
+            if (FFlag::LuauExtendStatEndPosWithSemicolon)
+            {
+                stat->location.end = lexer.previousLocation().end;
+            }
         }
 
         body.push_back(stat);

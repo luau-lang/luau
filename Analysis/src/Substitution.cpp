@@ -98,9 +98,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             FunctionType clone = FunctionType{a.level, a.scope, a.argTypes, a.retTypes, a.definition, a.hasSelf};
             clone.generics = a.generics;
             clone.genericPacks = a.genericPacks;
-            clone.magicFunction = a.magicFunction;
-            clone.dcrMagicFunction = a.dcrMagicFunction;
-            clone.dcrMagicRefinement = a.dcrMagicRefinement;
+            clone.magic = a.magic;
             clone.tags = a.tags;
             clone.argNames = a.argNames;
             clone.isCheckedFunction = a.isCheckedFunction;

@@ -4506,10 +4506,10 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(
 
     // When this function type has magic functions and did return something, we select that overload instead.
     // TODO: pass in a Unifier object to the magic functions? This will allow the magic functions to cooperate with overload resolution.
-    if (ftv->magicFunction)
+    if (ftv->magic)
     {
         // TODO: We're passing in the wrong TypePackId. Should be argPack, but a unit test fails otherwise. CLI-40458
-        if (std::optional<WithPredicate<TypePackId>> ret = ftv->magicFunction(*this, scope, expr, argListResult))
+        if (std::optional<WithPredicate<TypePackId>> ret = ftv->magic->handleOldSolver(*this, scope, expr, argListResult))
             return std::make_unique<WithPredicate<TypePackId>>(std::move(*ret));
     }
 

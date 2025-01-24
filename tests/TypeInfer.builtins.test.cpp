@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauStringFormatArityFix)
+LUAU_FASTFLAG(LuauTableCloneClonesType)
 LUAU_FASTFLAG(LuauStringFormatErrorSuppression)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -1585,6 +1586,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
+{
+    CheckResult result = check(R"(
+        local t1 = {}
+        t1.x = 5
+        local t2 = table.clone(t1)
+        t2.y = 6
+        t1.z = 3
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::LuauTableCloneClonesType)
+    {
+        CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, z: number }");
+        CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number }");
+    }
+    else
+    {
+        CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, y: number, z: number }");
+        CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number, z: number }");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any")

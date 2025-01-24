@@ -139,6 +139,11 @@ struct Module
     TypePackId returnType = nullptr;
     std::unordered_map<Name, TypeFun> exportedTypeBindings;
 
+    // Arenas related to the DFG must persist after the DFG no longer exists, as
+    // Module objects maintain raw pointers to objects in these arenas.
+    DefArena defArena;
+    RefinementKeyArena keyArena;
+
     bool hasModuleScope() const;
     ScopePtr getModuleScope() const;
 

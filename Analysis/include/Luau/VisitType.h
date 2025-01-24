@@ -85,6 +85,8 @@ struct GenericTypeVisitor
     {
     }
 
+    virtual ~GenericTypeVisitor() {}
+
     virtual void cycle(TypeId) {}
     virtual void cycle(TypePackId) {}
 

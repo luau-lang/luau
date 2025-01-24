@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryForClassNames)
 LUAU_FASTFLAG(LuauFixFunctionNameStartPosition)
+LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 
 namespace
 {
@@ -3764,6 +3765,33 @@ TEST_CASE_FIXTURE(Fixture, "function_name_has_correct_start_location")
     const auto function2 = block->body.data[1]->as<AstStatFunction>();
     LUAU_ASSERT(function2);
     CHECK_EQ(Position{4, 17}, function2->name->location.begin);
+}
+
+TEST_CASE_FIXTURE(Fixture, "stat_end_includes_semicolon_position")
+{
+    ScopedFastFlag _{FFlag::LuauExtendStatEndPosWithSemicolon, true};
+    AstStatBlock* block = parse(R"(
+        local x = 1
+        local y = 2;
+        local z = 3  ;
+    )");
+
+    REQUIRE_EQ(3, block->body.size);
+
+    const auto stat1 = block->body.data[0];
+    LUAU_ASSERT(stat1);
+    CHECK_FALSE(stat1->hasSemicolon);
+    CHECK_EQ(Position{1, 19}, stat1->location.end);
+
+    const auto stat2 = block->body.data[1];
+    LUAU_ASSERT(stat2);
+    CHECK(stat2->hasSemicolon);
+    CHECK_EQ(Position{2, 20}, stat2->location.end);
+
+    const auto stat3 = block->body.data[2];
+    LUAU_ASSERT(stat3);
+    CHECK(stat3->hasSemicolon);
+    CHECK_EQ(Position{3, 22}, stat3->location.end);
 }
 
 

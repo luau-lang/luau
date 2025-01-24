@@ -31,3 +31,4 @@ LUAI_FUNC bool luaG_onbreak(lua_State* L);
 LUAI_FUNC int luaG_getline(Proto* p, int pc);
 
 LUAI_FUNC int luaG_isnative(lua_State* L, int level);
+LUAI_FUNC int luaG_hasnative(lua_State* L, int level);
