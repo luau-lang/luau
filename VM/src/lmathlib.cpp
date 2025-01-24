@@ -7,7 +7,6 @@
 #include <math.h>
 #include <time.h>
 
-LUAU_FASTFLAGVARIABLE(LuauMathMap)
 LUAU_FASTFLAGVARIABLE(LuauMathLerp)
 
 #undef PI
@@ -483,12 +482,6 @@ int luaopen_math(lua_State* L)
     lua_setfield(L, -2, "pi");
     lua_pushnumber(L, HUGE_VAL);
     lua_setfield(L, -2, "huge");
-
-    if (FFlag::LuauMathLerp)
-    {
-        lua_pushcfunction(L, math_lerp, "lerp");
-        lua_setfield(L, -2, "lerp");
-    }
 
     if (FFlag::LuauMathLerp)
     {
