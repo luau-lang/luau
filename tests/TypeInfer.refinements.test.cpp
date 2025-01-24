@@ -16,52 +16,63 @@ using namespace Luau;
 
 namespace
 {
-std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
-    TypeChecker& typeChecker,
-    const ScopePtr& scope,
-    const AstExprCall& expr,
-    WithPredicate<TypePackId> withPredicate
-)
+
+struct MagicInstanceIsA final : MagicFunction
 {
-    if (expr.args.size != 1)
-        return std::nullopt;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        TypeChecker& typeChecker,
+        const ScopePtr& scope,
+        const AstExprCall& expr,
+        WithPredicate<TypePackId> withPredicate
+    ) override
+    {
+        if (expr.args.size != 1)
+            return std::nullopt;
 
-    auto index = expr.func->as<Luau::AstExprIndexName>();
-    auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
-    if (!index || !str)
-        return std::nullopt;
+        auto index = expr.func->as<Luau::AstExprIndexName>();
+        auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
+        if (!index || !str)
+            return std::nullopt;
 
-    std::optional<LValue> lvalue = tryGetLValue(*index->expr);
-    std::optional<TypeFun> tfun = scope->lookupType(std::string(str->value.data, str->value.size));
-    if (!lvalue || !tfun)
-        return std::nullopt;
+        std::optional<LValue> lvalue = tryGetLValue(*index->expr);
+        std::optional<TypeFun> tfun = scope->lookupType(std::string(str->value.data, str->value.size));
+        if (!lvalue || !tfun)
+            return std::nullopt;
 
-    ModulePtr module = typeChecker.currentModule;
-    TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
-    return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
-}
+        ModulePtr module = typeChecker.currentModule;
+        TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
+        return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
+    }
 
-void dcrMagicRefinementInstanceIsA(const MagicRefinementContext& ctx)
-{
-    if (ctx.callSite->args.size != 1 || ctx.discriminantTypes.empty())
-        return;
+    bool infer(const MagicFunctionCallContext&) override
+    {
+        return false;
+    }
 
-    auto index = ctx.callSite->func->as<Luau::AstExprIndexName>();
-    auto str = ctx.callSite->args.data[0]->as<Luau::AstExprConstantString>();
-    if (!index || !str)
-        return;
+    void refine(const MagicRefinementContext& ctx) override
+    {
+        if (ctx.callSite->args.size != 1 || ctx.discriminantTypes.empty())
+            return;
 
-    std::optional<TypeId> discriminantTy = ctx.discriminantTypes[0];
-    if (!discriminantTy)
-        return;
+        auto index = ctx.callSite->func->as<Luau::AstExprIndexName>();
+        auto str = ctx.callSite->args.data[0]->as<Luau::AstExprConstantString>();
+        if (!index || !str)
+            return;
 
-    std::optional<TypeFun> tfun = ctx.scope->lookupType(std::string(str->value.data, str->value.size));
-    if (!tfun)
-        return;
+        std::optional<TypeId> discriminantTy = ctx.discriminantTypes[0];
+        if (!discriminantTy)
+            return;
 
-    LUAU_ASSERT(get<BlockedType>(*discriminantTy));
-    asMutable(*discriminantTy)->ty.emplace<BoundType>(tfun->type);
-}
+        std::optional<TypeFun> tfun = ctx.scope->lookupType(std::string(str->value.data, str->value.size));
+        if (!tfun)
+            return;
+
+        LUAU_ASSERT(get<BlockedType>(*discriminantTy));
+        asMutable(*discriminantTy)->ty.emplace<BoundType>(tfun->type);
+    }
+};
+
+
 
 struct RefinementClassFixture : BuiltinsFixture
 {
@@ -85,8 +96,7 @@ struct RefinementClassFixture : BuiltinsFixture
         TypePackId isAParams = arena.addTypePack({inst, builtinTypes->stringType});
         TypePackId isARets = arena.addTypePack({builtinTypes->booleanType});
         TypeId isA = arena.addType(FunctionType{isAParams, isARets});
-        getMutable<FunctionType>(isA)->magicFunction = magicFunctionInstanceIsA;
-        getMutable<FunctionType>(isA)->dcrMagicRefinement = dcrMagicRefinementInstanceIsA;
+        getMutable<FunctionType>(isA)->magic = std::make_shared<MagicInstanceIsA>();
 
         getMutable<ClassType>(inst)->props = {
             {"Name", Property{builtinTypes->stringType}},

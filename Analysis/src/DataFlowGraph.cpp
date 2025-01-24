@@ -62,6 +62,12 @@ const RefinementKey* RefinementKeyArena::node(const RefinementKey* parent, DefId
     return allocator.allocate(RefinementKey{parent, def, propName});
 }
 
+DataFlowGraph::DataFlowGraph(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena)
+    : defArena{defArena}
+    , keyArena{keyArena}
+{
+}
+
 DefId DataFlowGraph::getDef(const AstExpr* expr) const
 {
     auto def = astDefs.find(expr);
@@ -178,11 +184,23 @@ bool DfgScope::canUpdateDefinition(DefId def, const std::string& key) const
     return true;
 }
 
-DataFlowGraph DataFlowGraphBuilder::build(AstStatBlock* block, NotNull<InternalErrorReporter> handle)
+DataFlowGraphBuilder::DataFlowGraphBuilder(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena)
+    : graph{defArena, keyArena}
+    , defArena{defArena}
+    , keyArena{keyArena}
+{
+}
+
+DataFlowGraph DataFlowGraphBuilder::build(
+    AstStatBlock* block,
+    NotNull<DefArena> defArena,
+    NotNull<RefinementKeyArena> keyArena,
+    NotNull<struct InternalErrorReporter> handle
+)
 {
     LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
 
-    DataFlowGraphBuilder builder;
+    DataFlowGraphBuilder builder(defArena, keyArena);
     builder.handle = handle;
     DfgScope* moduleScope = builder.makeChildScope();
     PushScope ps{builder.scopeStack, moduleScope};
@@ -196,30 +214,6 @@ DataFlowGraph DataFlowGraphBuilder::build(AstStatBlock* block, NotNull<InternalE
     }
 
     return std::move(builder.graph);
-}
-
-std::pair<std::shared_ptr<DataFlowGraph>, std::vector<std::unique_ptr<DfgScope>>> DataFlowGraphBuilder::buildShared(
-    AstStatBlock* block,
-    NotNull<InternalErrorReporter> handle
-)
-{
-
-    LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
-
-    DataFlowGraphBuilder builder;
-    builder.handle = handle;
-    DfgScope* moduleScope = builder.makeChildScope();
-    PushScope ps{builder.scopeStack, moduleScope};
-    builder.visitBlockWithoutChildScope(block);
-    builder.resolveCaptures();
-
-    if (FFlag::DebugLuauFreezeArena)
-    {
-        builder.defArena->allocator.freeze();
-        builder.keyArena->allocator.freeze();
-    }
-
-    return {std::make_shared<DataFlowGraph>(std::move(builder.graph)), std::move(builder.scopes)};
 }
 
 void DataFlowGraphBuilder::resolveCaptures()

@@ -17,8 +17,8 @@ struct FrontendOptions;
 
 enum class FragmentTypeCheckStatus
 {
-    Success,
     SkipAutocomplete,
+    Success,
 };
 
 struct FragmentAutocompleteAncestryResult
@@ -56,7 +56,7 @@ struct FragmentAutocompleteResult
 
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* root, const Position& cursorPos);
 
-FragmentParseResult parseFragment(
+std::optional<FragmentParseResult> parseFragment(
     const SourceModule& srcModule,
     std::string_view src,
     const Position& cursorPos,

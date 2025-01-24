@@ -10,6 +10,9 @@
 #include "lua.h"
 #include "lnumutils.h"
 
+#include <algorithm>
+#include <vector>
+
 #include <limits.h>
 #include <math.h>
 

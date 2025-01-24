@@ -75,7 +75,7 @@ size_t HashBlockedConstraintId::operator()(const BlockedConstraintId& bci) const
 {
     if (auto blocked = get<BlockedType>(ty))
     {
-        Constraint* owner = blocked->getOwner();
+        const Constraint* owner = blocked->getOwner();
         LUAU_ASSERT(owner);
         return owner == constraint;
     }
@@ -446,7 +446,7 @@ void ConstraintSolver::run()
             if (success)
             {
                 unblock(c);
-                unsolvedConstraints.erase(unsolvedConstraints.begin() + i);
+                unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
 
                 // decrement the referenced free types for this constraint if we dispatched successfully!
                 for (auto ty : c->getMaybeMutatedFreeTypes())
@@ -553,7 +553,7 @@ void ConstraintSolver::finalizeTypeFunctions()
     }
 }
 
-bool ConstraintSolver::isDone()
+bool ConstraintSolver::isDone() const
 {
     return unsolvedConstraints.empty();
 }
@@ -1293,11 +1293,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
         if (ftv)
         {
-            if (ftv->dcrMagicFunction)
-                usedMagic = ftv->dcrMagicFunction(MagicFunctionCallContext{NotNull{this}, constraint, c.callSite, c.argsPack, result});
-
-            if (ftv->dcrMagicRefinement)
-                ftv->dcrMagicRefinement(MagicRefinementContext{constraint->scope, c.callSite, c.discriminantTypes});
+            if (ftv->magic)
+            {
+                usedMagic = ftv->magic->infer(MagicFunctionCallContext{NotNull{this}, constraint, c.callSite, c.argsPack, result});
+                ftv->magic->refine(MagicRefinementContext{constraint->scope, c.callSite, c.discriminantTypes});
+            }
         }
 
         if (!usedMagic)
@@ -1702,7 +1702,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         for (TypeId part : parts)
         {
             TypeId r = arena->addType(BlockedType{});
-            getMutable<BlockedType>(r)->setOwner(const_cast<Constraint*>(constraint.get()));
+            getMutable<BlockedType>(r)->setOwner(constraint.get());
 
             bool ok = tryDispatchHasIndexer(recursionDepth, constraint, part, indexType, r, seen);
             // If we've cut a recursive loop short, skip it.
@@ -1734,7 +1734,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         for (TypeId part : parts)
         {
             TypeId r = arena->addType(BlockedType{});
-            getMutable<BlockedType>(r)->setOwner(const_cast<Constraint*>(constraint.get()));
+            getMutable<BlockedType>(r)->setOwner(constraint.get());
 
             bool ok = tryDispatchHasIndexer(recursionDepth, constraint, part, indexType, r, seen);
             // If we've cut a recursive loop short, skip it.
@@ -2874,10 +2874,10 @@ bool ConstraintSolver::blockOnPendingTypes(TypeId target, NotNull<const Constrai
     return !blocker.blocked;
 }
 
-bool ConstraintSolver::blockOnPendingTypes(TypePackId pack, NotNull<const Constraint> constraint)
+bool ConstraintSolver::blockOnPendingTypes(TypePackId targetPack, NotNull<const Constraint> constraint)
 {
     Blocker blocker{NotNull{this}, constraint};
-    blocker.traverse(pack);
+    blocker.traverse(targetPack);
     return !blocker.blocked;
 }
 

@@ -200,7 +200,7 @@ ScopePtr findClosestScope(const ModulePtr& module, const AstStat* nearestStateme
     return closest;
 }
 
-FragmentParseResult parseFragment(
+std::optional<FragmentParseResult> parseFragment(
     const SourceModule& srcModule,
     std::string_view src,
     const Position& cursorPos,
@@ -245,6 +245,10 @@ FragmentParseResult parseFragment(
     opts.captureComments = true;
     opts.parseFragment = FragmentParseResumeSettings{std::move(result.localMap), std::move(result.localStack), startPos};
     ParseResult p = Luau::Parser::parse(srcStart, parseLength, *nameTbl, *fragmentResult.alloc.get(), opts);
+    // This means we threw a ParseError and we should decline to offer autocomplete here.
+    if (p.root == nullptr)
+        return std::nullopt;
+
     std::vector<AstNode*> fabricatedAncestry = std::move(result.ancestry);
 
     // Get the ancestry for the fragment at the offset cursor position.
@@ -366,7 +370,8 @@ FragmentTypeCheckResult typecheckFragment_(
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
     /// Create a DataFlowGraph just for the surrounding context
-    auto dfg = DataFlowGraphBuilder::build(root, iceHandler);
+    DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
+
     SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
@@ -468,7 +473,13 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
         return {};
     }
 
-    FragmentParseResult parseResult = parseFragment(*sourceModule, src, cursorPos, fragmentEndPosition);
+    auto tryParse = parseFragment(*sourceModule, src, cursorPos, fragmentEndPosition);
+
+    if (!tryParse)
+        return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
+
+    FragmentParseResult& parseResult = *tryParse;
+
     if (isWithinComment(parseResult.commentLocations, fragmentEndPosition.value_or(cursorPos)))
         return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
 

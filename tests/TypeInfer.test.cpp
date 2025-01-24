@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTFLAG(LuauNewSolverVisitErrorExprLvalues)
-LUAU_FASTFLAG(LuauDontRefCountTypesInTypeFunctions)
 LUAU_FASTFLAG(InferGlobalTypes)
 
 using namespace Luau;
@@ -1731,7 +1730,7 @@ TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDontRefCountTypesInTypeFunctions, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         --!strict
@@ -1744,7 +1743,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 
 TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDontRefCountTypesInTypeFunctions, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         --!strict

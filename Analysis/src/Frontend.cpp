@@ -13,6 +13,7 @@
 #include "Luau/EqSatSimplification.h"
 #include "Luau/FileResolver.h"
 #include "Luau/NonStrictTypeChecker.h"
+#include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
@@ -1338,7 +1339,7 @@ ModulePtr check(
         }
     }
 
-    DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, iceHandler);
+    DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, NotNull{&result->defArena}, NotNull{&result->keyArena}, iceHandler);
 
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;

@@ -13,6 +13,8 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 
+LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
+
 namespace Luau
 {
 
@@ -41,11 +43,26 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstStat* stat) override
     {
-        if (stat->location.begin < pos && pos <= stat->location.end)
+        if (FFlag::LuauExtendStatEndPosWithSemicolon)
         {
-            ancestry.push_back(stat);
-            return true;
+            // Consider 'local myLocal = 4;|' and 'local myLocal = 4', where '|' is the cursor position. In both cases, the cursor position is equal
+            // to `AstStatLocal.location.end`. However, in the first case (semicolon), we are starting a new statement, whilst in the second case
+            // (no semicolon) we are still part of the AstStatLocal, hence the different comparison check.
+            if (stat->location.begin < pos && (stat->hasSemicolon ? pos < stat->location.end : pos <= stat->location.end))
+            {
+                ancestry.push_back(stat);
+                return true;
+            }
         }
+        else
+        {
+            if (stat->location.begin < pos && pos <= stat->location.end)
+            {
+                ancestry.push_back(stat);
+                return true;
+            }
+        }
+
         return false;
     }
 
