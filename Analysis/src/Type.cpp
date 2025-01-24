@@ -554,12 +554,12 @@ BlockedType::BlockedType()
 {
 }
 
-Constraint* BlockedType::getOwner() const
+const Constraint* BlockedType::getOwner() const
 {
     return owner;
 }
 
-void BlockedType::setOwner(Constraint* newOwner)
+void BlockedType::setOwner(const Constraint* newOwner)
 {
     LUAU_ASSERT(owner == nullptr);
 
@@ -569,7 +569,7 @@ void BlockedType::setOwner(Constraint* newOwner)
     owner = newOwner;
 }
 
-void BlockedType::replaceOwner(Constraint* newOwner)
+void BlockedType::replaceOwner(const Constraint* newOwner)
 {
     owner = newOwner;
 }

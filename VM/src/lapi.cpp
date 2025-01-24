@@ -454,6 +454,29 @@ const char* lua_tostringatom(lua_State* L, int idx, int* atom)
     return getstr(s);
 }
 
+const char* lua_tolstringatom(lua_State* L, int idx, size_t* len, int* atom)
+{
+    StkId o = index2addr(L, idx);
+
+    if (!ttisstring(o))
+    {
+        if (len)
+            *len = 0;
+        return NULL;
+    }
+
+    TString* s = tsvalue(o);
+    if (len)
+        *len = s->len;
+    if (atom)
+    {
+        updateatom(L, s);
+        *atom = s->atom;
+    }
+
+    return getstr(s);
+}
+
 const char* lua_namecallatom(lua_State* L, int* atom)
 {
     TString* s = L->namecall;

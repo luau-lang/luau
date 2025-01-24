@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauSymbolEquality);
 LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
 LUAU_FASTFLAG(LexerResumesFromPosition2)
 LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
+LUAU_FASTINT(LuauParseErrorLimit)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -69,7 +70,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     }
 
 
-    FragmentParseResult parseFragment(
+    std::optional<FragmentParseResult> parseFragment(
         const std::string& document,
         const Position& cursorPos,
         std::optional<Position> fragmentEndPosition = std::nullopt
@@ -164,6 +165,7 @@ end
     }
 };
 
+//NOLINTBEGIN(bugprone-unchecked-optional-access)
 TEST_SUITE_BEGIN("FragmentAutocompleteTraversalTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "just_two_locals")
@@ -286,13 +288,23 @@ TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("FragmentAutocompleteParserTests");
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "thrown_parse_error_leads_to_null_root")
+{
+    check("type A =  ");
+    ScopedFastInt sfi{FInt::LuauParseErrorLimit, 1};
+    auto fragment = parseFragment("type A = <>function<> more garbage here", Position(0, 39));
+    CHECK(fragment == std::nullopt);
+}
+
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     check("local a =");
     auto fragment = parseFragment("local a =", Position(0, 10));
-    CHECK_EQ("local a =", fragment.fragmentToParse);
-    CHECK_EQ(Location{Position{0, 0}, 9}, fragment.root->location);
+
+    REQUIRE(fragment.has_value());
+    CHECK_EQ("local a =", fragment->fragmentToParse);
+    CHECK_EQ(Location{Position{0, 0}, 9}, fragment->root->location);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_non_null")
@@ -310,11 +322,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_n
 )",
         Position(1, 0)
     );
-    CHECK_EQ("\n", fragment.fragmentToParse);
-    CHECK_EQ(2, fragment.ancestry.size());
-    REQUIRE(fragment.root);
-    CHECK_EQ(0, fragment.root->body.size);
-    auto statBody = fragment.root->as<AstStatBlock>();
+    REQUIRE(fragment.has_value());
+    CHECK_EQ("\n", fragment->fragmentToParse);
+    CHECK_EQ(2, fragment->ancestry.size());
+    REQUIRE(fragment->root);
+    CHECK_EQ(0, fragment->root->body.size);
+    auto statBody = fragment->root->as<AstStatBlock>();
     CHECK(statBody != nullptr);
 }
 
@@ -339,13 +352,15 @@ local z = x + y
         Position{3, 15}
     );
 
-    CHECK_EQ(Location{Position{2, 0}, Position{3, 15}}, fragment.root->location);
+    REQUIRE(fragment.has_value());
 
-    CHECK_EQ("local y = 5\nlocal z = x + y", fragment.fragmentToParse);
-    CHECK_EQ(5, fragment.ancestry.size());
-    REQUIRE(fragment.root);
-    CHECK_EQ(2, fragment.root->body.size);
-    auto stat = fragment.root->body.data[1]->as<AstStatLocal>();
+    CHECK_EQ(Location{Position{2, 0}, Position{3, 15}}, fragment->root->location);
+
+    CHECK_EQ("local y = 5\nlocal z = x + y", fragment->fragmentToParse);
+    CHECK_EQ(5, fragment->ancestry.size());
+    REQUIRE(fragment->root);
+    CHECK_EQ(2, fragment->root->body.size);
+    auto stat = fragment->root->body.data[1]->as<AstStatLocal>();
     REQUIRE(stat);
     CHECK_EQ(1, stat->vars.size);
     CHECK_EQ(1, stat->values.size);
@@ -384,12 +399,14 @@ local y = 5
         Position{2, 15}
     );
 
-    CHECK_EQ("local z = x + y", fragment.fragmentToParse);
-    CHECK_EQ(5, fragment.ancestry.size());
-    REQUIRE(fragment.root);
-    CHECK_EQ(Location{Position{2, 0}, Position{2, 15}}, fragment.root->location);
-    CHECK_EQ(1, fragment.root->body.size);
-    auto stat = fragment.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(fragment.has_value());
+
+    CHECK_EQ("local z = x + y", fragment->fragmentToParse);
+    CHECK_EQ(5, fragment->ancestry.size());
+    REQUIRE(fragment->root);
+    CHECK_EQ(Location{Position{2, 0}, Position{2, 15}}, fragment->root->location);
+    CHECK_EQ(1, fragment->root->body.size);
+    auto stat = fragment->root->body.data[0]->as<AstStatLocal>();
     REQUIRE(stat);
     CHECK_EQ(1, stat->vars.size);
     CHECK_EQ(1, stat->values.size);
@@ -429,7 +446,9 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
         Position{6, 0}
     );
 
-    CHECK_EQ("\n  ", fragment.fragmentToParse);
+    REQUIRE(fragment.has_value());
+
+    CHECK_EQ("\n  ", fragment->fragmentToParse);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_single_line_fragment_override")
@@ -448,17 +467,19 @@ abc("bar")
         Position{1, 10}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", callFragment.fragmentToParse);
-    CHECK(callFragment.nearestStatement->is<AstStatFunction>());
+    REQUIRE(callFragment.has_value());
 
-    CHECK_GE(callFragment.ancestry.size(), 2);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", callFragment->fragmentToParse);
+    CHECK(callFragment->nearestStatement->is<AstStatFunction>());
 
-    AstNode* back = callFragment.ancestry.back();
+    CHECK_GE(callFragment->ancestry.size(), 2);
+
+    AstNode* back = callFragment->ancestry.back();
     CHECK(back->is<AstExprConstantString>());
     CHECK_EQ(Position{1, 4}, back->location.begin);
     CHECK_EQ(Position{1, 9}, back->location.end);
 
-    AstNode* parent = callFragment.ancestry.rbegin()[1];
+    AstNode* parent = callFragment->ancestry.rbegin()[1];
     CHECK(parent->is<AstExprCall>());
     CHECK_EQ(Position{1, 0}, parent->location.begin);
     CHECK_EQ(Position{1, 10}, parent->location.end);
@@ -473,12 +494,14 @@ abc("bar")
         Position{1, 9}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", stringFragment.fragmentToParse);
-    CHECK(stringFragment.nearestStatement->is<AstStatFunction>());
+    REQUIRE(stringFragment.has_value());
 
-    CHECK_GE(stringFragment.ancestry.size(), 1);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", stringFragment->fragmentToParse);
+    CHECK(stringFragment->nearestStatement->is<AstStatFunction>());
 
-    back = stringFragment.ancestry.back();
+    CHECK_GE(stringFragment->ancestry.size(), 1);
+
+    back = stringFragment->ancestry.back();
 
     auto asString = back->as<AstExprConstantString>();
     CHECK(asString);
@@ -508,17 +531,19 @@ abc("bar")
         Position{3, 1}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\n\"foo\"\n)", fragment.fragmentToParse);
-    CHECK(fragment.nearestStatement->is<AstStatFunction>());
+    REQUIRE(fragment.has_value());
 
-    CHECK_GE(fragment.ancestry.size(), 2);
+    CHECK_EQ("function abc(foo: string) end\nabc(\n\"foo\"\n)", fragment->fragmentToParse);
+    CHECK(fragment->nearestStatement->is<AstStatFunction>());
 
-    AstNode* back = fragment.ancestry.back();
+    CHECK_GE(fragment->ancestry.size(), 2);
+
+    AstNode* back = fragment->ancestry.back();
     CHECK(back->is<AstExprConstantString>());
     CHECK_EQ(Position{2, 0}, back->location.begin);
     CHECK_EQ(Position{2, 5}, back->location.end);
 
-    AstNode* parent = fragment.ancestry.rbegin()[1];
+    AstNode* parent = fragment->ancestry.rbegin()[1];
     CHECK(parent->is<AstExprCall>());
     CHECK_EQ(Position{1, 0}, parent->location.begin);
     CHECK_EQ(Position{3, 1}, parent->location.end);
@@ -549,6 +574,7 @@ t
 }
 
 TEST_SUITE_END();
+//NOLINTEND(bugprone-unchecked-optional-access)
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
 
@@ -1551,6 +1577,28 @@ if x == 5 then -- a comment
         source,
         updated,
         Position{2, 28},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_handles_parse_errors")
+{
+
+    ScopedFastInt sfi{FInt::LuauParseErrorLimit, 1};
+    const std::string source = R"(
+
+)";
+    const std::string updated = R"(
+type A = <>random non code text here
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        updated,
+        Position{1, 38},
         [](FragmentAutocompleteResult& result)
         {
             CHECK(result.acResults.entryMap.empty());
