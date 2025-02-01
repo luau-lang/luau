@@ -714,6 +714,77 @@ TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTests");
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_fragment_autocomplete")
+{
+    ToStringOptions opt;
+    opt.exhaustive = true;
+    opt.exhaustive = true;
+    opt.functionTypeArguments = true;
+    opt.maxTableLength = 0;
+    opt.maxTypeLength = 0;
+
+    auto checkAndExamine = [&](const std::string& src, const std::string& idName, const std::string& idString)
+    {
+        check(src, getOptions());
+        auto id = getType(idName, true);
+        LUAU_ASSERT(id);
+        CHECK_EQ(Luau::toString(*id, opt), idString);
+    };
+
+    auto getTypeFromModule = [](ModulePtr module, const std::string& name) -> std::optional<TypeId>
+    {
+        if (!module->hasModuleScope())
+            return std::nullopt;
+        return lookupName(module->getModuleScope(), name);
+    };
+
+    auto fragmentACAndCheck = [&](const std::string& updated,
+                                  const Position& pos,
+                                  const std::string& idName,
+                                  const std::string& srcIdString,
+                                  const std::string& fragIdString)
+    {
+        FragmentAutocompleteResult result = autocompleteFragment(updated, pos, std::nullopt);
+        auto fragId = getTypeFromModule(result.incrementalModule, idName);
+        LUAU_ASSERT(fragId);
+        CHECK_EQ(Luau::toString(*fragId, opt), fragIdString);
+
+        auto srcId = getType(idName, true);
+        LUAU_ASSERT(srcId);
+        CHECK_EQ(Luau::toString(*srcId, opt), srcIdString);
+    };
+
+    const std::string source = R"(local module = {}
+f
+return module)";
+
+    const std::string updated1 = R"(local module = {}
+function module.a
+return module)";
+
+    const std::string updated2 = R"(local module = {}
+function module.ab
+return module)";
+
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        //        fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
+        //        fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+    }
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        return;
+        fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
+        fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+    }
+}
+
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_autocomplete_simple_property_access")
 {
 

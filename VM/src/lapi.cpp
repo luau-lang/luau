@@ -1539,6 +1539,16 @@ void lua_cleartable(lua_State* L, int idx)
     luaH_clear(tt);
 }
 
+void lua_clonetable(lua_State* L, int idx)
+{
+    StkId t = index2addr(L, idx);
+    api_check(L, ttistable(t));
+
+    LuaTable* tt = luaH_clone(L, hvalue(t));
+    sethvalue(L, L->top, tt);
+    api_incr_top(L);
+}
+
 lua_Callbacks* lua_callbacks(lua_State* L)
 {
     return &L->global->cb;

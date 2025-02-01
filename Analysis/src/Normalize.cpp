@@ -17,12 +17,11 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
-LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
+LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationTracksCyclicPairsThroughInhabitance);
-LUAU_FASTFLAGVARIABLE(LuauIntersectNormalsNeedsToTrackResourceLimits);
+LUAU_FASTFLAGVARIABLE(LuauNormalizationTracksCyclicPairsThroughInhabitance)
 
 namespace Luau
 {
@@ -3043,12 +3042,9 @@ NormalizationResult Normalizer::intersectTyvarsWithTy(
 // See above for an explaination of `ignoreSmallerTyvars`.
 NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars)
 {
-    if (FFlag::LuauIntersectNormalsNeedsToTrackResourceLimits)
-    {
-        RecursionCounter _rc(&sharedState->counters.recursionCount);
-        if (!withinResourceLimits())
-            return NormalizationResult::HitLimits;
-    }
+    RecursionCounter _rc(&sharedState->counters.recursionCount);
+    if (!withinResourceLimits())
+        return NormalizationResult::HitLimits;
 
     if (!get<NeverType>(there.tops))
     {

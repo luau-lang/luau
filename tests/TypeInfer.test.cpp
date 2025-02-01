@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
-LUAU_FASTFLAG(LuauNewSolverVisitErrorExprLvalues)
 LUAU_FASTFLAG(InferGlobalTypes)
 
 using namespace Luau;
@@ -1197,13 +1196,23 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     validateErrors(result.errors);
     REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
 
-    CHECK(1 == result.errors.size());
-
     if (FFlag::LuauSolverV2)
-        CHECK(Location{{3, 22}, {3, 42}} == result.errors[0].location);
+    {
+        CHECK(3 == result.errors.size());
+        CHECK(Location{{2, 22}, {2, 41}} == result.errors[0].location);
+        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
+        CHECK(Location{{3, 23}, {3, 40}} == result.errors[2].location);
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[1]));
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[2]));
+    }
     else
+    {
+        CHECK(1 == result.errors.size());
+
         CHECK(Location{{3, 12}, {3, 46}} == result.errors[0].location);
-    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
@@ -1708,7 +1717,7 @@ TEST_CASE_FIXTURE(Fixture, "react_lua_follow_free_type_ub")
 
 TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNewSolverVisitErrorExprLvalues, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // This should always fail to parse, but shouldn't assert. Previously this
     // would assert as we end up _roughly_ parsing this (with a lot of error

@@ -149,7 +149,7 @@ using EType = EqSat::Language<
 struct StringCache
 {
     Allocator allocator;
-    DenseHashMap<size_t, StringId> strings{{}};
+    DenseHashMap<std::string_view, StringId> strings{{}};
     std::vector<std::string_view> views;
 
     StringId add(std::string_view s);

@@ -27,7 +27,6 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
-LUAU_FASTFLAG(LuauVectorDefinitionsExtra)
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::LuauSolverV2, FFlag::DebugLuauForceAllNewSolverTests};
 
@@ -89,11 +88,11 @@ struct Fixture
     // Verify a parse error occurs and the parse error message has the specified prefix
     ParseResult matchParseErrorPrefix(const std::string& source, const std::string& prefix);
 
-    ModulePtr getMainModule();
+    ModulePtr getMainModule(bool forAutocomplete = false);
     SourceModule* getMainSourceModule();
 
     std::optional<PrimitiveType::Type> getPrimitiveType(TypeId ty);
-    std::optional<TypeId> getType(const std::string& name);
+    std::optional<TypeId> getType(const std::string& name, bool forAutocomplete = false);
     TypeId requireType(const std::string& name);
     TypeId requireType(const ModuleName& moduleName, const std::string& name);
     TypeId requireType(const ModulePtr& module, const std::string& name);
@@ -112,8 +111,6 @@ struct Fixture
     // Most often those are changes related to builtin type definitions.
     // In that case, flag can be forced to 'true' using the example below:
     // ScopedFastFlag sff_LuauExampleFlagDefinition{FFlag::LuauExampleFlagDefinition, true};
-
-    ScopedFastFlag sff_LuauVectorDefinitionsExtra{FFlag::LuauVectorDefinitionsExtra, true};
 
     // Arena freezing marks the `TypeArena`'s underlying memory as read-only, raising an access violation whenever you mutate it.
     // This is useful for tracking down violations of Luau's memory model.
@@ -142,11 +139,14 @@ struct Fixture
     void registerTestTypes();
 
     LoadDefinitionFileResult loadDefinition(const std::string& source, bool forAutocomplete = false);
+
+private:
+    bool hasDumpedErrors = false;
 };
 
 struct BuiltinsFixture : Fixture
 {
-    BuiltinsFixture(bool prepareAutocomplete = false);
+    explicit BuiltinsFixture(bool prepareAutocomplete = false);
 };
 
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);
@@ -179,6 +179,18 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
 void registerHiddenTypes(Frontend* frontend);
 void createSomeClasses(Frontend* frontend);
+
+template <typename E>
+const E* findError(const CheckResult& result)
+{
+    for (const auto& e : result.errors)
+    {
+        if (auto p = get<E>(e))
+            return p;
+    }
+
+    return nullptr;
+}
 
 template<typename BaseFixture>
 struct DifferFixtureGeneric : BaseFixture
@@ -327,5 +339,53 @@ using DifferFixtureWithBuiltins = DifferFixtureGeneric<BuiltinsFixture>;
             { \
                 MESSAGE("\tkey: " << k); \
             } \
+        } \
+    } while (false)
+
+#define LUAU_REQUIRE_ERROR(result, Type) \
+    do \
+    { \
+        using T = Type; \
+        const auto& res = (result); \
+        if (!findError<T>(res)) \
+        { \
+            dumpErrors(res); \
+            REQUIRE_MESSAGE(false, "Expected to find " #Type " error"); \
+        } \
+    } while (false)
+
+#define LUAU_CHECK_ERROR(result, Type) \
+    do \
+    { \
+        using T = Type; \
+        const auto& res = (result); \
+        if (!findError<T>(res)) \
+        { \
+            dumpErrors(res); \
+            CHECK_MESSAGE(false, "Expected to find " #Type " error"); \
+        } \
+    } while (false)
+
+#define LUAU_REQUIRE_NO_ERROR(result, Type) \
+    do \
+    { \
+        using T = Type; \
+        const auto& res = (result); \
+        if (findError<T>(res)) \
+        { \
+            dumpErrors(res); \
+            REQUIRE_MESSAGE(false, "Expected to find no " #Type " error"); \
+        } \
+    } while (false)
+
+#define LUAU_CHECK_NO_ERROR(result, Type) \
+    do \
+    { \
+        using T = Type; \
+        const auto& res = (result); \
+        if (findError<T>(res)) \
+        { \
+            dumpErrors(res); \
+            CHECK_MESSAGE(false, "Expected to find no " #Type " error"); \
         } \
     } while (false)

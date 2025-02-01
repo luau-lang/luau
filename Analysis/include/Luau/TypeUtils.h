@@ -40,7 +40,7 @@ struct InConditionalContext
     TypeContext* typeContext;
     TypeContext oldValue;
 
-    InConditionalContext(TypeContext* c)
+    explicit InConditionalContext(TypeContext* c)
         : typeContext(c)
         , oldValue(*c)
     {
