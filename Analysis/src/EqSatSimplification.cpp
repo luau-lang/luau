@@ -92,18 +92,24 @@ size_t TTable::Hash::operator()(const TTable& value) const
     return hash;
 }
 
-uint32_t StringCache::add(std::string_view s)
+StringId StringCache::add(std::string_view s)
 {
-    size_t hash = std::hash<std::string_view>()(s);
-    if (uint32_t* it = strings.find(hash))
+    /* Important subtlety: This use of DenseHashMap<std::string_view, StringId>
+     * is okay because std::hash<std::string_view> works solely on the bytes
+     * referred by the string_view.
+     *
+     * In other words, two string views which contain the same bytes will have
+     * the same hash whether or not their addresses are the same.
+     */
+    if (StringId* it = strings.find(s))
         return *it;
 
     char* storage = static_cast<char*>(allocator.allocate(s.size()));
     memcpy(storage, s.data(), s.size());
 
-    uint32_t result = uint32_t(views.size());
+    StringId result = StringId(views.size());
     views.emplace_back(storage, s.size());
-    strings[hash] = result;
+    strings[s] = result;
     return result;
 }
 
@@ -389,6 +395,16 @@ Id toId(
     else if (auto tfun = get<TypeFunctionInstanceType>(ty))
     {
         LUAU_ASSERT(tfun->packArguments.empty());
+
+        if (tfun->userFuncName) {
+            // TODO: User defined type functions are pseudo-effectful: error
+            // reporting is done via the `print` statement, so running a
+            // UDTF multiple times may end up double erroring. egraphs
+            // currently may induce type functions to be reduced multiple
+            // times. We should probably opt _not_ to process user defined
+            // type functions at all.
+            return egraph.add(TOpaque{ty});
+        }
 
         std::vector<Id> parts;
         parts.reserve(tfun->typeArguments.size());

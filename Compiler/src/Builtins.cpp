@@ -7,7 +7,6 @@
 
 #include <array>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileDisabledBuiltins)
 LUAU_FASTFLAGVARIABLE(LuauCompileMathLerp)
 
 namespace Luau
@@ -297,36 +296,33 @@ struct BuiltinVisitor : AstVisitor
         , options(options)
         , names(names)
     {
-        if (FFlag::LuauCompileDisabledBuiltins)
+        builtinIsDisabled.fill(false);
+
+        if (const char* const* ptr = options.disabledBuiltins)
         {
-            builtinIsDisabled.fill(false);
-
-            if (const char* const* ptr = options.disabledBuiltins)
+            for (; *ptr; ++ptr)
             {
-                for (; *ptr; ++ptr)
+                if (const char* dot = strchr(*ptr, '.'))
                 {
-                    if (const char* dot = strchr(*ptr, '.'))
+                    AstName library = names.getWithType(*ptr, dot - *ptr).first;
+                    AstName name = names.get(dot + 1);
+
+                    if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
                     {
-                        AstName library = names.getWithType(*ptr, dot - *ptr).first;
-                        AstName name = names.get(dot + 1);
+                        Builtin builtin = Builtin{library, name};
 
-                        if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
-                        {
-                            Builtin builtin = Builtin{library, name};
-
-                            if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
-                                builtinIsDisabled[bfid] = true;
-                        }
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
                     }
-                    else
+                }
+                else
+                {
+                    if (AstName name = names.get(*ptr); name.value && getGlobalState(globals, name) == Global::Default)
                     {
-                        if (AstName name = names.get(*ptr); name.value && getGlobalState(globals, name) == Global::Default)
-                        {
-                            Builtin builtin = Builtin{AstName(), name};
+                        Builtin builtin = Builtin{AstName(), name};
 
-                            if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
-                                builtinIsDisabled[bfid] = true;
-                        }
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
                     }
                 }
             }
@@ -341,7 +337,7 @@ struct BuiltinVisitor : AstVisitor
 
         int bfid = getBuiltinFunctionId(builtin, options);
 
-        if (FFlag::LuauCompileDisabledBuiltins && bfid >= 0 && builtinIsDisabled[bfid])
+        if (bfid >= 0 && builtinIsDisabled[bfid])
             bfid = -1;
 
         // getBuiltinFunctionId optimistically assumes all select() calls are builtin but actually the second argument must be a vararg

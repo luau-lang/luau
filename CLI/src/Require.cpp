@@ -141,8 +141,17 @@ bool RequireResolver::resolveAndStoreDefaultPaths()
             return false;
 
         // resolvePath automatically sanitizes/normalizes the paths
-        resolvedRequire.identifier = resolvePath(pathToResolve, identifierContext);
-        resolvedRequire.absolutePath = resolvePath(pathToResolve, *absolutePathContext);
+        std::optional<std::string> identifier = resolvePath(pathToResolve, identifierContext);
+        std::optional<std::string> absolutePath = resolvePath(pathToResolve, *absolutePathContext);
+
+        if (!identifier || !absolutePath)
+        {
+            errorHandler.reportError("could not resolve require path");
+            return false;
+        }
+
+        resolvedRequire.identifier = std::move(*identifier);
+        resolvedRequire.absolutePath = std::move(*absolutePath);
     }
     else
     {
@@ -181,7 +190,7 @@ std::optional<std::string> RequireResolver::getRequiringContextAbsolute()
         else
         {
             // Require statement is being executed in a file, must resolve relative to CWD
-            requiringFile = resolvePath(requireContext.getPath(), joinPaths(*cwd, "stdin"));
+            requiringFile = normalizePath(joinPaths(*cwd, requireContext.getPath()));
         }
     }
     std::replace(requiringFile.begin(), requiringFile.end(), '\\', '/');
@@ -190,7 +199,7 @@ std::optional<std::string> RequireResolver::getRequiringContextAbsolute()
 
 std::string RequireResolver::getRequiringContextRelative()
 {
-    return requireContext.isStdin() ? "" : requireContext.getPath();
+    return requireContext.isStdin() ? "./" : requireContext.getPath();
 }
 
 bool RequireResolver::substituteAliasIfPresent(std::string& path)

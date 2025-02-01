@@ -13,7 +13,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauCodeGenVectorDeadStoreElim)
 LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
@@ -501,7 +500,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fcvt(temp4, temp3);
         build.str(temp4, AddressA64(addr.base, addr.data + 8));
 
-        if (FFlag::LuauCodeGenVectorDeadStoreElim && inst.e.kind != IrOpKind::None)
+        if (inst.e.kind != IrOpKind::None)
         {
             RegisterA64 temp = regs.allocTemp(KindA64::w);
             build.mov(temp, tagOp(inst.e));

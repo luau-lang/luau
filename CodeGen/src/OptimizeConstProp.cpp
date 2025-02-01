@@ -22,7 +22,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAGVARIABLE(LuauCodeGenArithOpt)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenLimitLiveSlotReuse)
 
 namespace Luau
@@ -1314,17 +1313,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::ADD_NUM:
     case IrCmd::SUB_NUM:
-        if (FFlag::LuauCodeGenArithOpt)
+        if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
         {
-            if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
-            {
-                // a + 0.0 and a - (-0.0) can't be folded since the behavior is different for negative zero
-                // however, a - 0.0 and a + (-0.0) can be folded into a
-                if (*k == 0.0 && bool(signbit(*k)) == (inst.cmd == IrCmd::ADD_NUM))
-                    substitute(function, inst, inst.a);
-                else
-                    state.substituteOrRecord(inst, index);
-            }
+            // a + 0.0 and a - (-0.0) can't be folded since the behavior is different for negative zero
+            // however, a - 0.0 and a + (-0.0) can be folded into a
+            if (*k == 0.0 && bool(signbit(*k)) == (inst.cmd == IrCmd::ADD_NUM))
+                substitute(function, inst, inst.a);
             else
                 state.substituteOrRecord(inst, index);
         }
@@ -1332,19 +1326,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::MUL_NUM:
-        if (FFlag::LuauCodeGenArithOpt)
+        if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
         {
-            if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
-            {
-                if (*k == 1.0) // a * 1.0 = a
-                    substitute(function, inst, inst.a);
-                else if (*k == 2.0) // a * 2.0 = a + a
-                    replace(function, block, index, {IrCmd::ADD_NUM, inst.a, inst.a});
-                else if (*k == -1.0) // a * -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_NUM, inst.a});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
+            if (*k == 1.0) // a * 1.0 = a
+                substitute(function, inst, inst.a);
+            else if (*k == 2.0) // a * 2.0 = a + a
+                replace(function, block, index, {IrCmd::ADD_NUM, inst.a, inst.a});
+            else if (*k == -1.0) // a * -1.0 = -a
+                replace(function, block, index, {IrCmd::UNM_NUM, inst.a});
             else
                 state.substituteOrRecord(inst, index);
         }
@@ -1352,19 +1341,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::DIV_NUM:
-        if (FFlag::LuauCodeGenArithOpt)
+        if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
         {
-            if (std::optional<double> k = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b)))
-            {
-                if (*k == 1.0) // a / 1.0 = a
-                    substitute(function, inst, inst.a);
-                else if (*k == -1.0) // a / -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_NUM, inst.a});
-                else if (int exp = 0; frexp(*k, &exp) == 0.5 && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
-                    replace(function, block, index, {IrCmd::MUL_NUM, inst.a, build.constDouble(1.0 / *k)});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
+            if (*k == 1.0) // a / 1.0 = a
+                substitute(function, inst, inst.a);
+            else if (*k == -1.0) // a / -1.0 = -a
+                replace(function, block, index, {IrCmd::UNM_NUM, inst.a});
+            else if (int exp = 0; frexp(*k, &exp) == 0.5 && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
+                replace(function, block, index, {IrCmd::MUL_NUM, inst.a, build.constDouble(1.0 / *k)});
             else
                 state.substituteOrRecord(inst, index);
         }
