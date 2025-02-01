@@ -33,8 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatErrorSuppression)
 LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2)
-LUAU_FASTFLAG(LuauVectorDefinitionsExtra)
-LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType)
+LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType2)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 
 namespace Luau
@@ -310,28 +309,25 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     addGlobalBinding(globals, "string", it->second.type(), "@luau");
 
     // Setup 'vector' metatable
-    if (FFlag::LuauVectorDefinitionsExtra)
+    if (auto it = globals.globalScope->exportedTypeBindings.find("vector"); it != globals.globalScope->exportedTypeBindings.end())
     {
-        if (auto it = globals.globalScope->exportedTypeBindings.find("vector"); it != globals.globalScope->exportedTypeBindings.end())
-        {
-            TypeId vectorTy = it->second.type;
-            ClassType* vectorCls = getMutable<ClassType>(vectorTy);
+        TypeId vectorTy = it->second.type;
+        ClassType* vectorCls = getMutable<ClassType>(vectorTy);
 
-            vectorCls->metatable = arena.addType(TableType{{}, std::nullopt, TypeLevel{}, TableState::Sealed});
-            TableType* metatableTy = Luau::getMutable<TableType>(vectorCls->metatable);
+        vectorCls->metatable = arena.addType(TableType{{}, std::nullopt, TypeLevel{}, TableState::Sealed});
+        TableType* metatableTy = Luau::getMutable<TableType>(vectorCls->metatable);
 
-            metatableTy->props["__add"] = {makeFunction(arena, vectorTy, {vectorTy}, {vectorTy})};
-            metatableTy->props["__sub"] = {makeFunction(arena, vectorTy, {vectorTy}, {vectorTy})};
-            metatableTy->props["__unm"] = {makeFunction(arena, vectorTy, {}, {vectorTy})};
+        metatableTy->props["__add"] = {makeFunction(arena, vectorTy, {vectorTy}, {vectorTy})};
+        metatableTy->props["__sub"] = {makeFunction(arena, vectorTy, {vectorTy}, {vectorTy})};
+        metatableTy->props["__unm"] = {makeFunction(arena, vectorTy, {}, {vectorTy})};
 
-            std::initializer_list<TypeId> mulOverloads{
-                makeFunction(arena, vectorTy, {vectorTy}, {vectorTy}),
-                makeFunction(arena, vectorTy, {builtinTypes->numberType}, {vectorTy}),
-            };
-            metatableTy->props["__mul"] = {makeIntersection(arena, mulOverloads)};
-            metatableTy->props["__div"] = {makeIntersection(arena, mulOverloads)};
-            metatableTy->props["__idiv"] = {makeIntersection(arena, mulOverloads)};
-        }
+        std::initializer_list<TypeId> mulOverloads{
+            makeFunction(arena, vectorTy, {vectorTy}, {vectorTy}),
+            makeFunction(arena, vectorTy, {builtinTypes->numberType}, {vectorTy}),
+        };
+        metatableTy->props["__mul"] = {makeIntersection(arena, mulOverloads)};
+        metatableTy->props["__div"] = {makeIntersection(arena, mulOverloads)};
+        metatableTy->props["__idiv"] = {makeIntersection(arena, mulOverloads)};
     }
 
     // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
@@ -453,7 +449,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreachi"].deprecated = true;
 
         attachMagicFunction(ttv->props["pack"].type(), std::make_shared<MagicPack>());
-        if (FFlag::LuauTableCloneClonesType)
+        if (FFlag::LuauTableCloneClonesType2)
             attachMagicFunction(ttv->props["clone"].type(), std::make_shared<MagicClone>());
         if (FFlag::LuauTypestateBuiltins2)
             attachMagicFunction(ttv->props["freeze"].type(), std::make_shared<MagicFreeze>());
@@ -1405,7 +1401,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     WithPredicate<TypePackId> withPredicate
 )
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType2);
 
     auto [paramPack, _predicates] = withPredicate;
 
@@ -1429,7 +1425,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
 bool MagicClone::infer(const MagicFunctionCallContext& context)
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType2);
 
     TypeArena* arena = context.solver->arena;
 

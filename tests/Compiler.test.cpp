@@ -23,11 +23,7 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileOptimizeRevArith)
-LUAU_FASTFLAG(LuauCompileLibraryConstants)
-LUAU_FASTFLAG(LuauVectorFolding)
 LUAU_FASTFLAG(LuauVector2Constants)
-LUAU_FASTFLAG(LuauCompileDisabledBuiltins)
 
 using namespace Luau;
 
@@ -1491,8 +1487,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorArith")
 {
-    ScopedFastFlag luauVectorFolding{FFlag::LuauVectorFolding, true};
-
     CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a + b", 0, 2), R"(
 LOADK R0 K0 [3, 6, 11]
 RETURN R0 1
@@ -1558,8 +1552,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorArith4Wide")
 {
-    ScopedFastFlag luauVectorFolding{FFlag::LuauVectorFolding, true};
-
     CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a + b", 0, 2), R"(
 LOADK R0 K0 [3, 6, 11, 5]
 RETURN R0 1
@@ -5147,8 +5139,6 @@ RETURN R0 1
 
 TEST_CASE("VectorConstantFields")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ("\n" + compileFunction("return vector.one, vector.zero", 0, 2), R"(
 LOADK R0 K0 [1, 1, 1]
 LOADK R1 K1 [0, 0, 0]
@@ -5169,8 +5159,6 @@ RETURN R0 1
 
 TEST_CASE("CustomConstantFields")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ("\n" + compileFunction("return test.some_nil, test.some_boolean, test.some_number, test.some_string", 0, 2), R"(
 LOADNIL R0
 LOADB R1 1
@@ -7904,8 +7892,6 @@ RETURN R0 1
 
 TEST_CASE("BuiltinFoldingProhibitedInOptions")
 {
-    ScopedFastFlag luauCompileDisabledBuiltins{FFlag::LuauCompileDisabledBuiltins, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
@@ -9096,8 +9082,6 @@ RETURN R0 1
 
 TEST_CASE("ArithRevK")
 {
-    ScopedFastFlag sff(FFlag::LuauCompileOptimizeRevArith, true);
-
     // - and / have special optimized form for reverse constants; in absence of type information, we can't optimize other ops
     CHECK_EQ(
         "\n" + compileFunction0(R"(

@@ -47,10 +47,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAG(LuauRemoveNotAnyHack)
-LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunUpdateAllEnvs)
 
 namespace Luau
 {
@@ -221,11 +218,8 @@ struct TypeFunctionReducer
     template<typename T>
     void handleTypeFunctionReduction(T subject, TypeFunctionReductionResult<T> reduction)
     {
-        if (FFlag::LuauUserTypeFunPrintToError)
-        {
-            for (auto& message : reduction.messages)
-                result.messages.emplace_back(location, UserDefinedTypeFunctionError{std::move(message)});
-        }
+        for (auto& message : reduction.messages)
+            result.messages.emplace_back(location, UserDefinedTypeFunctionError{std::move(message)});
 
         if (reduction.result)
             replace(subject, *reduction.result);
@@ -617,27 +611,16 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 {
     auto typeFunction = getMutable<TypeFunctionInstanceType>(instance);
 
-    if (FFlag::LuauUserTypeFunExportedAndLocal)
+    if (typeFunction->userFuncData.owner.expired())
     {
-        if (typeFunction->userFuncData.owner.expired())
-        {
-            ctx->ice->ice("user-defined type function module has expired");
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-        }
-
-        if (!typeFunction->userFuncName || !typeFunction->userFuncData.definition)
-        {
-            ctx->ice->ice("all user-defined type functions must have an associated function definition");
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-        }
+        ctx->ice->ice("user-defined type function module has expired");
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
     }
-    else
+
+    if (!typeFunction->userFuncName || !typeFunction->userFuncData.definition)
     {
-        if (!ctx->userFuncName)
-        {
-            ctx->ice->ice("all user-defined type functions must have an associated function definition");
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-        }
+        ctx->ice->ice("all user-defined type functions must have an associated function definition");
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
     }
 
     // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
@@ -653,36 +636,19 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             return {std::nullopt, Reduction::MaybeOk, {ty}, {}};
     }
 
-    if (FFlag::LuauUserTypeFunExportedAndLocal && FFlag::LuauUserTypeFunUpdateAllEnvs)
+    // Ensure that whole type function environment is registered
+    for (auto& [name, definition] : typeFunction->userFuncData.environment)
     {
-        // Ensure that whole type function environment is registered
-        for (auto& [name, definition] : typeFunction->userFuncData.environment)
+        if (std::optional<std::string> error = ctx->typeFunctionRuntime->registerFunction(definition.first))
         {
-            if (std::optional<std::string> error = ctx->typeFunctionRuntime->registerFunction(definition.first))
-            {
-                // Failure to register at this point means that original definition had to error out and should not have been present in the
-                // environment
-                ctx->ice->ice("user-defined type function reference cannot be registered");
-                return {std::nullopt, Reduction::Erroneous, {}, {}};
-            }
-        }
-    }
-    else if (FFlag::LuauUserTypeFunExportedAndLocal)
-    {
-        // Ensure that whole type function environment is registered
-        for (auto& [name, definition] : typeFunction->userFuncData.environment_DEPRECATED)
-        {
-            if (std::optional<std::string> error = ctx->typeFunctionRuntime->registerFunction(definition))
-            {
-                // Failure to register at this point means that original definition had to error out and should not have been present in the
-                // environment
-                ctx->ice->ice("user-defined type function reference cannot be registered");
-                return {std::nullopt, Reduction::Erroneous, {}, {}};
-            }
+            // Failure to register at this point means that original definition had to error out and should not have been present in the
+            // environment
+            ctx->ice->ice("user-defined type function reference cannot be registered");
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
         }
     }
 
-    AstName name = FFlag::LuauUserTypeFunExportedAndLocal ? typeFunction->userFuncData.definition->name : *ctx->userFuncName;
+    AstName name = typeFunction->userFuncData.definition->name;
 
     lua_State* global = ctx->typeFunctionRuntime->state.get();
 
@@ -693,62 +659,15 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     lua_State* L = lua_newthread(global);
     LuauTempThreadPopper popper(global);
 
-    if (FFlag::LuauUserTypeFunExportedAndLocal && FFlag::LuauUserTypeFunUpdateAllEnvs)
+    // Build up the environment table of each function we have visible
+    for (auto& [_, curr] : typeFunction->userFuncData.environment)
     {
-        // Build up the environment table of each function we have visible
-        for (auto& [_, curr] : typeFunction->userFuncData.environment)
-        {
-            // Environment table has to be filled only once in the current execution context
-            if (ctx->typeFunctionRuntime->initialized.find(curr.first))
-                continue;
-            ctx->typeFunctionRuntime->initialized.insert(curr.first);
+        // Environment table has to be filled only once in the current execution context
+        if (ctx->typeFunctionRuntime->initialized.find(curr.first))
+            continue;
+        ctx->typeFunctionRuntime->initialized.insert(curr.first);
 
-            lua_pushlightuserdata(L, curr.first);
-            lua_gettable(L, LUA_REGISTRYINDEX);
-
-            if (!lua_isfunction(L, -1))
-            {
-                ctx->ice->ice("user-defined type function reference cannot be found in the registry");
-                return {std::nullopt, Reduction::Erroneous, {}, {}};
-            }
-
-            // Build up the environment of the current function, where some might not be visible
-            lua_getfenv(L, -1);
-            lua_setreadonly(L, -1, false);
-
-            for (auto& [name, definition] : typeFunction->userFuncData.environment)
-            {
-                // Filter visibility based on original scope depth
-                if (definition.second >= curr.second)
-                {
-                    lua_pushlightuserdata(L, definition.first);
-                    lua_gettable(L, LUA_REGISTRYINDEX);
-
-                    if (!lua_isfunction(L, -1))
-                        break; // Don't have to report an error here, we will visit each function in outer loop
-
-                    lua_setfield(L, -2, name.c_str());
-                }
-            }
-
-            lua_setreadonly(L, -1, true);
-            lua_pop(L, 2);
-        }
-
-        // Fetch the function we want to evaluate
-        lua_pushlightuserdata(L, typeFunction->userFuncData.definition);
-        lua_gettable(L, LUA_REGISTRYINDEX);
-
-        if (!lua_isfunction(L, -1))
-        {
-            ctx->ice->ice("user-defined type function reference cannot be found in the registry");
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-        }
-    }
-    else if (FFlag::LuauUserTypeFunExportedAndLocal)
-    {
-        // Fetch the function we want to evaluate
-        lua_pushlightuserdata(L, typeFunction->userFuncData.definition);
+        lua_pushlightuserdata(L, curr.first);
         lua_gettable(L, LUA_REGISTRYINDEX);
 
         if (!lua_isfunction(L, -1))
@@ -757,31 +676,37 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             return {std::nullopt, Reduction::Erroneous, {}, {}};
         }
 
-        // Build up the environment
+        // Build up the environment of the current function, where some might not be visible
         lua_getfenv(L, -1);
         lua_setreadonly(L, -1, false);
 
-        for (auto& [name, definition] : typeFunction->userFuncData.environment_DEPRECATED)
+        for (auto& [name, definition] : typeFunction->userFuncData.environment)
         {
-            lua_pushlightuserdata(L, definition);
-            lua_gettable(L, LUA_REGISTRYINDEX);
-
-            if (!lua_isfunction(L, -1))
+            // Filter visibility based on original scope depth
+            if (definition.second >= curr.second)
             {
-                ctx->ice->ice("user-defined type function reference cannot be found in the registry");
-                return {std::nullopt, Reduction::Erroneous, {}, {}};
-            }
+                lua_pushlightuserdata(L, definition.first);
+                lua_gettable(L, LUA_REGISTRYINDEX);
 
-            lua_setfield(L, -2, name.c_str());
+                if (!lua_isfunction(L, -1))
+                    break; // Don't have to report an error here, we will visit each function in outer loop
+
+                lua_setfield(L, -2, name.c_str());
+            }
         }
 
         lua_setreadonly(L, -1, true);
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
-    else
+
+    // Fetch the function we want to evaluate
+    lua_pushlightuserdata(L, typeFunction->userFuncData.definition);
+    lua_gettable(L, LUA_REGISTRYINDEX);
+
+    if (!lua_isfunction(L, -1))
     {
-        lua_getglobal(global, name.value);
-        lua_xmove(global, L, 1);
+        ctx->ice->ice("user-defined type function reference cannot be found in the registry");
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
     }
 
     resetTypeFunctionState(L);
@@ -816,31 +741,22 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             throw UserCancelError(ctx->ice->moduleName);
     };
 
-    if (FFlag::LuauUserTypeFunPrintToError)
-        ctx->typeFunctionRuntime->messages.clear();
+    ctx->typeFunctionRuntime->messages.clear();
 
     if (auto error = checkResultForError(L, name.value, lua_pcall(L, int(typeParams.size()), 1, 0)))
-    {
-        if (FFlag::LuauUserTypeFunPrintToError)
-            return {std::nullopt, Reduction::Erroneous, {}, {}, error, ctx->typeFunctionRuntime->messages};
-        else
-            return {std::nullopt, Reduction::Erroneous, {}, {}, error};
-    }
+        return {std::nullopt, Reduction::Erroneous, {}, {}, error, ctx->typeFunctionRuntime->messages};
 
     // If the return value is not a type userdata, return with error message
     if (!isTypeUserData(L, 1))
     {
-        if (FFlag::LuauUserTypeFunPrintToError)
-            return {
-                std::nullopt,
-                Reduction::Erroneous,
-                {},
-                {},
-                format("'%s' type function: returned a non-type value", name.value),
-                ctx->typeFunctionRuntime->messages
-            };
-        else
-            return {std::nullopt, Reduction::Erroneous, {}, {}, format("'%s' type function: returned a non-type value", name.value)};
+        return {
+            std::nullopt,
+            Reduction::Erroneous,
+            {},
+            {},
+            format("'%s' type function: returned a non-type value", name.value),
+            ctx->typeFunctionRuntime->messages
+        };
     }
 
     TypeFunctionTypeId retTypeFunctionTypeId = getTypeUserData(L, 1);
@@ -852,17 +768,9 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     // At least 1 error occurred while deserializing
     if (runtimeBuilder->errors.size() > 0)
-    {
-        if (FFlag::LuauUserTypeFunPrintToError)
-            return {std::nullopt, Reduction::Erroneous, {}, {}, runtimeBuilder->errors.front(), ctx->typeFunctionRuntime->messages};
-        else
-            return {std::nullopt, Reduction::Erroneous, {}, {}, runtimeBuilder->errors.front()};
-    }
+        return {std::nullopt, Reduction::Erroneous, {}, {}, runtimeBuilder->errors.front(), ctx->typeFunctionRuntime->messages};
 
-    if (FFlag::LuauUserTypeFunPrintToError)
-        return {retTypeId, Reduction::MaybeOk, {}, {}, std::nullopt, ctx->typeFunctionRuntime->messages};
-    else
-        return {retTypeId, Reduction::MaybeOk, {}, {}};
+    return {retTypeId, Reduction::MaybeOk, {}, {}, std::nullopt, ctx->typeFunctionRuntime->messages};
 }
 
 TypeFunctionReductionResult<TypeId> notTypeFunction(
@@ -1098,20 +1006,17 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
 
     lua_State* global = state.get();
 
-    if (FFlag::LuauUserTypeFunExportedAndLocal)
+    // Fetch to check if function is already registered
+    lua_pushlightuserdata(global, function);
+    lua_gettable(global, LUA_REGISTRYINDEX);
+
+    if (!lua_isnil(global, -1))
     {
-        // Fetch to check if function is already registered
-        lua_pushlightuserdata(global, function);
-        lua_gettable(global, LUA_REGISTRYINDEX);
-
-        if (!lua_isnil(global, -1))
-        {
-            lua_pop(global, 1);
-            return std::nullopt;
-        }
-
         lua_pop(global, 1);
+        return std::nullopt;
     }
+
+    lua_pop(global, 1);
 
     AstName name = function->name;
 
@@ -1166,19 +1071,10 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
         return format("Could not find '%s' type function in the global scope", name.value);
     }
 
-    if (FFlag::LuauUserTypeFunExportedAndLocal)
-    {
-        // Store resulting function in the registry
-        lua_pushlightuserdata(global, function);
-        lua_xmove(L, global, 1);
-        lua_settable(global, LUA_REGISTRYINDEX);
-    }
-    else
-    {
-        // Store resulting function in the global environment
-        lua_xmove(L, global, 1);
-        lua_setglobal(global, name.value);
-    }
+    // Store resulting function in the registry
+    lua_pushlightuserdata(global, function);
+    lua_xmove(L, global, 1);
+    lua_settable(global, LUA_REGISTRYINDEX);
 
     return std::nullopt;
 }

@@ -6,7 +6,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauVectorMetatable)
 LUAU_FASTFLAGVARIABLE(LuauVector2Constructor)
 
 static int vector_create(lua_State* L)
@@ -261,8 +260,6 @@ static int vector_max(lua_State* L)
 
 static int vector_index(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauVectorMetatable);
-
     const float* v = luaL_checkvector(L, 1);
     size_t namelen = 0;
     const char* name = luaL_checklstring(L, 2, &namelen);
@@ -307,8 +304,6 @@ static const luaL_Reg vectorlib[] = {
 
 static void createmetatable(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauVectorMetatable);
-
     lua_createtable(L, 0, 1); // create metatable for vectors
 
     // push dummy vector
@@ -345,8 +340,7 @@ int luaopen_vector(lua_State* L)
     lua_setfield(L, -2, "one");
 #endif
 
-    if (FFlag::LuauVectorMetatable)
-        createmetatable(L);
+    createmetatable(L);
 
     return 1;
 }

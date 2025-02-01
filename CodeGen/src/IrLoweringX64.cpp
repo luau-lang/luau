@@ -17,7 +17,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauCodeGenVectorDeadStoreElim)
 LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
@@ -301,7 +300,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         storeDoubleAsFloat(luauRegValueVector(vmRegOp(inst.a), 1), inst.c);
         storeDoubleAsFloat(luauRegValueVector(vmRegOp(inst.a), 2), inst.d);
 
-        if (FFlag::LuauCodeGenVectorDeadStoreElim && inst.e.kind != IrOpKind::None)
+        if (inst.e.kind != IrOpKind::None)
             build.mov(luauRegTag(vmRegOp(inst.a)), tagOp(inst.e));
         break;
     case IrCmd::STORE_TVALUE:

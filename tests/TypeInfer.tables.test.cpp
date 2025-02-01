@@ -22,6 +22,8 @@ LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(LuauTableKeysAreRValues)
 LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
+LUAU_FASTFLAG(LuauDontInPlaceMutateTableType)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3816,7 +3818,10 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
-    ScopedFastFlag _{FFlag::LuauTrackInteriorFreeTypesOnScope, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
+        {FFlag::LuauTrackInteriorFreeTablesOnScope, true},
+    };
 
     CheckResult result = check(R"(
         local function f(s): string
@@ -3832,7 +3837,7 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
         CHECK(toString(result.errors[0]) == "Parameter 's' has been reduced to never. This function is not callable with any possible value.");
         CHECK(
             toString(result.errors[1]) ==
-            "Parameter 's' is required to be a subtype of '{- read absolutely_no_scalar_has_this_method: (never) -> (unknown, ...unknown) -}' here."
+            "Parameter 's' is required to be a subtype of '{ read absolutely_no_scalar_has_this_method: (never) -> (unknown, ...unknown) }' here."
         );
         CHECK(toString(result.errors[2]) == "Parameter 's' is required to be a subtype of 'string' here.");
         CHECK_EQ("(never) -> string", toString(requireType("f")));
@@ -5062,6 +5067,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_property_reads")
 
         local arr:{number} = {}
         arr[t.id] = 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_in_literal")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontInPlaceMutateTableType, true},
+    };
+
+    auto result = check(R"(
+        type Foo = {
+            [string]: {
+                Min: number,
+                Max: number
+            }
+        }
+        local Foos: Foo = {
+            ["Foo"] = {
+                Min = -1,
+                Max = 1
+            },
+            ["Foo"] = {
+                Min = -1,
+                Max = 1
+            }
+        }
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

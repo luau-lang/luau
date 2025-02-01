@@ -8,8 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauDebugInfoInvArgLeftovers, false)
-
 static lua_State* getthread(lua_State* L, int* arg)
 {
     if (lua_isthread(L, 1))
@@ -110,7 +108,7 @@ static int db_info(lua_State* L)
 
         default:
             // restore stack state of another thread as 'f' option might not have been visited yet
-            if (DFFlag::LuauDebugInfoInvArgLeftovers && L != L1)
+            if (L != L1)
                 lua_settop(L1, l1top);
 
             luaL_argerror(L, arg + 2, "invalid option");

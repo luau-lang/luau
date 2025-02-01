@@ -10,12 +10,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAG(LuauUserTypeFunFixInner)
-LUAU_FASTFLAG(LuauUserTypeFunPrintToError)
-LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
-LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
-LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
 LUAU_FASTFLAG(LuauUserTypeFunGenerics)
 LUAU_FASTFLAG(LuauUserTypeFunCloneTail)
+LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -226,7 +223,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_number_methods_work")
 TEST_CASE_FIXTURE(BuiltinsFixture, "thread_and_buffer_types")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunThreadBuffer{FFlag::LuauUserTypeFunThreadBuffer, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type function work_with_thread(x)
@@ -931,7 +927,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunUpdateAllEnvs{FFlag::LuauUserTypeFunUpdateAllEnvs, true};
 
     CheckResult result = check(R"(
         type function first(arg)
@@ -955,8 +950,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
-    ScopedFastFlag luauUserTypeFunUpdateAllEnvs{FFlag::LuauUserTypeFunUpdateAllEnvs, true};
 
     CheckResult result = check(R"(
         -- this function should not see 'fourth' function when invoked from 'third' that sees it
@@ -1281,7 +1274,6 @@ local a: foo<> = "a"
 TEST_CASE_FIXTURE(BuiltinsFixture, "implicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
     fileResolver.source["game/A"] = R"(
 type function concat(a, b)
@@ -1309,7 +1301,6 @@ local b: Test.Concat<'third', 'fourth'>
 TEST_CASE_FIXTURE(BuiltinsFixture, "local_scope")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
     CheckResult result = check(R"(
 type function foo()
@@ -1332,7 +1323,6 @@ local a = test()
 TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
     fileResolver.source["game/A"] = R"(
 export type function concat(a, b)
@@ -1359,7 +1349,6 @@ local b: Test.concat<'third', 'fourth'>
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1378,7 +1367,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1399,7 +1387,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1889,6 +1876,24 @@ local function ok(idx: pass<test>): (number, ...string) -> (string, ...number) r
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauUserTypeFunGenerics, true}, {FFlag::DebugLuauEqSatSimplification, true}};
+
+    CheckResult _ = check(R"(
+        type function t0(a)
+            error("test")
+        end
+        local v: t0<string & number>
+    )");
+    TypeArena arena;
+    auto ty = requireType("v");
+    auto simplifier = EqSatSimplification::newSimplifier(NotNull{&arena}, frontend.builtinTypes);
+    auto simplified = eqSatSimplify(NotNull{simplifier.get()}, ty);
+    REQUIRE(simplified);
+    CHECK_EQ("t0<number & string>", toString(simplified->result)); // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST_SUITE_END();

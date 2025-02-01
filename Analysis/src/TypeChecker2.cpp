@@ -7,7 +7,6 @@
 #include "Luau/DcrLogger.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
-#include "Luau/InsertionOrderedMap.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
@@ -27,8 +26,6 @@
 #include "Luau/VisitType.h"
 
 #include <algorithm>
-#include <iostream>
-#include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
@@ -176,7 +173,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypeId> mentionedFunctions{nullptr};
     DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
-    InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
+    explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
     {
         TypeFunctionFinder f;
         for (TypeId fn : declStack)
@@ -507,7 +504,7 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
     return instance;
 }
 
-TypePackId TypeChecker2::lookupPack(AstExpr* expr)
+TypePackId TypeChecker2::lookupPack(AstExpr* expr) const
 {
     // If a type isn't in the type graph, it probably means that a recursion limit was exceeded.
     // We'll just return anyType in these cases.  Typechecking against any is very fast and this
@@ -557,7 +554,7 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
     return checkForTypeFunctionInhabitance(follow(*ty), annotation->location);
 }
 
-std::optional<TypePackId> TypeChecker2::lookupPackAnnotation(AstTypePack* annotation)
+std::optional<TypePackId> TypeChecker2::lookupPackAnnotation(AstTypePack* annotation) const
 {
     TypePackId* tp = module->astResolvedTypePacks.find(annotation);
     if (tp != nullptr)
@@ -565,7 +562,7 @@ std::optional<TypePackId> TypeChecker2::lookupPackAnnotation(AstTypePack* annota
     return {};
 }
 
-TypeId TypeChecker2::lookupExpectedType(AstExpr* expr)
+TypeId TypeChecker2::lookupExpectedType(AstExpr* expr) const
 {
     if (TypeId* ty = module->astExpectedTypes.find(expr))
         return follow(*ty);
@@ -573,7 +570,7 @@ TypeId TypeChecker2::lookupExpectedType(AstExpr* expr)
     return builtinTypes->anyType;
 }
 
-TypePackId TypeChecker2::lookupExpectedPack(AstExpr* expr, TypeArena& arena)
+TypePackId TypeChecker2::lookupExpectedPack(AstExpr* expr, TypeArena& arena) const
 {
     if (TypeId* ty = module->astExpectedTypes.find(expr))
         return arena.addTypePack(TypePack{{follow(*ty)}, std::nullopt});
@@ -597,7 +594,7 @@ TypePackId TypeChecker2::reconstructPack(AstArray<AstExpr*> exprs, TypeArena& ar
     return arena.addTypePack(TypePack{head, tail});
 }
 
-Scope* TypeChecker2::findInnermostScope(Location location)
+Scope* TypeChecker2::findInnermostScope(Location location) const
 {
     Scope* bestScope = module->getModuleScope().get();
 
@@ -1564,7 +1561,7 @@ void TypeChecker2::visit(AstExprCall* call)
     visitCall(call);
 }
 
-std::optional<TypeId> TypeChecker2::tryStripUnionFromNil(TypeId ty)
+std::optional<TypeId> TypeChecker2::tryStripUnionFromNil(TypeId ty) const
 {
     if (const UnionType* utv = get<UnionType>(ty))
     {

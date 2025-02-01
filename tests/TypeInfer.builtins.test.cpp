@@ -12,7 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauStringFormatArityFix)
-LUAU_FASTFLAG(LuauTableCloneClonesType)
+LUAU_FASTFLAG(LuauTableCloneClonesType2)
 LUAU_FASTFLAG(LuauStringFormatErrorSuppression)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -1178,8 +1178,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mu
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-
-    if (FFlag::LuauTypestateBuiltins2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
     {
         CHECK_EQ("{ a: number, q: string } | { read a: number, read q: string }", toString(requireType("t1"), {/*exhaustive */ true}));
         // before the assignment, it's `t1`
@@ -1600,7 +1599,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauTableCloneClonesType)
+    if (FFlag::LuauTableCloneClonesType2)
     {
         CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, z: number }");
         CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number }");

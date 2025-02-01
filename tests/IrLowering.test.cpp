@@ -16,8 +16,6 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCompileLibraryConstants)
-
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
     // While 'vector' library constants are a Luau built-in, their constant value depends on the embedder LUA_VECTOR_SIZE value
@@ -2115,8 +2113,6 @@ bb_bytecode_1:
 
 TEST_CASE("LibraryFieldTypesAndConstants")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2153,8 +2149,6 @@ bb_bytecode_1:
 
 TEST_CASE("LibraryFieldTypesAndConstants")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2189,8 +2183,6 @@ bb_bytecode_1:
 
 TEST_CASE("LibraryFieldTypesAndConstantsCApi")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssemblyUsingCApi(
                    R"(

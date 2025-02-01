@@ -6,9 +6,6 @@
 #include <vector>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCompileLibraryConstants)
-LUAU_FASTFLAGVARIABLE(LuauVectorFolding)
-
 namespace Luau
 {
 namespace Compile
@@ -60,7 +57,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
             result.type = Constant::Type_Number;
             result.valueNumber = -arg.valueNumber;
         }
-        else if (FFlag::LuauVectorFolding && arg.type == Constant::Type_Vector)
+        else if (arg.type == Constant::Type_Vector)
         {
             result.type = Constant::Type_Vector;
             result.valueVector[0] = -arg.valueVector[0];
@@ -93,7 +90,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber + ra.valueNumber;
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
         {
             result.type = Constant::Type_Vector;
             result.valueVector[0] = la.valueVector[0] + ra.valueVector[0];
@@ -109,7 +106,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber - ra.valueNumber;
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
         {
             result.type = Constant::Type_Vector;
             result.valueVector[0] = la.valueVector[0] - ra.valueVector[0];
@@ -125,7 +122,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber * ra.valueNumber;
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
         {
             bool hadW = la.valueVector[3] != 0.0f || ra.valueVector[3] != 0.0f;
             float resultW = la.valueVector[3] * ra.valueVector[3];
@@ -139,7 +136,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
                 result.valueVector[3] = resultW;
             }
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
         {
             bool hadW = ra.valueVector[3] != 0.0f;
             float resultW = float(la.valueNumber) * ra.valueVector[3];
@@ -153,7 +150,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
                 result.valueVector[3] = resultW;
             }
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
         {
             bool hadW = la.valueVector[3] != 0.0f;
             float resultW = la.valueVector[3] * float(ra.valueNumber);
@@ -175,7 +172,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = la.valueNumber / ra.valueNumber;
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
         {
             bool hadW = la.valueVector[3] != 0.0f || ra.valueVector[3] != 0.0f;
             float resultW = la.valueVector[3] / ra.valueVector[3];
@@ -189,7 +186,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
                 result.valueVector[3] = resultW;
             }
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
         {
             bool hadW = ra.valueVector[3] != 0.0f;
             float resultW = float(la.valueNumber) / ra.valueVector[3];
@@ -203,7 +200,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
                 result.valueVector[3] = resultW;
             }
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
         {
             bool hadW = la.valueVector[3] != 0.0f;
             float resultW = la.valueVector[3] / float(ra.valueNumber);
@@ -225,7 +222,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Number;
             result.valueNumber = floor(la.valueNumber / ra.valueNumber);
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Vector)
         {
             bool hadW = la.valueVector[3] != 0.0f || ra.valueVector[3] != 0.0f;
             float resultW = floor(la.valueVector[3] / ra.valueVector[3]);
@@ -239,7 +236,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
                 result.valueVector[3] = resultW;
             }
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
+        else if (la.type == Constant::Type_Number && ra.type == Constant::Type_Vector)
         {
             bool hadW = ra.valueVector[3] != 0.0f;
             float resultW = floor(float(la.valueNumber) / ra.valueVector[3]);
@@ -253,7 +250,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
                 result.valueVector[3] = resultW;
             }
         }
-        else if (FFlag::LuauVectorFolding && la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
+        else if (la.type == Constant::Type_Vector && ra.type == Constant::Type_Number)
         {
             bool hadW = la.valueVector[3] != 0.0f;
             float resultW = floor(la.valueVector[3] / float(ra.valueNumber));
@@ -474,24 +471,14 @@ struct ConstantVisitor : AstVisitor
 
             if (foldLibraryK)
             {
-                if (FFlag::LuauCompileLibraryConstants)
+                if (AstExprGlobal* eg = expr->expr->as<AstExprGlobal>())
                 {
-                    if (AstExprGlobal* eg = expr->expr->as<AstExprGlobal>())
-                    {
-                        if (eg->name == "math")
-                            result = foldBuiltinMath(expr->index);
-
-                        // if we have a custom handler and the constant hasn't been resolved
-                        if (libraryMemberConstantCb && result.type == Constant::Type_Unknown)
-                            libraryMemberConstantCb(eg->name.value, expr->index.value, reinterpret_cast<Luau::CompileConstant*>(&result));
-                    }
-                }
-                else
-                {
-                    if (AstExprGlobal* eg = expr->expr->as<AstExprGlobal>(); eg && eg->name == "math")
-                    {
+                    if (eg->name == "math")
                         result = foldBuiltinMath(expr->index);
-                    }
+
+                    // if we have a custom handler and the constant hasn't been resolved
+                    if (libraryMemberConstantCb && result.type == Constant::Type_Unknown)
+                        libraryMemberConstantCb(eg->name.value, expr->index.value, reinterpret_cast<Luau::CompileConstant*>(&result));
                 }
             }
         }
