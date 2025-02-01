@@ -13,8 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodeGenVectorDeadStoreElim)
-LUAU_FASTFLAG(LuauCodeGenArithOpt)
 
 using namespace Luau::CodeGen;
 
@@ -1725,8 +1723,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumericSimplifications")
 {
-    ScopedFastFlag luauCodeGenArithOpt{FFlag::LuauCodeGenArithOpt, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -4472,8 +4468,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverNumber")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4497,8 +4491,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverVector")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4522,8 +4514,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumberOverVector")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4547,8 +4537,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumberOverNil")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4571,8 +4559,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverNil")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4595,8 +4581,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumberOverCombinedVector")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4622,8 +4606,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverCombinedVector")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4649,8 +4631,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverCombinedNumber")
 {
-    ScopedFastFlag luauCodeGenVectorDeadStoreElim{FFlag::LuauCodeGenVectorDeadStoreElim, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);

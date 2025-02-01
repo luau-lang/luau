@@ -15,9 +15,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixInner)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunPrintToError)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunThreadBuffer)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunGenerics)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunCloneTail)
 
@@ -137,11 +135,9 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "number";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
         return "string";
-    else if (auto s = get<TypeFunctionPrimitiveType>(ty);
-             FFlag::LuauUserTypeFunThreadBuffer && s && s->type == TypeFunctionPrimitiveType::Type::Thread)
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Thread)
         return "thread";
-    else if (auto s = get<TypeFunctionPrimitiveType>(ty);
-             FFlag::LuauUserTypeFunThreadBuffer && s && s->type == TypeFunctionPrimitiveType::Type::Buffer)
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Buffer)
         return "buffer";
     else if (get<TypeFunctionUnknownType>(ty))
         return "unknown";
@@ -1759,8 +1755,8 @@ void registerTypesLibrary(lua_State* L)
         {"boolean", createBoolean},
         {"number", createNumber},
         {"string", createString},
-        {FFlag::LuauUserTypeFunThreadBuffer ? "thread" : nullptr, FFlag::LuauUserTypeFunThreadBuffer ? createThread : nullptr},
-        {FFlag::LuauUserTypeFunThreadBuffer ? "buffer" : nullptr, FFlag::LuauUserTypeFunThreadBuffer ? createBuffer : nullptr},
+        {"thread", createThread},
+        {"buffer", createBuffer},
         {nullptr, nullptr}
     };
 
@@ -1941,29 +1937,16 @@ void setTypeFunctionEnvironment(lua_State* L)
     luaopen_base(L);
     lua_pop(L, 1);
 
-    if (FFlag::LuauUserTypeFunPrintToError)
+    // Remove certain global functions from the base library
+    static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
+    for (auto& name : unavailableGlobals)
     {
-        // Remove certain global functions from the base library
-        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
-        for (auto& name : unavailableGlobals)
-        {
-            lua_pushcfunction(L, unsupportedFunction, name);
-            lua_setglobal(L, name);
-        }
+        lua_pushcfunction(L, unsupportedFunction, name);
+        lua_setglobal(L, name);
+    }
 
-        lua_pushcfunction(L, print, "print");
-        lua_setglobal(L, "print");
-    }
-    else
-    {
-        // Remove certain global functions from the base library
-        static const std::string unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
-        for (auto& name : unavailableGlobals)
-        {
-            lua_pushcfunction(L, unsupportedFunction, "Removing global function from type function environment");
-            lua_setglobal(L, name.c_str());
-        }
-    }
+    lua_pushcfunction(L, print, "print");
+    lua_setglobal(L, "print");
 }
 
 void resetTypeFunctionState(lua_State* L)
@@ -2495,12 +2478,10 @@ private:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
             case TypeFunctionPrimitiveType::Thread:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
                 break;
             case TypeFunctionPrimitiveType::Buffer:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
                 break;
             default:
                 break;

@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver);
+LUAU_FASTFLAG(LuauSelectivelyRetainDFGArena)
 
 namespace
 {
@@ -1539,6 +1540,36 @@ TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_allocator")
 
     CHECK_EQ(module->allocator.get(), source->allocator.get());
     CHECK_EQ(module->names.get(), source->names.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "dfg_data_cleared_on_retain_type_graphs_unset")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSelectivelyRetainDFGArena, true}
+    };
+    fileResolver.source["game/A"] = R"(
+local a = 1
+local b = 2
+local c = 3
+return {x = a, y = b, z = c}
+)";
+
+    frontend.options.retainFullTypeGraphs = true;
+    frontend.check("game/A");
+
+    auto mod = frontend.moduleResolver.getModule("game/A");
+    CHECK(!mod->defArena.allocator.empty());
+    CHECK(!mod->keyArena.allocator.empty());
+
+    // We should check that the dfg arena is empty once retainFullTypeGraphs is unset
+    frontend.options.retainFullTypeGraphs = false;
+    frontend.markDirty("game/A");
+    frontend.check("game/A");
+
+    mod = frontend.moduleResolver.getModule("game/A");
+    CHECK(mod->defArena.allocator.empty());
+    CHECK(mod->keyArena.allocator.empty());
 }
 
 TEST_SUITE_END();

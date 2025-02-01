@@ -35,9 +35,9 @@ LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauAllowNilAssignmentToIndexer)
-LUAU_FASTFLAG(LuauUserTypeFunNoExtraConstraint)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysFillInFunctionCallDiscriminantTypes)
+LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTablesOnScope)
 
 namespace Luau
 {
@@ -823,6 +823,9 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
         TypeId tableTy =
             arena->addType(TableType{TableType::Props{}, TableIndexer{keyTy, valueTy}, TypeLevel{}, constraint->scope, TableState::Free});
 
+        if (FFlag::LuauTrackInteriorFreeTypesOnScope && FFlag::LuauTrackInteriorFreeTablesOnScope)
+            trackInteriorFreeType(constraint->scope, tableTy);
+
         unify(constraint, nextTy, tableTy);
 
         auto it = begin(c.variables);
@@ -959,16 +962,6 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (auto typeFn = get<TypeFunctionInstanceType>(follow(tf->type)))
         pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
 
-    if (!FFlag::LuauUserTypeFunNoExtraConstraint)
-    {
-        // If there are no parameters to the type function we can just use the type directly
-        if (tf->typeParams.empty() && tf->typePackParams.empty())
-        {
-            bindResult(tf->type);
-            return true;
-        }
-    }
-
     // Due to how pending expansion types and TypeFun's are created
     // If this check passes, we have created a cyclic / corecursive type alias
     // of size 0
@@ -981,14 +974,11 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         return true;
     }
 
-    if (FFlag::LuauUserTypeFunNoExtraConstraint)
+    // If there are no parameters to the type function we can just use the type directly
+    if (tf->typeParams.empty() && tf->typePackParams.empty())
     {
-        // If there are no parameters to the type function we can just use the type directly
-        if (tf->typeParams.empty() && tf->typePackParams.empty())
-        {
-            bindResult(tf->type);
-            return true;
-        }
+        bindResult(tf->type);
+        return true;
     }
 
     auto [typeArguments, packArguments] = saturateArguments(arena, builtinTypes, *tf, petv->typeArguments, petv->packArguments);
@@ -1854,6 +1844,10 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
         else
         {
             TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, constraint->scope});
+
+            if (FFlag::LuauTrackInteriorFreeTypesOnScope && FFlag::LuauTrackInteriorFreeTablesOnScope)
+                trackInteriorFreeType(constraint->scope, newUpperBound);
+
             TableType* upperTable = getMutable<TableType>(newUpperBound);
             LUAU_ASSERT(upperTable);
 
@@ -2637,6 +2631,10 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         NotNull<Scope> scope{ft->scope};
 
         const TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, scope});
+
+        if (FFlag::LuauTrackInteriorFreeTypesOnScope && FFlag::LuauTrackInteriorFreeTablesOnScope)
+            trackInteriorFreeType(constraint->scope, newUpperBound);
+
         TableType* tt = getMutable<TableType>(newUpperBound);
         LUAU_ASSERT(tt);
         TypeId propType = freshType(arena, builtinTypes, scope);

@@ -9,6 +9,8 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAGVARIABLE(LuauDontInPlaceMutateTableType)
+
 namespace Luau
 {
 
@@ -236,6 +238,8 @@ TypeId matchLiteralType(
             return exprType;
         }
 
+        DenseHashSet<AstExprConstantString*> keysToDelete{nullptr};
+
         for (const AstExprTable::Item& item : exprTable->items)
         {
             if (isRecord(item))
@@ -280,7 +284,10 @@ TypeId matchLiteralType(
                         else
                             tableTy->indexer = TableIndexer{expectedTableTy->indexer->indexType, matchedType};
 
-                        tableTy->props.erase(keyStr);
+                        if (FFlag::LuauDontInPlaceMutateTableType)
+                            keysToDelete.insert(item.key->as<AstExprConstantString>());
+                        else
+                            tableTy->props.erase(keyStr);
                     }
 
                     // If it's just an extra property and the expected type
@@ -385,6 +392,16 @@ TypeId matchLiteralType(
             }
             else
                 LUAU_ASSERT(!"Unexpected");
+        }
+
+        if (FFlag::LuauDontInPlaceMutateTableType)
+        {
+            for (const auto& key: keysToDelete)
+            {
+                const AstArray<char>& s = key->value;
+                std::string keyStr{s.data, s.data + s.size};
+                tableTy->props.erase(keyStr);
+            }
         }
 
         // Keys that the expectedType says we should have, but that aren't

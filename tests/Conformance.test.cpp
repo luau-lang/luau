@@ -35,10 +35,8 @@ LUAU_FASTFLAG(LuauMathLerp)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoInvArgLeftovers)
 LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauVectorMetatable)
 LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAG(LuauBufferBitMethods2)
 LUAU_FASTFLAG(LuauCodeGenLimitLiveSlotReuse)
@@ -897,7 +895,6 @@ TEST_CASE("VectorLibrary")
 {
     ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
     ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
-    ScopedFastFlag luauVectorMetatable{FFlag::LuauVectorMetatable, true};
     ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     lua_CompileOptions copts = defaultOptions();
@@ -1024,8 +1021,6 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag luauDebugInfoInvArgLeftovers{DFFlag::LuauDebugInfoInvArgLeftovers, true};
-
     runConformance("debug.lua");
 }
 
@@ -1390,6 +1385,25 @@ TEST_CASE("ApiTables")
     // lua_rawgeti
     CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
     CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    lua_pop(L, 1);
+
+    // lua_clonetable
+    lua_clonetable(L, -1);
+
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // modify clone
+    lua_pushnumber(L, 456.0);
+    lua_rawsetfield(L, -2, "key");
+
+    // remove clone
+    lua_pop(L, 1);
+
+    // check original
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
     lua_pop(L, 1);
 
     // lua_cleartable

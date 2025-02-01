@@ -20,6 +20,7 @@
 #endif
 
 #include <string.h>
+#include <string_view>
 
 #ifdef _WIN32
 static std::wstring fromUtf8(const std::string& path)
@@ -90,108 +91,76 @@ std::optional<std::string> getCurrentWorkingDirectory()
     return std::nullopt;
 }
 
-// Returns the normal/canonical form of a path (e.g. "../subfolder/../module.luau" -> "../module.luau")
 std::string normalizePath(std::string_view path)
 {
-    return resolvePath(path, "");
-}
+    const std::vector<std::string_view> components = splitPath(path);
+    std::vector<std::string_view> normalizedComponents;
 
-// Takes a path that is relative to the file at baseFilePath and returns the path explicitly rebased onto baseFilePath.
-// For absolute paths, baseFilePath will be ignored, and this function will resolve the path to a canonical path:
-// (e.g. "/Users/.././Users/johndoe" -> "/Users/johndoe").
-std::string resolvePath(std::string_view path, std::string_view baseFilePath)
-{
-    std::vector<std::string_view> pathComponents;
-    std::vector<std::string_view> baseFilePathComponents;
+    const bool isAbsolute = isAbsolutePath(path);
 
-    // Dependent on whether the final resolved path is absolute or relative
-    // - if relative (when path and baseFilePath are both relative), resolvedPathPrefix remains empty
-    // - if absolute (if either path or baseFilePath are absolute), resolvedPathPrefix is "C:\", "/", etc.
-    std::string resolvedPathPrefix;
-    bool isResolvedPathRelative = false;
-
-    if (isAbsolutePath(path))
+    // 1. Normalize path components
+    const size_t startIndex = isAbsolute ? 1 : 0;
+    for (size_t i = startIndex; i < components.size(); i++)
     {
-        // path is absolute, we use path's prefix and ignore baseFilePath
-        size_t afterPrefix = path.find_first_of("\\/") + 1;
-        resolvedPathPrefix = path.substr(0, afterPrefix);
-        pathComponents = splitPath(path.substr(afterPrefix));
-    }
-    else
-    {
-        size_t afterPrefix = baseFilePath.find_first_of("\\/") + 1;
-        baseFilePathComponents = splitPath(baseFilePath.substr(afterPrefix));
-        if (isAbsolutePath(baseFilePath))
-        {
-            // path is relative and baseFilePath is absolute, we use baseFilePath's prefix
-            resolvedPathPrefix = baseFilePath.substr(0, afterPrefix);
-        }
-        else
-        {
-            // path and baseFilePath are both relative, we do not set a prefix (resolved path will be relative)
-            isResolvedPathRelative = true;
-        }
-        pathComponents = splitPath(path);
-    }
-
-    // Remove filename from components
-    if (!baseFilePathComponents.empty())
-        baseFilePathComponents.pop_back();
-
-    // Resolve the path by applying pathComponents to baseFilePathComponents
-    int numPrependedParents = 0;
-    for (std::string_view component : pathComponents)
-    {
+        std::string_view component = components[i];
         if (component == "..")
         {
-            if (baseFilePathComponents.empty())
+            if (normalizedComponents.empty())
             {
-                if (isResolvedPathRelative)
-                    numPrependedParents++; // "../" will later be added to the beginning of the resolved path
+                if (!isAbsolute)
+                {
+                    normalizedComponents.emplace_back("..");
+                }
             }
-            else if (baseFilePathComponents.back() != "..")
+            else if (normalizedComponents.back() == "..")
             {
-                baseFilePathComponents.pop_back(); // Resolve cases like "folder/subfolder/../../file" to "file"
+                normalizedComponents.emplace_back("..");
+            }
+            else
+            {
+                normalizedComponents.pop_back();
             }
         }
-        else if (component != "." && !component.empty())
+        else if (!component.empty() && component != ".")
         {
-            baseFilePathComponents.push_back(component);
+            normalizedComponents.emplace_back(component);
         }
     }
 
-    // Create resolved path prefix for relative paths
-    if (isResolvedPathRelative)
+    std::string normalizedPath;
+
+    // 2. Add correct prefix to formatted path
+    if (isAbsolute)
     {
-        if (numPrependedParents > 0)
-        {
-            resolvedPathPrefix.reserve(numPrependedParents * 3);
-            for (int i = 0; i < numPrependedParents; i++)
-            {
-                resolvedPathPrefix += "../";
-            }
-        }
-        else
-        {
-            resolvedPathPrefix = "./";
-        }
+        normalizedPath += components[0];
+        normalizedPath += "/";
+    }
+    else if (normalizedComponents.empty() || normalizedComponents[0] != "..")
+    {
+        normalizedPath += "./";
     }
 
-    // Join baseFilePathComponents to form the resolved path
-    std::string resolvedPath = resolvedPathPrefix;
-    for (auto iter = baseFilePathComponents.begin(); iter != baseFilePathComponents.end(); ++iter)
+    // 3. Join path components to form the normalized path
+    for (auto iter = normalizedComponents.begin(); iter != normalizedComponents.end(); ++iter)
     {
-        if (iter != baseFilePathComponents.begin())
-            resolvedPath += "/";
+        if (iter != normalizedComponents.begin())
+            normalizedPath += "/";
 
-        resolvedPath += *iter;
+        normalizedPath += *iter;
     }
-    if (resolvedPath.size() > resolvedPathPrefix.size() && resolvedPath.back() == '/')
-    {
-        // Remove trailing '/' if present
-        resolvedPath.pop_back();
-    }
-    return resolvedPath;
+    if (normalizedPath.size() >= 2 && normalizedPath[normalizedPath.size() - 1] == '.' && normalizedPath[normalizedPath.size() - 2] == '.')
+        normalizedPath += "/";
+
+    return normalizedPath;
+}
+
+std::optional<std::string> resolvePath(std::string_view path, std::string_view baseFilePath)
+{
+    std::optional<std::string> baseFilePathParent = getParentPath(baseFilePath);
+    if (!baseFilePathParent)
+        return std::nullopt;
+
+    return normalizePath(joinPaths(*baseFilePathParent, path));
 }
 
 bool hasFileExtension(std::string_view name, const std::vector<std::string>& extensions)
@@ -416,16 +385,16 @@ std::vector<std::string_view> splitPath(std::string_view path)
     return components;
 }
 
-std::string joinPaths(const std::string& lhs, const std::string& rhs)
+std::string joinPaths(std::string_view lhs, std::string_view rhs)
 {
-    std::string result = lhs;
+    std::string result = std::string(lhs);
     if (!result.empty() && result.back() != '/' && result.back() != '\\')
         result += '/';
     result += rhs;
     return result;
 }
 
-std::optional<std::string> getParentPath(const std::string& path)
+std::optional<std::string> getParentPath(std::string_view path)
 {
     if (path == "" || path == "." || path == "/")
         return std::nullopt;
@@ -441,7 +410,7 @@ std::optional<std::string> getParentPath(const std::string& path)
         return "/";
 
     if (slash != std::string::npos)
-        return path.substr(0, slash);
+        return std::string(path.substr(0, slash));
 
     return "";
 }
@@ -471,10 +440,12 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
         if (argv[i][0] == '-' && argv[i][1] != '\0')
             continue;
 
-        if (isDirectory(argv[i]))
+        std::string normalized = normalizePath(argv[i]);
+
+        if (isDirectory(normalized))
         {
             traverseDirectory(
-                argv[i],
+                normalized,
                 [&](const std::string& name)
                 {
                     std::string ext = getExtension(name);
@@ -486,7 +457,7 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
         }
         else
         {
-            files.push_back(argv[i]);
+            files.push_back(normalized);
         }
     }
 

@@ -39,7 +39,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
-LUAU_FASTFLAGVARIABLE(LuauStoreCommentsForDefinitionFiles)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
@@ -52,6 +51,7 @@ LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAGVARIABLE(LuauStoreSolverTypeOnModule)
 
 LUAU_FASTFLAGVARIABLE(LuauReferenceAllocatorInNewSolver)
+LUAU_FASTFLAGVARIABLE(LuauSelectivelyRetainDFGArena)
 
 namespace Luau
 {
@@ -138,7 +138,7 @@ static ParseResult parseSourceForModule(std::string_view source, Luau::SourceMod
     sourceModule.root = parseResult.root;
     sourceModule.mode = Mode::Definition;
 
-    if (FFlag::LuauStoreCommentsForDefinitionFiles && options.captureComments)
+    if (options.captureComments)
     {
         sourceModule.hotcomments = parseResult.hotcomments;
         sourceModule.commentLocations = parseResult.commentLocations;
@@ -1049,6 +1049,11 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         freeze(module->interfaceTypes);
 
         module->internalTypes.clear();
+        if (FFlag::LuauSelectivelyRetainDFGArena)
+        {
+            module->defArena.allocator.clear();
+            module->keyArena.allocator.clear();
+        }
 
         module->astTypes.clear();
         module->astTypePacks.clear();
