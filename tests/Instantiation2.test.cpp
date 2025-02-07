@@ -4,6 +4,7 @@
 
 #include "Fixture.h"
 #include "ClassFixture.h"
+#include "Luau/Type.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
@@ -29,7 +30,7 @@ TEST_CASE_FIXTURE(Fixture, "weird_cyclic_instantiation")
     DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
     DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
 
-    TypeId freeTy = arena.freshType(&scope);
+    TypeId freeTy = arena.freshType(builtinTypes, &scope);
     FreeType* ft = getMutable<FreeType>(freeTy);
     REQUIRE(ft);
     ft->lowerBound = idTy;

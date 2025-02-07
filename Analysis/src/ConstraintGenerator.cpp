@@ -31,13 +31,14 @@
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauTypestateBuiltins2)
+LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
 
 LUAU_FASTFLAGVARIABLE(InferGlobalTypes)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -1088,18 +1089,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
         else if (const AstExprCall* call = value->as<AstExprCall>())
         {
-            if (FFlag::LuauTypestateBuiltins2)
-            {
-                if (matchSetMetatable(*call))
-                    addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
-            }
-            else
-            {
-                if (const AstExprGlobal* global = call->func->as<AstExprGlobal>(); global && global->name == "setmetatable")
-                {
-                    addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
-                }
-            }
+            if (matchSetMetatable(*call))
+                addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
         }
     }
 
@@ -2068,7 +2059,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
 
-    if (FFlag::LuauTypestateBuiltins2 && shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
+    if (shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
         AstExpr* targetExpr = call->args.data[0];
         auto resultTy = arena->addType(BlockedType{});
@@ -2217,7 +2208,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     if (forceSingleton)
         return Inference{arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}})};
 
-    FreeType ft = FreeType{scope.get()};
+    FreeType ft =
+        FFlag::LuauFreeTypesMustHaveBounds ? FreeType{scope.get(), builtinTypes->neverType, builtinTypes->unknownType} : FreeType{scope.get()};
     ft.lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
     ft.upperBound = builtinTypes->stringType;
     const TypeId freeTy = arena->addType(ft);
@@ -2231,7 +2223,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     if (forceSingleton)
         return Inference{singletonType};
 
-    FreeType ft = FreeType{scope.get()};
+    FreeType ft =
+        FFlag::LuauFreeTypesMustHaveBounds ? FreeType{scope.get(), builtinTypes->neverType, builtinTypes->unknownType} : FreeType{scope.get()};
     ft.lowerBound = singletonType;
     ft.upperBound = builtinTypes->booleanType;
     const TypeId freeTy = arena->addType(ft);
@@ -3427,6 +3420,12 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {
+        if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+        {
+            if (unionAnnotation->types.size == 1)
+                return resolveType(scope, unionAnnotation->types.data[0], inTypeArguments);
+        }
+
         std::vector<TypeId> parts;
         for (AstType* part : unionAnnotation->types)
         {
@@ -3437,6 +3436,12 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
     }
     else if (auto intersectionAnnotation = ty->as<AstTypeIntersection>())
     {
+        if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+        {
+            if (intersectionAnnotation->types.size == 1)
+                return resolveType(scope, intersectionAnnotation->types.data[0], inTypeArguments);
+        }
+
         std::vector<TypeId> parts;
         for (AstType* part : intersectionAnnotation->types)
         {
@@ -3444,6 +3449,10 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
         }
 
         result = arena->addType(IntersectionType{parts});
+    }
+    else if (auto typeGroupAnnotation = ty->as<AstTypeGroup>())
+    {
+        result = resolveType(scope, typeGroupAnnotation->type, inTypeArguments);
     }
     else if (auto boolAnnotation = ty->as<AstTypeSingletonBool>())
     {

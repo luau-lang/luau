@@ -20,7 +20,8 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauAlwaysFillInFunctionCallDiscriminantTypes)
-LUAU_FASTFLAG(LuauRemoveNotAnyHack)
+LUAU_FASTFLAG(LuauStoreCSTData)
+LUAU_FASTFLAG(LuauAstTypeGroup)
 
 
 struct ATSFixture : BuiltinsFixture
@@ -74,7 +75,22 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
 
     LUAU_ASSERT(module->ats.typeInfo.size() == 1);
     LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
-    LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))");
+    if (FFlag::LuauStoreCSTData && FFlag::LuauAstTypeGroup)
+    {
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0& (<t0...>( true | any)->(''))");
+    }
+    else if (FFlag::LuauStoreCSTData)
+    {
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0 &(<t0...>( true | any)->(''))");
+    }
+    else if (FFlag::LuauAstTypeGroup)
+    {
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0& (<t0 ...>(true | any)->(''))");
+    }
+    else
+    {
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))");
+    }
 }
 
 TEST_CASE_FIXTURE(ATSFixture, "typepacks")
@@ -413,7 +429,6 @@ TEST_CASE_FIXTURE(ATSFixture, "CannotExtendTable")
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
         {FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes, true},
-        {FFlag::LuauRemoveNotAnyHack, true},
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -507,7 +522,6 @@ TEST_CASE_FIXTURE(ATSFixture, "racing_collision_2")
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
         {FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes, true},
-        {FFlag::LuauRemoveNotAnyHack, true},
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -577,13 +591,26 @@ initialize()
 
     LUAU_ASSERT(module->ats.typeInfo.size() == 11);
     LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg);
-    LUAU_ASSERT(
-        module->ats.typeInfo[0].node ==
-        "local function onCharacterAdded(character: Model)\n\n character.DescendantAdded:Connect(function(descendant)\n  if "
-        "descendant:IsA('BasePart')then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n end)\n\n\n for _, descendant in "
-        "character:GetDescendants()do\n  if descendant:IsA('BasePart')then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n "
-        "end\nend"
-    );
+    if (FFlag::LuauStoreCSTData)
+    {
+        CHECK_EQ(
+            module->ats.typeInfo[0].node,
+            "local function onCharacterAdded(character: Model)\n\n character.DescendantAdded:Connect(function(descendant)\n  if "
+            "descendant:IsA('BasePart') then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n end)\n\n\n for _, descendant in "
+            "character:GetDescendants() do\n  if descendant:IsA('BasePart') then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n "
+            "end\nend"
+        );
+    }
+    else
+    {
+        LUAU_ASSERT(
+            module->ats.typeInfo[0].node ==
+            "local function onCharacterAdded(character: Model)\n\n character.DescendantAdded:Connect(function(descendant)\n  if "
+            "descendant:IsA('BasePart')then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n end)\n\n\n for _, descendant in "
+            "character:GetDescendants()do\n  if descendant:IsA('BasePart')then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n "
+            "end\nend"
+        );
+    }
 }
 
 TEST_CASE_FIXTURE(ATSFixture, "racing_spawning_1")

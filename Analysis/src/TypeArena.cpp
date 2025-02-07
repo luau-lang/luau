@@ -3,6 +3,7 @@
 #include "Luau/TypeArena.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena);
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -22,7 +23,34 @@ TypeId TypeArena::addTV(Type&& tv)
     return allocated;
 }
 
-TypeId TypeArena::freshType(TypeLevel level)
+TypeId TypeArena::freshType(NotNull<BuiltinTypes> builtins, TypeLevel level)
+{
+    TypeId allocated = types.allocate(FreeType{level, builtins->neverType, builtins->unknownType});
+
+    asMutable(allocated)->owningArena = this;
+
+    return allocated;
+}
+
+TypeId TypeArena::freshType(NotNull<BuiltinTypes> builtins, Scope* scope)
+{
+    TypeId allocated = types.allocate(FreeType{scope, builtins->neverType, builtins->unknownType});
+
+    asMutable(allocated)->owningArena = this;
+
+    return allocated;
+}
+
+TypeId TypeArena::freshType(NotNull<BuiltinTypes> builtins, Scope* scope, TypeLevel level)
+{
+    TypeId allocated = types.allocate(FreeType{scope, level, builtins->neverType, builtins->unknownType});
+
+    asMutable(allocated)->owningArena = this;
+
+    return allocated;
+}
+
+TypeId TypeArena::freshType_DEPRECATED(TypeLevel level)
 {
     TypeId allocated = types.allocate(FreeType{level});
 
@@ -31,7 +59,7 @@ TypeId TypeArena::freshType(TypeLevel level)
     return allocated;
 }
 
-TypeId TypeArena::freshType(Scope* scope)
+TypeId TypeArena::freshType_DEPRECATED(Scope* scope)
 {
     TypeId allocated = types.allocate(FreeType{scope});
 
@@ -40,7 +68,7 @@ TypeId TypeArena::freshType(Scope* scope)
     return allocated;
 }
 
-TypeId TypeArena::freshType(Scope* scope, TypeLevel level)
+TypeId TypeArena::freshType_DEPRECATED(Scope* scope, TypeLevel level)
 {
     TypeId allocated = types.allocate(FreeType{scope, level});
 

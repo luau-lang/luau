@@ -8,7 +8,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAG(LuauUserTypeFunFixInner)
 LUAU_FASTFLAG(LuauUserTypeFunGenerics)
 LUAU_FASTFLAG(LuauUserTypeFunCloneTail)
@@ -667,7 +666,6 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_methods_works")
 TEST_CASE_FIXTURE(ClassFixture, "write_of_readonly_is_nil")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag udtfRwFix{FFlag::LuauUserTypeFunFixNoReadWrite, true};
 
     CheckResult result = check(R"(
         type function getclass(arg)

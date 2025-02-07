@@ -4329,4 +4329,21 @@ local var = data;@1
     CHECK_EQ(ac.context, AutocompleteContext::Statement);
 }
 
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_tracing")
+{
+    fileResolver.source["Module/A"] = R"(
+return { x = 0 }
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+local result = require(script.Parent.A)
+local x = 1 + result.
+    )";
+
+    auto ac = autocomplete("Module/B", Position{2, 21});
+
+    CHECK(ac.entryMap.size() == 1);
+    CHECK(ac.entryMap.count("x"));
+}
+
 TEST_SUITE_END();

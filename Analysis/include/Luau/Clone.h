@@ -4,6 +4,7 @@
 #include <Luau/NotNull.h>
 #include "Luau/TypeArena.h"
 #include "Luau/Type.h"
+#include "Luau/Scope.h"
 
 #include <unordered_map>
 
@@ -26,13 +27,17 @@ struct CloneState
  * while `clone` will make a deep copy of the entire type and its every component.
  *
  * Be mindful about which behavior you actually _want_.
+ *
+ * Persistent types are not cloned as an optimization.
+ * If a type is cloned in order to mutate it, 'ignorePersistent' has to be set
  */
 
-TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
-TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState);
+TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool ignorePersistent = false);
+TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool ignorePersistent = false);
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
 TypeId clone(TypeId tp, TypeArena& dest, CloneState& cloneState);
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState);
+Binding clone(const Binding& binding, TypeArena& dest, CloneState& cloneState);
 
 } // namespace Luau

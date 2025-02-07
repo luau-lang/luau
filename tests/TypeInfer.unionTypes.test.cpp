@@ -621,7 +621,7 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     TypeArena& arena = frontend.globals.globalTypes;
     unfreeze(arena);
 
-    TypeId badCyclicUnionTy = arena.freshType(frontend.globals.globalScope.get());
+    TypeId badCyclicUnionTy = arena.freshType(builtinTypes, frontend.globals.globalScope.get());
     UnionType u;
 
     u.options.push_back(badCyclicUnionTy);

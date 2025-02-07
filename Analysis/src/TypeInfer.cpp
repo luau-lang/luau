@@ -33,6 +33,8 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauOldSolverCreatesChildScopePointers)
+LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -761,8 +763,12 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatRepeat& state
 
 struct Demoter : Substitution
 {
-    Demoter(TypeArena* arena)
+    TypeArena* arena = nullptr;
+    NotNull<BuiltinTypes> builtins;
+    Demoter(TypeArena* arena, NotNull<BuiltinTypes> builtins)
         : Substitution(TxnLog::empty(), arena)
+        , arena(arena)
+        , builtins(builtins)
     {
     }
 
@@ -788,7 +794,8 @@ struct Demoter : Substitution
     {
         auto ftv = get<FreeType>(ty);
         LUAU_ASSERT(ftv);
-        return addType(FreeType{demotedLevel(ftv->level)});
+        return FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtins, demotedLevel(ftv->level))
+                                                  : addType(FreeType{demotedLevel(ftv->level)});
     }
 
     TypePackId clean(TypePackId tp) override
@@ -835,7 +842,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatReturn& retur
         }
     }
 
-    Demoter demoter{&currentModule->internalTypes};
+    Demoter demoter{&currentModule->internalTypes, builtinTypes};
     demoter.demote(expectedTypes);
 
     TypePackId retPack = checkExprList(scope, return_.location, return_.list, false, {}, expectedTypes).type;
@@ -4408,7 +4415,7 @@ std::vector<std::optional<TypeId>> TypeChecker::getExpectedTypesForCall(const st
         }
     }
 
-    Demoter demoter{&currentModule->internalTypes};
+    Demoter demoter{&currentModule->internalTypes, builtinTypes};
     demoter.demote(expectedTypes);
 
     return expectedTypes;
@@ -5273,7 +5280,8 @@ TypeId TypeChecker::freshType(const ScopePtr& scope)
 
 TypeId TypeChecker::freshType(TypeLevel level)
 {
-    return currentModule->internalTypes.addType(Type(FreeType(level)));
+    return FFlag::LuauFreeTypesMustHaveBounds ? currentModule->internalTypes.freshType(builtinTypes, level)
+                                              : currentModule->internalTypes.addType(Type(FreeType(level)));
 }
 
 TypeId TypeChecker::singletonType(bool value)
@@ -5718,6 +5726,12 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {
+        if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+        {
+            if (un->types.size == 1)
+                return resolveType(scope, *un->types.data[0]);
+        }
+
         std::vector<TypeId> types;
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
@@ -5726,11 +5740,21 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     }
     else if (const auto& un = annotation.as<AstTypeIntersection>())
     {
+        if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+        {
+            if (un->types.size == 1)
+                return resolveType(scope, *un->types.data[0]);
+        }
+
         std::vector<TypeId> types;
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
 
         return addType(IntersectionType{types});
+    }
+    else if (const auto& g = annotation.as<AstTypeGroup>())
+    {
+        return resolveType(scope, *g->type);
     }
     else if (const auto& tsb = annotation.as<AstTypeSingletonBool>())
     {

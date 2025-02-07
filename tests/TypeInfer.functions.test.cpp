@@ -19,7 +19,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
@@ -3012,9 +3011,6 @@ local u,v = id(3), id(id(44))
 
 TEST_CASE_FIXTURE(Fixture, "hidden_variadics_should_not_break_subtyping")
 {
-    // Only applies to new solver.
-    ScopedFastFlag sff{FFlag::LuauRetrySubtypingWithoutHiddenPack, true};
-
     CheckResult result = check(R"(
         --!strict
         type FooType = {

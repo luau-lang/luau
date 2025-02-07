@@ -1091,6 +1091,18 @@ void AstTypeSingletonString::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+AstTypeGroup::AstTypeGroup(const Location& location, AstType* type)
+    : AstType(ClassIndex(), location)
+    , type(type)
+{
+}
+
+void AstTypeGroup::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+        type->visit(visitor);
+}
+
 AstTypeError::AstTypeError(const Location& location, const AstArray<AstType*>& types, bool isMissing, unsigned messageIndex)
     : AstType(ClassIndex(), location)
     , types(types)

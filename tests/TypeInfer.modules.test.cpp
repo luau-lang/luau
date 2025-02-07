@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTypestateBuiltins2)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 
 using namespace Luau;
@@ -185,10 +184,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
     ModulePtr b = frontend.moduleResolver.getModule("game/B");
     REQUIRE(b != nullptr);
     // confirm that no cross-module mutation happened here!
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
+    if (FFlag::LuauSolverV2)
         CHECK(toString(b->returnType) == "{ read a: number }");
-    else if (FFlag::LuauSolverV2)
-        CHECK(toString(b->returnType) == "{ a: number }");
     else
         CHECK(toString(b->returnType) == "{| a: number |}");
 }
