@@ -117,9 +117,9 @@ struct StringWriter : Writer
             index = newlinePos + 1;
         }
 
-        pos.line += numLines;
+        pos.line += unsigned(numLines);
         if (numLines > 0)
-            pos.column = unsigned(s.size()) - index;
+            pos.column = unsigned(s.size()) - unsigned(index);
         else
             pos.column += unsigned(s.size());
     }
