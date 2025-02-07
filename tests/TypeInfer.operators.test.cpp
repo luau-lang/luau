@@ -17,6 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauDoNotGeneralizeInTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -814,19 +815,19 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
 {
-    CheckResult result = check(R"(
-    --!strict
-    local t = {}
-    while true and t[1] do
-        print(t[1].test)
-    end
-    )");
+    ScopedFastFlag _{FFlag::LuauDoNotGeneralizeInTypeFunctions, true}; 
 
-    // This infers a type for `t` of `{unknown}`, and so it makes sense that `t[1].test` would error.
-    if (FFlag::LuauSolverV2)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    // `t` will be inferred to be of type `{ { test: unknown } }` which is
+    // reasonable, in that it's empty with no bounds on its members.  Optimally
+    // we might emit an error here that the `print(...)` expression is 
+    // unreachable.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local t = {}
+        while true and t[1] do
+            print(t[1].test)
+        end
+    )"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators")

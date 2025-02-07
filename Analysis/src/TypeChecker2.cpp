@@ -31,6 +31,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(InferGlobalTypes)
 LUAU_FASTFLAGVARIABLE(LuauTableKeysAreRValues)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -2105,7 +2106,10 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                 }
                 else
                 {
-                    expectedRets = module->internalTypes.addTypePack({module->internalTypes.freshType(scope, TypeLevel{})});
+                    expectedRets = module->internalTypes.addTypePack(
+                        {FFlag::LuauFreeTypesMustHaveBounds ? module->internalTypes.freshType(builtinTypes, scope, TypeLevel{})
+                                                            : module->internalTypes.freshType_DEPRECATED(scope, TypeLevel{})}
+                    );
                 }
 
                 TypeId expectedTy = module->internalTypes.addType(FunctionType(expectedArgs, expectedRets));
@@ -2357,7 +2361,8 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         return *fst;
     else if (auto ftp = get<FreeTypePack>(pack))
     {
-        TypeId result = module->internalTypes.addType(FreeType{ftp->scope});
+        TypeId result = FFlag::LuauFreeTypesMustHaveBounds ? module->internalTypes.freshType(builtinTypes, ftp->scope)
+                                                           : module->internalTypes.addType(FreeType{ftp->scope});
         TypePackId freeTail = module->internalTypes.addTypePack(FreeTypePack{ftp->scope});
 
         TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
@@ -2419,6 +2424,8 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeIntersection>())
         return visit(t);
+    else if (auto t = ty->as<AstTypeGroup>())
+        return visit(t->type);
 }
 
 void TypeChecker2::visit(AstTypeReference* ty)

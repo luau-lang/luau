@@ -5,6 +5,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/Scope.h"
 #include "Luau/ToString.h"
+#include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete);
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope);
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -323,7 +325,7 @@ TypePack extendTypePack(
                             trackInteriorFreeType(ftp->scope, t);
                     }
                     else
-                        t = arena.freshType(ftp->scope);
+                        t = FFlag::LuauFreeTypesMustHaveBounds ? arena.freshType(builtinTypes, ftp->scope) : arena.freshType_DEPRECATED(ftp->scope);
                 }
 
                 newPack.head.push_back(t);

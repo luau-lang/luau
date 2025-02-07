@@ -31,7 +31,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
-LUAU_FASTFLAGVARIABLE(LuauRemoveNotAnyHack)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauAllowNilAssignmentToIndexer)
@@ -1161,22 +1160,8 @@ void ConstraintSolver::fillInDiscriminantTypes(
             continue;
         }
 
-        if (FFlag::LuauRemoveNotAnyHack)
-        {
-            // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
-            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
-        }
-        else
-        {
-            // We use `any` here because the discriminant type may be pointed at by both branches,
-            // where the discriminant type is not negated, and the other where it is negated, i.e.
-            // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
-            // v.s.
-            // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
-            //
-            // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
-            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
-        }
+        // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+        emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
     }
 }
 
@@ -1313,22 +1298,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                 continue;
             }
 
-            if (FFlag::LuauRemoveNotAnyHack)
-            {
-                // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
-                emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
-            }
-            else
-            {
-                // We use `any` here because the discriminant type may be pointed at by both branches,
-                // where the discriminant type is not negated, and the other where it is negated, i.e.
-                // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
-                // v.s.
-                // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
-                //
-                // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
-                emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->anyType);
-            }
+            // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
         }
     }
 

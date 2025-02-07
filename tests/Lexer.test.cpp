@@ -248,4 +248,185 @@ TEST_CASE("string_interpolation_with_unicode_escape")
     CHECK_EQ(lexer.next().type, Lexeme::Eof);
 }
 
+TEST_CASE("single_quoted_string")
+{
+    const std::string testInput = "'test'";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    CHECK_EQ(lexeme.type, Lexeme::QuotedString);
+    CHECK_EQ(lexeme.getQuoteStyle(), Lexeme::QuoteStyle::Single);
+}
+
+TEST_CASE("double_quoted_string")
+{
+    const std::string testInput = R"("test")";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    CHECK_EQ(lexeme.type, Lexeme::QuotedString);
+    CHECK_EQ(lexeme.getQuoteStyle(), Lexeme::QuoteStyle::Double);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_0")
+{
+    const std::string testInput = "[[ test ]]";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 0);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_0_multiline_1")
+{
+    const std::string testInput = R"([[ test
+    ]])";
+
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 0);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_0_multiline_2")
+{
+    const std::string testInput = R"([[
+    test
+    ]])";
+
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 0);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_0_multiline_3")
+{
+    const std::string testInput = R"([[
+    test ]])";
+
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 0);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_1")
+{
+    const std::string testInput = "[=[[%s]]=]";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 1);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_2")
+{
+    const std::string testInput = "[==[ test ]==]";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 2);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_2_multiline_1")
+{
+    const std::string testInput = R"([==[ test
+    ]==])";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 2);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_2_multiline_2")
+{
+    const std::string testInput = R"([==[
+    test
+    ]==])";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 2);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_2_multiline_3")
+{
+    const std::string testInput = R"([==[
+
+    test ]==])";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::RawString);
+    CHECK_EQ(lexeme.getBlockDepth(), 2);
+}
+
+
+TEST_CASE("lexer_determines_comment_block_depth_0")
+{
+    const std::string testInput = "--[[ test ]]";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::BlockComment);
+    CHECK_EQ(lexeme.getBlockDepth(), 0);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_1")
+{
+    const std::string testInput = "--[=[ μέλλον ]=]";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::BlockComment);
+    CHECK_EQ(lexeme.getBlockDepth(), 1);
+}
+
+TEST_CASE("lexer_determines_string_block_depth_2")
+{
+    const std::string testInput = "--[==[ test ]==]";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme lexeme = lexer.next();
+    REQUIRE_EQ(lexeme.type, Lexeme::BlockComment);
+    CHECK_EQ(lexeme.getBlockDepth(), 2);
+}
+
 TEST_SUITE_END();

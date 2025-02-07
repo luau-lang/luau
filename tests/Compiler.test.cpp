@@ -8757,6 +8757,23 @@ end
     );
 }
 
+TEST_CASE("TypeGroup")
+{
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function myfunc(test: (string), foo: nil)
+end
+
+function myfunc2(test: (string | nil), foo: nil)
+end
+)"),
+        R"(
+0: function(string, nil)
+1: function(string?, nil)
+)"
+    );
+}
+
 TEST_CASE("BuiltinFoldMathK")
 {
     // we can fold math.pi at optimization level 2

@@ -9,6 +9,7 @@
 #include "Luau/Common.h"
 #include "Luau/Frontend.h"
 #include "Luau/AutocompleteTypes.h"
+#include "Luau/Type.h"
 
 #include <algorithm>
 #include <chrono>
@@ -27,6 +28,14 @@ LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
 LUAU_FASTFLAG(LexerResumesFromPosition2)
 LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
 LUAU_FASTINT(LuauParseErrorLimit)
+LUAU_FASTFLAG(LuauCloneIncrementalModule)
+
+LUAU_FASTFLAG(LuauIncrementalAutocompleteBugfixes)
+LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver)
+LUAU_FASTFLAG(LuauMixedModeDefFinderTraversesTypeOf)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
+
+LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -46,15 +55,25 @@ static FrontendOptions getOptions()
     return options;
 }
 
+static ModuleResolver& getModuleResolver(Luau::Frontend& frontend)
+{
+    return FFlag::LuauSolverV2 ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
+}
+
 template<class BaseType>
 struct FragmentAutocompleteFixtureImpl : BaseType
 {
-    ScopedFastFlag sffs[5] = {
+    static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
+
+    ScopedFastFlag sffs[8] = {
         {FFlag::LuauAllowFragmentParsing, true},
         {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
         {FFlag::LuauStoreSolverTypeOnModule, true},
         {FFlag::LuauSymbolEquality, true},
-        {FFlag::LexerResumesFromPosition2, true}
+        {FFlag::LexerResumesFromPosition2, true},
+        {FFlag::LuauReferenceAllocatorInNewSolver, true},
+        {FFlag::LuauIncrementalAutocompleteBugfixes, true},
+        {FFlag::LuauBetterReverseDependencyTracking, true},
     };
 
     FragmentAutocompleteFixtureImpl()
@@ -128,6 +147,26 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
         assertions(result);
     }
+
+    std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragmentForModule(
+        const ModuleName& module,
+        const std::string& document,
+        Position cursorPos,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+    )
+    {
+        return Luau::typecheckFragment(this->frontend, module, cursorPos, getOptions(), document, fragmentEndPosition);
+    }
+
+    FragmentAutocompleteResult autocompleteFragmentForModule(
+        const ModuleName& module,
+        const std::string& document,
+        Position cursorPos,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+    )
+    {
+        return Luau::fragmentAutocomplete(this->frontend, document, module, cursorPos, getOptions(), nullCallback, fragmentEndPosition);
+    }
 };
 
 struct FragmentAutocompleteFixture : FragmentAutocompleteFixtureImpl<Fixture>
@@ -162,10 +201,13 @@ end
         // 'for autocomplete'.
         loadDefinition(fakeVecDecl);
         loadDefinition(fakeVecDecl, /* For Autocomplete Module */ true);
+
+        addGlobalBinding(frontend.globals, "game", Binding{builtinTypes->anyType});
+        addGlobalBinding(frontend.globalsForAutocomplete, "game", Binding{builtinTypes->anyType});
     }
 };
 
-//NOLINTBEGIN(bugprone-unchecked-optional-access)
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 TEST_SUITE_BEGIN("FragmentAutocompleteTraversalTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "just_two_locals")
@@ -574,7 +616,7 @@ t
 }
 
 TEST_SUITE_END();
-//NOLINTEND(bugprone-unchecked-optional-access)
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
 
@@ -708,6 +750,57 @@ tbl.
     CHECK_EQ(1, fragment.acResults.entryMap.size());
     CHECK(fragment.acResults.entryMap.count("abc"));
     CHECK_EQ(AutocompleteContext::Property, fragment.acResults.context);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "typecheck_fragment_handles_stale_module")
+{
+    const std::string sourceName = "MainModule";
+    fileResolver.source[sourceName] = "local x = 5";
+
+    CheckResult checkResult = frontend.check(sourceName, getOptions());
+    LUAU_REQUIRE_NO_ERRORS(checkResult);
+
+    auto [result, _] = typecheckFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
+    CHECK_EQ(result, FragmentTypeCheckStatus::Success);
+
+    frontend.markDirty(sourceName);
+    frontend.parse(sourceName);
+
+    CHECK_NE(frontend.getSourceModule(sourceName), nullptr);
+
+    auto [result2, __] = typecheckFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
+    CHECK_EQ(result2, FragmentTypeCheckStatus::SkipAutocomplete);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "typecheck_fragment_handles_unusable_module")
+{
+    const std::string sourceA = "MainModule";
+    fileResolver.source[sourceA] = R"(
+local Modules = game:GetService('Gui').Modules
+local B = require(Modules.B)
+return { hello = B }
+)";
+
+    const std::string sourceB = "game/Gui/Modules/B";
+    fileResolver.source[sourceB] = R"(return {hello = "hello"})";
+
+    CheckResult result = frontend.check(sourceA, getOptions());
+    CHECK(!frontend.isDirty(sourceA, getOptions().forAutocomplete));
+
+    std::weak_ptr<Module> weakModule = getModuleResolver(frontend).getModule(sourceB);
+    REQUIRE(!weakModule.expired());
+
+    frontend.markDirty(sourceB);
+    CHECK(frontend.isDirty(sourceA, getOptions().forAutocomplete));
+
+    frontend.check(sourceB, getOptions());
+    CHECK(weakModule.expired());
+
+    auto [status, _] = typecheckFragmentForModule(sourceA, fileResolver.source[sourceA], Luau::Position(0, 0));
+    CHECK_EQ(status, FragmentTypeCheckStatus::SkipAutocomplete);
+
+    auto [status2, _2] = typecheckFragmentForModule(sourceB, fileResolver.source[sourceB], Luau::Position(3, 20));
+    CHECK_EQ(status2, FragmentTypeCheckStatus::Success);
 }
 
 TEST_SUITE_END();
@@ -1676,5 +1769,188 @@ type A = <>random non code text here
         }
     );
 }
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_handles_stale_module")
+{
+    const std::string sourceName = "MainModule";
+    fileResolver.source[sourceName] = "local x = 5";
+
+    frontend.check(sourceName, getOptions());
+    frontend.markDirty(sourceName);
+    frontend.parse(sourceName);
+
+    FragmentAutocompleteResult result = autocompleteFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
+    CHECK(result.acResults.entryMap.empty());
+    CHECK_EQ(result.incrementalModule, nullptr);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "require_tracing")
+{
+    fileResolver.source["MainModule/A"] = R"(
+return { x = 0 }
+    )";
+
+    fileResolver.source["MainModule"] = R"(
+local result = require(script.A)
+local x = 1 + result.
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        fileResolver.source["MainModule"],
+        fileResolver.source["MainModule"],
+        Position{2, 21},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.size() == 1);
+            CHECK(result.acResults.entryMap.count("x"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_ac_must_traverse_typeof_and_not_ice")
+{
+    // This test ensures that we traverse typeof expressions for defs that are being referred to in the fragment
+    // In this case, we want to ensure we populate the incremental environment with the reference to `m`
+    // Without this, we would ice as we will refer to the local `m` before it's declaration
+    ScopedFastFlag sff{FFlag::LuauMixedModeDefFinderTraversesTypeOf, true};
+    const std::string source = R"(
+--!strict
+local m = {}
+-- and here
+function m:m1() end
+type nt = typeof(m)
+
+return m
+)";
+    const std::string updated = R"(
+--!strict
+local m = {}
+-- and here
+function m:m1() end
+type nt = typeof(m)
+l
+return m
+)";
+
+    autocompleteFragmentInBothSolvers(source, updated, Position{6, 2}, [](auto& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "generalization_crash_when_old_solver_freetypes_have_no_bounds_set")
+{
+    ScopedFastFlag sff{FFlag::LuauFreeTypesMustHaveBounds, true};
+    const std::string source = R"(
+local UserInputService = game:GetService("UserInputService");
+
+local Camera = workspace.CurrentCamera;
+
+UserInputService.InputBegan:Connect(function(Input)
+    if (Input.KeyCode == Enum.KeyCode.One) then
+        local Up = Input.Foo
+        local Vector = -(Up:Unit)
+    end
+end)
+)";
+
+    const std::string dest = R"(
+local UserInputService = game:GetService("UserInputService");
+
+local Camera = workspace.CurrentCamera;
+
+UserInputService.InputBegan:Connect(function(Input)
+    if (Input.KeyCode == Enum.KeyCode.One) then
+        local Up = Input.Foo
+        local Vector = -(Up:Unit())
+    end
+end)
+)";
+
+    autocompleteFragmentInBothSolvers(source, dest, Position{8, 36}, [](auto& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
+{
+    ScopedFastFlag sff{FFlag::LuauCloneIncrementalModule, true};
+    ToStringOptions opt;
+    opt.exhaustive = true;
+    opt.exhaustive = true;
+    opt.functionTypeArguments = true;
+    opt.maxTableLength = 0;
+    opt.maxTypeLength = 0;
+
+    auto checkAndExamine = [&](const std::string& src, const std::string& idName, const std::string& idString)
+    {
+        check(src, getOptions());
+        auto id = getType(idName, true);
+        LUAU_ASSERT(id);
+        CHECK_EQ(Luau::toString(*id, opt), idString);
+    };
+
+    auto getTypeFromModule = [](ModulePtr module, const std::string& name) -> std::optional<TypeId>
+    {
+        if (!module->hasModuleScope())
+            return std::nullopt;
+        return lookupName(module->getModuleScope(), name);
+    };
+
+    auto fragmentACAndCheck = [&](const std::string& updated, const Position& pos, const std::string& idName)
+    {
+        FragmentAutocompleteResult result = autocompleteFragment(updated, pos, std::nullopt);
+        auto fragId = getTypeFromModule(result.incrementalModule, idName);
+        LUAU_ASSERT(fragId);
+
+        auto srcId = getType(idName, true);
+        LUAU_ASSERT(srcId);
+
+        CHECK((*fragId)->owningArena != (*srcId)->owningArena);
+        CHECK(&(result.incrementalModule->internalTypes) == (*fragId)->owningArena);
+    };
+
+    const std::string source = R"(local module = {}
+f
+return module)";
+
+    const std::string updated1 = R"(local module = {}
+function module.a
+return module)";
+
+    const std::string updated2 = R"(local module = {}
+function module.ab
+return module)";
+
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        fragmentACAndCheck(updated1, Position{1, 17}, "module");
+        fragmentACAndCheck(updated2, Position{1, 18}, "module");
+    }
+
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        fragmentACAndCheck(updated1, Position{1, 17}, "module");
+        fragmentACAndCheck(updated2, Position{1, 18}, "module");
+    }
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_shouldnt_crash_on_cross_module_mutation")
+{
+    ScopedFastFlag sff{FFlag::LuauCloneIncrementalModule, true};
+    const std::string source = R"(local module = {}
+function module.
+return module
+)";
+
+    const std::string updated = R"(local module = {}
+function module.f
+return module
+)";
+
+    autocompleteFragmentInBothSolvers(source, updated, Position{1, 18}, [](FragmentAutocompleteResult& result) {});
+}
+
 
 TEST_SUITE_END();

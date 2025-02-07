@@ -15,7 +15,6 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixInner)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunGenerics)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunCloneTail)
 
@@ -683,10 +682,8 @@ static int readTableProp(lua_State* L)
     auto prop = tftt->props.at(tfsst->value);
     if (prop.readTy)
         allocTypeUserData(L, (*prop.readTy)->type);
-    else if (FFlag::LuauUserTypeFunFixNoReadWrite)
-        lua_pushnil(L);
     else
-        luaL_error(L, "type.readproperty: property %s is write-only, and therefore does not have a read type.", tfsst->value.c_str());
+        lua_pushnil(L);
 
     return 1;
 }
@@ -723,10 +720,8 @@ static int writeTableProp(lua_State* L)
     auto prop = tftt->props.at(tfsst->value);
     if (prop.writeTy)
         allocTypeUserData(L, (*prop.writeTy)->type);
-    else if (FFlag::LuauUserTypeFunFixNoReadWrite)
-        lua_pushnil(L);
     else
-        luaL_error(L, "type.writeproperty: property %s is read-only, and therefore does not have a write type.", tfsst->value.c_str());
+        lua_pushnil(L);
 
     return 1;
 }

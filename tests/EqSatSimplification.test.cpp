@@ -3,6 +3,7 @@
 #include "Fixture.h"
 
 #include "Luau/EqSatSimplification.h"
+#include "Luau/Type.h"
 
 using namespace Luau;
 
@@ -76,7 +77,7 @@ TEST_CASE_FIXTURE(ESFixture, "number | string")
 
 TEST_CASE_FIXTURE(ESFixture, "t1 where t1 = number | t1")
 {
-    TypeId ty = arena->freshType(nullptr);
+    TypeId ty = arena->freshType(builtinTypes, nullptr);
     asMutable(ty)->ty.emplace<UnionType>(std::vector<TypeId>{builtinTypes->numberType, ty});
 
     CHECK("number" == simplifyStr(ty));
@@ -450,7 +451,7 @@ TEST_CASE_FIXTURE(ESFixture, "(boolean | nil) & (false | nil)")
 TEST_CASE_FIXTURE(ESFixture, "free & string & number")
 {
     Scope scope{builtinTypes->anyTypePack};
-    const TypeId freeTy = arena->addType(FreeType{&scope});
+    const TypeId freeTy = arena->freshType(builtinTypes, &scope);
 
     CHECK("never" == simplifyStr(arena->addType(IntersectionType{{freeTy, builtinTypes->numberType, builtinTypes->stringType}})));
 }

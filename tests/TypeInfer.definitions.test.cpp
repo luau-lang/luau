@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauNewSolverPrePopulateClasses)
+LUAU_FASTFLAG(LuauClipNestedAndRecursiveUnion)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -540,5 +541,21 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
     REQUIRE(ctv);
     CHECK_EQ(ctv->definitionModuleName, "@test");
 }
+
+TEST_CASE_FIXTURE(Fixture, "recursive_redefinition_reduces_rightfully")
+{
+    ScopedFastFlag _{FFlag::LuauClipNestedAndRecursiveUnion, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local t: {[string]: string} = {}
+
+        local function f()
+            t = t
+        end
+
+        t = t
+    )"));
+}
+
 
 TEST_SUITE_END();

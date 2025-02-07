@@ -1204,6 +1204,18 @@ public:
     const AstArray<char> value;
 };
 
+class AstTypeGroup : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeGroup)
+
+    explicit AstTypeGroup(const Location& location, AstType* type);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstType* type;
+};
+
 class AstTypePack : public AstNode
 {
 public:
@@ -1467,6 +1479,10 @@ public:
         return visit(static_cast<AstType*>(node));
     }
     virtual bool visit(class AstTypeSingletonString* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeGroup* node)
     {
         return visit(static_cast<AstType*>(node));
     }

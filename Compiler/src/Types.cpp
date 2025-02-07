@@ -121,6 +121,10 @@ static LuauBytecodeType getType(
     {
         return LBC_TYPE_ANY;
     }
+    else if (const AstTypeGroup* group = ty->as<AstTypeGroup>())
+    {
+        return getType(group->type, generics, typeAliases, resolveAliases, hostVectorType, userdataTypes, bytecode);
+    }
 
     return LBC_TYPE_ANY;
 }

@@ -12,7 +12,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauNormalizationTracksCyclicPairsThroughInhabitance)
+LUAU_FASTFLAG(LuauFixNormalizedIntersectionOfNegatedClass)
 using namespace Luau;
 
 namespace
@@ -851,17 +851,17 @@ TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
+    ScopedFastFlag _{FFlag::LuauFixNormalizedIntersectionOfNegatedClass, true};
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
-    CHECK("Child" == toString(normal("Not<Parent> & Child")));
+    CHECK("never" == toString(normal("Not<Parent> & Child")));
     CHECK("((class & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
     CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
     CHECK(
         "(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
         toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>"))
     );
-
     CHECK("Child" == toString(normal("(Child | Unrelated) & Not<Unrelated>")));
 }
 
@@ -962,7 +962,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "final_types_are_cached")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_not_cached")
 {
-    TypeId a = arena.freshType(&globalScope);
+    TypeId a = arena.freshType(builtinTypes, &globalScope);
 
     std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(a);
     std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(a);
@@ -1034,7 +1034,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_t
     if (!FFlag::LuauSolverV2)
         return;
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
-    ScopedFastFlag sff{FFlag::LuauNormalizationTracksCyclicPairsThroughInhabitance, true};
+
     CheckResult result = check(R"(
 --!strict
 
