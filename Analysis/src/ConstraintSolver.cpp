@@ -642,7 +642,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto fcc = get<FunctionCheckConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint);
     else if (auto fcc = get<PrimitiveTypeConstraint>(*constraint))
-        success = tryDispatch(*fcc, constraint);
+        success = tryDispatch(*fcc, constraint, force);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
     else if (auto spc = get<HasIndexerConstraint>(*constraint))
@@ -1494,7 +1494,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     std::optional<TypeId> expectedType = c.expectedType ? std::make_optional<TypeId>(follow(*c.expectedType)) : std::nullopt;
     if (expectedType && (isBlocked(*expectedType) || get<PendingExpansionType>(*expectedType)))
@@ -1510,8 +1510,21 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
     // This is probably the only thing that makes this not insane to do.
     if (auto refCount = unresolvedConstraints.find(c.freeType); refCount && *refCount > 1)
     {
-        block(c.freeType, constraint);
-        return false;
+        if (force)
+        {
+            // If we get force dispatched and are the owner of the constraint
+            // Then do not block.
+            if (canMutate(c.freeType, constraint) == false)
+            {
+                block(c.freeType, constraint);
+                return false;
+            }
+        }
+        else
+        {
+            block(c.freeType, constraint);
+            return false;
+        }
     }
 
     TypeId bindTo = c.primitiveType;
