@@ -29,6 +29,8 @@ struct ParseOptions
     bool allowDeclarationSyntax = false;
     bool captureComments = false;
     std::optional<FragmentParseResumeSettings> parseFragment = std::nullopt;
+    bool storeCstData = false;
+    bool noErrorLimit = false;
 };
 
 } // namespace Luau

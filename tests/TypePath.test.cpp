@@ -17,6 +17,7 @@ using namespace Luau::TypePath;
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds);
 
 struct TypePathFixture : Fixture
 {
@@ -277,7 +278,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "bounds")
         TypeArena& arena = frontend.globals.globalTypes;
         unfreeze(arena);
 
-        TypeId ty = arena.freshType(frontend.globals.globalScope.get());
+        TypeId ty = arena.freshType(frontend.builtinTypes, frontend.globals.globalScope.get());
         FreeType* ft = getMutable<FreeType>(ty);
 
         SUBCASE("upper")

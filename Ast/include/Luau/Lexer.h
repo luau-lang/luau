@@ -87,6 +87,12 @@ struct Lexeme
         Reserved_END
     };
 
+    enum struct QuoteStyle
+    {
+        Single,
+        Double,
+    };
+
     Type type;
     Location location;
 
@@ -111,6 +117,8 @@ public:
     Lexeme(const Location& location, Type type, const char* name);
 
     unsigned int getLength() const;
+    unsigned int getBlockDepth() const;
+    QuoteStyle getQuoteStyle() const;
 
     std::string toString() const;
 };

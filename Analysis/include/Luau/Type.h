@@ -69,11 +69,15 @@ using Name = std::string;
 // A free type is one whose exact shape has yet to be fully determined.
 struct FreeType
 {
+    // New constructors
+    explicit FreeType(TypeLevel level, TypeId lowerBound, TypeId upperBound);
+    // This one got promoted to explicit
+    explicit FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound);
+    explicit FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId upperBound);
+    // Old constructors
     explicit FreeType(TypeLevel level);
     explicit FreeType(Scope* scope);
     FreeType(Scope* scope, TypeLevel level);
-
-    FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound);
 
     int index;
     TypeLevel level;

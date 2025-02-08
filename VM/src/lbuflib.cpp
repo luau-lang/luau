@@ -270,7 +270,7 @@ static int buffer_readbits(lua_State* L)
 
     uint64_t data = 0;
 
-#if LUAU_BIG_ENDIAN
+#if defined(LUAU_BIG_ENDIAN)
     for (int i = int(endbyte) - 1; i >= int(startbyte); i--)
         data = (data << 8) + uint8_t(((char*)buf)[i]);
 #else
@@ -306,7 +306,7 @@ static int buffer_writebits(lua_State* L)
 
     uint64_t data = 0;
 
-#if LUAU_BIG_ENDIAN
+#if defined(LUAU_BIG_ENDIAN)
     for (int i = int(endbyte) - 1; i >= int(startbyte); i--)
         data = data * 256 + uint8_t(((char*)buf)[i]);
 #else
@@ -318,7 +318,7 @@ static int buffer_writebits(lua_State* L)
 
     data = (data & ~mask) | ((uint64_t(value) << subbyteoffset) & mask);
 
-#if LUAU_BIG_ENDIAN
+#if defined(LUAU_BIG_ENDIAN)
     for (int i = int(startbyte); i < int(endbyte); i++)
     {
         ((char*)buf)[i] = data & 0xff;

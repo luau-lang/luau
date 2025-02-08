@@ -31,16 +31,16 @@ struct TypeSimplifier
 
     int recursionDepth = 0;
 
-    TypeId mkNegation(TypeId ty);
+    TypeId mkNegation(TypeId ty) const;
 
     TypeId intersectFromParts(std::set<TypeId> parts);
 
-    TypeId intersectUnionWithType(TypeId unionTy, TypeId right);
+    TypeId intersectUnionWithType(TypeId left, TypeId right);
     TypeId intersectUnions(TypeId left, TypeId right);
-    TypeId intersectNegatedUnion(TypeId unionTy, TypeId right);
+    TypeId intersectNegatedUnion(TypeId left, TypeId right);
 
-    TypeId intersectTypeWithNegation(TypeId a, TypeId b);
-    TypeId intersectNegations(TypeId a, TypeId b);
+    TypeId intersectTypeWithNegation(TypeId left, TypeId right);
+    TypeId intersectNegations(TypeId left, TypeId right);
 
     TypeId intersectIntersectionWithType(TypeId left, TypeId right);
 
@@ -48,8 +48,8 @@ struct TypeSimplifier
     // unions, intersections, or negations.
     std::optional<TypeId> basicIntersect(TypeId left, TypeId right);
 
-    TypeId intersect(TypeId ty, TypeId discriminant);
-    TypeId union_(TypeId ty, TypeId discriminant);
+    TypeId intersect(TypeId left, TypeId right);
+    TypeId union_(TypeId left, TypeId right);
 
     TypeId simplify(TypeId ty);
     TypeId simplify(TypeId ty, DenseHashSet<TypeId>& seen);
@@ -573,7 +573,7 @@ Relation relate(TypeId left, TypeId right)
     return relate(left, right, seen);
 }
 
-TypeId TypeSimplifier::mkNegation(TypeId ty)
+TypeId TypeSimplifier::mkNegation(TypeId ty) const
 {
     TypeId result = nullptr;
 

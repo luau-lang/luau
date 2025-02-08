@@ -18,7 +18,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(LuauTableKeysAreRValues)
 LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
@@ -2378,7 +2377,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauRetrySubtypingWithoutHiddenPack)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -2386,15 +2385,6 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
         // This is not actually the expected behavior, but the typemismatch we were seeing before was for the wrong reason.
         // The behavior of this test is just regressed generally in the new solver, and will need to be consciously addressed.
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-        CHECK(get<TypeMismatch>(result.errors[0]));
-        CHECK(Location{{6, 45}, {6, 46}} == result.errors[0].location);
-
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[1]));
     }
 
     // TODO: test behavior is wrong with LuauInstantiateInSubtyping until we can re-enable the covariant requirement for instantiation in subtyping

@@ -29,12 +29,11 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauTypestateBuiltins2)
-LUAU_FASTFLAGVARIABLE(LuauStringFormatArityFix)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatErrorSuppression)
 LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2)
-LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType2)
+LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAGVARIABLE(LuauFreezeIgnorePersistent)
 
 namespace Luau
 {
@@ -449,10 +448,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreachi"].deprecated = true;
 
         attachMagicFunction(ttv->props["pack"].type(), std::make_shared<MagicPack>());
-        if (FFlag::LuauTableCloneClonesType2)
+        if (FFlag::LuauTableCloneClonesType3)
             attachMagicFunction(ttv->props["clone"].type(), std::make_shared<MagicClone>());
-        if (FFlag::LuauTypestateBuiltins2)
-            attachMagicFunction(ttv->props["freeze"].type(), std::make_shared<MagicFreeze>());
+        attachMagicFunction(ttv->props["freeze"].type(), std::make_shared<MagicFreeze>());
     }
 
     if (FFlag::AutocompleteRequirePathSuggestions2)
@@ -613,10 +611,7 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
     if (!fmt)
     {
-        if (FFlag::LuauStringFormatArityFix)
-            context.typechecker->reportError(
-                CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
-            );
+        context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
         return true;
     }
 
@@ -1401,7 +1396,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     WithPredicate<TypePackId> withPredicate
 )
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType2);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType3);
 
     auto [paramPack, _predicates] = withPredicate;
 
@@ -1416,6 +1411,9 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
     TypeId inputType = follow(paramTypes[0]);
 
+    if (!get<TableType>(inputType))
+        return std::nullopt;
+
     CloneState cloneState{typechecker.builtinTypes};
     TypeId resultType = shallowClone(inputType, arena, cloneState);
 
@@ -1425,7 +1423,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
 bool MagicClone::infer(const MagicFunctionCallContext& context)
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType2);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType3);
 
     TypeArena* arena = context.solver->arena;
 
@@ -1438,8 +1436,11 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
 
     TypeId inputType = follow(paramTypes[0]);
 
+    if (!get<TableType>(inputType))
+        return false;
+
     CloneState cloneState{context.solver->builtinTypes};
-    TypeId resultType = shallowClone(inputType, *arena, cloneState);
+    TypeId resultType = shallowClone(inputType, *arena, cloneState, /* ignorePersistent */ FFlag::LuauFreezeIgnorePersistent);
 
     if (auto tableType = getMutable<TableType>(resultType))
     {
@@ -1475,7 +1476,7 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
     {
         // Clone the input type, this will become our final result type after we mutate it.
         CloneState cloneState{context.solver->builtinTypes};
-        TypeId resultType = shallowClone(inputType, *arena, cloneState);
+        TypeId resultType = shallowClone(inputType, *arena, cloneState, /* ignorePersistent */ FFlag::LuauFreezeIgnorePersistent);
         auto tableTy = getMutable<TableType>(resultType);
         // `clone` should not break this.
         LUAU_ASSERT(tableTy);
@@ -1507,8 +1508,6 @@ std::optional<WithPredicate<TypePackId>> MagicFreeze::handleOldSolver(struct Typ
 
 bool MagicFreeze::infer(const MagicFunctionCallContext& context)
 {
-    LUAU_ASSERT(FFlag::LuauTypestateBuiltins2);
-
     TypeArena* arena = context.solver->arena;
     const DataFlowGraph* dfg = context.solver->dfg.get();
     Scope* scope = context.constraint->scope.get();

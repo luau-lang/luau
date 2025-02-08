@@ -20,6 +20,7 @@
 #include <iterator>
 
 LUAU_FASTFLAGVARIABLE(LuauCountSelfCallsNonstrict)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -211,7 +212,7 @@ struct NonStrictTypeChecker
             return *fst;
         else if (auto ftp = get<FreeTypePack>(pack))
         {
-            TypeId result = arena->addType(FreeType{ftp->scope});
+            TypeId result = FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtinTypes, ftp->scope) : arena->addType(FreeType{ftp->scope});
             TypePackId freeTail = arena->addTypePack(FreeTypePack{ftp->scope});
 
             TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));

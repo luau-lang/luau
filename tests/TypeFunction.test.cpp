@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
+LUAU_FASTFLAG(LuauMetatableTypeFunctions)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1260,6 +1261,197 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_len_type_function_follow")
         end
         end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Identity = setmetatable<{}, { __index: {} }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId id = requireTypeAlias("Identity");
+    CHECK_EQ(toString(id, {true}), "{ @metatable { __index: {  } }, {  } }");
+    const MetatableType* mt = get<MetatableType>(id);
+    REQUIRE(mt);
+    CHECK_EQ(toString(mt->metatable), "{ __index: {  } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable_2")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Identity = setmetatable<{}, { __index: {} }>
+        type FooBar = setmetatable<{}, Identity>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId id = requireTypeAlias("Identity");
+    CHECK_EQ(toString(id, {true}), "{ @metatable { __index: {  } }, {  } }");
+    const MetatableType* mt = get<MetatableType>(id);
+    REQUIRE(mt);
+    CHECK_EQ(toString(mt->metatable), "{ __index: {  } }");
+
+    TypeId foobar = requireTypeAlias("FooBar");
+    const MetatableType* mt2 = get<MetatableType>(foobar);
+    REQUIRE(mt2);
+    CHECK_EQ(toString(mt2->metatable, {true}), "{ @metatable { __index: {  } }, {  } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatable_with_metatable_metamethod")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Identity = setmetatable<{}, { __metatable: "blocked" }>
+        type Bad = setmetatable<Identity, { __index: {} }>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeId id = requireTypeAlias("Identity");
+    CHECK_EQ(toString(id, {true}), "{ @metatable { __metatable: \"blocked\" }, {  } }");
+    const MetatableType* mt = get<MetatableType>(id);
+    REQUIRE(mt);
+    CHECK_EQ(toString(mt->metatable), "{ __metatable: \"blocked\" }");
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_invalid_set")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Identity = setmetatable<string, {}>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_nontable_metatable")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Identity = setmetatable<{}, string>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_type_function_returns_nil_if_no_metatable")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type TableWithNoMetatable = getmetatable<{}>
+        type NumberWithNoMetatable = getmetatable<number>
+        type BooleanWithNoMetatable = getmetatable<boolean>
+        type BooleanLiteralWithNoMetatable = getmetatable<true>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto tableResult = requireTypeAlias("TableWithNoMetatable");
+    CHECK_EQ(toString(tableResult), "nil");
+
+    auto numberResult = requireTypeAlias("NumberWithNoMetatable");
+    CHECK_EQ(toString(numberResult), "nil");
+
+    auto booleanResult = requireTypeAlias("BooleanWithNoMetatable");
+    CHECK_EQ(toString(booleanResult), "nil");
+
+    auto booleanLiteralResult = requireTypeAlias("BooleanLiteralWithNoMetatable");
+    CHECK_EQ(toString(booleanLiteralResult), "nil");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        local metatable = { __index = { w = 4 } }
+        local obj = setmetatable({x = 1, y = 2, z = 3}, metatable)
+        type Metatable = getmetatable<typeof(obj)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireTypeAlias("Metatable"), {true}), "{ __index: { w: number } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_union")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Identity = setmetatable<{}, {}>
+        type Metatable = getmetatable<string | Identity>
+        type IntersectMetatable = getmetatable<string & Identity>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const PrimitiveType* stringType = get<PrimitiveType>(builtinTypes->stringType);
+    REQUIRE(stringType->metatable);
+
+    TypeArena arena = TypeArena{};
+
+    std::string expected1 = toString(arena.addType(UnionType{{*stringType->metatable, builtinTypes->emptyTableType}}), {true});
+    CHECK_EQ(toString(requireTypeAlias("Metatable"), {true}), expected1);
+
+    std::string expected2 = toString(arena.addType(IntersectionType{{*stringType->metatable, builtinTypes->emptyTableType}}), {true});
+    CHECK_EQ(toString(requireTypeAlias("IntersectMetatable"), {true}), expected2);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_string")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        type Metatable = getmetatable<string>
+        type Metatable2 = getmetatable<"foo">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const PrimitiveType* stringType = get<PrimitiveType>(builtinTypes->stringType);
+    REQUIRE(stringType->metatable);
+
+    std::string expected = toString(*stringType->metatable, {true});
+
+    CHECK_EQ(toString(requireTypeAlias("Metatable"), {true}), expected);
+    CHECK_EQ(toString(requireTypeAlias("Metatable2"), {true}), expected);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_respects_metatable_metamethod")
+{
+    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+        return;
+
+    CheckResult result = check(R"(
+        local metatable = { __metatable = "Test" }
+        local obj = setmetatable({x = 1, y = 2, z = 3}, metatable)
+        type Metatable = getmetatable<typeof(obj)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireTypeAlias("Metatable")), "string");
 }
 
 TEST_SUITE_END();

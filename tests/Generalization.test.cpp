@@ -179,9 +179,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can
 TEST_CASE_FIXTURE(GeneralizationFixture, "union_type_traversal_doesnt_crash")
 {
     // t1 where t1 = ('h <: (t1 <: 'i)) | ('j <: (t1 <: 'i))
-    TypeId i = arena.addType(FreeType{NotNull{globalScope.get()}});
-    TypeId h = arena.addType(FreeType{NotNull{globalScope.get()}});
-    TypeId j = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId i = arena.freshType(NotNull{&builtinTypes}, globalScope.get());
+    TypeId h = arena.freshType(NotNull{&builtinTypes}, globalScope.get());
+    TypeId j = arena.freshType(NotNull{&builtinTypes}, globalScope.get());
     TypeId unionType = arena.addType(UnionType{{h, j}});
     getMutable<FreeType>(h)->upperBound = i;
     getMutable<FreeType>(h)->lowerBound = builtinTypes.neverType;
@@ -196,9 +196,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "union_type_traversal_doesnt_crash")
 TEST_CASE_FIXTURE(GeneralizationFixture, "intersection_type_traversal_doesnt_crash")
 {
     // t1 where t1 = ('h <: (t1 <: 'i)) & ('j <: (t1 <: 'i))
-    TypeId i = arena.addType(FreeType{NotNull{globalScope.get()}});
-    TypeId h = arena.addType(FreeType{NotNull{globalScope.get()}});
-    TypeId j = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId i = arena.freshType(NotNull{&builtinTypes}, globalScope.get());
+    TypeId h = arena.freshType(NotNull{&builtinTypes}, globalScope.get());
+    TypeId j = arena.freshType(NotNull{&builtinTypes}, globalScope.get());
     TypeId intersectionType = arena.addType(IntersectionType{{h, j}});
 
     getMutable<FreeType>(h)->upperBound = i;

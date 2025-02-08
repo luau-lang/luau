@@ -17,6 +17,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Allocator.h
     Ast/include/Luau/Ast.h
     Ast/include/Luau/Confusables.h
+    Ast/include/Luau/Cst.h
     Ast/include/Luau/Lexer.h
     Ast/include/Luau/Location.h
     Ast/include/Luau/ParseOptions.h
@@ -28,6 +29,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/src/Allocator.cpp
     Ast/src/Ast.cpp
     Ast/src/Confusables.cpp
+    Ast/src/Cst.cpp
     Ast/src/Lexer.cpp
     Ast/src/Location.cpp
     Ast/src/Parser.cpp
