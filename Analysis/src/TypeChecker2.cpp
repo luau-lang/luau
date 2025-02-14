@@ -29,7 +29,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(InferGlobalTypes)
 LUAU_FASTFLAGVARIABLE(LuauTableKeysAreRValues)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
@@ -1357,7 +1356,7 @@ void TypeChecker2::visit(AstExprGlobal* expr)
     {
         reportError(UnknownSymbol{expr->name.value, UnknownSymbol::Binding}, expr->location);
     }
-    else if (FFlag::InferGlobalTypes)
+    else
     {
         if (scope->shouldWarnGlobal(expr->name.value) && !warnedGlobals.contains(expr->name.value))
         {
@@ -2379,30 +2378,30 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         ice->ice("flattenPack got a weird pack!");
 }
 
-void TypeChecker2::visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks)
+void TypeChecker2::visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
 {
     DenseHashSet<AstName> seen{AstName{}};
 
-    for (const auto& g : generics)
+    for (const auto* g : generics)
     {
-        if (seen.contains(g.name))
-            reportError(DuplicateGenericParameter{g.name.value}, g.location);
+        if (seen.contains(g->name))
+            reportError(DuplicateGenericParameter{g->name.value}, g->location);
         else
-            seen.insert(g.name);
+            seen.insert(g->name);
 
-        if (g.defaultValue)
-            visit(g.defaultValue);
+        if (g->defaultValue)
+            visit(g->defaultValue);
     }
 
-    for (const auto& g : genericPacks)
+    for (const auto* g : genericPacks)
     {
-        if (seen.contains(g.name))
-            reportError(DuplicateGenericParameter{g.name.value}, g.location);
+        if (seen.contains(g->name))
+            reportError(DuplicateGenericParameter{g->name.value}, g->location);
         else
-            seen.insert(g.name);
+            seen.insert(g->name);
 
-        if (g.defaultValue)
-            visit(g.defaultValue);
+        if (g->defaultValue)
+            visit(g->defaultValue);
     }
 }
 

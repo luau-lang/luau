@@ -4298,8 +4298,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     AstExprFunction main(
         root->location,
         /* attributes= */ AstArray<AstAttr*>({nullptr, 0}),
-        /* generics= */ AstArray<AstGenericType>(),
-        /* genericPacks= */ AstArray<AstGenericTypePack>(),
+        /* generics= */ AstArray<AstGenericType*>(),
+        /* genericPacks= */ AstArray<AstGenericTypePack*>(),
         /* self= */ nullptr,
         AstArray<AstLocal*>(),
         /* vararg= */ true,

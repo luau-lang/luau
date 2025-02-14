@@ -61,7 +61,7 @@ assert(#"\0\0\0" == 3)
 assert(#"1234567890" == 10)
 
 assert(string.byte("a") == 97)
-assert(string.byte("á") > 127)
+assert(string.byte("\xe4") > 127)
 assert(string.byte(string.char(255)) == 255)
 assert(string.byte(string.char(0)) == 0)
 assert(string.byte("\0") == 0)
@@ -76,10 +76,10 @@ assert(string.byte("hi", 9, 10) == nil)
 assert(string.byte("hi", 2, 1) == nil)
 assert(string.char() == "")
 assert(string.char(0, 255, 0) == "\0\255\0")
-assert(string.char(0, string.byte("á"), 0) == "\0á\0")
-assert(string.char(string.byte("ál\0óu", 1, -1)) == "ál\0óu")
-assert(string.char(string.byte("ál\0óu", 1, 0)) == "")
-assert(string.char(string.byte("ál\0óu", -10, 100)) == "ál\0óu")
+assert(string.char(0, string.byte("\xe4"), 0) == "\0\xe4\0")
+assert(string.char(string.byte("\xe4l\0Ã³u", 1, -1)) == "\xe4l\0Ã³u")
+assert(string.char(string.byte("\xe4l\0Ã³u", 1, 0)) == "")
+assert(string.char(string.byte("\xe4l\0Ã³u", -10, 100)) == "\xe4l\0Ã³u")
 assert(pcall(function() return string.char(256) end) == false)
 assert(pcall(function() return string.char(-1) end) == false)
 print('+')
@@ -87,7 +87,7 @@ print('+')
 assert(string.upper("ab\0c") == "AB\0C")
 assert(string.lower("\0ABCc%$") == "\0abcc%$")
 assert(string.rep('teste', 0) == '')
-assert(string.rep('tés\00tê', 2) == 'tés\0têtés\000tê')
+assert(string.rep('tÃ©s\00tÃª', 2) == 'tÃ©s\0tÃªtÃ©s\000tÃª')
 assert(string.rep('', 10) == '')
 assert(string.rep('', 1e9) == '')
 assert(pcall(string.rep, 'x', 2e9) == false)
@@ -115,15 +115,18 @@ assert(pcall(function() return tostring(nothing()) end) == false)
 
 print('+')
 
-x = '"ílo"\n\\'
-assert(string.format('%q%s', x, x) == '"\\"ílo\\"\\\n\\\\""ílo"\n\\')
+x = '"Ã­lo"\n\\'
+assert(string.format('%q%s', x, x) == '"\\"Ã­lo\\"\\\n\\\\""Ã­lo"\n\\')
 assert(string.format('%q', "\0") == [["\000"]])
 assert(string.format('%q', "\r") == [["\r"]])
-assert(string.format("\0%c\0%c%x\0", string.byte("á"), string.byte("b"), 140) ==
-              "\0á\0b8c\0")
+assert(string.format("\0%c\0%c%x\0", string.byte("\xe4"), string.byte("b"), 140) ==
+              "\0\xe4\0b8c\0")
 assert(string.format('') == "")
 assert(string.format("%c",34)..string.format("%c",48)..string.format("%c",90)..string.format("%c",100) ==
        string.format("%c%c%c%c", 34, 48, 90, 100))
+assert(string.format("%c%c%c%c", 1, 0, 2, 3) == '\1\0\2\3')
+assert(string.format("%5c%5c%5c%5c", 1, 0, 2, 3) == '    \1    \0    \2    \3')
+assert(string.format("%-5c%-5c%-5c%-5c", 1, 0, 2, 3) == '\1    \0    \2    \3    ')
 assert(string.format("%s\0 is not \0%s", 'not be', 'be') == 'not be\0 is not \0be')
 assert(string.format("%%%d %010d", 10, 23) == "%10 0000000023")
 assert(tonumber(string.format("%f", 10.3)) == 10.3)
@@ -184,7 +187,7 @@ assert(pcall(function()
 	string.format("%#*", "bad form")
 end) == false)
 
-assert(loadstring("return 1\n--comentário sem EOL no final")() == 1)
+assert(loadstring("return 1\n--comentÃ¡rio sem EOL no final")() == 1)
 
 
 assert(table.concat{} == "")
@@ -244,16 +247,16 @@ end
 if not trylocale("collate")  then
   print("locale not supported")
 else
-  assert("alo" < "álo" and "álo" < "amo")
+  assert("alo" < "Ã¡lo" and "Ã¡lo" < "amo")
 end
 
 if not trylocale("ctype") then
   print("locale not supported")
 else
-  assert(string.gsub("áéíóú", "%a", "x") == "xxxxx")
-  assert(string.gsub("áÁéÉ", "%l", "x") == "xÁxÉ")
-  assert(string.gsub("áÁéÉ", "%u", "x") == "áxéx")
-  assert(string.upper"áÁé{xuxu}ção" == "ÁÁÉ{XUXU}ÇÃO")
+  assert(string.gsub("Ã¡Ã©Ã­Ã³Ãº", "%a", "x") == "xxxxx")
+  assert(string.gsub("Ã¡ÃÃ©Ã‰", "%l", "x") == "xÃxÃ‰")
+  assert(string.gsub("Ã¡ÃÃ©Ã‰", "%u", "x") == "Ã¡xÃ©x")
+  assert(string.upper"Ã¡ÃÃ©{xuxu}Ã§Ã£o" == "ÃÃÃ‰{XUXU}Ã‡ÃƒO")
 end
 
 os.setlocale("C")

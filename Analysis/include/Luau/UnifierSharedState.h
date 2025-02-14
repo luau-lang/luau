@@ -49,6 +49,27 @@ struct UnifierSharedState
     DenseHashSet<TypePackId> tempSeenTp{nullptr};
 
     UnifierCounters counters;
+
+    bool reentrantTypeReduction = false;
+
+};
+
+struct TypeReductionRentrancyGuard final
+{
+    explicit TypeReductionRentrancyGuard(NotNull<UnifierSharedState> sharedState)
+        : sharedState{sharedState}
+    {
+        sharedState->reentrantTypeReduction = true;
+    }
+    ~TypeReductionRentrancyGuard()
+    {
+        sharedState->reentrantTypeReduction = false;
+    }
+    TypeReductionRentrancyGuard(const TypeReductionRentrancyGuard&) = delete;
+    TypeReductionRentrancyGuard(TypeReductionRentrancyGuard&&) = delete;
+
+private:
+    NotNull<UnifierSharedState> sharedState;
 };
 
 } // namespace Luau

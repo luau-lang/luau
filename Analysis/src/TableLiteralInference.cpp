@@ -10,6 +10,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauDontInPlaceMutateTableType)
+LUAU_FASTFLAGVARIABLE(LuauAllowNonSharedTableTypesInLiteral)
 
 namespace Luau
 {
@@ -251,8 +252,19 @@ TypeId matchLiteralType(
 
                 Property& prop = it->second;
 
-                // Table literals always initially result in shared read-write types
-                LUAU_ASSERT(prop.isShared());
+                if (FFlag::LuauAllowNonSharedTableTypesInLiteral)
+                {
+                    // If we encounter a duplcate property, we may have already
+                    // set it to be read-only. If that's the case, the only thing
+                    // that will definitely crash is trying to access a write
+                    // only property.
+                    LUAU_ASSERT(!prop.isWriteOnly());
+                }
+                else
+                {
+                    // Table literals always initially result in shared read-write types
+                    LUAU_ASSERT(prop.isShared());
+                }
                 TypeId propTy = *prop.readTy;
 
                 auto it2 = expectedTableTy->props.find(keyStr);

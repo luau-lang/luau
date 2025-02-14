@@ -399,8 +399,8 @@ private:
         const ScopePtr& scope,
         std::optional<TypeLevel> levelOpt,
         const AstNode& node,
-        const AstArray<AstGenericType>& genericNames,
-        const AstArray<AstGenericTypePack>& genericPackNames,
+        const AstArray<AstGenericType*>& genericNames,
+        const AstArray<AstGenericTypePack*>& genericPackNames,
         bool useCache = false
     );
 

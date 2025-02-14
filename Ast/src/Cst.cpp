@@ -50,6 +50,12 @@ CstExprOp::CstExprOp(Position opPosition)
 {
 }
 
+CstExprTypeAssertion::CstExprTypeAssertion(Position opPosition)
+    : CstNode(CstClassIndex())
+    , opPosition(opPosition)
+{
+}
+
 CstExprIfElse::CstExprIfElse(Position thenPosition, Position elsePosition, bool isElseIf)
     : CstNode(CstClassIndex())
     , thenPosition(thenPosition)

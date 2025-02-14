@@ -1066,8 +1066,8 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
     Name fnName = parseName("function name");
 
     // TODO: generic method declarations CLI-39909
-    AstArray<AstGenericType> generics;
-    AstArray<AstGenericTypePack> genericPacks;
+    AstArray<AstGenericType*> generics;
+    AstArray<AstGenericTypePack*> genericPacks;
     generics.size = 0;
     generics.data = nullptr;
     genericPacks.size = 0;
@@ -2035,8 +2035,8 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
 AstType* Parser::parseFunctionTypeTail(
     const Lexeme& begin,
     const AstArray<AstAttr*>& attributes,
-    AstArray<AstGenericType> generics,
-    AstArray<AstGenericTypePack> genericPacks,
+    AstArray<AstGenericType*> generics,
+    AstArray<AstGenericTypePack*> genericPacks,
     AstArray<AstType*> params,
     AstArray<std::optional<AstArgumentName>> paramNames,
     AstTypePack* varargAnnotation
@@ -2824,9 +2824,18 @@ AstExpr* Parser::parseAssertionExpr()
 
     if (lexer.current().type == Lexeme::DoubleColon)
     {
+        CstExprTypeAssertion* cstNode = nullptr;
+        if (FFlag::LuauStoreCSTData && options.storeCstData)
+        {
+            Position opPosition = lexer.current().location.begin;
+            cstNode = allocator.alloc<CstExprTypeAssertion>(opPosition);
+        }
         nextLexeme();
         AstType* annotation = parseType();
-        return allocator.alloc<AstExprTypeAssertion>(Location(start, annotation->location), expr, annotation);
+        AstExprTypeAssertion* node = allocator.alloc<AstExprTypeAssertion>(Location(start, annotation->location), expr, annotation);
+        if (FFlag::LuauStoreCSTData && options.storeCstData)
+            cstNodeMap[node] = cstNode;
+        return node;
     }
     else
         return expr;
@@ -3305,10 +3314,10 @@ Parser::Name Parser::parseIndexName(const char* context, const Position& previou
     return Name(nameError, location);
 }
 
-std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseGenericTypeList(bool withDefaultValues)
+std::pair<AstArray<AstGenericType*>, AstArray<AstGenericTypePack*>> Parser::parseGenericTypeList(bool withDefaultValues)
 {
-    TempVector<AstGenericType> names{scratchGenericTypes};
-    TempVector<AstGenericTypePack> namePacks{scratchGenericTypePacks};
+    TempVector<AstGenericType*> names{scratchGenericTypes};
+    TempVector<AstGenericTypePack*> namePacks{scratchGenericTypePacks};
 
     if (lexer.current().type == '<')
     {
@@ -3340,7 +3349,7 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
                     {
                         AstTypePack* typePack = parseTypePack();
 
-                        namePacks.push_back({name, nameLocation, typePack});
+                        namePacks.push_back(allocator.alloc<AstGenericTypePack>(nameLocation, name, typePack));
                     }
                     else
                     {
@@ -3349,7 +3358,7 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
                         if (type)
                             report(type->location, "Expected type pack after '=', got type");
 
-                        namePacks.push_back({name, nameLocation, typePack});
+                        namePacks.push_back(allocator.alloc<AstGenericTypePack>(nameLocation, name, typePack));
                     }
                 }
                 else
@@ -3357,7 +3366,7 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
                     if (seenDefault)
                         report(lexer.current().location, "Expected default type pack after type pack name");
 
-                    namePacks.push_back({name, nameLocation, nullptr});
+                    namePacks.push_back(allocator.alloc<AstGenericTypePack>(nameLocation, name, nullptr));
                 }
             }
             else
@@ -3369,14 +3378,14 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
 
                     AstType* defaultType = parseType();
 
-                    names.push_back({name, nameLocation, defaultType});
+                    names.push_back(allocator.alloc<AstGenericType>(nameLocation, name, defaultType));
                 }
                 else
                 {
                     if (seenDefault)
                         report(lexer.current().location, "Expected default type after type name");
 
-                    names.push_back({name, nameLocation, nullptr});
+                    names.push_back(allocator.alloc<AstGenericType>(nameLocation, name, nullptr));
                 }
             }
 
@@ -3397,8 +3406,8 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
         expectMatchAndConsume('>', begin);
     }
 
-    AstArray<AstGenericType> generics = copy(names);
-    AstArray<AstGenericTypePack> genericPacks = copy(namePacks);
+    AstArray<AstGenericType*> generics = copy(names);
+    AstArray<AstGenericTypePack*> genericPacks = copy(namePacks);
     return {generics, genericPacks};
 }
 
