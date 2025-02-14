@@ -221,8 +221,8 @@ private:
 
     void visitTypeList(AstTypeList l);
 
-    void visitGenerics(AstArray<AstGenericType> g);
-    void visitGenericPacks(AstArray<AstGenericTypePack> g);
+    void visitGenerics(AstArray<AstGenericType*> g);
+    void visitGenericPacks(AstArray<AstGenericTypePack*> g);
 };
 
 } // namespace Luau

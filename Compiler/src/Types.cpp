@@ -6,10 +6,10 @@
 namespace Luau
 {
 
-static bool isGeneric(AstName name, const AstArray<AstGenericType>& generics)
+static bool isGeneric(AstName name, const AstArray<AstGenericType*>& generics)
 {
-    for (const AstGenericType& gt : generics)
-        if (gt.name == name)
+    for (const AstGenericType* gt : generics)
+        if (gt->name == name)
             return true;
 
     return false;
@@ -39,7 +39,7 @@ static LuauBytecodeType getPrimitiveType(AstName name)
 
 static LuauBytecodeType getType(
     const AstType* ty,
-    const AstArray<AstGenericType>& generics,
+    const AstArray<AstGenericType*>& generics,
     const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases,
     bool resolveAliases,
     const char* hostVectorType,

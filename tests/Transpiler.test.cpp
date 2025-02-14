@@ -944,6 +944,16 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_assertion")
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_assertion_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = "local a = 5   :: number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a = 5 ::   number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else")
 {
     std::string code = "local a = if 1 then 2 else 3";
@@ -1408,6 +1418,10 @@ TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple_types")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
 {
+    ScopedFastFlag fflags[] = {
+        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LexerFixInterpStringStart, true},
+    };
     std::string code = R"( local _ = `hello {name}` )";
 
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -1452,6 +1466,10 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_multiline_escape")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
 {
+    ScopedFastFlag fflags[] = {
+        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LexerFixInterpStringStart, true},
+    };
     std::string code = R"( local _ = ` bracket = \{, backtick = \` = {'ok'} ` )";
 
     CHECK_EQ(code, transpile(code, {}, true).code);

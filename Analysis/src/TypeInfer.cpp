@@ -5913,8 +5913,8 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(
     const ScopePtr& scope,
     std::optional<TypeLevel> levelOpt,
     const AstNode& node,
-    const AstArray<AstGenericType>& genericNames,
-    const AstArray<AstGenericTypePack>& genericPackNames,
+    const AstArray<AstGenericType*>& genericNames,
+    const AstArray<AstGenericTypePack*>& genericPackNames,
     bool useCache
 )
 {
@@ -5924,14 +5924,14 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(
 
     std::vector<GenericTypeDefinition> generics;
 
-    for (const AstGenericType& generic : genericNames)
+    for (const AstGenericType* generic : genericNames)
     {
         std::optional<TypeId> defaultValue;
 
-        if (generic.defaultValue)
-            defaultValue = resolveType(scope, *generic.defaultValue);
+        if (generic->defaultValue)
+            defaultValue = resolveType(scope, *generic->defaultValue);
 
-        Name n = generic.name.value;
+        Name n = generic->name.value;
 
         // These generics are the only thing that will ever be added to scope, so we can be certain that
         // a collision can only occur when two generic types have the same name.
@@ -5960,14 +5960,14 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(
 
     std::vector<GenericTypePackDefinition> genericPacks;
 
-    for (const AstGenericTypePack& genericPack : genericPackNames)
+    for (const AstGenericTypePack* genericPack : genericPackNames)
     {
         std::optional<TypePackId> defaultValue;
 
-        if (genericPack.defaultValue)
-            defaultValue = resolveTypePack(scope, *genericPack.defaultValue);
+        if (genericPack->defaultValue)
+            defaultValue = resolveTypePack(scope, *genericPack->defaultValue);
 
-        Name n = genericPack.name.value;
+        Name n = genericPack->name.value;
 
         // These generics are the only thing that will ever be added to scope, so we can be certain that
         // a collision can only occur when two generic types have the same name.

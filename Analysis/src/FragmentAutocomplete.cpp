@@ -34,7 +34,7 @@ LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver)
 LUAU_FASTFLAGVARIABLE(LuauMixedModeDefFinderTraversesTypeOf)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
-
+LUAU_FASTFLAGVARIABLE(LogFragmentsFromAutocomplete)
 namespace
 {
 template<typename T>
@@ -335,6 +335,8 @@ std::optional<FragmentParseResult> parseFragment(
     FragmentParseResult fragmentResult;
     fragmentResult.fragmentToParse = std::string(dbg.data(), parseLength);
     // For the duration of the incremental parse, we want to allow the name table to re-use duplicate names
+    if (FFlag::LogFragmentsFromAutocomplete)
+        logLuau(dbg);
 
     ParseOptions opts;
     opts.allowDeclarationSyntax = false;
@@ -650,7 +652,8 @@ FragmentAutocompleteResult fragmentAutocomplete(
         return {};
 
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
-
+    if (FFlag::LogFragmentsFromAutocomplete)
+        logLuau(src);
     TypeArena arenaForFragmentAutocomplete;
     auto result = Luau::autocomplete_(
         tcResult.incrementalModule,
