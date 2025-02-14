@@ -34,6 +34,7 @@ LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauFreezeIgnorePersistent)
+LUAU_FASTFLAGVARIABLE(LuauFollowTableFreeze)
 
 namespace Luau
 {
@@ -1459,7 +1460,8 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
 static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCallContext& context)
 {
     TypeArena* arena = context.solver->arena;
-
+    if (FFlag::LuauFollowTableFreeze)
+        inputType = follow(inputType);
     if (auto mt = get<MetatableType>(inputType))
     {
         std::optional<TypeId> frozenTable = freezeTable(mt->table, context);

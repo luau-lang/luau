@@ -50,6 +50,7 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTFLAGVARIABLE(LuauDoNotGeneralizeInTypeFunctions)
+LUAU_FASTFLAGVARIABLE(LuauPreventReentrantTypeFunctionReduction)
 
 namespace Luau
 {
@@ -446,19 +447,49 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     TypeFunctionReducer reducer{std::move(queuedTys), std::move(queuedTps), std::move(shouldGuess), std::move(cyclics), location, ctx, force};
     int iterationCount = 0;
 
-    while (!reducer.done())
+    if (FFlag::LuauPreventReentrantTypeFunctionReduction)
     {
-        reducer.step();
+        // If we are reducing a type function while reducing a type function,
+        // we're probably doing something clowny. One known place this can
+        // occur is type function reduction => overload selection => subtyping
+        // => back to type function reduction. At worst, if there's a reduction
+        // that _doesn't_ loop forever and _needs_ reentrancy, we'll fail to
+        // handle that and potentially emit an error when we didn't need to.
+        if (ctx.normalizer->sharedState->reentrantTypeReduction)
+            return {};
 
-        ++iterationCount;
-        if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
+        TypeReductionRentrancyGuard _{ctx.normalizer->sharedState};
+        while (!reducer.done())
         {
-            reducer.result.errors.emplace_back(location, CodeTooComplex{});
-            break;
+            reducer.step();
+
+            ++iterationCount;
+            if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
+            {
+                reducer.result.errors.emplace_back(location, CodeTooComplex{});
+                break;
+            }
         }
+
+        return std::move(reducer.result);
+    }
+    else
+    {
+        while (!reducer.done())
+        {
+            reducer.step();
+
+            ++iterationCount;
+            if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
+            {
+                reducer.result.errors.emplace_back(location, CodeTooComplex{});
+                break;
+            }
+        }
+
+        return std::move(reducer.result);
     }
 
-    return std::move(reducer.result);
 }
 
 FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, TypeFunctionContext ctx, bool force)

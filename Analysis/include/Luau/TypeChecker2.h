@@ -175,7 +175,7 @@ private:
     void visit(AstExprInterpString* interpString);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
-    void visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks);
+    void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
     void visit(AstType* ty);
     void visit(AstTypeReference* ty);
     void visit(AstTypeTable* table);

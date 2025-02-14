@@ -9,7 +9,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(InferGlobalTypes)
 LUAU_FASTFLAG(LuauGeneralizationRemoveRecursiveUpperBound)
 
 using namespace Luau;
@@ -1881,8 +1880,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_duri
 
 TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
 {
-    ScopedFastFlag sff{FFlag::InferGlobalTypes, true};
-
     CheckResult result = check(R"(
         foo = { bar = 5 :: number? }
 

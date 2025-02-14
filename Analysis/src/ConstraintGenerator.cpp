@@ -37,8 +37,8 @@ LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
 
-LUAU_FASTFLAGVARIABLE(InferGlobalTypes)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
+LUAU_FASTFLAGVARIABLE(LuauInferLocalTypesInMultipleAssignments)
 
 namespace Luau
 {
@@ -1025,37 +1025,49 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
     TypePackId rvaluePack = checkPack(scope, statLocal->values, expectedTypes).tp;
     Checkpoint end = checkpoint(this);
 
-    if (hasAnnotation)
+    if (FFlag::LuauInferLocalTypesInMultipleAssignments)
     {
+        std::vector<TypeId> deferredTypes;
+        auto [head, tail] = flatten(rvaluePack);
+
         for (size_t i = 0; i < statLocal->vars.size; ++i)
         {
             LUAU_ASSERT(get<BlockedType>(assignees[i]));
             TypeIds* localDomain = localTypes.find(assignees[i]);
             LUAU_ASSERT(localDomain);
-            localDomain->insert(annotatedTypes[i]);
+
+            if (statLocal->vars.data[i]->annotation)
+            {
+                localDomain->insert(annotatedTypes[i]);
+            }
+            else
+            {
+                if (i < head.size())
+                {
+                    localDomain->insert(head[i]);
+                }
+                else if (tail)
+                {
+                    deferredTypes.push_back(arena->addType(BlockedType{}));
+                    localDomain->insert(deferredTypes.back());
+                }
+                else
+                {
+                    localDomain->insert(builtinTypes->nilType);
+                }
+            }
         }
 
-        TypePackId annotatedPack = arena->addTypePack(std::move(annotatedTypes));
-        addConstraint(scope, statLocal->location, PackSubtypeConstraint{rvaluePack, annotatedPack});
-    }
-    else
-    {
-        std::vector<TypeId> valueTypes;
-        valueTypes.reserve(statLocal->vars.size);
-
-        auto [head, tail] = flatten(rvaluePack);
-
-        if (head.size() >= statLocal->vars.size)
+        if (hasAnnotation)
         {
-            for (size_t i = 0; i < statLocal->vars.size; ++i)
-                valueTypes.push_back(head[i]);
+            TypePackId annotatedPack = arena->addTypePack(std::move(annotatedTypes));
+            addConstraint(scope, statLocal->location, PackSubtypeConstraint{rvaluePack, annotatedPack});
         }
-        else
-        {
-            for (size_t i = 0; i < statLocal->vars.size; ++i)
-                valueTypes.push_back(arena->addType(BlockedType{}));
 
-            auto uc = addConstraint(scope, statLocal->location, UnpackConstraint{valueTypes, rvaluePack});
+        if (!deferredTypes.empty())
+        {
+            LUAU_ASSERT(tail);
+            NotNull<Constraint> uc = addConstraint(scope, statLocal->location, UnpackConstraint{deferredTypes, *tail});
 
             forEachConstraint(
                 start,
@@ -1063,20 +1075,69 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
                 this,
                 [&uc](const ConstraintPtr& runBefore)
                 {
-                    uc->dependencies.push_back(NotNull{runBefore.get()});
+                    uc->dependencies.emplace_back(runBefore.get());
                 }
             );
 
-            for (TypeId t : valueTypes)
+            for (TypeId t : deferredTypes)
                 getMutable<BlockedType>(t)->setOwner(uc);
         }
-
-        for (size_t i = 0; i < statLocal->vars.size; ++i)
+    }
+    else
+    {
+        if (hasAnnotation)
         {
-            LUAU_ASSERT(get<BlockedType>(assignees[i]));
-            TypeIds* localDomain = localTypes.find(assignees[i]);
-            LUAU_ASSERT(localDomain);
-            localDomain->insert(valueTypes[i]);
+            for (size_t i = 0; i < statLocal->vars.size; ++i)
+            {
+                LUAU_ASSERT(get<BlockedType>(assignees[i]));
+                TypeIds* localDomain = localTypes.find(assignees[i]);
+                LUAU_ASSERT(localDomain);
+                localDomain->insert(annotatedTypes[i]);
+            }
+
+            TypePackId annotatedPack = arena->addTypePack(std::move(annotatedTypes));
+            addConstraint(scope, statLocal->location, PackSubtypeConstraint{rvaluePack, annotatedPack});
+        }
+        else
+        {
+            std::vector<TypeId> valueTypes;
+            valueTypes.reserve(statLocal->vars.size);
+
+            auto [head, tail] = flatten(rvaluePack);
+
+            if (head.size() >= statLocal->vars.size)
+            {
+                for (size_t i = 0; i < statLocal->vars.size; ++i)
+                    valueTypes.push_back(head[i]);
+            }
+            else
+            {
+                for (size_t i = 0; i < statLocal->vars.size; ++i)
+                    valueTypes.push_back(arena->addType(BlockedType{}));
+
+                auto uc = addConstraint(scope, statLocal->location, UnpackConstraint{valueTypes, rvaluePack});
+
+                forEachConstraint(
+                    start,
+                    end,
+                    this,
+                    [&uc](const ConstraintPtr& runBefore)
+                    {
+                        uc->dependencies.push_back(NotNull{runBefore.get()});
+                    }
+                );
+
+                for (TypeId t : valueTypes)
+                    getMutable<BlockedType>(t)->setOwner(uc);
+            }
+
+            for (size_t i = 0; i < statLocal->vars.size; ++i)
+            {
+                LUAU_ASSERT(get<BlockedType>(assignees[i]));
+                TypeIds* localDomain = localTypes.find(assignees[i]);
+                LUAU_ASSERT(localDomain);
+                localDomain->insert(valueTypes[i]);
+            }
         }
     }
 
@@ -2810,13 +2871,10 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         DefId def = dfg->getDef(global);
         rootScope->lvalueTypes[def] = rhsType;
 
-        if (FFlag::InferGlobalTypes)
-        {
-            // Sketchy: We're specifically looking for BlockedTypes that were
-            // initially created by ConstraintGenerator::prepopulateGlobalScope.
-            if (auto bt = get<BlockedType>(follow(*annotatedTy)); bt && !bt->getOwner())
-                emplaceType<BoundType>(asMutable(*annotatedTy), rhsType);
-        }
+        // Sketchy: We're specifically looking for BlockedTypes that were
+        // initially created by ConstraintGenerator::prepopulateGlobalScope.
+        if (auto bt = get<BlockedType>(follow(*annotatedTy)); bt && !bt->getOwner())
+            emplaceType<BoundType>(asMutable(*annotatedTy), rhsType);
 
         addConstraint(scope, global->location, SubtypeConstraint{rhsType, *annotatedTy});
     }
@@ -3535,33 +3593,34 @@ TypePackId ConstraintGenerator::resolveTypePack(const ScopePtr& scope, const Ast
 
 std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGenerator::createGenerics(
     const ScopePtr& scope,
-    AstArray<AstGenericType> generics,
+    AstArray<AstGenericType*> generics,
     bool useCache,
     bool addTypes
 )
 {
     std::vector<std::pair<Name, GenericTypeDefinition>> result;
-    for (const auto& generic : generics)
+    for (const auto* generic : generics)
     {
         TypeId genericTy = nullptr;
 
-        if (auto it = scope->parent->typeAliasTypeParameters.find(generic.name.value); useCache && it != scope->parent->typeAliasTypeParameters.end())
+        if (auto it = scope->parent->typeAliasTypeParameters.find(generic->name.value);
+            useCache && it != scope->parent->typeAliasTypeParameters.end())
             genericTy = it->second;
         else
         {
-            genericTy = arena->addType(GenericType{scope.get(), generic.name.value});
-            scope->parent->typeAliasTypeParameters[generic.name.value] = genericTy;
+            genericTy = arena->addType(GenericType{scope.get(), generic->name.value});
+            scope->parent->typeAliasTypeParameters[generic->name.value] = genericTy;
         }
 
         std::optional<TypeId> defaultTy = std::nullopt;
 
-        if (generic.defaultValue)
-            defaultTy = resolveType(scope, generic.defaultValue, /* inTypeArguments */ false);
+        if (generic->defaultValue)
+            defaultTy = resolveType(scope, generic->defaultValue, /* inTypeArguments */ false);
 
         if (addTypes)
-            scope->privateTypeBindings[generic.name.value] = TypeFun{genericTy};
+            scope->privateTypeBindings[generic->name.value] = TypeFun{genericTy};
 
-        result.push_back({generic.name.value, GenericTypeDefinition{genericTy, defaultTy}});
+        result.emplace_back(generic->name.value, GenericTypeDefinition{genericTy, defaultTy});
     }
 
     return result;
@@ -3569,34 +3628,34 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGenerator::createG
 
 std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGenerator::createGenericPacks(
     const ScopePtr& scope,
-    AstArray<AstGenericTypePack> generics,
+    AstArray<AstGenericTypePack*> generics,
     bool useCache,
     bool addTypes
 )
 {
     std::vector<std::pair<Name, GenericTypePackDefinition>> result;
-    for (const auto& generic : generics)
+    for (const auto* generic : generics)
     {
         TypePackId genericTy;
 
-        if (auto it = scope->parent->typeAliasTypePackParameters.find(generic.name.value);
+        if (auto it = scope->parent->typeAliasTypePackParameters.find(generic->name.value);
             useCache && it != scope->parent->typeAliasTypePackParameters.end())
             genericTy = it->second;
         else
         {
-            genericTy = arena->addTypePack(TypePackVar{GenericTypePack{scope.get(), generic.name.value}});
-            scope->parent->typeAliasTypePackParameters[generic.name.value] = genericTy;
+            genericTy = arena->addTypePack(TypePackVar{GenericTypePack{scope.get(), generic->name.value}});
+            scope->parent->typeAliasTypePackParameters[generic->name.value] = genericTy;
         }
 
         std::optional<TypePackId> defaultTy = std::nullopt;
 
-        if (generic.defaultValue)
-            defaultTy = resolveTypePack(scope, generic.defaultValue, /* inTypeArguments */ false);
+        if (generic->defaultValue)
+            defaultTy = resolveTypePack(scope, generic->defaultValue, /* inTypeArguments */ false);
 
         if (addTypes)
-            scope->privateTypePackBindings[generic.name.value] = genericTy;
+            scope->privateTypePackBindings[generic->name.value] = genericTy;
 
-        result.push_back({generic.name.value, GenericTypePackDefinition{genericTy, defaultTy}});
+        result.emplace_back(generic->name.value, GenericTypePackDefinition{genericTy, defaultTy});
     }
 
     return result;
@@ -3739,18 +3798,15 @@ struct GlobalPrepopulator : AstVisitor
 
     bool visit(AstStatAssign* assign) override
     {
-        if (FFlag::InferGlobalTypes)
+        for (const Luau::AstExpr* expr : assign->vars)
         {
-            for (const Luau::AstExpr* expr : assign->vars)
+            if (const AstExprGlobal* g = expr->as<AstExprGlobal>())
             {
-                if (const AstExprGlobal* g = expr->as<AstExprGlobal>())
-                {
-                    if (!globalScope->lookup(g->name))
-                        globalScope->globalsToWarn.insert(g->name.value);
+                if (!globalScope->lookup(g->name))
+                    globalScope->globalsToWarn.insert(g->name.value);
 
-                    TypeId bt = arena->addType(BlockedType{});
-                    globalScope->bindings[g->name] = Binding{bt, g->location};
-                }
+                TypeId bt = arena->addType(BlockedType{});
+                globalScope->bindings[g->name] = Binding{bt, g->location};
             }
         }
 

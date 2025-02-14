@@ -20,8 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAG(LuauUserTypeFunGenerics)
-
 namespace Luau
 {
 
@@ -212,7 +210,7 @@ private:
             state->classesSerialized[c->name] = ty;
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, c->name});
         }
-        else if (auto g = get<GenericType>(ty); FFlag::LuauUserTypeFunGenerics && g)
+        else if (auto g = get<GenericType>(ty))
         {
             Name name = g->name;
 
@@ -245,7 +243,7 @@ private:
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{{}});
         else if (auto vPack = get<VariadicTypePack>(tp))
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionVariadicTypePack{});
-        else if (auto gPack = get<GenericTypePack>(tp); FFlag::LuauUserTypeFunGenerics && gPack)
+        else if (auto gPack = get<GenericTypePack>(tp))
         {
             Name name = gPack->name;
 
@@ -291,8 +289,7 @@ private:
             serializeChildren(f1, f2);
         else if (auto [c1, c2] = std::tuple{get<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
             serializeChildren(c1, c2);
-        else if (auto [g1, g2] = std::tuple{get<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)};
-                 FFlag::LuauUserTypeFunGenerics && g1 && g2)
+        else if (auto [g1, g2] = std::tuple{get<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
             serializeChildren(g1, g2);
         else
         { // Either this or ty and tfti do not represent the same type
@@ -307,8 +304,7 @@ private:
             serializeChildren(tPack1, tPack2);
         else if (auto [vPack1, vPack2] = std::tuple{get<VariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)}; vPack1 && vPack2)
             serializeChildren(vPack1, vPack2);
-        else if (auto [gPack1, gPack2] = std::tuple{get<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)};
-                 FFlag::LuauUserTypeFunGenerics && gPack1 && gPack2)
+        else if (auto [gPack1, gPack2] = std::tuple{get<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)}; gPack1 && gPack2)
             serializeChildren(gPack1, gPack2);
         else
         { // Either this or ty and tfti do not represent the same type
@@ -399,16 +395,13 @@ private:
 
     void serializeChildren(const FunctionType* f1, TypeFunctionFunctionType* f2)
     {
-        if (FFlag::LuauUserTypeFunGenerics)
-        {
-            f2->generics.reserve(f1->generics.size());
-            for (auto ty : f1->generics)
-                f2->generics.push_back(shallowSerialize(ty));
+        f2->generics.reserve(f1->generics.size());
+        for (auto ty : f1->generics)
+            f2->generics.push_back(shallowSerialize(ty));
 
-            f2->genericPacks.reserve(f1->genericPacks.size());
-            for (auto tp : f1->genericPacks)
-                f2->genericPacks.push_back(shallowSerialize(tp));
-        }
+        f2->genericPacks.reserve(f1->genericPacks.size());
+        for (auto tp : f1->genericPacks)
+            f2->genericPacks.push_back(shallowSerialize(tp));
 
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
@@ -573,14 +566,11 @@ private:
 
             deserializeChildren(tfti, ty);
 
-            if (FFlag::LuauUserTypeFunGenerics)
+            // If we have completed working on all children of a function, remove the generic parameters from scope
+            if (!functionScopes.empty() && queue.size() == functionScopes.back().oldQueueSize && state->errors.empty())
             {
-                // If we have completed working on all children of a function, remove the generic parameters from scope
-                if (!functionScopes.empty() && queue.size() == functionScopes.back().oldQueueSize && state->errors.empty())
-                {
-                    closeFunctionScope(functionScopes.back().function);
-                    functionScopes.pop_back();
-                }
+                closeFunctionScope(functionScopes.back().function);
+                functionScopes.pop_back();
             }
         }
     }
@@ -702,7 +692,7 @@ private:
             else
                 state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious class type is being deserialized");
         }
-        else if (auto g = get<TypeFunctionGenericType>(ty); FFlag::LuauUserTypeFunGenerics && g)
+        else if (auto g = get<TypeFunctionGenericType>(ty))
         {
             if (g->isPack)
             {
@@ -752,7 +742,7 @@ private:
         {
             target = state->ctx->arena->addTypePack(VariadicTypePack{});
         }
-        else if (auto gPack = get<TypeFunctionGenericTypePack>(tp); FFlag::LuauUserTypeFunGenerics && gPack)
+        else if (auto gPack = get<TypeFunctionGenericTypePack>(tp))
         {
             auto it = std::find_if(
                 genericPacks.rbegin(),
@@ -809,8 +799,7 @@ private:
             deserializeChildren(f2, f1);
         else if (auto [c1, c2] = std::tuple{getMutable<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
             deserializeChildren(c2, c1);
-        else if (auto [g1, g2] = std::tuple{getMutable<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)};
-                 FFlag::LuauUserTypeFunGenerics && g1 && g2)
+        else if (auto [g1, g2] = std::tuple{getMutable<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
             deserializeChildren(g2, g1);
         else
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
@@ -823,8 +812,7 @@ private:
         else if (auto [vPack1, vPack2] = std::tuple{getMutable<VariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)};
                  vPack1 && vPack2)
             deserializeChildren(vPack2, vPack1);
-        else if (auto [gPack1, gPack2] = std::tuple{getMutable<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)};
-                 FFlag::LuauUserTypeFunGenerics && gPack1 && gPack2)
+        else if (auto [gPack1, gPack2] = std::tuple{getMutable<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)}; gPack1 && gPack2)
             deserializeChildren(gPack2, gPack1);
         else
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
@@ -909,63 +897,59 @@ private:
 
     void deserializeChildren(TypeFunctionFunctionType* f2, FunctionType* f1)
     {
-        if (FFlag::LuauUserTypeFunGenerics)
+        functionScopes.push_back({queue.size(), f2});
+
+        std::set<std::pair<bool, std::string>> genericNames;
+
+        // Introduce generic function parameters into scope
+        for (auto ty : f2->generics)
         {
-            functionScopes.push_back({queue.size(), f2});
+            auto gty = get<TypeFunctionGenericType>(ty);
+            LUAU_ASSERT(gty && !gty->isPack);
 
-            std::set<std::pair<bool, std::string>> genericNames;
+            std::pair<bool, std::string> nameKey = std::make_pair(gty->isNamed, gty->name);
 
-            // Introduce generic function parameters into scope
-            for (auto ty : f2->generics)
+            // Duplicates are not allowed
+            if (genericNames.find(nameKey) != genericNames.end())
             {
-                auto gty = get<TypeFunctionGenericType>(ty);
-                LUAU_ASSERT(gty && !gty->isPack);
-
-                std::pair<bool, std::string> nameKey = std::make_pair(gty->isNamed, gty->name);
-
-                // Duplicates are not allowed
-                if (genericNames.find(nameKey) != genericNames.end())
-                {
-                    state->errors.push_back(format("Duplicate type parameter '%s'", gty->name.c_str()));
-                    return;
-                }
-
-                genericNames.insert(nameKey);
-
-                TypeId mapping = state->ctx->arena->addTV(Type(gty->isNamed ? GenericType{state->ctx->scope.get(), gty->name} : GenericType{}));
-                genericTypes.push_back({gty->isNamed, gty->name, mapping});
+                state->errors.push_back(format("Duplicate type parameter '%s'", gty->name.c_str()));
+                return;
             }
 
-            for (auto tp : f2->genericPacks)
-            {
-                auto gtp = get<TypeFunctionGenericTypePack>(tp);
-                LUAU_ASSERT(gtp);
+            genericNames.insert(nameKey);
 
-                std::pair<bool, std::string> nameKey = std::make_pair(gtp->isNamed, gtp->name);
-
-                // Duplicates are not allowed
-                if (genericNames.find(nameKey) != genericNames.end())
-                {
-                    state->errors.push_back(format("Duplicate type parameter '%s'", gtp->name.c_str()));
-                    return;
-                }
-
-                genericNames.insert(nameKey);
-
-                TypePackId mapping =
-                    state->ctx->arena->addTypePack(TypePackVar(gtp->isNamed ? GenericTypePack{state->ctx->scope.get(), gtp->name} : GenericTypePack{})
-                    );
-                genericPacks.push_back({gtp->isNamed, gtp->name, mapping});
-            }
-
-            f1->generics.reserve(f2->generics.size());
-            for (auto ty : f2->generics)
-                f1->generics.push_back(shallowDeserialize(ty));
-
-            f1->genericPacks.reserve(f2->genericPacks.size());
-            for (auto tp : f2->genericPacks)
-                f1->genericPacks.push_back(shallowDeserialize(tp));
+            TypeId mapping = state->ctx->arena->addTV(Type(gty->isNamed ? GenericType{state->ctx->scope.get(), gty->name} : GenericType{}));
+            genericTypes.push_back({gty->isNamed, gty->name, mapping});
         }
+
+        for (auto tp : f2->genericPacks)
+        {
+            auto gtp = get<TypeFunctionGenericTypePack>(tp);
+            LUAU_ASSERT(gtp);
+
+            std::pair<bool, std::string> nameKey = std::make_pair(gtp->isNamed, gtp->name);
+
+            // Duplicates are not allowed
+            if (genericNames.find(nameKey) != genericNames.end())
+            {
+                state->errors.push_back(format("Duplicate type parameter '%s'", gtp->name.c_str()));
+                return;
+            }
+
+            genericNames.insert(nameKey);
+
+            TypePackId mapping =
+                state->ctx->arena->addTypePack(TypePackVar(gtp->isNamed ? GenericTypePack{state->ctx->scope.get(), gtp->name} : GenericTypePack{}));
+            genericPacks.push_back({gtp->isNamed, gtp->name, mapping});
+        }
+
+        f1->generics.reserve(f2->generics.size());
+        for (auto ty : f2->generics)
+            f1->generics.push_back(shallowDeserialize(ty));
+
+        f1->genericPacks.reserve(f2->genericPacks.size());
+        for (auto tp : f2->genericPacks)
+            f1->genericPacks.push_back(shallowDeserialize(tp));
 
         if (f2->argTypes)
             f1->argTypes = shallowDeserialize(f2->argTypes);

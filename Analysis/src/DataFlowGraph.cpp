@@ -1260,21 +1260,21 @@ void DataFlowGraphBuilder::visitTypeList(AstTypeList l)
         visitTypePack(l.tailType);
 }
 
-void DataFlowGraphBuilder::visitGenerics(AstArray<AstGenericType> g)
+void DataFlowGraphBuilder::visitGenerics(AstArray<AstGenericType*> g)
 {
-    for (AstGenericType generic : g)
+    for (AstGenericType* generic : g)
     {
-        if (generic.defaultValue)
-            visitType(generic.defaultValue);
+        if (generic->defaultValue)
+            visitType(generic->defaultValue);
     }
 }
 
-void DataFlowGraphBuilder::visitGenericPacks(AstArray<AstGenericTypePack> g)
+void DataFlowGraphBuilder::visitGenericPacks(AstArray<AstGenericTypePack*> g)
 {
-    for (AstGenericTypePack generic : g)
+    for (AstGenericTypePack* generic : g)
     {
-        if (generic.defaultValue)
-            visitTypePack(generic.defaultValue);
+        if (generic->defaultValue)
+            visitTypePack(generic->defaultValue);
     }
 }
 
