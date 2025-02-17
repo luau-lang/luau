@@ -1870,7 +1870,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_type_userdata_returns_type")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
     ScopedFastFlag luauUserTypeFunTypeofReturnsType{FFlag::LuauUserTypeFunTypeofReturnsType, true};
 
     CheckResult result = check(R"(
