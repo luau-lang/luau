@@ -10,6 +10,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauNewSolverPrePopulateClasses)
+LUAU_FASTFLAG(LuauClipNestedAndRecursiveUnion)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauPreventReentrantTypeFunctionReduction)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -539,6 +542,49 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
 
     REQUIRE(ctv);
     CHECK_EQ(ctv->definitionModuleName, "@test");
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_redefinition_reduces_rightfully")
+{
+    ScopedFastFlag _{FFlag::LuauClipNestedAndRecursiveUnion, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local t: {[string]: string} = {}
+
+        local function f()
+            t = t
+        end
+
+        t = t
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "vector3_overflow")
+{
+    ScopedFastFlag _{FFlag::LuauPreventReentrantTypeFunctionReduction, true};
+    // We set this to zero to ensure that we either run to completion or stack overflow here.
+    ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
+
+    loadDefinition(R"(
+        declare class Vector3
+            function __add(self, other: Vector3): Vector3
+        end
+    )");
+
+    CheckResult result = check(R"(
+--!strict
+local function graphPoint(t : number, points : { Vector3 }) : Vector3
+    local n : number = #points - 1
+    local p : Vector3 = (nil :: any)
+    for i = 0, n do
+        local x = points[i + 1]
+        p = p and p + x or x
+    end
+    return p
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

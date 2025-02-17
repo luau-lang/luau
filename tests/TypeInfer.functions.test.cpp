@@ -19,8 +19,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
-LUAU_FASTFLAG(LuauDontRefCountTypesInTypeFunctions)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
@@ -2566,10 +2564,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // CLI-114134: This test:
     // a) Has a kind of weird result (suggesting `number | false` is not great);
@@ -2881,8 +2876,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag _{FFlag::LuauDontRefCountTypesInTypeFunctions, true};
-
     CheckResult result = check(R"(
         function foo(player)
             local success,result = player:thing()
@@ -3018,9 +3011,6 @@ local u,v = id(3), id(id(44))
 
 TEST_CASE_FIXTURE(Fixture, "hidden_variadics_should_not_break_subtyping")
 {
-    // Only applies to new solver.
-    ScopedFastFlag sff{FFlag::LuauRetrySubtypingWithoutHiddenPack, true};
-
     CheckResult result = check(R"(
         --!strict
         type FooType = {

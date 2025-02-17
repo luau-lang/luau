@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteRefactorsForIncrementalAutocomplete)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteUseLimits)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -176,6 +177,12 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
         // Cost of normalization can be too high for autocomplete response time requirements
         unifier.normalize = false;
         unifier.checkInhabited = false;
+
+        if (FFlag::LuauAutocompleteUseLimits)
+        {
+            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
+        }
 
         return unifier.canUnify(subTy, superTy).empty();
     }

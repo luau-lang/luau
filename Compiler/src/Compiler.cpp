@@ -26,9 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileOptimizeRevArith)
-LUAU_FASTFLAGVARIABLE(LuauCompileLibraryConstants)
-
 namespace Luau
 {
 
@@ -1624,7 +1621,7 @@ struct Compiler
                         return;
                     }
                 }
-                else if (FFlag::LuauCompileOptimizeRevArith && options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
+                else if (options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
                 {
                     // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
                     if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
@@ -4225,17 +4222,14 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         {
             compiler.builtinsFoldLibraryK = true;
         }
-        else if (FFlag::LuauCompileLibraryConstants)
+        else if (const char* const* ptr = options.librariesWithKnownMembers)
         {
-            if (const char* const* ptr = options.librariesWithKnownMembers)
+            for (; *ptr; ++ptr)
             {
-                for (; *ptr; ++ptr)
+                if (AstName name = names.get(*ptr); name.value && getGlobalState(compiler.globals, name) == Global::Default)
                 {
-                    if (AstName name = names.get(*ptr); name.value && getGlobalState(compiler.globals, name) == Global::Default)
-                    {
-                        compiler.builtinsFoldLibraryK = true;
-                        break;
-                    }
+                    compiler.builtinsFoldLibraryK = true;
+                    break;
                 }
             }
         }
@@ -4304,8 +4298,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     AstExprFunction main(
         root->location,
         /* attributes= */ AstArray<AstAttr*>({nullptr, 0}),
-        /* generics= */ AstArray<AstGenericType>(),
-        /* genericPacks= */ AstArray<AstGenericTypePack>(),
+        /* generics= */ AstArray<AstGenericType*>(),
+        /* genericPacks= */ AstArray<AstGenericTypePack*>(),
         /* self= */ nullptr,
         AstArray<AstLocal*>(),
         /* vararg= */ true,
@@ -4408,7 +4402,7 @@ void setCompileConstantString(CompileConstant* constant, const char* s, size_t l
         CompileError::raise({}, "Exceeded custom string constant length limit");
 
     target->type = Compile::Constant::Type_String;
-    target->stringLength = l;
+    target->stringLength = unsigned(l);
     target->valueString = s;
 }
 

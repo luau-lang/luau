@@ -8,8 +8,8 @@
 #include "Luau/Parser.h"
 #include "Luau/TimeTrace.h"
 
-#include "FileUtils.h"
-#include "Flags.h"
+#include "Luau/FileUtils.h"
+#include "Luau/Flags.h"
 
 #include <memory>
 
@@ -341,7 +341,8 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
-        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr || format == CompileFormat::CodegenVerbose)
+        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
+                 format == CompileFormat::CodegenVerbose)
         {
             bcb.setDumpFlags(
                 Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |

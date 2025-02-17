@@ -4,6 +4,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
+#include "Luau/LoweringStats.h"
 
 #include "Luau/IrCallWrapperX64.h"
 
@@ -16,7 +17,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauCodeGenVectorDeadStoreElim)
+LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
 {
@@ -158,13 +159,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                 build.mov(dwordReg(inst.regX64), regOp(inst.b));
 
             build.shl(dwordReg(inst.regX64), kTValueSizeLog2);
-            build.add(inst.regX64, qword[regOp(inst.a) + offsetof(Table, array)]);
+            build.add(inst.regX64, qword[regOp(inst.a) + offsetof(LuaTable, array)]);
         }
         else if (inst.b.kind == IrOpKind::Constant)
         {
             inst.regX64 = regs.allocRegOrReuse(SizeX64::qword, index, {inst.a});
 
-            build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(Table, array)]);
+            build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(LuaTable, array)]);
 
             if (intOp(inst.b) != 0)
                 build.lea(inst.regX64, addr[inst.regX64 + intOp(inst.b) * sizeof(TValue)]);
@@ -192,9 +193,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(Table, node)]);
+        build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(LuaTable, node)]);
         build.mov(dwordReg(tmp.reg), 1);
-        build.mov(byteReg(shiftTmp.reg), byte[regOp(inst.a) + offsetof(Table, lsizenode)]);
+        build.mov(byteReg(shiftTmp.reg), byte[regOp(inst.a) + offsetof(LuaTable, lsizenode)]);
         build.shl(dwordReg(tmp.reg), byteReg(shiftTmp.reg));
         build.dec(dwordReg(tmp.reg));
         build.and_(dwordReg(tmp.reg), uintOp(inst.b));
@@ -299,7 +300,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         storeDoubleAsFloat(luauRegValueVector(vmRegOp(inst.a), 1), inst.c);
         storeDoubleAsFloat(luauRegValueVector(vmRegOp(inst.a), 2), inst.d);
 
-        if (FFlag::LuauCodeGenVectorDeadStoreElim && inst.e.kind != IrOpKind::None)
+        if (inst.e.kind != IrOpKind::None)
             build.mov(luauRegTag(vmRegOp(inst.a)), tagOp(inst.e));
         break;
     case IrCmd::STORE_TVALUE:
@@ -622,6 +623,30 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.vblendvpd(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
         break;
     }
+    case IrCmd::SELECT_NUM:
+    {
+        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.c, inst.d}); // can't reuse b if a is a memory operand
+
+        ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+        if (inst.c.kind == IrOpKind::Inst)
+            build.vcmpeqsd(tmp.reg, regOp(inst.c), memRegDoubleOp(inst.d));
+        else
+        {
+            build.vmovsd(tmp.reg, memRegDoubleOp(inst.c));
+            build.vcmpeqsd(tmp.reg, tmp.reg, memRegDoubleOp(inst.d));
+        }
+
+        if (inst.a.kind == IrOpKind::Inst)
+            build.vblendvpd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b), tmp.reg);
+        else
+        {
+            build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
+            build.vblendvpd(inst.regX64, inst.regX64, memRegDoubleOp(inst.b), tmp.reg);
+        }
+        break;
+    }
     case IrCmd::ADD_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
@@ -929,13 +954,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        build.mov(tmp.reg, qword[regOp(inst.a) + offsetof(Table, metatable)]);
+        build.mov(tmp.reg, qword[regOp(inst.a) + offsetof(LuaTable, metatable)]);
         regs.freeLastUseReg(function.instOp(inst.a), index); // Release before the call if it's the last use
 
         build.test(tmp.reg, tmp.reg);
         build.jcc(ConditionX64::Zero, labelOp(inst.c)); // No metatable
 
-        build.test(byte[tmp.reg + offsetof(Table, tmcache)], 1 << intOp(inst.b));
+        build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(inst.b));
         build.jcc(ConditionX64::NotZero, labelOp(inst.c)); // No tag method
 
         ScopedRegX64 tmp2{regs, SizeX64::qword};
@@ -1295,11 +1320,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     }
     case IrCmd::CHECK_READONLY:
-        build.cmp(byte[regOp(inst.a) + offsetof(Table, readonly)], 0);
+        build.cmp(byte[regOp(inst.a) + offsetof(LuaTable, readonly)], 0);
         jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.b, next);
         break;
     case IrCmd::CHECK_NO_METATABLE:
-        build.cmp(qword[regOp(inst.a) + offsetof(Table, metatable)], 0);
+        build.cmp(qword[regOp(inst.a) + offsetof(LuaTable, metatable)], 0);
         jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.b, next);
         break;
     case IrCmd::CHECK_SAFE_ENV:
@@ -1308,16 +1333,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.mov(tmp.reg, sClosure);
         build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
-        build.cmp(byte[tmp.reg + offsetof(Table, safeenv)], 0);
+        build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
 
         jumpOrAbortOnUndef(ConditionX64::Equal, inst.a, next);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
         if (inst.b.kind == IrOpKind::Inst)
-            build.cmp(dword[regOp(inst.a) + offsetof(Table, sizearray)], regOp(inst.b));
+            build.cmp(dword[regOp(inst.a) + offsetof(LuaTable, sizearray)], regOp(inst.b));
         else if (inst.b.kind == IrOpKind::Constant)
-            build.cmp(dword[regOp(inst.a) + offsetof(Table, sizearray)], intOp(inst.b));
+            build.cmp(dword[regOp(inst.a) + offsetof(LuaTable, sizearray)], intOp(inst.b));
         else
             CODEGEN_ASSERT(!"Unsupported instruction form");
 

@@ -22,7 +22,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
-LUAU_FASTFLAGVARIABLE(LuauRetrySubtypingWithoutHiddenPack)
 
 namespace Luau
 {
@@ -1474,15 +1473,14 @@ SubtypingResult Subtyping::isCovariantWith(
 
         // If subtyping failed in the argument packs, we should check if there's a hidden variadic tail and try ignoring it.
         // This might cause subtyping correctly because the sub type here may not have a hidden variadic tail or equivalent.
-        if (FFlag::LuauRetrySubtypingWithoutHiddenPack && !result.isSubtype)
+        if (!result.isSubtype)
         {
             auto [arguments, tail] = flatten(superFunction->argTypes);
 
             if (auto variadic = get<VariadicTypePack>(tail); variadic && variadic->hidden)
             {
-                result.orElse(
-                    isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope).withBothComponent(TypePath::PackField::Arguments)
-                );
+                result.orElse(isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope)
+                                  .withBothComponent(TypePath::PackField::Arguments));
             }
         }
     }

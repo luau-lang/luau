@@ -105,6 +105,9 @@ private:
     std::vector<Id> storage;
 };
 
+template <typename L>
+using Node = EqSat::Node<L>;
+
 using EType = EqSat::Language<
     TNil,
     TBoolean,
@@ -146,7 +149,7 @@ using EType = EqSat::Language<
 struct StringCache
 {
     Allocator allocator;
-    DenseHashMap<size_t, StringId> strings{{}};
+    DenseHashMap<std::string_view, StringId> strings{{}};
     std::vector<std::string_view> views;
 
     StringId add(std::string_view s);
@@ -170,6 +173,9 @@ struct Subst
 {
     Id eclass;
     Id newClass;
+
+    // The node into eclass which is boring, if any
+    std::optional<size_t> boringIndex;
 
     std::string desc;
 
@@ -211,6 +217,7 @@ struct Simplifier
     void subst(Id from, Id to);
     void subst(Id from, Id to, const std::string& ruleName);
     void subst(Id from, Id to, const std::string& ruleName, const std::unordered_map<Id, size_t>& forceNodes);
+    void subst(Id from, size_t boringIndex, Id to, const std::string& ruleName, const std::unordered_map<Id, size_t>& forceNodes);
 
     void unionClasses(std::vector<Id>& hereParts, Id there);
 
@@ -295,13 +302,13 @@ QueryIterator<Tag>::QueryIterator(EGraph* egraph_, Id eclass)
 
     for (const auto& enode : ecl.nodes)
     {
-        if (enode.index() < idx)
+        if (enode.node.index() < idx)
             ++index;
         else
             break;
     }
 
-    if (index >= ecl.nodes.size() || ecl.nodes[index].index() != idx)
+    if (index >= ecl.nodes.size() || ecl.nodes[index].node.index() != idx)
     {
         egraph = nullptr;
         index = 0;
@@ -331,7 +338,7 @@ std::pair<const Tag*, size_t> QueryIterator<Tag>::operator*() const
     EGraph::EClassT& ecl = (*egraph)[eclass];
 
     LUAU_ASSERT(index < ecl.nodes.size());
-    auto& enode = ecl.nodes[index];
+    auto& enode = ecl.nodes[index].node;
     Tag* result = enode.template get<Tag>();
     LUAU_ASSERT(result);
     return {result, index};
@@ -343,12 +350,16 @@ QueryIterator<Tag>& QueryIterator<Tag>::operator++()
 {
     const auto& ecl = (*egraph)[eclass];
 
-    ++index;
-    if (index >= ecl.nodes.size() || ecl.nodes[index].index() != EType::VariantTy::getTypeId<Tag>())
+    do
     {
-        egraph = nullptr;
-        index = 0;
-    }
+        ++index;
+        if (index >= ecl.nodes.size() || ecl.nodes[index].node.index() != EType::VariantTy::getTypeId<Tag>())
+        {
+            egraph = nullptr;
+            index = 0;
+            break;
+        }
+    } while (ecl.nodes[index].boring);
 
     return *this;
 }

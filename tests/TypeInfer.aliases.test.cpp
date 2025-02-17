@@ -2,6 +2,7 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/AstQuery.h"
@@ -9,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauFixInfiniteRecursionInNormalization)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1176,6 +1178,35 @@ TEST_CASE_FIXTURE(Fixture, "bound_type_in_alias_segfault")
         export type FieldConfig<TSource, TContext, TArgs> = {[ string]: any}
         export type FieldConfigMap<TSource, TContext> = Map<string, FieldConfig<TSource, TContext>>
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalization")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauFixInfiniteRecursionInNormalization, true},
+    };
+
+    CheckResult result = check(R"(
+        type Node<T> = {
+            value: T,
+            next: Node<T>?,
+            -- remove `prev`, solves issue
+            prev: Node<T>?,
+        };
+
+        type List<T> = {
+            head: Node<T>?
+        }
+
+        local function IsFront(list: List<any>, nodeB: Node<any>)
+            -- remove if statement below, solves issue
+            if (list.head == nodeB) then
+            end
+        end
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

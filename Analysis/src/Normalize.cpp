@@ -17,12 +17,11 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
-LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAG(LuauSolverV2);
-
+LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationTracksCyclicPairsThroughInhabitance);
-LUAU_FASTFLAGVARIABLE(LuauIntersectNormalsNeedsToTrackResourceLimits);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauFixInfiniteRecursionInNormalization)
+LUAU_FASTFLAGVARIABLE(LuauFixNormalizedIntersectionOfNegatedClass)
 
 namespace Luau
 {
@@ -1809,7 +1808,8 @@ NormalizationResult Normalizer::unionNormalWithTy(
     }
     else if (get<UnknownType>(here.tops))
         return NormalizationResult::True;
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFunctionInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return NormalizationResult::True;
@@ -2284,9 +2284,24 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
         else if (isSubclass(there, hereTy))
         {
             TypeIds negations = std::move(hereNegations);
+            bool emptyIntersectWithNegation = false;
 
             for (auto nIt = negations.begin(); nIt != negations.end();)
             {
+                if (FFlag::LuauFixNormalizedIntersectionOfNegatedClass && isSubclass(there, *nIt))
+                {
+                    // Hitting this block means that the incoming class is a
+                    // subclass of this type, _and_ one of its negations is a
+                    // superclass of this type, e.g.:
+                    //
+                    //  Dog & ~Animal
+                    //
+                    // Clearly this intersects to never, so we mark this class as 
+                    // being removed from the normalized class type.
+                    emptyIntersectWithNegation = true;
+                    break;
+                }
+
                 if (!isSubclass(*nIt, there))
                 {
                     nIt = negations.erase(nIt);
@@ -2299,7 +2314,8 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
 
             it = heres.ordering.erase(it);
             heres.classes.erase(hereTy);
-            heres.pushPair(there, std::move(negations));
+            if (!emptyIntersectWithNegation)
+                heres.pushPair(there, std::move(negations));
             break;
         }
         // If the incoming class is a superclass of the current class, we don't
@@ -2584,11 +2600,31 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                 {
                     if (tprop.readTy.has_value())
                     {
-                        // if the intersection of the read types of a property is uninhabited, the whole table is `never`.
-                        // We've seen these table prop elements before and we're about to ask if their intersection
-                        // is inhabited
-                        if (FFlag::LuauNormalizationTracksCyclicPairsThroughInhabitance)
+                        if (FFlag::LuauFixInfiniteRecursionInNormalization)
                         {
+                            TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
+
+                            // If any property is going to get mapped to `never`, we can just call the entire table `never`.
+                            // Since this check is syntactic, we may sometimes miss simplifying tables with complex uninhabited properties.
+                            // Prior versions of this code attempted to do this semantically using the normalization machinery, but this
+                            // mistakenly causes infinite loops when giving more complex recursive table types. As it stands, this approach
+                            // will continue to scale as simplification is improved, but we may wish to reintroduce the semantic approach
+                            // once we have revisited the usage of seen sets systematically (and possibly with some additional guarding to recognize
+                            // when types are infinitely-recursive with non-pointer identical instances of them, or some guard to prevent that
+                            // construction altogether). See also: `gh1632_no_infinite_recursion_in_normalization`
+                            if (get<NeverType>(ty))
+                                return {builtinTypes->neverType};
+
+                            prop.readTy = ty;
+                            hereSubThere &= (ty == hprop.readTy);
+                            thereSubHere &= (ty == tprop.readTy);
+                        }
+                        else
+                        {
+                            // if the intersection of the read types of a property is uninhabited, the whole table is `never`.
+                            // We've seen these table prop elements before and we're about to ask if their intersection
+                            // is inhabited
+
                             auto pair1 = std::pair{*hprop.readTy, *tprop.readTy};
                             auto pair2 = std::pair{*tprop.readTy, *hprop.readTy};
                             if (seenTablePropPairs.contains(pair1) || seenTablePropPairs.contains(pair2))
@@ -2603,39 +2639,13 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                                 seenTablePropPairs.insert(pair2);
                             }
 
+                            // FIXME(ariel): this is being added in a flag removal, so not changing the semantics here, but worth noting that this
+                            // fresh `seenSet` is definitely a bug. we already have `seenSet` from the parameter that _should_ have been used here.
                             Set<TypeId> seenSet{nullptr};
                             NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy, seenTablePropPairs, seenSet);
 
                             seenTablePropPairs.erase(pair1);
                             seenTablePropPairs.erase(pair2);
-                            if (NormalizationResult::True != res)
-                                return {builtinTypes->neverType};
-
-                            TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
-                            prop.readTy = ty;
-                            hereSubThere &= (ty == hprop.readTy);
-                            thereSubHere &= (ty == tprop.readTy);
-                        }
-                        else
-                        {
-
-                            if (seenSet.contains(*hprop.readTy) && seenSet.contains(*tprop.readTy))
-                            {
-                                seenSet.erase(*hprop.readTy);
-                                seenSet.erase(*tprop.readTy);
-                                return {builtinTypes->neverType};
-                            }
-                            else
-                            {
-                                seenSet.insert(*hprop.readTy);
-                                seenSet.insert(*tprop.readTy);
-                            }
-
-                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy);
-
-                            seenSet.erase(*hprop.readTy);
-                            seenSet.erase(*tprop.readTy);
-
                             if (NormalizationResult::True != res)
                                 return {builtinTypes->neverType};
 
@@ -3042,12 +3052,9 @@ NormalizationResult Normalizer::intersectTyvarsWithTy(
 // See above for an explaination of `ignoreSmallerTyvars`.
 NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars)
 {
-    if (FFlag::LuauIntersectNormalsNeedsToTrackResourceLimits)
-    {
-        RecursionCounter _rc(&sharedState->counters.recursionCount);
-        if (!withinResourceLimits())
-            return NormalizationResult::HitLimits;
-    }
+    RecursionCounter _rc(&sharedState->counters.recursionCount);
+    if (!withinResourceLimits())
+        return NormalizationResult::HitLimits;
 
     if (!get<NeverType>(there.tops))
     {
@@ -3162,7 +3169,8 @@ NormalizationResult Normalizer::intersectNormalWithTy(
         }
         return NormalizationResult::True;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFunctionInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};

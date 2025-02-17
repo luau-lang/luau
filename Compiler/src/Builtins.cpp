@@ -7,8 +7,7 @@
 
 #include <array>
 
-LUAU_FASTFLAGVARIABLE(LuauVectorBuiltins)
-LUAU_FASTFLAGVARIABLE(LuauCompileDisabledBuiltins)
+LUAU_FASTFLAGVARIABLE(LuauCompileMathLerp)
 
 namespace Luau
 {
@@ -140,6 +139,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_MATH_SIGN;
         if (builtin.method == "round")
             return LBF_MATH_ROUND;
+        if (FFlag::LuauCompileMathLerp && builtin.method == "lerp")
+            return LBF_MATH_LERP;
     }
 
     if (builtin.object == "bit32")
@@ -226,7 +227,7 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BUFFER_WRITEF64;
     }
 
-    if (FFlag::LuauVectorBuiltins && builtin.object == "vector")
+    if (builtin.object == "vector")
     {
         if (builtin.method == "create")
             return LBF_VECTOR;
@@ -295,36 +296,33 @@ struct BuiltinVisitor : AstVisitor
         , options(options)
         , names(names)
     {
-        if (FFlag::LuauCompileDisabledBuiltins)
+        builtinIsDisabled.fill(false);
+
+        if (const char* const* ptr = options.disabledBuiltins)
         {
-            builtinIsDisabled.fill(false);
-
-            if (const char* const* ptr = options.disabledBuiltins)
+            for (; *ptr; ++ptr)
             {
-                for (; *ptr; ++ptr)
+                if (const char* dot = strchr(*ptr, '.'))
                 {
-                    if (const char* dot = strchr(*ptr, '.'))
+                    AstName library = names.getWithType(*ptr, dot - *ptr).first;
+                    AstName name = names.get(dot + 1);
+
+                    if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
                     {
-                        AstName library = names.getWithType(*ptr, dot - *ptr).first;
-                        AstName name = names.get(dot + 1);
+                        Builtin builtin = Builtin{library, name};
 
-                        if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
-                        {
-                            Builtin builtin = Builtin{library, name};
-
-                            if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
-                                builtinIsDisabled[bfid] = true;
-                        }
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
                     }
-                    else
+                }
+                else
+                {
+                    if (AstName name = names.get(*ptr); name.value && getGlobalState(globals, name) == Global::Default)
                     {
-                        if (AstName name = names.get(*ptr); name.value && getGlobalState(globals, name) == Global::Default)
-                        {
-                            Builtin builtin = Builtin{AstName(), name};
+                        Builtin builtin = Builtin{AstName(), name};
 
-                            if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
-                                builtinIsDisabled[bfid] = true;
-                        }
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
                     }
                 }
             }
@@ -339,7 +337,7 @@ struct BuiltinVisitor : AstVisitor
 
         int bfid = getBuiltinFunctionId(builtin, options);
 
-        if (FFlag::LuauCompileDisabledBuiltins && bfid >= 0 && builtinIsDisabled[bfid])
+        if (bfid >= 0 && builtinIsDisabled[bfid])
             bfid = -1;
 
         // getBuiltinFunctionId optimistically assumes all select() calls are builtin but actually the second argument must be a vararg
@@ -556,6 +554,10 @@ BuiltinInfo getBuiltinInfo(int bfid)
     case LBF_VECTOR_MIN:
     case LBF_VECTOR_MAX:
         return {-1, 1}; // variadic
+
+    case LBF_MATH_LERP:
+        LUAU_ASSERT(FFlag::LuauCompileMathLerp);
+        return {3, 1, BuiltinInfo::Flag_NoneSafe};
     }
 
     LUAU_UNREACHABLE();

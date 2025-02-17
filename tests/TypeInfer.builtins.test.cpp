@@ -10,8 +10,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTypestateBuiltins2)
-LUAU_FASTFLAG(LuauStringFormatArityFix)
+LUAU_FASTFLAG(LuauTableCloneClonesType3)
+LUAU_FASTFLAG(LuauStringFormatErrorSuppression)
+LUAU_FASTFLAG(LuauFreezeIgnorePersistent)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -807,8 +808,6 @@ TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_trivial_arity")
 {
-    ScopedFastFlag sff{FFlag::LuauStringFormatArityFix, true};
-
     CheckResult result = check(R"(
         string.format()
     )");
@@ -1132,15 +1131,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
+    if (FFlag::LuauSolverV2)
         CHECK("Key 'b' not found in table '{ read a: number }'" == toString(result.errors[0]));
-    else if (FFlag::LuauSolverV2)
-        CHECK("Key 'b' not found in table '{ a: number }'" == toString(result.errors[0]));
     else
         CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
     CHECK(Location({13, 18}, {13, 23}) == result.errors[0].location);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ("{ read a: number }", toString(requireTypeAtPosition({15, 19})));
         CHECK_EQ("{ read b: string }", toString(requireTypeAtPosition({16, 19})));
@@ -1176,8 +1173,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mu
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-
-    if (FFlag::LuauTypestateBuiltins2)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ("{ a: number, q: string } | { read a: number, read q: string }", toString(requireType("t1"), {/*exhaustive */ true}));
         // before the assignment, it's `t1`
@@ -1207,8 +1203,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_generic_table")
         end
     )");
 
-    if (FFlag::LuauTypestateBuiltins2)
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_metatable")
@@ -1235,13 +1230,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_no_args")
         table.freeze()
     )");
 
-    // this does not error in the new solver without the typestate builtins functionality.
-    if (FFlag::LuauSolverV2 && !FFlag::LuauTypestateBuiltins2)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-        return;
-    }
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(get<CountMismatch>(result.errors[0]));
@@ -1254,23 +1242,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_non_tables")
         table.freeze(42)
     )");
 
-    // this does not error in the new solver without the typestate builtins functionality.
-    if (FFlag::LuauSolverV2 && !FFlag::LuauTypestateBuiltins2)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-        return;
-    }
-
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauTypestateBuiltins2)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(tm->wantedType), "table");
     else
         CHECK_EQ(toString(tm->wantedType), "{-  -}");
     CHECK_EQ(toString(tm->givenType), "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_persistent_skip")
+{
+    ScopedFastFlag luauFreezeIgnorePersistent{FFlag::LuauFreezeIgnorePersistent, true};
+
+    CheckResult result = check(R"(
+        table.freeze(table)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_persistent_skip")
+{
+    ScopedFastFlag luauFreezeIgnorePersistent{FFlag::LuauFreezeIgnorePersistent, true};
+
+    CheckResult result = check(R"(
+        table.clone(table)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
@@ -1584,6 +1587,79 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
+{
+    CheckResult result = check(R"(
+        local t1 = {}
+        t1.x = 5
+        local t2 = table.clone(t1)
+        t2.y = 6
+        t1.z = 3
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::LuauTableCloneClonesType3)
+    {
+        CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, z: number }");
+        CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number }");
+    }
+    else
+    {
+        CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, y: number, z: number }");
+        CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number, z: number }");
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break")
+{
+    CheckResult result = check(R"(
+        local Immutable = {}
+
+        function Immutable.Set(dictionary, key, value)
+            local new = table.clone(dictionary)
+
+            new[key] = value
+
+            return new
+        end
+
+        return Immutable
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break_2")
+{
+    CheckResult result = check(R"(
+        function set(dictionary, key, value)
+            local new = table.clone(dictionary)
+
+            new[key] = value
+
+            return new
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        local x: any = "world"
+        print(string.format("Hello, %s!", x))
+    )");
+
+    if (FFlag::LuauStringFormatErrorSuppression)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_SUITE_END();

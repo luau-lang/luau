@@ -23,12 +23,7 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileVectorTypeInfo)
-LUAU_FASTFLAG(LuauCompileOptimizeRevArith)
-LUAU_FASTFLAG(LuauCompileLibraryConstants)
-LUAU_FASTFLAG(LuauVectorBuiltins)
-LUAU_FASTFLAG(LuauVectorFolding)
-LUAU_FASTFLAG(LuauCompileDisabledBuiltins)
+LUAU_FASTFLAG(LuauVector2Constants)
 
 using namespace Luau;
 
@@ -1492,9 +1487,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorArith")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
-    ScopedFastFlag luauVectorFolding{FFlag::LuauVectorFolding, true};
-
     CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a + b", 0, 2), R"(
 LOADK R0 K0 [3, 6, 11]
 RETURN R0 1
@@ -1560,9 +1552,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorArith4Wide")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
-    ScopedFastFlag luauVectorFolding{FFlag::LuauVectorFolding, true};
-
     CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a + b", 0, 2), R"(
 LOADK R0 K0 [3, 6, 11, 5]
 RETURN R0 1
@@ -5102,44 +5091,54 @@ L0: RETURN R3 -1
 )");
 }
 
-TEST_CASE("VectorLiterals")
+TEST_CASE("VectorConstants")
 {
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, 0, /*enableVectors*/ true), R"(
+    ScopedFastFlag luauVector2Constants{FFlag::LuauVector2Constants, true};
+
+    CHECK_EQ("\n" + compileFunction("return vector.create(1, 2)", 0, 2, 0), R"(
+LOADK R0 K0 [1, 2, 0]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("return vector.create(1, 2, 3)", 0, 2, 0), R"(
 LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, 0, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("print(vector.create(1, 2, 3))", 0, 2, 0), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3]
 CALL R0 1 0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, 0, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("print(vector.create(1, 2, 3, 4))", 0, 2, 0), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3, 4]
 CALL R0 1 0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, 0, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return vector.create(0, 0, 0), vector.create(-0, 0, 0)", 0, 2, 0), R"(
 LOADK R0 K0 [0, 0, 0]
 LOADK R1 K1 [-0, 0, 0]
 RETURN R0 2
 )");
 
-    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, 0, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return type(vector.create(0, 0, 0))", 0, 2, 0), R"(
 LOADK R0 K0 ['vector']
+RETURN R0 1
+)");
+
+    // test legacy constructor
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, 0, /*enableVectors*/ true), R"(
+LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
 }
 
 TEST_CASE("VectorConstantFields")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ("\n" + compileFunction("return vector.one, vector.zero", 0, 2), R"(
 LOADK R0 K0 [1, 1, 1]
 LOADK R1 K1 [0, 0, 0]
@@ -5160,8 +5159,6 @@ RETURN R0 1
 
 TEST_CASE("CustomConstantFields")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ("\n" + compileFunction("return test.some_nil, test.some_boolean, test.some_number, test.some_string", 0, 2), R"(
 LOADNIL R0
 LOADB R1 1
@@ -7895,8 +7892,6 @@ RETURN R0 1
 
 TEST_CASE("BuiltinFoldingProhibitedInOptions")
 {
-    ScopedFastFlag luauCompileDisabledBuiltins{FFlag::LuauCompileDisabledBuiltins, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
@@ -8666,8 +8661,6 @@ end
 
 TEST_CASE("BuiltinTypeVector")
 {
-    ScopedFastFlag luauCompileVectorTypeInfo{FFlag::LuauCompileVectorTypeInfo, true};
-
     CHECK_EQ(
         "\n" + compileTypeTable(R"(
 function myfunc(test: Instance, pos: vector)
@@ -8760,6 +8753,23 @@ end
 1: function(any, nil)
 2: function(any, nil)
 3: function(any, nil)
+)"
+    );
+}
+
+TEST_CASE("TypeGroup")
+{
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function myfunc(test: (string), foo: nil)
+end
+
+function myfunc2(test: (string | nil), foo: nil)
+end
+)"),
+        R"(
+0: function(string, nil)
+1: function(string?, nil)
 )"
     );
 }
@@ -9089,8 +9099,6 @@ RETURN R0 1
 
 TEST_CASE("ArithRevK")
 {
-    ScopedFastFlag sff(FFlag::LuauCompileOptimizeRevArith, true);
-
     // - and / have special optimized form for reverse constants; in absence of type information, we can't optimize other ops
     CHECK_EQ(
         "\n" + compileFunction0(R"(

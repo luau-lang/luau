@@ -6,6 +6,7 @@
 #include "Luau/Ast.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
+#include "Luau/Error.h"
 #include "Luau/IostreamHelpers.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/VisitType.h"
@@ -15,6 +16,9 @@
 #include <iostream>
 
 LUAU_FASTFLAG(LuauCountSelfCallsNonstrict)
+LUAU_FASTFLAG(LuauVector2Constructor)
+LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
+LUAU_FASTFLAG(LuauNonStrictVisitorImprovements)
 
 using namespace Luau;
 
@@ -489,6 +493,40 @@ foo.bar("hi")
     NONSTRICT_REQUIRE_CHECKED_ERR(Position(1, 8), "foo.bar", result);
 }
 
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "exprgroup_is_checked")
+{
+    ScopedFastFlag sff{FFlag::LuauNonStrictVisitorImprovements, true};
+
+    CheckResult result = checkNonStrict(R"(
+        local foo = (abs("foo"))
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto r1 = get<CheckedFunctionCallError>(result.errors[0]);
+    LUAU_ASSERT(r1);
+    CHECK_EQ("abs", r1->checkedFunctionName);
+    CHECK_EQ("number", toString(r1->expected));
+    CHECK_EQ("string", toString(r1->passed));
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "binop_is_checked")
+{
+    ScopedFastFlag sff{FFlag::LuauNonStrictVisitorImprovements, true};
+
+    CheckResult result = checkNonStrict(R"(
+        local foo = 4 + abs("foo")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto r1 = get<CheckedFunctionCallError>(result.errors[0]);
+    LUAU_ASSERT(r1);
+    CHECK_EQ("abs", r1->checkedFunctionName);
+    CHECK_EQ("number", toString(r1->expected));
+    CHECK_EQ("string", toString(r1->passed));
+}
+
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "incorrect_arg_count")
 {
     CheckResult result = checkNonStrict(R"(
@@ -581,7 +619,8 @@ buffer.readi8(b, 0)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 {
-    ScopedFastFlag sff{FFlag::LuauCountSelfCallsNonstrict, true};
+    ScopedFastFlag luauCountSelfCallsNonstrict{FFlag::LuauCountSelfCallsNonstrict, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     Luau::unfreeze(frontend.globals.globalTypes);
     Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
@@ -598,6 +637,24 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauNonStrictVisitorImprovements, true},
+        {FFlag::LuauNewNonStrictWarnOnUnknownGlobals, true}
+    };
+
+    CheckResult result = check(Mode::Nonstrict, R"(
+        foo = 5
+        local wrong1 = foob
+
+        local x = 12
+        local wrong2 = x + foblm
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_SUITE_END();

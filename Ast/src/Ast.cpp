@@ -28,6 +28,38 @@ void AstAttr::visit(AstVisitor* visitor)
 
 int gAstRttiIndex = 0;
 
+AstGenericType::AstGenericType(const Location& location, AstName name, AstType* defaultValue)
+    : AstNode(ClassIndex(), location)
+    , name(name)
+    , defaultValue(defaultValue)
+{
+}
+
+void AstGenericType::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+    {
+        if (defaultValue)
+            defaultValue->visit(visitor);
+    }
+}
+
+AstGenericTypePack::AstGenericTypePack(const Location& location, AstName name, AstTypePack* defaultValue)
+    : AstNode(ClassIndex(), location)
+    , name(name)
+    , defaultValue(defaultValue)
+{
+}
+
+void AstGenericTypePack::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+    {
+        if (defaultValue)
+            defaultValue->visit(visitor);
+    }
+}
+
 AstExprGroup::AstExprGroup(const Location& location, AstExpr* expr)
     : AstExpr(ClassIndex(), location)
     , expr(expr)
@@ -185,8 +217,8 @@ void AstExprIndexExpr::visit(AstVisitor* visitor)
 AstExprFunction::AstExprFunction(
     const Location& location,
     const AstArray<AstAttr*>& attributes,
-    const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
     AstLocal* self,
     const AstArray<AstLocal*>& args,
     bool vararg,
@@ -721,8 +753,8 @@ AstStatTypeAlias::AstStatTypeAlias(
     const Location& location,
     const AstName& name,
     const Location& nameLocation,
-    const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
     AstType* type,
     bool exported
 )
@@ -740,16 +772,14 @@ void AstStatTypeAlias::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
-        for (const AstGenericType& el : generics)
+        for (AstGenericType* el : generics)
         {
-            if (el.defaultValue)
-                el.defaultValue->visit(visitor);
+            el->visit(visitor);
         }
 
-        for (const AstGenericTypePack& el : genericPacks)
+        for (AstGenericTypePack* el : genericPacks)
         {
-            if (el.defaultValue)
-                el.defaultValue->visit(visitor);
+            el->visit(visitor);
         }
 
         type->visit(visitor);
@@ -795,8 +825,8 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     const Location& location,
     const AstName& name,
     const Location& nameLocation,
-    const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
     const AstTypeList& params,
     const AstArray<AstArgumentName>& paramNames,
     bool vararg,
@@ -822,8 +852,8 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     const AstArray<AstAttr*>& attributes,
     const AstName& name,
     const Location& nameLocation,
-    const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
     const AstTypeList& params,
     const AstArray<AstArgumentName>& paramNames,
     bool vararg,
@@ -970,8 +1000,8 @@ void AstTypeTable::visit(AstVisitor* visitor)
 
 AstTypeFunction::AstTypeFunction(
     const Location& location,
-    const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
     const AstTypeList& argTypes,
     const AstArray<std::optional<AstArgumentName>>& argNames,
     const AstTypeList& returnTypes
@@ -990,8 +1020,8 @@ AstTypeFunction::AstTypeFunction(
 AstTypeFunction::AstTypeFunction(
     const Location& location,
     const AstArray<AstAttr*>& attributes,
-    const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
     const AstTypeList& argTypes,
     const AstArray<std::optional<AstArgumentName>>& argNames,
     const AstTypeList& returnTypes
@@ -1091,6 +1121,18 @@ void AstTypeSingletonString::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+AstTypeGroup::AstTypeGroup(const Location& location, AstType* type)
+    : AstType(ClassIndex(), location)
+    , type(type)
+{
+}
+
+void AstTypeGroup::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+        type->visit(visitor);
+}
+
 AstTypeError::AstTypeError(const Location& location, const AstArray<AstType*>& types, bool isMissing, unsigned messageIndex)
     : AstType(ClassIndex(), location)
     , types(types)
@@ -1151,10 +1193,7 @@ void AstTypePackGeneric::visit(AstVisitor* visitor)
 
 bool isLValue(const AstExpr* expr)
 {
-    return expr->is<AstExprLocal>()
-        || expr->is<AstExprGlobal>()
-        || expr->is<AstExprIndexName>()
-        || expr->is<AstExprIndexExpr>();
+    return expr->is<AstExprLocal>() || expr->is<AstExprGlobal>() || expr->is<AstExprIndexName>() || expr->is<AstExprIndexExpr>();
 }
 
 AstName getIdentifier(AstExpr* node)

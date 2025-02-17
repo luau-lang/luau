@@ -6,17 +6,19 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauVectorMetatable)
+LUAU_FASTFLAGVARIABLE(LuauVector2Constructor)
 
 static int vector_create(lua_State* L)
 {
+    // checking argument count to avoid accepting 'nil' as a valid value
+    int count = lua_gettop(L);
+
     double x = luaL_checknumber(L, 1);
     double y = luaL_checknumber(L, 2);
-    double z = luaL_checknumber(L, 3);
+    double z = FFlag::LuauVector2Constructor ? (count >= 3 ? luaL_checknumber(L, 3) : 0.0) : luaL_checknumber(L, 3);
 
 #if LUA_VECTOR_SIZE == 4
-    // checking argument count to avoid accepting 'nil' as a valid value
-    double w = lua_gettop(L) >= 4 ? luaL_checknumber(L, 4) : 0.0;
+    double w = count >= 4 ? luaL_checknumber(L, 4) : 0.0;
 
     lua_pushvector(L, float(x), float(y), float(z), float(w));
 #else
@@ -258,8 +260,6 @@ static int vector_max(lua_State* L)
 
 static int vector_index(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauVectorMetatable);
-
     const float* v = luaL_checkvector(L, 1);
     size_t namelen = 0;
     const char* name = luaL_checklstring(L, 2, &namelen);
@@ -304,8 +304,6 @@ static const luaL_Reg vectorlib[] = {
 
 static void createmetatable(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauVectorMetatable);
-
     lua_createtable(L, 0, 1); // create metatable for vectors
 
     // push dummy vector
@@ -342,8 +340,7 @@ int luaopen_vector(lua_State* L)
     lua_setfield(L, -2, "one");
 #endif
 
-    if (FFlag::LuauVectorMetatable)
-        createmetatable(L);
+    createmetatable(L);
 
     return 1;
 }

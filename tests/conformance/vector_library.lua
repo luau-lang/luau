@@ -11,7 +11,14 @@ function ecall(fn, ...)
 end
 
 -- make sure we cover both builtin and C impl
+assert(vector.create(1, 2) == vector.create("1", "2"))
 assert(vector.create(1, 2, 4) == vector.create("1", "2", "4"))
+
+-- 'create'
+local v12 = vector.create(1, 2)
+local v123 = vector.create(1, 2, 3)
+assert(v12.x == 1 and v12.y == 2 and v12.z == 0)
+assert(v123.x == 1 and v123.y == 2 and v123.z == 3)
 
 -- testing 'dot' with error handling and different call kinds to mostly check details in the codegen
 assert(vector.dot(vector.create(1, 2, 4), vector.create(5, 6, 7)) == 45)

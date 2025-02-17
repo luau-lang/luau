@@ -22,7 +22,9 @@ ConstraintGeneratorFixture::ConstraintGeneratorFixture()
 void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 {
     AstStatBlock* root = parse(code);
-    dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
+    dfg = std::make_unique<DataFlowGraph>(
+        DataFlowGraphBuilder::build(root, NotNull{&mainModule->defArena}, NotNull{&mainModule->keyArena}, NotNull{&ice})
+    );
     cg = std::make_unique<ConstraintGenerator>(
         mainModule,
         NotNull{&normalizer},

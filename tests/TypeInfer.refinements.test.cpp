@@ -9,59 +9,69 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(InferGlobalTypes)
 LUAU_FASTFLAG(LuauGeneralizationRemoveRecursiveUpperBound)
 
 using namespace Luau;
 
 namespace
 {
-std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
-    TypeChecker& typeChecker,
-    const ScopePtr& scope,
-    const AstExprCall& expr,
-    WithPredicate<TypePackId> withPredicate
-)
+
+struct MagicInstanceIsA final : MagicFunction
 {
-    if (expr.args.size != 1)
-        return std::nullopt;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        TypeChecker& typeChecker,
+        const ScopePtr& scope,
+        const AstExprCall& expr,
+        WithPredicate<TypePackId> withPredicate
+    ) override
+    {
+        if (expr.args.size != 1)
+            return std::nullopt;
 
-    auto index = expr.func->as<Luau::AstExprIndexName>();
-    auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
-    if (!index || !str)
-        return std::nullopt;
+        auto index = expr.func->as<Luau::AstExprIndexName>();
+        auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
+        if (!index || !str)
+            return std::nullopt;
 
-    std::optional<LValue> lvalue = tryGetLValue(*index->expr);
-    std::optional<TypeFun> tfun = scope->lookupType(std::string(str->value.data, str->value.size));
-    if (!lvalue || !tfun)
-        return std::nullopt;
+        std::optional<LValue> lvalue = tryGetLValue(*index->expr);
+        std::optional<TypeFun> tfun = scope->lookupType(std::string(str->value.data, str->value.size));
+        if (!lvalue || !tfun)
+            return std::nullopt;
 
-    ModulePtr module = typeChecker.currentModule;
-    TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
-    return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
-}
+        ModulePtr module = typeChecker.currentModule;
+        TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
+        return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
+    }
 
-void dcrMagicRefinementInstanceIsA(const MagicRefinementContext& ctx)
-{
-    if (ctx.callSite->args.size != 1 || ctx.discriminantTypes.empty())
-        return;
+    bool infer(const MagicFunctionCallContext&) override
+    {
+        return false;
+    }
 
-    auto index = ctx.callSite->func->as<Luau::AstExprIndexName>();
-    auto str = ctx.callSite->args.data[0]->as<Luau::AstExprConstantString>();
-    if (!index || !str)
-        return;
+    void refine(const MagicRefinementContext& ctx) override
+    {
+        if (ctx.callSite->args.size != 1 || ctx.discriminantTypes.empty())
+            return;
 
-    std::optional<TypeId> discriminantTy = ctx.discriminantTypes[0];
-    if (!discriminantTy)
-        return;
+        auto index = ctx.callSite->func->as<Luau::AstExprIndexName>();
+        auto str = ctx.callSite->args.data[0]->as<Luau::AstExprConstantString>();
+        if (!index || !str)
+            return;
 
-    std::optional<TypeFun> tfun = ctx.scope->lookupType(std::string(str->value.data, str->value.size));
-    if (!tfun)
-        return;
+        std::optional<TypeId> discriminantTy = ctx.discriminantTypes[0];
+        if (!discriminantTy)
+            return;
 
-    LUAU_ASSERT(get<BlockedType>(*discriminantTy));
-    asMutable(*discriminantTy)->ty.emplace<BoundType>(tfun->type);
-}
+        std::optional<TypeFun> tfun = ctx.scope->lookupType(std::string(str->value.data, str->value.size));
+        if (!tfun)
+            return;
+
+        LUAU_ASSERT(get<BlockedType>(*discriminantTy));
+        asMutable(*discriminantTy)->ty.emplace<BoundType>(tfun->type);
+    }
+};
+
+
 
 struct RefinementClassFixture : BuiltinsFixture
 {
@@ -85,8 +95,7 @@ struct RefinementClassFixture : BuiltinsFixture
         TypePackId isAParams = arena.addTypePack({inst, builtinTypes->stringType});
         TypePackId isARets = arena.addTypePack({builtinTypes->booleanType});
         TypeId isA = arena.addType(FunctionType{isAParams, isARets});
-        getMutable<FunctionType>(isA)->magicFunction = magicFunctionInstanceIsA;
-        getMutable<FunctionType>(isA)->dcrMagicRefinement = dcrMagicRefinementInstanceIsA;
+        getMutable<FunctionType>(isA)->magic = std::make_shared<MagicInstanceIsA>();
 
         getMutable<ClassType>(inst)->props = {
             {"Name", Property{builtinTypes->stringType}},
@@ -451,10 +460,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
-    CHECK(Location{{ 7, 18}, {7, 19}} == result.errors[0].location);
+    CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
 
     CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
-    CHECK(Location{{ 13, 18}, {13, 19}} == result.errors[1].location);
+    CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
@@ -742,11 +751,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
     if (FFlag::LuauSolverV2)
     {
         // CLI-115281 Types produced by refinements do not consistently get simplified
-        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
-        CHECK_EQ("(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24}))); // type(v) == "nil"
+        CHECK_EQ(
+            "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))
+        ); // type(v) ~= "nil"
 
-        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
-        CHECK_EQ("(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({10, 24}))); // equivalent to type(v) == "nil"
+        CHECK_EQ(
+            "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))
+        ); // equivalent to type(v) ~= "nil"
     }
     else
     {
@@ -1867,8 +1880,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_duri
 
 TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
 {
-    ScopedFastFlag sff{FFlag::InferGlobalTypes, true};
-
     CheckResult result = check(R"(
         foo = { bar = 5 :: number? }
 

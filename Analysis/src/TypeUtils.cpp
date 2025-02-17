@@ -5,12 +5,15 @@
 #include "Luau/Normalize.h"
 #include "Luau/Scope.h"
 #include "Luau/ToString.h"
+#include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
 
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete);
+LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope);
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -318,9 +321,11 @@ TypePack extendTypePack(
                     {
                         FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType};
                         t = arena.addType(ft);
+                        if (FFlag::LuauTrackInteriorFreeTypesOnScope)
+                            trackInteriorFreeType(ftp->scope, t);
                     }
                     else
-                        t = arena.freshType(ftp->scope);
+                        t = FFlag::LuauFreeTypesMustHaveBounds ? arena.freshType(builtinTypes, ftp->scope) : arena.freshType_DEPRECATED(ftp->scope);
                 }
 
                 newPack.head.push_back(t);
@@ -533,7 +538,7 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
 {
     std::vector<TypeId> toBlock;
     BlockedTypeInLiteralVisitor v{astTypes, NotNull{&toBlock}};
-    for (auto arg: expr->args)
+    for (auto arg : expr->args)
     {
         if (isLiteral(arg) || arg->is<AstExprGroup>())
         {
@@ -543,5 +548,21 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
     return toBlock;
 }
 
+void trackInteriorFreeType(Scope* scope, TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauSolverV2 && FFlag::LuauTrackInteriorFreeTypesOnScope);
+    for (; scope; scope = scope->parent.get())
+    {
+        if (scope->interiorFreeTypes)
+        {
+            scope->interiorFreeTypes->push_back(ty);
+            return;
+        }
+    }
+    // There should at least be *one* generalization constraint per module
+    // where `interiorFreeTypes` is present, which would be the one made
+    // by ConstraintGenerator::visitModuleRoot.
+    LUAU_ASSERT(!"No scopes in parent chain had a present `interiorFreeTypes` member.");
+}
 
 } // namespace Luau

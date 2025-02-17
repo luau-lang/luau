@@ -27,6 +27,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -478,24 +479,12 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     return false;
 }
 
-FreeType::FreeType(TypeLevel level)
+// New constructors
+FreeType::FreeType(TypeLevel level, TypeId lowerBound, TypeId upperBound)
     : index(Unifiable::freshIndex())
     , level(level)
-    , scope(nullptr)
-{
-}
-
-FreeType::FreeType(Scope* scope)
-    : index(Unifiable::freshIndex())
-    , level{}
-    , scope(scope)
-{
-}
-
-FreeType::FreeType(Scope* scope, TypeLevel level)
-    : index(Unifiable::freshIndex())
-    , level(level)
-    , scope(scope)
+    , lowerBound(lowerBound)
+    , upperBound(upperBound)
 {
 }
 
@@ -505,6 +494,40 @@ FreeType::FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound)
     , lowerBound(lowerBound)
     , upperBound(upperBound)
 {
+}
+
+FreeType::FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId upperBound)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+    , lowerBound(lowerBound)
+    , upperBound(upperBound)
+{
+}
+
+// Old constructors
+FreeType::FreeType(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(nullptr)
+{
+    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
+}
+
+FreeType::FreeType(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , level{}
+    , scope(scope)
+{
+    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
+}
+
+FreeType::FreeType(Scope* scope, TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+{
+    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
 }
 
 GenericType::GenericType()
@@ -554,12 +577,12 @@ BlockedType::BlockedType()
 {
 }
 
-Constraint* BlockedType::getOwner() const
+const Constraint* BlockedType::getOwner() const
 {
     return owner;
 }
 
-void BlockedType::setOwner(Constraint* newOwner)
+void BlockedType::setOwner(const Constraint* newOwner)
 {
     LUAU_ASSERT(owner == nullptr);
 
@@ -569,7 +592,7 @@ void BlockedType::setOwner(Constraint* newOwner)
     owner = newOwner;
 }
 
-void BlockedType::replaceOwner(Constraint* newOwner)
+void BlockedType::replaceOwner(const Constraint* newOwner)
 {
     owner = newOwner;
 }

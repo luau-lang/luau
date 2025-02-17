@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Common.h"
 
+#include "Luau/CodeGenCommon.h"
+
 #define DOCTEST_CONFIG_IMPLEMENT
 // Our calls to parseOption/parseFlag don't provide a prefix so set the prefix to the empty string.
 #define DOCTEST_CONFIG_OPTIONS_PREFIX ""

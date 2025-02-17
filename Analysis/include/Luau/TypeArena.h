@@ -32,9 +32,13 @@ struct TypeArena
 
     TypeId addTV(Type&& tv);
 
-    TypeId freshType(TypeLevel level);
-    TypeId freshType(Scope* scope);
-    TypeId freshType(Scope* scope, TypeLevel level);
+    TypeId freshType(NotNull<BuiltinTypes> builtins, TypeLevel level);
+    TypeId freshType(NotNull<BuiltinTypes> builtins, Scope* scope);
+    TypeId freshType(NotNull<BuiltinTypes> builtins, Scope* scope, TypeLevel level);
+
+    TypeId freshType_DEPRECATED(TypeLevel level);
+    TypeId freshType_DEPRECATED(Scope* scope);
+    TypeId freshType_DEPRECATED(Scope* scope, TypeLevel level);
 
     TypePackId freshTypePack(Scope* scope);
 

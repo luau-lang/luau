@@ -8,12 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUserTypeFunFixNoReadWrite)
-LUAU_FASTFLAG(LuauUserTypeFunPrintToError)
-LUAU_FASTFLAG(LuauUserTypeFunExportedAndLocal)
-LUAU_FASTFLAG(LuauUserDefinedTypeFunParseExport)
-LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
-LUAU_FASTFLAG(LuauUserTypeFunUpdateAllEnvs)
+LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauUserTypeFunTypeofReturnsType)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -225,7 +220,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_number_methods_work")
 TEST_CASE_FIXTURE(BuiltinsFixture, "thread_and_buffer_types")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunThreadBuffer{FFlag::LuauUserTypeFunThreadBuffer, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type function work_with_thread(x)
@@ -476,6 +470,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
     CHECK(toString(tpm->givenTp) == "~string");
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "udtf_negation_inner")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(t)
+    return types.negationof(t):inner()
+end
+
+type function fail(t)
+    return t:inner()
+end
+
+local function ok(idx: pass<number>): number return idx end
+local function notok(idx: fail<number>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"('fail' type function errored at runtime: [string "fail"]:7: type.inner: cannot call inner method on non-negation type: `number` type)");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
@@ -648,7 +663,6 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_methods_works")
 TEST_CASE_FIXTURE(ClassFixture, "write_of_readonly_is_nil")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag udtfRwFix{FFlag::LuauUserTypeFunFixNoReadWrite, true};
 
     CheckResult result = check(R"(
         type function getclass(arg)
@@ -908,7 +922,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunUpdateAllEnvs{FFlag::LuauUserTypeFunUpdateAllEnvs, true};
 
     CheckResult result = check(R"(
         type function first(arg)
@@ -932,8 +945,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
-    ScopedFastFlag luauUserTypeFunUpdateAllEnvs{FFlag::LuauUserTypeFunUpdateAllEnvs, true};
 
     CheckResult result = check(R"(
         -- this function should not see 'fourth' function when invoked from 'third' that sees it
@@ -1258,7 +1269,6 @@ local a: foo<> = "a"
 TEST_CASE_FIXTURE(BuiltinsFixture, "implicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
     fileResolver.source["game/A"] = R"(
 type function concat(a, b)
@@ -1286,7 +1296,6 @@ local b: Test.Concat<'third', 'fourth'>
 TEST_CASE_FIXTURE(BuiltinsFixture, "local_scope")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
 
     CheckResult result = check(R"(
 type function foo()
@@ -1309,8 +1318,6 @@ local a = test()
 TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunExportedAndLocal{FFlag::LuauUserTypeFunExportedAndLocal, true};
-    ScopedFastFlag luauUserDefinedTypeFunParseExport{FFlag::LuauUserDefinedTypeFunParseExport, true};
 
     fileResolver.source["game/A"] = R"(
 export type function concat(a, b)
@@ -1337,7 +1344,6 @@ local b: Test.concat<'third', 'fourth'>
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1356,7 +1362,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1377,7 +1382,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
 {
     ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunPrintToError{FFlag::LuauUserTypeFunPrintToError, true};
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1392,6 +1396,475 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
     CHECK(toString(result.errors[1]) == R"(string)");
     CHECK(toString(result.errors[2]) == R"('t0' type function: returned a non-type value)");
     CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_serialization_1")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    return arg
+end
+
+type test = <T, U>(T, { x: <T>(y: T) -> (), y: U }, U) -> ()
+
+local function ok(idx: pass<test>): test return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_serialization_2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    return arg
+end
+
+type test = <T, U...>(T) -> (T, U...)
+
+local function ok(idx: pass<test>): test return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_serialization_3")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    return arg
+end
+
+local function m(a, b)
+    return {x = a, y = b}
+end
+
+type test = typeof(m)
+
+local function ok(idx: pass<test>): test return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_cloning_1")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    return types.copy(arg)
+end
+
+type test = <T, U>(T, { x: <T>(y: T) -> (), y: U }, U) -> ()
+
+local function ok(idx: pass<test>): test return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_cloning_2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    return types.copy(arg)
+end
+
+type test = <T, U...>(T) -> (T, U...)
+
+local function ok(idx: pass<test>): test return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_equality")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    return types.singleton(types.copy(arg) == arg)
+end
+
+type test = <T, U...>(T) -> (T, U...)
+
+local function ok(idx: pass<test>): true return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_1")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    local generics = arg:generics()
+    local T = generics[1]
+    return types.newfunction({ head = {T} }, { head = {T} }, {T})
+end
+
+type test = <T, U>(T, { x: <T>(y: T) -> (), y: U }, U) -> ()
+
+local function ok(idx: pass<test>): <T>(T) -> (T) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    local generics = arg:generics()
+    local T = generics[1]
+    local f = types.newfunction()
+    f:setparameters({T, T});
+    f:setreturns({T});
+    f:setgenerics({T});
+    return f
+end
+
+type test = <T, U>(T, { x: <T>(y: T) -> (), y: U }, U) -> ()
+
+local function ok(idx: pass<test>): <T>(T, T) -> (T) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_3")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass()
+    local T = types.generic("T")
+    assert(T.tag == "generic")
+    assert(T:name() == "T")
+    assert(T:ispack() == false)
+
+    local Us, Vs = types.generic("U", true), types.generic("V", true)
+    assert(Us.tag == "generic")
+    assert(Us:name() == "U")
+    assert(Us:ispack() == true)
+
+    local f = types.newfunction()
+    f:setparameters({T}, Us);
+    f:setreturns({T}, Vs);
+    f:setgenerics({T, Us, Vs});
+    return f
+end
+
+local function ok(idx: pass<>): <T, U..., V...>(T, U...) -> (T, V...) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_4")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass()
+    local T, U = types.generic("T"), types.generic("U")
+
+    -- <T>(T) -> ()
+    local func = types.newfunction({ head = {T} }, {}, {T});
+
+    -- { x: <T>(T) -> (), y: U }
+    local tbl = types.newtable({ [types.singleton("x")] = func, [types.singleton("y")] = U })
+
+    -- <T, U>(T, { x: <T>(T) -> (), y: U }, U) -> ()
+    return types.newfunction({ head = {T, tbl, U } }, {}, {T, U})
+end
+
+type test = <T, U>(T, { x: <T>(y: T) -> (), y: U }, U) -> ()
+
+local function ok(idx: pass<>): test return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_5")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass()
+    local T = types.generic("T")
+    return types.newfunction({ head = {T} }, {}, {types.copy(T)})
+end
+
+local function ok(idx: pass<>): <T>(T) -> () return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_6")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    local generics = arg:generics()
+    local T, U = generics[1], generics[2]
+    local f = types.newfunction()
+    f:setparameters({T});
+    f:setreturns({U});
+    f:setgenerics({T, U});
+    return f
+end
+
+local function m(a, b)
+    return {x = a, y = b}
+end
+
+type test = typeof(m)
+
+local function ok(idx: pass<test>): <T, U>(T) -> (U) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_7")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    local p, r = arg:parameters(), arg:returns()
+    local f = types.newfunction()
+    f:setparameters(p.head, p.tail);
+    f:setreturns(r.head, r.tail);
+    f:setgenerics(arg:generics());
+    return f
+end
+
+type test = <T, U...>(T, U...) -> (T, U...)
+
+local function ok(idx: pass<test>): <T, U...>(T, U...) -> (T, U...) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_8")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    local p, r = arg:parameters(), arg:returns()
+    local f = types.newfunction()
+    f:setparameters(p.head, p.tail);
+    f:setreturns(r.head, r.tail);
+    f:setgenerics(arg:generics());
+    return f
+end
+
+type test = <U...>(U...) -> (U...)
+
+local function ok(idx: pass<test>): <T>(T, T) -> (T) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_equality_2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Us = types.generic("T"), types.generic("U", true)
+
+    local tbl1 = types.newtable({ [types.singleton("x")] = T })
+    local tbl2 = types.newtable({ [types.singleton("x")] = Us }) -- it is possible to have invalid types in-flight
+
+    return types.singleton(tbl1 == tbl2)
+end
+
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_1")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Us = types.generic("T"), types.generic("U", true)
+    return types.newfunction({}, {}, {Us, T})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(
+        toString(result.errors[0]) ==
+        R"('get' type function errored at runtime: [string "get"]:4: types.newfunction: generic type cannot follow a generic pack)"
+    );
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Us = types.generic("T"), types.generic("U", true)
+    return types.newfunction({ head = {T} }, {}, {})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"(Generic type 'T' is not in a scope of the active generic function)");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_3")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, U = types.generic("T"), types.generic("U")
+
+    -- <U>(U) -> ()
+    local func = types.newfunction({ head = {U} }, {}, {U});
+
+    -- broken: <T>(T, <U>(U) -> (), U) -> ()
+    return types.newfunction({ head = {T, func, U } }, {}, {T})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"(Generic type 'U' is not in a scope of the active generic function)");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_4")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Us = types.generic("T"), types.generic("U", true)
+    return types.newfunction({ head = {T} }, { tail = Us }, {T, T})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"(Duplicate type parameter 'T')");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_5")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Ts = types.generic("T"), types.generic("T", true)
+    return types.newfunction({ head = {T} }, { tail = Ts }, {T, Ts})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"(Duplicate type parameter 'T')");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_6")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Us = types.generic("T"), types.generic("U", true)
+    return types.newfunction({ head = {Us} }, {}, {T, Us})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"(Generic type pack 'U...' cannot be placed in a type position)");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_7")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function get()
+    local T, Us = types.generic("T"), types.generic("U", true)
+    return types.newfunction({ tail = Us }, {}, {T})
+end
+local function ok(idx: get<>): false return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(toString(result.errors[0]) == R"(Generic type pack 'U...' is not in a scope of the active generic function)");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_variadic_api")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function pass(arg)
+    local p, r = arg:parameters(), arg:returns()
+    local f = types.newfunction()
+    f:setparameters({p.tail}, p.head[1]);
+    f:setreturns({r.tail}, r.head[1]);
+    return f
+end
+
+type test = (string, ...number) -> (number, ...string)
+
+local function ok(idx: pass<test>): (number, ...string) -> (string, ...number) return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::DebugLuauEqSatSimplification, true}};
+
+    CheckResult _ = check(R"(
+        type function t0(a)
+            error("test")
+        end
+        local v: t0<string & number>
+    )");
+    TypeArena arena;
+    auto ty = requireType("v");
+    auto simplifier = EqSatSimplification::newSimplifier(NotNull{&arena}, frontend.builtinTypes);
+    auto simplified = eqSatSimplify(NotNull{simplifier.get()}, ty);
+    REQUIRE(simplified);
+    CHECK_EQ("t0<number & string>", toString(simplified->result)); // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_type_userdata_returns_type")

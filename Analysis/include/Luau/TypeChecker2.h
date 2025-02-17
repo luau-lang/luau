@@ -63,7 +63,7 @@ void check(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
-    NotNull<UnifierSharedState> sharedState,
+    NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
     const SourceModule& sourceModule,
@@ -116,14 +116,14 @@ private:
     std::optional<StackPusher> pushStack(AstNode* node);
     void checkForInternalTypeFunction(TypeId ty, Location location);
     TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location);
-    TypePackId lookupPack(AstExpr* expr);
+    TypePackId lookupPack(AstExpr* expr) const;
     TypeId lookupType(AstExpr* expr);
     TypeId lookupAnnotation(AstType* annotation);
-    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation);
-    TypeId lookupExpectedType(AstExpr* expr);
-    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena);
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation) const;
+    TypeId lookupExpectedType(AstExpr* expr) const;
+    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena) const;
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena);
-    Scope* findInnermostScope(Location location);
+    Scope* findInnermostScope(Location location) const;
     void visit(AstStat* stat);
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);
@@ -160,7 +160,7 @@ private:
     void visit(AstExprVarargs* expr);
     void visitCall(AstExprCall* call);
     void visit(AstExprCall* call);
-    std::optional<TypeId> tryStripUnionFromNil(TypeId ty);
+    std::optional<TypeId> tryStripUnionFromNil(TypeId ty) const;
     TypeId stripFromNilAndReport(TypeId ty, const Location& location);
     void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context, TypeId astIndexExprTy);
     void visit(AstExprIndexName* indexName, ValueContext context);
@@ -175,7 +175,7 @@ private:
     void visit(AstExprInterpString* interpString);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
-    void visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks);
+    void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
     void visit(AstType* ty);
     void visit(AstTypeReference* ty);
     void visit(AstTypeTable* table);

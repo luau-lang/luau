@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Frontend.h"
 #include "Luau/RequireTracer.h"
 
@@ -16,6 +17,8 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver);
+LUAU_FASTFLAG(LuauSelectivelyRetainDFGArena)
+LUAU_FASTFLAG(LuauBetterReverseDependencyTracking);
 
 namespace
 {
@@ -1539,6 +1542,239 @@ TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_allocator")
 
     CHECK_EQ(module->allocator.get(), source->allocator.get());
     CHECK_EQ(module->names.get(), source->names.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "dfg_data_cleared_on_retain_type_graphs_unset")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSelectivelyRetainDFGArena, true}
+    };
+    fileResolver.source["game/A"] = R"(
+local a = 1
+local b = 2
+local c = 3
+return {x = a, y = b, z = c}
+)";
+
+    frontend.options.retainFullTypeGraphs = true;
+    frontend.check("game/A");
+
+    auto mod = frontend.moduleResolver.getModule("game/A");
+    CHECK(!mod->defArena.allocator.empty());
+    CHECK(!mod->keyArena.allocator.empty());
+
+    // We should check that the dfg arena is empty once retainFullTypeGraphs is unset
+    frontend.options.retainFullTypeGraphs = false;
+    frontend.markDirty("game/A");
+    frontend.check("game/A");
+
+    mod = frontend.moduleResolver.getModule("game/A");
+    CHECK(mod->defArena.allocator.empty());
+    CHECK(mod->keyArena.allocator.empty());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "test_traverse_dependents")
+{
+    ScopedFastFlag dependencyTracking{FFlag::LuauBetterReverseDependencyTracking, true};
+
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        return require(game:GetService('Gui').Modules.A)
+    )";
+    fileResolver.source["game/Gui/Modules/C"] = R"(
+        local Modules = game:GetService('Gui').Modules
+        local B = require(Modules.B)
+        return {c_value = B.hello}
+    )";
+    fileResolver.source["game/Gui/Modules/D"] = R"(
+        local Modules = game:GetService('Gui').Modules
+        local C = require(Modules.C)
+        return {d_value = C.c_value}
+    )";
+
+    frontend.check("game/Gui/Modules/D");
+
+    std::vector<ModuleName> visited;
+    frontend.traverseDependents(
+        "game/Gui/Modules/B",
+        [&visited](SourceNode& node)
+        {
+            visited.push_back(node.name);
+            return true;
+        }
+    );
+
+    CHECK_EQ(std::vector<ModuleName>{"game/Gui/Modules/B", "game/Gui/Modules/C", "game/Gui/Modules/D"}, visited);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "test_traverse_dependents_early_exit")
+{
+    ScopedFastFlag dependencyTracking{FFlag::LuauBetterReverseDependencyTracking, true};
+
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        return require(game:GetService('Gui').Modules.A)
+    )";
+    fileResolver.source["game/Gui/Modules/C"] = R"(
+        local Modules = game:GetService('Gui').Modules
+        local B = require(Modules.B)
+        return {c_value = B.hello}
+    )";
+
+    frontend.check("game/Gui/Modules/C");
+
+    std::vector<ModuleName> visited;
+    frontend.traverseDependents(
+        "game/Gui/Modules/A",
+        [&visited](SourceNode& node)
+        {
+            visited.push_back(node.name);
+            return node.name != "game/Gui/Modules/B";
+        }
+    );
+
+    CHECK_EQ(std::vector<ModuleName>{"game/Gui/Modules/A", "game/Gui/Modules/B"}, visited);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_updates")
+{
+    ScopedFastFlag dependencyTracking{FFlag::LuauBetterReverseDependencyTracking, true};
+
+    auto updateSource = [&](const std::string& name, const std::string& source)
+    {
+        fileResolver.source[name] = source;
+        frontend.markDirty(name);
+    };
+
+    auto validateMatchesRequireLists = [&](const std::string& message)
+    {
+        DenseHashMap<ModuleName, std::vector<ModuleName>> dependents{{}};
+        for (const auto& module : frontend.sourceNodes)
+        {
+            for (const auto& dep : module.second->requireSet)
+                dependents[dep].push_back(module.first);
+        }
+
+        for (const auto& module : frontend.sourceNodes)
+        {
+            Set<ModuleName>& dependentsForModule = module.second->dependents;
+            for (const auto& dep : dependents[module.first])
+                CHECK_MESSAGE(1 == dependentsForModule.count(dep), "Mismatch in dependents for " << module.first << ": " << message);
+        }
+    };
+
+    auto validateSecondDependsOnFirst = [&](const std::string& from, const std::string& to, bool expected)
+    {
+        SourceNode& fromNode = *frontend.sourceNodes[from];
+        CHECK_MESSAGE(
+            fromNode.dependents.count(to) == int(expected),
+            "Expected " << from << " to " << (expected ? std::string() : std::string("not ")) << "have a reverse dependency on " << to
+        );
+    };
+
+    // C -> B -> A
+    {
+        updateSource("game/Gui/Modules/A", "return {hello=5, world=true}");
+        updateSource("game/Gui/Modules/B", R"(
+            return require(game:GetService('Gui').Modules.A)
+        )");
+        updateSource("game/Gui/Modules/C", R"(
+            local Modules = game:GetService('Gui').Modules
+            local B = require(Modules.B)
+            return {c_value = B}
+        )");
+        frontend.check("game/Gui/Modules/C");
+
+        validateMatchesRequireLists("Initial check");
+
+        validateSecondDependsOnFirst("game/Gui/Modules/A", "game/Gui/Modules/B", true);
+        validateSecondDependsOnFirst("game/Gui/Modules/B", "game/Gui/Modules/C", true);
+        validateSecondDependsOnFirst("game/Gui/Modules/C", "game/Gui/Modules/A", false);
+    }
+
+    // C -> B, A
+    {
+        updateSource("game/Gui/Modules/B", R"(
+            return 1
+        )");
+        frontend.check("game/Gui/Modules/C");
+
+        validateMatchesRequireLists("Removing dependency B->A");
+        validateSecondDependsOnFirst("game/Gui/Modules/A", "game/Gui/Modules/B", false);
+    }
+
+    // C -> B -> A
+    {
+        updateSource("game/Gui/Modules/B", R"(
+            return require(game:GetService('Gui').Modules.A)
+        )");
+        frontend.check("game/Gui/Modules/C");
+
+        validateMatchesRequireLists("Adding back B->A");
+        validateSecondDependsOnFirst("game/Gui/Modules/A", "game/Gui/Modules/B", true);
+    }
+
+    // C -> B -> A, D -> (C,B,A)
+    {
+        updateSource("game/Gui/Modules/D", R"(
+            local C = require(game:GetService('Gui').Modules.C)
+            local B = require(game:GetService('Gui').Modules.B)
+            local A = require(game:GetService('Gui').Modules.A)
+            return {d_value = C.c_value}
+        )");
+        frontend.check("game/Gui/Modules/D");
+
+        validateMatchesRequireLists("Adding D->C, D->B, D->A");
+        validateSecondDependsOnFirst("game/Gui/Modules/A", "game/Gui/Modules/D", true);
+        validateSecondDependsOnFirst("game/Gui/Modules/B", "game/Gui/Modules/D", true);
+        validateSecondDependsOnFirst("game/Gui/Modules/C", "game/Gui/Modules/D", true);
+    }
+
+    // B -> A, C <-> D
+    {
+        updateSource("game/Gui/Modules/D", "return require(game:GetService('Gui').Modules.C)");
+        updateSource("game/Gui/Modules/C", "return require(game:GetService('Gui').Modules.D)");
+        frontend.check("game/Gui/Modules/D");
+
+        validateMatchesRequireLists("Adding cycle D->C, C->D");
+        validateSecondDependsOnFirst("game/Gui/Modules/C", "game/Gui/Modules/D", true);
+        validateSecondDependsOnFirst("game/Gui/Modules/D", "game/Gui/Modules/C", true);
+    }
+
+    // B -> A, C -> D, D -> error
+    {
+        updateSource("game/Gui/Modules/D", "return require(game:GetService('Gui').Modules.C.)");
+        frontend.check("game/Gui/Modules/D");
+
+        validateMatchesRequireLists("Adding error dependency D->C.");
+        validateSecondDependsOnFirst("game/Gui/Modules/D", "game/Gui/Modules/C", true);
+        validateSecondDependsOnFirst("game/Gui/Modules/C", "game/Gui/Modules/D", false);
+    }
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_resolver")
+{
+    ScopedFastFlag dependencyTracking{FFlag::LuauBetterReverseDependencyTracking, true};
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, false};
+
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
+    fileResolver.source["game/Gui/Modules/B"] = "return require(game:GetService('Gui').Modules.A)";
+    
+    FrontendOptions opts;
+    opts.forAutocomplete = false;
+
+    frontend.check("game/Gui/Modules/B", opts);
+    CHECK(frontend.allModuleDependenciesValid("game/Gui/Modules/B", opts.forAutocomplete));
+    CHECK(!frontend.allModuleDependenciesValid("game/Gui/Modules/B", !opts.forAutocomplete));
+
+    opts.forAutocomplete = true;
+    frontend.check("game/Gui/Modules/A", opts);
+
+    CHECK(!frontend.allModuleDependenciesValid("game/Gui/Modules/B", opts.forAutocomplete));
+    CHECK(frontend.allModuleDependenciesValid("game/Gui/Modules/B", !opts.forAutocomplete));
+    CHECK(frontend.allModuleDependenciesValid("game/Gui/Modules/A", !opts.forAutocomplete));
+    CHECK(frontend.allModuleDependenciesValid("game/Gui/Modules/A", opts.forAutocomplete));
 }
 
 TEST_SUITE_END();

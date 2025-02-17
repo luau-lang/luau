@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/DataFlowGraph.h"
 #include "Fixture.h"
+#include "Luau/Def.h"
 #include "Luau/Error.h"
 #include "Luau/Parser.h"
 
@@ -18,6 +19,8 @@ struct DataFlowGraphFixture
     // Only needed to fix the operator== reflexivity of an empty Symbol.
     ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
 
+    DefArena defArena;
+    RefinementKeyArena keyArena;
     InternalErrorReporter handle;
 
     Allocator allocator;
@@ -32,7 +35,7 @@ struct DataFlowGraphFixture
         if (!parseResult.errors.empty())
             throw ParseErrors(std::move(parseResult.errors));
         module = parseResult.root;
-        graph = DataFlowGraphBuilder::build(module, NotNull{&handle});
+        graph = DataFlowGraphBuilder::build(module, NotNull{&defArena}, NotNull{&keyArena}, NotNull{&handle});
     }
 
     template<typename T, int N>

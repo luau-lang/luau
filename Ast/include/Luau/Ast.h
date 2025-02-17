@@ -120,20 +120,6 @@ struct AstTypeList
 
 using AstArgumentName = std::pair<AstName, Location>; // TODO: remove and replace when we get a common struct for this pair instead of AstName
 
-struct AstGenericType
-{
-    AstName name;
-    Location location;
-    AstType* defaultValue = nullptr;
-};
-
-struct AstGenericTypePack
-{
-    AstName name;
-    Location location;
-    AstTypePack* defaultValue = nullptr;
-};
-
 extern int gAstRttiIndex;
 
 template<typename T>
@@ -251,6 +237,32 @@ public:
     }
 
     bool hasSemicolon;
+};
+
+class AstGenericType : public AstNode
+{
+public:
+    LUAU_RTTI(AstGenericType)
+
+    explicit AstGenericType(const Location& location, AstName name, AstType* defaultValue = nullptr);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstName name;
+    AstType* defaultValue = nullptr;
+};
+
+class AstGenericTypePack : public AstNode
+{
+public:
+    LUAU_RTTI(AstGenericTypePack)
+
+    explicit AstGenericTypePack(const Location& location, AstName name, AstTypePack* defaultValue = nullptr);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstName name;
+    AstTypePack* defaultValue = nullptr;
 };
 
 class AstExprGroup : public AstExpr
@@ -424,8 +436,8 @@ public:
     AstExprFunction(
         const Location& location,
         const AstArray<AstAttr*>& attributes,
-        const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
         AstLocal* self,
         const AstArray<AstLocal*>& args,
         bool vararg,
@@ -443,8 +455,8 @@ public:
     bool hasNativeAttribute() const;
 
     AstArray<AstAttr*> attributes;
-    AstArray<AstGenericType> generics;
-    AstArray<AstGenericTypePack> genericPacks;
+    AstArray<AstGenericType*> generics;
+    AstArray<AstGenericTypePack*> genericPacks;
     AstLocal* self;
     AstArray<AstLocal*> args;
     std::optional<AstTypeList> returnAnnotation;
@@ -857,8 +869,8 @@ public:
         const Location& location,
         const AstName& name,
         const Location& nameLocation,
-        const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
         AstType* type,
         bool exported
     );
@@ -867,8 +879,8 @@ public:
 
     AstName name;
     Location nameLocation;
-    AstArray<AstGenericType> generics;
-    AstArray<AstGenericTypePack> genericPacks;
+    AstArray<AstGenericType*> generics;
+    AstArray<AstGenericTypePack*> genericPacks;
     AstType* type;
     bool exported;
 };
@@ -911,8 +923,8 @@ public:
         const Location& location,
         const AstName& name,
         const Location& nameLocation,
-        const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
         const AstTypeList& params,
         const AstArray<AstArgumentName>& paramNames,
         bool vararg,
@@ -925,8 +937,8 @@ public:
         const AstArray<AstAttr*>& attributes,
         const AstName& name,
         const Location& nameLocation,
-        const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
         const AstTypeList& params,
         const AstArray<AstArgumentName>& paramNames,
         bool vararg,
@@ -942,8 +954,8 @@ public:
     AstArray<AstAttr*> attributes;
     AstName name;
     Location nameLocation;
-    AstArray<AstGenericType> generics;
-    AstArray<AstGenericTypePack> genericPacks;
+    AstArray<AstGenericType*> generics;
+    AstArray<AstGenericTypePack*> genericPacks;
     AstTypeList params;
     AstArray<AstArgumentName> paramNames;
     bool vararg = false;
@@ -1074,8 +1086,8 @@ public:
 
     AstTypeFunction(
         const Location& location,
-        const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
         const AstTypeList& argTypes,
         const AstArray<std::optional<AstArgumentName>>& argNames,
         const AstTypeList& returnTypes
@@ -1084,8 +1096,8 @@ public:
     AstTypeFunction(
         const Location& location,
         const AstArray<AstAttr*>& attributes,
-        const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
         const AstTypeList& argTypes,
         const AstArray<std::optional<AstArgumentName>>& argNames,
         const AstTypeList& returnTypes
@@ -1096,8 +1108,8 @@ public:
     bool isCheckedFunction() const;
 
     AstArray<AstAttr*> attributes;
-    AstArray<AstGenericType> generics;
-    AstArray<AstGenericTypePack> genericPacks;
+    AstArray<AstGenericType*> generics;
+    AstArray<AstGenericTypePack*> genericPacks;
     AstTypeList argTypes;
     AstArray<std::optional<AstArgumentName>> argNames;
     AstTypeList returnTypes;
@@ -1204,6 +1216,18 @@ public:
     const AstArray<char> value;
 };
 
+class AstTypeGroup : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeGroup)
+
+    explicit AstTypeGroup(const Location& location, AstType* type);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstType* type;
+};
+
 class AstTypePack : public AstNode
 {
 public:
@@ -1260,6 +1284,16 @@ public:
     }
 
     virtual bool visit(class AstAttr* node)
+    {
+        return visit(static_cast<AstNode*>(node));
+    }
+
+    virtual bool visit(class AstGenericType* node)
+    {
+        return visit(static_cast<AstNode*>(node));
+    }
+
+    virtual bool visit(class AstGenericTypePack* node)
     {
         return visit(static_cast<AstNode*>(node));
     }
@@ -1467,6 +1501,10 @@ public:
         return visit(static_cast<AstType*>(node));
     }
     virtual bool visit(class AstTypeSingletonString* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeGroup* node)
     {
         return visit(static_cast<AstType*>(node));
     }

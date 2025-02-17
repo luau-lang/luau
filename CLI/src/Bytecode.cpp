@@ -7,8 +7,8 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Parser.h"
 #include "Luau/BytecodeSummary.h"
-#include "FileUtils.h"
-#include "Flags.h"
+#include "Luau/FileUtils.h"
+#include "Luau/Flags.h"
 
 #include <memory>
 

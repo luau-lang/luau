@@ -1,5 +1,4 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/CodeGen.h"
 #include "Luau/BytecodeAnalysis.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeSummary.h"

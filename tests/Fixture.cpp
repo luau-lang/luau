@@ -25,6 +25,7 @@
 static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
@@ -341,8 +342,11 @@ ParseResult Fixture::matchParseErrorPrefix(const std::string& source, const std:
     return result;
 }
 
-ModulePtr Fixture::getMainModule()
+ModulePtr Fixture::getMainModule(bool forAutocomplete)
 {
+    if (forAutocomplete && !FFlag::LuauSolverV2)
+        return frontend.moduleResolverForAutocomplete.getModule(fromString(mainModuleName));
+
     return frontend.moduleResolver.getModule(fromString(mainModuleName));
 }
 
@@ -365,9 +369,9 @@ std::optional<PrimitiveType::Type> Fixture::getPrimitiveType(TypeId ty)
         return std::nullopt;
 }
 
-std::optional<TypeId> Fixture::getType(const std::string& name)
+std::optional<TypeId> Fixture::getType(const std::string& name, bool forAutocomplete)
 {
-    ModulePtr module = getMainModule();
+    ModulePtr module = getMainModule(forAutocomplete);
     REQUIRE(module);
 
     if (!module->hasModuleScope())
@@ -519,6 +523,9 @@ void Fixture::registerTestTypes()
 
 void Fixture::dumpErrors(const CheckResult& cr)
 {
+    if (hasDumpedErrors)
+        return;
+    hasDumpedErrors = true;
     std::string error = getErrors(cr);
     if (!error.empty())
         MESSAGE(error);
@@ -526,6 +533,9 @@ void Fixture::dumpErrors(const CheckResult& cr)
 
 void Fixture::dumpErrors(const ModulePtr& module)
 {
+    if (hasDumpedErrors)
+        return;
+    hasDumpedErrors = true;
     std::stringstream ss;
     dumpErrors(ss, module->errors);
     if (!ss.str().empty())
@@ -534,6 +544,9 @@ void Fixture::dumpErrors(const ModulePtr& module)
 
 void Fixture::dumpErrors(const Module& module)
 {
+    if (hasDumpedErrors)
+        return;
+    hasDumpedErrors = true;
     std::stringstream ss;
     dumpErrors(ss, module.errors);
     if (!ss.str().empty())
@@ -580,6 +593,8 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source, bool
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)
 {
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
+
     Luau::unfreeze(frontend.globals.globalTypes);
     Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
 

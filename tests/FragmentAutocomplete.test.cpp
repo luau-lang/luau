@@ -9,6 +9,7 @@
 #include "Luau/Common.h"
 #include "Luau/Frontend.h"
 #include "Luau/AutocompleteTypes.h"
+#include "Luau/Type.h"
 
 #include <algorithm>
 #include <chrono>
@@ -25,6 +26,16 @@ LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 LUAU_FASTFLAG(LuauSymbolEquality);
 LUAU_FASTFLAG(LuauStoreSolverTypeOnModule);
 LUAU_FASTFLAG(LexerResumesFromPosition2)
+LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
+LUAU_FASTINT(LuauParseErrorLimit)
+LUAU_FASTFLAG(LuauCloneIncrementalModule)
+
+LUAU_FASTFLAG(LuauIncrementalAutocompleteBugfixes)
+LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver)
+LUAU_FASTFLAG(LuauMixedModeDefFinderTraversesTypeOf)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
+
+LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -44,15 +55,25 @@ static FrontendOptions getOptions()
     return options;
 }
 
+static ModuleResolver& getModuleResolver(Luau::Frontend& frontend)
+{
+    return FFlag::LuauSolverV2 ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
+}
+
 template<class BaseType>
 struct FragmentAutocompleteFixtureImpl : BaseType
 {
-    ScopedFastFlag sffs[5] = {
+    static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
+
+    ScopedFastFlag sffs[8] = {
         {FFlag::LuauAllowFragmentParsing, true},
         {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
         {FFlag::LuauStoreSolverTypeOnModule, true},
         {FFlag::LuauSymbolEquality, true},
-        {FFlag::LexerResumesFromPosition2, true}
+        {FFlag::LexerResumesFromPosition2, true},
+        {FFlag::LuauReferenceAllocatorInNewSolver, true},
+        {FFlag::LuauIncrementalAutocompleteBugfixes, true},
+        {FFlag::LuauBetterReverseDependencyTracking, true},
     };
 
     FragmentAutocompleteFixtureImpl()
@@ -68,7 +89,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     }
 
 
-    FragmentParseResult parseFragment(
+    std::optional<FragmentParseResult> parseFragment(
         const std::string& document,
         const Position& cursorPos,
         std::optional<Position> fragmentEndPosition = std::nullopt
@@ -91,7 +112,8 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
-        return Luau::typecheckFragment(this->frontend, "MainModule", cursorPos, getOptions(), document, fragmentEndPosition);
+        auto [_, result] = Luau::typecheckFragment(this->frontend, "MainModule", cursorPos, getOptions(), document, fragmentEndPosition);
+        return result;
     }
 
     FragmentAutocompleteResult autocompleteFragment(
@@ -124,6 +146,26 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 
         result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
         assertions(result);
+    }
+
+    std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragmentForModule(
+        const ModuleName& module,
+        const std::string& document,
+        Position cursorPos,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+    )
+    {
+        return Luau::typecheckFragment(this->frontend, module, cursorPos, getOptions(), document, fragmentEndPosition);
+    }
+
+    FragmentAutocompleteResult autocompleteFragmentForModule(
+        const ModuleName& module,
+        const std::string& document,
+        Position cursorPos,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+    )
+    {
+        return Luau::fragmentAutocomplete(this->frontend, document, module, cursorPos, getOptions(), nullCallback, fragmentEndPosition);
     }
 };
 
@@ -159,9 +201,13 @@ end
         // 'for autocomplete'.
         loadDefinition(fakeVecDecl);
         loadDefinition(fakeVecDecl, /* For Autocomplete Module */ true);
+
+        addGlobalBinding(frontend.globals, "game", Binding{builtinTypes->anyType});
+        addGlobalBinding(frontend.globalsForAutocomplete, "game", Binding{builtinTypes->anyType});
     }
 };
 
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 TEST_SUITE_BEGIN("FragmentAutocompleteTraversalTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "just_two_locals")
@@ -284,13 +330,23 @@ TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("FragmentAutocompleteParserTests");
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "thrown_parse_error_leads_to_null_root")
+{
+    check("type A =  ");
+    ScopedFastInt sfi{FInt::LuauParseErrorLimit, 1};
+    auto fragment = parseFragment("type A = <>function<> more garbage here", Position(0, 39));
+    CHECK(fragment == std::nullopt);
+}
+
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     check("local a =");
     auto fragment = parseFragment("local a =", Position(0, 10));
-    CHECK_EQ("local a =", fragment.fragmentToParse);
-    CHECK_EQ(Location{Position{0, 0}, 9}, fragment.root->location);
+
+    REQUIRE(fragment.has_value());
+    CHECK_EQ("local a =", fragment->fragmentToParse);
+    CHECK_EQ(Location{Position{0, 0}, 9}, fragment->root->location);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_non_null")
@@ -308,11 +364,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_n
 )",
         Position(1, 0)
     );
-    CHECK_EQ("\n", fragment.fragmentToParse);
-    CHECK_EQ(2, fragment.ancestry.size());
-    REQUIRE(fragment.root);
-    CHECK_EQ(0, fragment.root->body.size);
-    auto statBody = fragment.root->as<AstStatBlock>();
+    REQUIRE(fragment.has_value());
+    CHECK_EQ("\n", fragment->fragmentToParse);
+    CHECK_EQ(2, fragment->ancestry.size());
+    REQUIRE(fragment->root);
+    CHECK_EQ(0, fragment->root->body.size);
+    auto statBody = fragment->root->as<AstStatBlock>();
     CHECK(statBody != nullptr);
 }
 
@@ -337,13 +394,15 @@ local z = x + y
         Position{3, 15}
     );
 
-    CHECK_EQ(Location{Position{2, 0}, Position{3, 15}}, fragment.root->location);
+    REQUIRE(fragment.has_value());
 
-    CHECK_EQ("local y = 5\nlocal z = x + y", fragment.fragmentToParse);
-    CHECK_EQ(5, fragment.ancestry.size());
-    REQUIRE(fragment.root);
-    CHECK_EQ(2, fragment.root->body.size);
-    auto stat = fragment.root->body.data[1]->as<AstStatLocal>();
+    CHECK_EQ(Location{Position{2, 0}, Position{3, 15}}, fragment->root->location);
+
+    CHECK_EQ("local y = 5\nlocal z = x + y", fragment->fragmentToParse);
+    CHECK_EQ(5, fragment->ancestry.size());
+    REQUIRE(fragment->root);
+    CHECK_EQ(2, fragment->root->body.size);
+    auto stat = fragment->root->body.data[1]->as<AstStatLocal>();
     REQUIRE(stat);
     CHECK_EQ(1, stat->vars.size);
     CHECK_EQ(1, stat->values.size);
@@ -382,12 +441,14 @@ local y = 5
         Position{2, 15}
     );
 
-    CHECK_EQ("local z = x + y", fragment.fragmentToParse);
-    CHECK_EQ(5, fragment.ancestry.size());
-    REQUIRE(fragment.root);
-    CHECK_EQ(Location{Position{2, 0}, Position{2, 15}}, fragment.root->location);
-    CHECK_EQ(1, fragment.root->body.size);
-    auto stat = fragment.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(fragment.has_value());
+
+    CHECK_EQ("local z = x + y", fragment->fragmentToParse);
+    CHECK_EQ(5, fragment->ancestry.size());
+    REQUIRE(fragment->root);
+    CHECK_EQ(Location{Position{2, 0}, Position{2, 15}}, fragment->root->location);
+    CHECK_EQ(1, fragment->root->body.size);
+    auto stat = fragment->root->body.data[0]->as<AstStatLocal>();
     REQUIRE(stat);
     CHECK_EQ(1, stat->vars.size);
     CHECK_EQ(1, stat->values.size);
@@ -427,7 +488,9 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
         Position{6, 0}
     );
 
-    CHECK_EQ("\n  ", fragment.fragmentToParse);
+    REQUIRE(fragment.has_value());
+
+    CHECK_EQ("\n  ", fragment->fragmentToParse);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_single_line_fragment_override")
@@ -446,17 +509,19 @@ abc("bar")
         Position{1, 10}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", callFragment.fragmentToParse);
-    CHECK(callFragment.nearestStatement->is<AstStatFunction>());
+    REQUIRE(callFragment.has_value());
 
-    CHECK_GE(callFragment.ancestry.size(), 2);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", callFragment->fragmentToParse);
+    CHECK(callFragment->nearestStatement->is<AstStatFunction>());
 
-    AstNode* back = callFragment.ancestry.back();
+    CHECK_GE(callFragment->ancestry.size(), 2);
+
+    AstNode* back = callFragment->ancestry.back();
     CHECK(back->is<AstExprConstantString>());
     CHECK_EQ(Position{1, 4}, back->location.begin);
     CHECK_EQ(Position{1, 9}, back->location.end);
 
-    AstNode* parent = callFragment.ancestry.rbegin()[1];
+    AstNode* parent = callFragment->ancestry.rbegin()[1];
     CHECK(parent->is<AstExprCall>());
     CHECK_EQ(Position{1, 0}, parent->location.begin);
     CHECK_EQ(Position{1, 10}, parent->location.end);
@@ -471,12 +536,14 @@ abc("bar")
         Position{1, 9}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", stringFragment.fragmentToParse);
-    CHECK(stringFragment.nearestStatement->is<AstStatFunction>());
+    REQUIRE(stringFragment.has_value());
 
-    CHECK_GE(stringFragment.ancestry.size(), 1);
+    CHECK_EQ("function abc(foo: string) end\nabc(\"foo\")", stringFragment->fragmentToParse);
+    CHECK(stringFragment->nearestStatement->is<AstStatFunction>());
 
-    back = stringFragment.ancestry.back();
+    CHECK_GE(stringFragment->ancestry.size(), 1);
+
+    back = stringFragment->ancestry.back();
 
     auto asString = back->as<AstExprConstantString>();
     CHECK(asString);
@@ -506,17 +573,19 @@ abc("bar")
         Position{3, 1}
     );
 
-    CHECK_EQ("function abc(foo: string) end\nabc(\n\"foo\"\n)", fragment.fragmentToParse);
-    CHECK(fragment.nearestStatement->is<AstStatFunction>());
+    REQUIRE(fragment.has_value());
 
-    CHECK_GE(fragment.ancestry.size(), 2);
+    CHECK_EQ("function abc(foo: string) end\nabc(\n\"foo\"\n)", fragment->fragmentToParse);
+    CHECK(fragment->nearestStatement->is<AstStatFunction>());
 
-    AstNode* back = fragment.ancestry.back();
+    CHECK_GE(fragment->ancestry.size(), 2);
+
+    AstNode* back = fragment->ancestry.back();
     CHECK(back->is<AstExprConstantString>());
     CHECK_EQ(Position{2, 0}, back->location.begin);
     CHECK_EQ(Position{2, 5}, back->location.end);
 
-    AstNode* parent = fragment.ancestry.rbegin()[1];
+    AstNode* parent = fragment->ancestry.rbegin()[1];
     CHECK(parent->is<AstExprCall>());
     CHECK_EQ(Position{1, 0}, parent->location.begin);
     CHECK_EQ(Position{3, 1}, parent->location.end);
@@ -547,6 +616,7 @@ t
 }
 
 TEST_SUITE_END();
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
 
@@ -682,9 +752,131 @@ tbl.
     CHECK_EQ(AutocompleteContext::Property, fragment.acResults.context);
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "typecheck_fragment_handles_stale_module")
+{
+    const std::string sourceName = "MainModule";
+    fileResolver.source[sourceName] = "local x = 5";
+
+    CheckResult checkResult = frontend.check(sourceName, getOptions());
+    LUAU_REQUIRE_NO_ERRORS(checkResult);
+
+    auto [result, _] = typecheckFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
+    CHECK_EQ(result, FragmentTypeCheckStatus::Success);
+
+    frontend.markDirty(sourceName);
+    frontend.parse(sourceName);
+
+    CHECK_NE(frontend.getSourceModule(sourceName), nullptr);
+
+    auto [result2, __] = typecheckFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
+    CHECK_EQ(result2, FragmentTypeCheckStatus::SkipAutocomplete);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "typecheck_fragment_handles_unusable_module")
+{
+    const std::string sourceA = "MainModule";
+    fileResolver.source[sourceA] = R"(
+local Modules = game:GetService('Gui').Modules
+local B = require(Modules.B)
+return { hello = B }
+)";
+
+    const std::string sourceB = "game/Gui/Modules/B";
+    fileResolver.source[sourceB] = R"(return {hello = "hello"})";
+
+    CheckResult result = frontend.check(sourceA, getOptions());
+    CHECK(!frontend.isDirty(sourceA, getOptions().forAutocomplete));
+
+    std::weak_ptr<Module> weakModule = getModuleResolver(frontend).getModule(sourceB);
+    REQUIRE(!weakModule.expired());
+
+    frontend.markDirty(sourceB);
+    CHECK(frontend.isDirty(sourceA, getOptions().forAutocomplete));
+
+    frontend.check(sourceB, getOptions());
+    CHECK(weakModule.expired());
+
+    auto [status, _] = typecheckFragmentForModule(sourceA, fileResolver.source[sourceA], Luau::Position(0, 0));
+    CHECK_EQ(status, FragmentTypeCheckStatus::SkipAutocomplete);
+
+    auto [status2, _2] = typecheckFragmentForModule(sourceB, fileResolver.source[sourceB], Luau::Position(3, 20));
+    CHECK_EQ(status2, FragmentTypeCheckStatus::Success);
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTests");
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_fragment_autocomplete")
+{
+    ToStringOptions opt;
+    opt.exhaustive = true;
+    opt.exhaustive = true;
+    opt.functionTypeArguments = true;
+    opt.maxTableLength = 0;
+    opt.maxTypeLength = 0;
+
+    auto checkAndExamine = [&](const std::string& src, const std::string& idName, const std::string& idString)
+    {
+        check(src, getOptions());
+        auto id = getType(idName, true);
+        LUAU_ASSERT(id);
+        CHECK_EQ(Luau::toString(*id, opt), idString);
+    };
+
+    auto getTypeFromModule = [](ModulePtr module, const std::string& name) -> std::optional<TypeId>
+    {
+        if (!module->hasModuleScope())
+            return std::nullopt;
+        return lookupName(module->getModuleScope(), name);
+    };
+
+    auto fragmentACAndCheck = [&](const std::string& updated,
+                                  const Position& pos,
+                                  const std::string& idName,
+                                  const std::string& srcIdString,
+                                  const std::string& fragIdString)
+    {
+        FragmentAutocompleteResult result = autocompleteFragment(updated, pos, std::nullopt);
+        auto fragId = getTypeFromModule(result.incrementalModule, idName);
+        LUAU_ASSERT(fragId);
+        CHECK_EQ(Luau::toString(*fragId, opt), fragIdString);
+
+        auto srcId = getType(idName, true);
+        LUAU_ASSERT(srcId);
+        CHECK_EQ(Luau::toString(*srcId, opt), srcIdString);
+    };
+
+    const std::string source = R"(local module = {}
+f
+return module)";
+
+    const std::string updated1 = R"(local module = {}
+function module.a
+return module)";
+
+    const std::string updated2 = R"(local module = {}
+function module.ab
+return module)";
+
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        //        fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
+        //        fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+    }
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        return;
+        fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
+        fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+    }
+}
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_autocomplete_simple_property_access")
 {
@@ -1382,5 +1574,383 @@ t
         }
     );
 }
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_simple")
+{
+    const std::string source = R"(
+-- sel
+-- retur
+-- fo
+-- if
+-- end
+-- the
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{4, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_blocks")
+{
+    const std::string source = R"(
+--[[
+comment 1
+]] local
+-- [[ comment 2]]
+--
+-- sdfsdfsdf
+--[[comment 3]]
+--[[
+foo
+bar
+baz
+]]
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 0},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 2},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(!result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{8, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{10, 0},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments")
+{
+    const std::string source = R"(
+-- sel
+-- retur
+-- fo
+--[[ sel ]]
+local  -- hello
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{1, 7},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{2, 9},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{3, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{4, 9},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{5, 6},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(!result.acResults.entryMap.empty());
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{5, 14},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_in_incremental_fragment")
+{
+    const std::string source = R"(
+local x = 5
+if x == 5
+)";
+    const std::string updated = R"(
+local x = 5
+if x == 5 then -- a comment
+)";
+    ScopedFastFlag sff{FFlag::LuauIncrementalAutocompleteCommentDetection, true};
+    autocompleteFragmentInBothSolvers(
+        source,
+        updated,
+        Position{2, 28},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_handles_parse_errors")
+{
+
+    ScopedFastInt sfi{FInt::LuauParseErrorLimit, 1};
+    const std::string source = R"(
+
+)";
+    const std::string updated = R"(
+type A = <>random non code text here
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        updated,
+        Position{1, 38},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_handles_stale_module")
+{
+    const std::string sourceName = "MainModule";
+    fileResolver.source[sourceName] = "local x = 5";
+
+    frontend.check(sourceName, getOptions());
+    frontend.markDirty(sourceName);
+    frontend.parse(sourceName);
+
+    FragmentAutocompleteResult result = autocompleteFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
+    CHECK(result.acResults.entryMap.empty());
+    CHECK_EQ(result.incrementalModule, nullptr);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "require_tracing")
+{
+    fileResolver.source["MainModule/A"] = R"(
+return { x = 0 }
+    )";
+
+    fileResolver.source["MainModule"] = R"(
+local result = require(script.A)
+local x = 1 + result.
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        fileResolver.source["MainModule"],
+        fileResolver.source["MainModule"],
+        Position{2, 21},
+        [](FragmentAutocompleteResult& result)
+        {
+            CHECK(result.acResults.entryMap.size() == 1);
+            CHECK(result.acResults.entryMap.count("x"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_ac_must_traverse_typeof_and_not_ice")
+{
+    // This test ensures that we traverse typeof expressions for defs that are being referred to in the fragment
+    // In this case, we want to ensure we populate the incremental environment with the reference to `m`
+    // Without this, we would ice as we will refer to the local `m` before it's declaration
+    ScopedFastFlag sff{FFlag::LuauMixedModeDefFinderTraversesTypeOf, true};
+    const std::string source = R"(
+--!strict
+local m = {}
+-- and here
+function m:m1() end
+type nt = typeof(m)
+
+return m
+)";
+    const std::string updated = R"(
+--!strict
+local m = {}
+-- and here
+function m:m1() end
+type nt = typeof(m)
+l
+return m
+)";
+
+    autocompleteFragmentInBothSolvers(source, updated, Position{6, 2}, [](auto& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "generalization_crash_when_old_solver_freetypes_have_no_bounds_set")
+{
+    ScopedFastFlag sff{FFlag::LuauFreeTypesMustHaveBounds, true};
+    const std::string source = R"(
+local UserInputService = game:GetService("UserInputService");
+
+local Camera = workspace.CurrentCamera;
+
+UserInputService.InputBegan:Connect(function(Input)
+    if (Input.KeyCode == Enum.KeyCode.One) then
+        local Up = Input.Foo
+        local Vector = -(Up:Unit)
+    end
+end)
+)";
+
+    const std::string dest = R"(
+local UserInputService = game:GetService("UserInputService");
+
+local Camera = workspace.CurrentCamera;
+
+UserInputService.InputBegan:Connect(function(Input)
+    if (Input.KeyCode == Enum.KeyCode.One) then
+        local Up = Input.Foo
+        local Vector = -(Up:Unit())
+    end
+end)
+)";
+
+    autocompleteFragmentInBothSolvers(source, dest, Position{8, 36}, [](auto& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
+{
+    ScopedFastFlag sff{FFlag::LuauCloneIncrementalModule, true};
+    ToStringOptions opt;
+    opt.exhaustive = true;
+    opt.exhaustive = true;
+    opt.functionTypeArguments = true;
+    opt.maxTableLength = 0;
+    opt.maxTypeLength = 0;
+
+    auto checkAndExamine = [&](const std::string& src, const std::string& idName, const std::string& idString)
+    {
+        check(src, getOptions());
+        auto id = getType(idName, true);
+        LUAU_ASSERT(id);
+        CHECK_EQ(Luau::toString(*id, opt), idString);
+    };
+
+    auto getTypeFromModule = [](ModulePtr module, const std::string& name) -> std::optional<TypeId>
+    {
+        if (!module->hasModuleScope())
+            return std::nullopt;
+        return lookupName(module->getModuleScope(), name);
+    };
+
+    auto fragmentACAndCheck = [&](const std::string& updated, const Position& pos, const std::string& idName)
+    {
+        FragmentAutocompleteResult result = autocompleteFragment(updated, pos, std::nullopt);
+        auto fragId = getTypeFromModule(result.incrementalModule, idName);
+        LUAU_ASSERT(fragId);
+
+        auto srcId = getType(idName, true);
+        LUAU_ASSERT(srcId);
+
+        CHECK((*fragId)->owningArena != (*srcId)->owningArena);
+        CHECK(&(result.incrementalModule->internalTypes) == (*fragId)->owningArena);
+    };
+
+    const std::string source = R"(local module = {}
+f
+return module)";
+
+    const std::string updated1 = R"(local module = {}
+function module.a
+return module)";
+
+    const std::string updated2 = R"(local module = {}
+function module.ab
+return module)";
+
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        fragmentACAndCheck(updated1, Position{1, 17}, "module");
+        fragmentACAndCheck(updated2, Position{1, 18}, "module");
+    }
+
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        checkAndExamine(source, "module", "{  }");
+        // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
+        // early return since the following checking will fail, which it shouldn't!
+        fragmentACAndCheck(updated1, Position{1, 17}, "module");
+        fragmentACAndCheck(updated2, Position{1, 18}, "module");
+    }
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_shouldnt_crash_on_cross_module_mutation")
+{
+    ScopedFastFlag sff{FFlag::LuauCloneIncrementalModule, true};
+    const std::string source = R"(local module = {}
+function module.
+return module
+)";
+
+    const std::string updated = R"(local module = {}
+function module.f
+return module
+)";
+
+    autocompleteFragmentInBothSolvers(source, updated, Position{1, 18}, [](FragmentAutocompleteResult& result) {});
+}
+
 
 TEST_SUITE_END();

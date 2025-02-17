@@ -324,8 +324,7 @@ TEST_CASE_FIXTURE(Fixture, "free")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
-    Type type{TypeVariant{FreeType{TypeLevel{0, 0}}}};
-
+    Type type{TypeVariant{FreeType{TypeLevel{0, 0}, builtinTypes->neverType, builtinTypes->unknownType}}};
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(

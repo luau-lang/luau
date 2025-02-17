@@ -31,16 +31,17 @@ extern int optimizationLevel;
 void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
-LUAU_FASTFLAG(LuauMathMap)
+LUAU_FASTFLAG(LuauLibWhereErrorAutoreserve)
+LUAU_FASTFLAG(LuauMathLerp)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
-LUAU_FASTFLAG(LuauVectorDefinitions)
-LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoInvArgLeftovers)
 LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauVectorBuiltins)
-LUAU_FASTFLAG(LuauVectorMetatable)
+LUAU_FASTFLAG(LuauVector2Constructor)
+LUAU_FASTFLAG(LuauBufferBitMethods2)
+LUAU_FASTFLAG(LuauCodeGenLimitLiveSlotReuse)
+LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -654,12 +655,14 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
+    ScopedFastFlag luauBufferBitMethods{FFlag::LuauBufferBitMethods2, true};
+
     runConformance("buffers.lua");
 }
 
 TEST_CASE("Math")
 {
-    ScopedFastFlag LuauMathMap{FFlag::LuauMathMap, true};
+    ScopedFastFlag LuauMathLerp{FFlag::LuauMathLerp, true};
 
     runConformance("math.lua");
 }
@@ -716,6 +719,8 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
+    ScopedFastFlag luauStringFormatFixC{DFFlag::LuauStringFormatFixC, true};
+
     runConformance("strings.lua");
 }
 
@@ -891,10 +896,9 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
     ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
-    ScopedFastFlag luauVectorMetatable{FFlag::LuauVectorMetatable, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -911,9 +915,7 @@ TEST_CASE("VectorLibrary")
         copts.optimizationLevel = 2;
     }
 
-    runConformance(
-        "vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts
-    );
+    runConformance("vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -987,7 +989,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauVectorDefinitions{FFlag::LuauVectorDefinitions, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
+    ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, true};
 
     runConformance(
         "types.lua",
@@ -1020,8 +1023,6 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag luauDebugInfoInvArgLeftovers{DFFlag::LuauDebugInfoInvArgLeftovers, true};
-
     runConformance("debug.lua");
 }
 
@@ -1388,6 +1389,25 @@ TEST_CASE("ApiTables")
     CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
     lua_pop(L, 1);
 
+    // lua_clonetable
+    lua_clonetable(L, -1);
+
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // modify clone
+    lua_pushnumber(L, 456.0);
+    lua_rawsetfield(L, -2, "key");
+
+    // remove clone
+    lua_pop(L, 1);
+
+    // check original
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
     // lua_cleartable
     lua_cleartable(L, -1);
     lua_pushnil(L);
@@ -1701,7 +1721,31 @@ TEST_CASE("ApiBuffer")
     lua_pop(L, 1);
 }
 
-TEST_CASE("AllocApi")
+int slowlyOverflowStack(lua_State* L)
+{
+    for (int i = 0; i < LUAI_MAXCSTACK * 2; i++)
+    {
+        luaL_checkstack(L, 1, "test");
+        lua_pushnumber(L, 1.0);
+    }
+
+    return 0;
+}
+
+TEST_CASE("ApiStack")
+{
+    ScopedFastFlag luauLibWhereErrorAutoreserve{FFlag::LuauLibWhereErrorAutoreserve, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushcfunction(L, slowlyOverflowStack, "foo");
+    int result = lua_pcall(L, 0, 0, 0);
+    REQUIRE(result == LUA_ERRRUN);
+    CHECK(strcmp(luaL_checkstring(L, -1), "stack overflow (test)") == 0);
+}
+
+TEST_CASE("ApiAlloc")
 {
     int ud = 0;
     StateRef globalState(lua_newstate(limitedRealloc, &ud), lua_close);
@@ -2578,6 +2622,8 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauCodeGenLimitLiveSlotReuse{FFlag::LuauCodeGenLimitLiveSlotReuse, true};
+
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;

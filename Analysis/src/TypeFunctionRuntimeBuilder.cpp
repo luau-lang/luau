@@ -20,8 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAG(LuauUserTypeFunThreadBuffer)
-
 namespace Luau
 {
 
@@ -160,26 +158,10 @@ private:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
             case PrimitiveType::Thread:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                {
-                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
-                }
-                else
-                {
-                    std::string error = format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str());
-                    state->errors.push_back(error);
-                }
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
                 break;
             case PrimitiveType::Buffer:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                {
-                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
-                }
-                else
-                {
-                    std::string error = format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str());
-                    state->errors.push_back(error);
-                }
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
                 break;
             case PrimitiveType::Function:
             case PrimitiveType::Table:
@@ -221,12 +203,21 @@ private:
         else if (auto f = get<FunctionType>(ty))
         {
             TypeFunctionTypePackId emptyTypePack = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{});
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{emptyTypePack, emptyTypePack});
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{{}, {}, emptyTypePack, emptyTypePack});
         }
         else if (auto c = get<ClassType>(ty))
         {
             state->classesSerialized[c->name] = ty;
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, c->name});
+        }
+        else if (auto g = get<GenericType>(ty))
+        {
+            Name name = g->name;
+
+            if (!g->explicitName)
+                name = format("g%d", g->index);
+
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionGenericType{g->explicitName, false, name});
         }
         else
         {
@@ -252,6 +243,15 @@ private:
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{{}});
         else if (auto vPack = get<VariadicTypePack>(tp))
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionVariadicTypePack{});
+        else if (auto gPack = get<GenericTypePack>(tp))
+        {
+            Name name = gPack->name;
+
+            if (!gPack->explicitName)
+                name = format("g%d", gPack->index);
+
+            target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionGenericTypePack{gPack->explicitName, name});
+        }
         else
         {
             std::string error = format("Argument of type pack %s is not currently serializable by type functions", toString(tp).c_str());
@@ -289,6 +289,8 @@ private:
             serializeChildren(f1, f2);
         else if (auto [c1, c2] = std::tuple{get<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
             serializeChildren(c1, c2);
+        else if (auto [g1, g2] = std::tuple{get<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
+            serializeChildren(g1, g2);
         else
         { // Either this or ty and tfti do not represent the same type
             std::string error = format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str());
@@ -302,6 +304,8 @@ private:
             serializeChildren(tPack1, tPack2);
         else if (auto [vPack1, vPack2] = std::tuple{get<VariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)}; vPack1 && vPack2)
             serializeChildren(vPack1, vPack2);
+        else if (auto [gPack1, gPack2] = std::tuple{get<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)}; gPack1 && gPack2)
+            serializeChildren(gPack1, gPack2);
         else
         { // Either this or ty and tfti do not represent the same type
             std::string error = format("Argument of type pack %s is not currently serializable by type functions", toString(tp).c_str());
@@ -391,6 +395,14 @@ private:
 
     void serializeChildren(const FunctionType* f1, TypeFunctionFunctionType* f2)
     {
+        f2->generics.reserve(f1->generics.size());
+        for (auto ty : f1->generics)
+            f2->generics.push_back(shallowSerialize(ty));
+
+        f2->genericPacks.reserve(f1->genericPacks.size());
+        for (auto tp : f1->genericPacks)
+            f2->genericPacks.push_back(shallowSerialize(tp));
+
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
     }
@@ -420,6 +432,11 @@ private:
             c2->parent = shallowSerialize(*c1->parent);
     }
 
+    void serializeChildren(const GenericType* g1, TypeFunctionGenericType* g2)
+    {
+        // noop.
+    }
+
     void serializeChildren(const TypePack* t1, TypeFunctionTypePack* t2)
     {
         for (const TypeId& ty : t1->head)
@@ -433,6 +450,25 @@ private:
     {
         v2->type = shallowSerialize(v1->ty);
     }
+
+    void serializeChildren(const GenericTypePack* v1, TypeFunctionGenericTypePack* v2)
+    {
+        // noop.
+    }
+};
+
+template<typename T>
+struct SerializedGeneric
+{
+    bool isNamed = false;
+    std::string name;
+    T type = nullptr;
+};
+
+struct SerializedFunctionScope
+{
+    size_t oldQueueSize = 0;
+    TypeFunctionFunctionType* function = nullptr;
 };
 
 // Complete inverse of TypeFunctionSerializer
@@ -453,6 +489,15 @@ class TypeFunctionDeserializer
     // second must be PrimitiveType; else there should be an error
     std::vector<std::tuple<TypeFunctionKind, Kind>> queue;
 
+    // Generic types and packs currently in scope
+    // Generics are resolved by name even if runtime generic type pointers are different
+    // Multiple names mapping to the same generic can be in scope for nested generic functions
+    std::vector<SerializedGeneric<TypeId>> genericTypes;
+    std::vector<SerializedGeneric<TypePackId>> genericPacks;
+
+    // To track when generics go out of scope, we have a list of queue positions at which a specific function has introduced generics
+    std::vector<SerializedFunctionScope> functionScopes;
+
     SeenTypes types;     // Mapping of TypeFunctionTypeIds that have been shallow deserialized to TypeIds
     SeenTypePacks packs; // Mapping of TypeFunctionTypePackIds that have been shallow deserialized to TypePackIds
 
@@ -464,7 +509,9 @@ public:
         , typeFunctionRuntime(state->ctx->typeFunctionRuntime)
         , queue({})
         , types({})
-        , packs({}){};
+        , packs({})
+    {
+    }
 
     TypeId deserialize(TypeFunctionTypeId ty)
     {
@@ -518,6 +565,13 @@ private:
             queue.pop_back();
 
             deserializeChildren(tfti, ty);
+
+            // If we have completed working on all children of a function, remove the generic parameters from scope
+            if (!functionScopes.empty() && queue.size() == functionScopes.back().oldQueueSize && state->errors.empty())
+            {
+                closeFunctionScope(functionScopes.back().function);
+                functionScopes.pop_back();
+            }
         }
     }
 
@@ -550,6 +604,21 @@ private:
         }
     }
 
+    void closeFunctionScope(TypeFunctionFunctionType* f)
+    {
+        if (!f->generics.empty())
+        {
+            LUAU_ASSERT(genericTypes.size() >= f->generics.size());
+            genericTypes.erase(genericTypes.begin() + int(genericTypes.size() - f->generics.size()), genericTypes.end());
+        }
+
+        if (!f->genericPacks.empty())
+        {
+            LUAU_ASSERT(genericPacks.size() >= f->genericPacks.size());
+            genericPacks.erase(genericPacks.begin() + int(genericPacks.size() - f->genericPacks.size()), genericPacks.end());
+        }
+    }
+
     TypeId shallowDeserialize(TypeFunctionTypeId ty)
     {
         if (auto it = find(ty))
@@ -574,16 +643,10 @@ private:
                 target = state->ctx->builtins->stringType;
                 break;
             case TypeFunctionPrimitiveType::Type::Thread:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                    target = state->ctx->builtins->threadType;
-                else
-                    state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
+                target = state->ctx->builtins->threadType;
                 break;
             case TypeFunctionPrimitiveType::Type::Buffer:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                    target = state->ctx->builtins->bufferType;
-                else
-                    state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
+                target = state->ctx->builtins->bufferType;
                 break;
             default:
                 state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
@@ -629,6 +692,33 @@ private:
             else
                 state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious class type is being deserialized");
         }
+        else if (auto g = get<TypeFunctionGenericType>(ty))
+        {
+            if (g->isPack)
+            {
+                state->errors.push_back(format("Generic type pack '%s...' cannot be placed in a type position", g->name.c_str()));
+                return nullptr;
+            }
+            else
+            {
+                auto it = std::find_if(
+                    genericTypes.rbegin(),
+                    genericTypes.rend(),
+                    [&](const SerializedGeneric<TypeId>& el)
+                    {
+                        return g->isNamed == el.isNamed && g->name == el.name;
+                    }
+                );
+
+                if (it == genericTypes.rend())
+                {
+                    state->errors.push_back(format("Generic type '%s' is not in a scope of the active generic function", g->name.c_str()));
+                    return nullptr;
+                }
+
+                target = it->type;
+            }
+        }
         else
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
 
@@ -645,11 +735,36 @@ private:
         // Create a shallow deserialization
         TypePackId target = {};
         if (auto tPack = get<TypeFunctionTypePack>(tp))
+        {
             target = state->ctx->arena->addTypePack(TypePack{});
+        }
         else if (auto vPack = get<TypeFunctionVariadicTypePack>(tp))
+        {
             target = state->ctx->arena->addTypePack(VariadicTypePack{});
+        }
+        else if (auto gPack = get<TypeFunctionGenericTypePack>(tp))
+        {
+            auto it = std::find_if(
+                genericPacks.rbegin(),
+                genericPacks.rend(),
+                [&](const SerializedGeneric<TypePackId>& el)
+                {
+                    return gPack->isNamed == el.isNamed && gPack->name == el.name;
+                }
+            );
+
+            if (it == genericPacks.rend())
+            {
+                state->errors.push_back(format("Generic type pack '%s...' is not in a scope of the active generic function", gPack->name.c_str()));
+                return nullptr;
+            }
+
+            target = it->type;
+        }
         else
+        {
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
+        }
 
         packs[tp] = target;
         queue.emplace_back(tp, target);
@@ -684,6 +799,8 @@ private:
             deserializeChildren(f2, f1);
         else if (auto [c1, c2] = std::tuple{getMutable<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
             deserializeChildren(c2, c1);
+        else if (auto [g1, g2] = std::tuple{getMutable<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
+            deserializeChildren(g2, g1);
         else
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
     }
@@ -695,6 +812,8 @@ private:
         else if (auto [vPack1, vPack2] = std::tuple{getMutable<VariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)};
                  vPack1 && vPack2)
             deserializeChildren(vPack2, vPack1);
+        else if (auto [gPack1, gPack2] = std::tuple{getMutable<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)}; gPack1 && gPack2)
+            deserializeChildren(gPack2, gPack1);
         else
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
     }
@@ -778,6 +897,60 @@ private:
 
     void deserializeChildren(TypeFunctionFunctionType* f2, FunctionType* f1)
     {
+        functionScopes.push_back({queue.size(), f2});
+
+        std::set<std::pair<bool, std::string>> genericNames;
+
+        // Introduce generic function parameters into scope
+        for (auto ty : f2->generics)
+        {
+            auto gty = get<TypeFunctionGenericType>(ty);
+            LUAU_ASSERT(gty && !gty->isPack);
+
+            std::pair<bool, std::string> nameKey = std::make_pair(gty->isNamed, gty->name);
+
+            // Duplicates are not allowed
+            if (genericNames.find(nameKey) != genericNames.end())
+            {
+                state->errors.push_back(format("Duplicate type parameter '%s'", gty->name.c_str()));
+                return;
+            }
+
+            genericNames.insert(nameKey);
+
+            TypeId mapping = state->ctx->arena->addTV(Type(gty->isNamed ? GenericType{state->ctx->scope.get(), gty->name} : GenericType{}));
+            genericTypes.push_back({gty->isNamed, gty->name, mapping});
+        }
+
+        for (auto tp : f2->genericPacks)
+        {
+            auto gtp = get<TypeFunctionGenericTypePack>(tp);
+            LUAU_ASSERT(gtp);
+
+            std::pair<bool, std::string> nameKey = std::make_pair(gtp->isNamed, gtp->name);
+
+            // Duplicates are not allowed
+            if (genericNames.find(nameKey) != genericNames.end())
+            {
+                state->errors.push_back(format("Duplicate type parameter '%s'", gtp->name.c_str()));
+                return;
+            }
+
+            genericNames.insert(nameKey);
+
+            TypePackId mapping =
+                state->ctx->arena->addTypePack(TypePackVar(gtp->isNamed ? GenericTypePack{state->ctx->scope.get(), gtp->name} : GenericTypePack{}));
+            genericPacks.push_back({gtp->isNamed, gtp->name, mapping});
+        }
+
+        f1->generics.reserve(f2->generics.size());
+        for (auto ty : f2->generics)
+            f1->generics.push_back(shallowDeserialize(ty));
+
+        f1->genericPacks.reserve(f2->genericPacks.size());
+        for (auto tp : f2->genericPacks)
+            f1->genericPacks.push_back(shallowDeserialize(tp));
+
         if (f2->argTypes)
             f1->argTypes = shallowDeserialize(f2->argTypes);
 
@@ -786,6 +959,11 @@ private:
     }
 
     void deserializeChildren(TypeFunctionClassType* c2, ClassType* c1)
+    {
+        // noop.
+    }
+
+    void deserializeChildren(TypeFunctionGenericType* g2, GenericType* g1)
     {
         // noop.
     }
@@ -802,6 +980,11 @@ private:
     void deserializeChildren(TypeFunctionVariadicTypePack* v2, VariadicTypePack* v1)
     {
         v1->ty = shallowDeserialize(v2->type);
+    }
+
+    void deserializeChildren(TypeFunctionGenericTypePack* v2, GenericTypePack* v1)
+    {
+        // noop.
     }
 };
 

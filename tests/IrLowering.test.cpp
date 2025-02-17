@@ -16,8 +16,6 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCompileLibraryConstants)
-
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
     // While 'vector' library constants are a Luau built-in, their constant value depends on the embedder LUA_VECTOR_SIZE value
@@ -520,9 +518,9 @@ bb_bytecode_0:
   JUMP bb_2
 bb_2:
   CHECK_SAFE_ENV exit(3)
-  JUMP_EQ_TAG K1, tnil, bb_fallback_4, bb_3
+  JUMP_EQ_TAG K1 (nil), tnil, bb_fallback_4, bb_3
 bb_3:
-  %9 = LOAD_TVALUE K1
+  %9 = LOAD_TVALUE K1 (nil)
   STORE_TVALUE R1, %9
   JUMP bb_5
 bb_5:
@@ -575,7 +573,7 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  %4 = LOAD_TVALUE K0, 0i, tvector
+  %4 = LOAD_TVALUE K0 (1, 2, 3), 0i, tvector
   %11 = LOAD_TVALUE R0
   %12 = ADD_VEC %4, %11
   %13 = TAG_VECTOR %12
@@ -602,7 +600,7 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  FALLBACK_NAMECALL 0u, R1, R0, K0
+  FALLBACK_NAMECALL 0u, R1, R0, K0 ('Abs')
   INTERRUPT 2u
   SET_SAVEDPC 3u
   CALL R1, 1i, -1i
@@ -628,8 +626,8 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  FALLBACK_GETTABLEKS 0u, R3, R0, K0
-  FALLBACK_GETTABLEKS 2u, R4, R0, K1
+  FALLBACK_GETTABLEKS 0u, R3, R0, K0 ('XX')
+  FALLBACK_GETTABLEKS 2u, R4, R0, K1 ('YY')
   CHECK_TAG R3, tnumber, bb_fallback_3
   CHECK_TAG R4, tnumber, bb_fallback_3
   %14 = LOAD_DOUBLE R3
@@ -639,7 +637,7 @@ bb_bytecode_1:
   JUMP bb_4
 bb_4:
   CHECK_TAG R0, tvector, exit(5)
-  FALLBACK_GETTABLEKS 5u, R3, R0, K2
+  FALLBACK_GETTABLEKS 5u, R3, R0, K2 ('ZZ')
   CHECK_TAG R2, tnumber, bb_fallback_5
   CHECK_TAG R3, tnumber, bb_fallback_5
   %30 = LOAD_DOUBLE R2
@@ -857,8 +855,8 @@ bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
   %8 = LOAD_POINTER R0
-  %9 = GET_SLOT_NODE_ADDR %8, 0u, K1
-  CHECK_SLOT_MATCH %9, K1, bb_fallback_3
+  %9 = GET_SLOT_NODE_ADDR %8, 0u, K1 ('n')
+  CHECK_SLOT_MATCH %9, K1 ('n'), bb_fallback_3
   %11 = LOAD_TVALUE %9, 0i
   STORE_TVALUE R3, %11
   JUMP bb_4
@@ -885,8 +883,8 @@ bb_4:
   STORE_VECTOR R3, %30, %33, %36
   CHECK_TAG R0, ttable, exit(6)
   %41 = LOAD_POINTER R0
-  %42 = GET_SLOT_NODE_ADDR %41, 6u, K3
-  CHECK_SLOT_MATCH %42, K3, bb_fallback_5
+  %42 = GET_SLOT_NODE_ADDR %41, 6u, K3 ('b')
+  CHECK_SLOT_MATCH %42, K3 ('b'), bb_fallback_5
   %44 = LOAD_TVALUE %42, 0i
   STORE_TVALUE R5, %44
   JUMP bb_6
@@ -929,8 +927,8 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  FALLBACK_GETTABLEKS 0u, R2, R0, K0
-  FALLBACK_GETTABLEKS 2u, R3, R0, K1
+  FALLBACK_GETTABLEKS 0u, R2, R0, K0 ('x')
+  FALLBACK_GETTABLEKS 2u, R3, R0, K1 ('y')
   CHECK_TAG R2, tnumber, bb_fallback_3
   CHECK_TAG R3, tnumber, bb_fallback_3
   %14 = LOAD_DOUBLE R2
@@ -964,9 +962,9 @@ bb_2:
 bb_bytecode_1:
   STORE_DOUBLE R1, 3
   STORE_TAG R1, tnumber
-  FALLBACK_SETTABLEKS 1u, R1, R0, K0
+  FALLBACK_SETTABLEKS 1u, R1, R0, K0 ('x')
   STORE_DOUBLE R1, 4
-  FALLBACK_SETTABLEKS 4u, R1, R0, K1
+  FALLBACK_SETTABLEKS 4u, R1, R0, K1 ('y')
   INTERRUPT 6u
   RETURN R0, 0i
 )"
@@ -989,11 +987,11 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  FALLBACK_NAMECALL 0u, R2, R0, K0
+  FALLBACK_NAMECALL 0u, R2, R0, K0 ('GetX')
   INTERRUPT 2u
   SET_SAVEDPC 3u
   CALL R2, 1i, 1i
-  FALLBACK_NAMECALL 3u, R3, R0, K1
+  FALLBACK_NAMECALL 3u, R3, R0, K1 ('GetY')
   INTERRUPT 5u
   SET_SAVEDPC 6u
   CALL R3, 1i, 1i
@@ -1367,8 +1365,8 @@ bb_bytecode_1:
 bb_4:
   CHECK_TAG R2, ttable, exit(1)
   %23 = LOAD_POINTER R2
-  %24 = GET_SLOT_NODE_ADDR %23, 1u, K0
-  CHECK_SLOT_MATCH %24, K0, bb_fallback_5
+  %24 = GET_SLOT_NODE_ADDR %23, 1u, K0 ('pos')
+  CHECK_SLOT_MATCH %24, K0 ('pos'), bb_fallback_5
   %26 = LOAD_TVALUE %24, 0i
   STORE_TVALUE R4, %26
   JUMP bb_6
@@ -1476,13 +1474,13 @@ bb_bytecode_1:
 bb_4:
   CHECK_TAG R3, ttable, bb_fallback_5
   %23 = LOAD_POINTER R3
-  %24 = GET_SLOT_NODE_ADDR %23, 1u, K0
-  CHECK_SLOT_MATCH %24, K0, bb_fallback_5
+  %24 = GET_SLOT_NODE_ADDR %23, 1u, K0 ('normal')
+  CHECK_SLOT_MATCH %24, K0 ('normal'), bb_fallback_5
   %26 = LOAD_TVALUE %24, 0i
   STORE_TVALUE R2, %26
   JUMP bb_6
 bb_6:
-  %31 = LOAD_TVALUE K1, 0i, tvector
+  %31 = LOAD_TVALUE K1 (0.707000017, 0, 0.707000017), 0i, tvector
   STORE_TVALUE R4, %31
   CHECK_TAG R2, tvector, exit(4)
   %37 = LOAD_FLOAT R2, 0i
@@ -1603,9 +1601,9 @@ bb_bytecode_1:
   STORE_DOUBLE R1, 0
   STORE_TAG R1, tnumber
   CHECK_SAFE_ENV exit(1)
-  JUMP_EQ_TAG K1, tnil, bb_fallback_6, bb_5
+  JUMP_EQ_TAG K1 (nil), tnil, bb_fallback_6, bb_5
 bb_5:
-  %9 = LOAD_TVALUE K1
+  %9 = LOAD_TVALUE K1 (nil)
   STORE_TVALUE R2, %9
   JUMP bb_7
 bb_7:
@@ -1627,8 +1625,8 @@ bb_9:
 bb_bytecode_2:
   CHECK_TAG R6, ttable, exit(6)
   %35 = LOAD_POINTER R6
-  %36 = GET_SLOT_NODE_ADDR %35, 6u, K2
-  CHECK_SLOT_MATCH %36, K2, bb_fallback_10
+  %36 = GET_SLOT_NODE_ADDR %35, 6u, K2 ('pos')
+  CHECK_SLOT_MATCH %36, K2 ('pos'), bb_fallback_10
   %38 = LOAD_TVALUE %36, 0i
   STORE_TVALUE R8, %38
   JUMP bb_11
@@ -1829,8 +1827,8 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  FALLBACK_GETTABLEKS 0u, R2, R0, K0
-  FALLBACK_GETTABLEKS 2u, R3, R0, K1
+  FALLBACK_GETTABLEKS 0u, R2, R0, K0 ('Row1')
+  FALLBACK_GETTABLEKS 2u, R3, R0, K1 ('Row2')
   CHECK_TAG R2, tvector, exit(4)
   CHECK_TAG R3, tvector, exit(4)
   %14 = LOAD_TVALUE R2
@@ -2115,8 +2113,6 @@ bb_bytecode_1:
 
 TEST_CASE("LibraryFieldTypesAndConstants")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2138,10 +2134,10 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  %4 = LOAD_TVALUE K0, 0i, tvector
+  %4 = LOAD_TVALUE K0 (1, 0, 0), 0i, tvector
   %11 = LOAD_TVALUE R0
   %12 = MUL_VEC %4, %11
-  %15 = LOAD_TVALUE K1, 0i, tvector
+  %15 = LOAD_TVALUE K1 (0, 1, 0), 0i, tvector
   %23 = ADD_VEC %12, %15
   %24 = TAG_VECTOR %23
   STORE_TVALUE R1, %24
@@ -2153,8 +2149,6 @@ bb_bytecode_1:
 
 TEST_CASE("LibraryFieldTypesAndConstants")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2176,7 +2170,7 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  %4 = LOAD_TVALUE K0, 0i, tvector
+  %4 = LOAD_TVALUE K0 (0, 0, 0), 0i, tvector
   %11 = LOAD_TVALUE R0
   %12 = ADD_VEC %4, %11
   %13 = TAG_VECTOR %12
@@ -2189,8 +2183,6 @@ bb_bytecode_1:
 
 TEST_CASE("LibraryFieldTypesAndConstantsCApi")
 {
-    ScopedFastFlag luauCompileLibraryConstants{FFlag::LuauCompileLibraryConstants, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssemblyUsingCApi(
                    R"(
@@ -2208,9 +2200,9 @@ bb_bytecode_0:
   STORE_TAG R1, tboolean
   STORE_DOUBLE R2, 4.75
   STORE_TAG R2, tnumber
-  %5 = LOAD_TVALUE K1, 0i, tvector
+  %5 = LOAD_TVALUE K1 (1, 2, 4), 0i, tvector
   STORE_TVALUE R3, %5
-  %7 = LOAD_TVALUE K2, 0i, tstring
+  %7 = LOAD_TVALUE K2 ('test'), 0i, tstring
   STORE_TVALUE R4, %7
   INTERRUPT 5u
   RETURN R0, 5i

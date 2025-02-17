@@ -69,11 +69,15 @@ using Name = std::string;
 // A free type is one whose exact shape has yet to be fully determined.
 struct FreeType
 {
+    // New constructors
+    explicit FreeType(TypeLevel level, TypeId lowerBound, TypeId upperBound);
+    // This one got promoted to explicit
+    explicit FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound);
+    explicit FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId upperBound);
+    // Old constructors
     explicit FreeType(TypeLevel level);
     explicit FreeType(Scope* scope);
     FreeType(Scope* scope, TypeLevel level);
-
-    FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound);
 
     int index;
     TypeLevel level;
@@ -131,14 +135,14 @@ struct BlockedType
     BlockedType();
     int index;
 
-    Constraint* getOwner() const;
-    void setOwner(Constraint* newOwner);
-    void replaceOwner(Constraint* newOwner);
+    const Constraint* getOwner() const;
+    void setOwner(const Constraint* newOwner);
+    void replaceOwner(const Constraint* newOwner);
 
 private:
     // The constraint that is intended to unblock this type. Other constraints
     // should block on this constraint if present.
-    Constraint* owner = nullptr;
+    const Constraint* owner = nullptr;
 };
 
 struct PrimitiveType
@@ -279,9 +283,6 @@ struct WithPredicate
     }
 };
 
-using MagicFunction = std::function<std::optional<
-    WithPredicate<TypePackId>>(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>)>;
-
 struct MagicFunctionCallContext
 {
     NotNull<struct ConstraintSolver> solver;
@@ -291,7 +292,6 @@ struct MagicFunctionCallContext
     TypePackId result;
 };
 
-using DcrMagicFunction = std::function<bool(MagicFunctionCallContext)>;
 struct MagicRefinementContext
 {
     NotNull<Scope> scope;
@@ -308,8 +308,29 @@ struct MagicFunctionTypeCheckContext
     NotNull<Scope> checkScope;
 };
 
-using DcrMagicRefinement = void (*)(const MagicRefinementContext&);
-using DcrMagicFunctionTypeCheck = std::function<void(const MagicFunctionTypeCheckContext&)>;
+struct MagicFunction
+{
+    virtual std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) = 0;
+
+    // Callback to allow custom typechecking of builtin function calls whose argument types
+    // will only be resolved after constraint solving. For example, the arguments to string.format
+    // have types that can only be decided after parsing the format string and unifying
+    // with the passed in values, but the correctness of the call can only be decided after
+    // all the types have been finalized.
+    virtual bool infer(const MagicFunctionCallContext&) = 0;
+    virtual void refine(const MagicRefinementContext&) {}
+
+    // If a magic function needs to do its own special typechecking, do it here.
+    // Returns true if magic typechecking was performed.  Return false if the
+    // default typechecking logic should run.
+    virtual bool typeCheck(const MagicFunctionTypeCheckContext&)
+    {
+        return false;
+    }
+
+    virtual ~MagicFunction() {}
+};
+
 struct FunctionType
 {
     // Global monomorphic function
@@ -367,16 +388,7 @@ struct FunctionType
     Scope* scope = nullptr;
     TypePackId argTypes;
     TypePackId retTypes;
-    MagicFunction magicFunction = nullptr;
-    DcrMagicFunction dcrMagicFunction = nullptr;
-    DcrMagicRefinement dcrMagicRefinement = nullptr;
-
-    // Callback to allow custom typechecking of builtin function calls whose argument types
-    // will only be resolved after constraint solving. For example, the arguments to string.format
-    // have types that can only be decided after parsing the format string and unifying
-    // with the passed in values, but the correctness of the call can only be decided after
-    // all the types have been finalized.
-    DcrMagicFunctionTypeCheck dcrMagicTypeCheck = nullptr;
+    std::shared_ptr<MagicFunction> magic = nullptr;
 
     bool hasSelf;
     // `hasNoFreeOrGenericTypes` should be true if and only if the type does not have any free or generic types present inside it.
@@ -626,7 +638,7 @@ struct TypeFunctionInstanceType
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
 
-    std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
+    std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
     UserDefinedFunctionData userFuncData;
 
     TypeFunctionInstanceType(

@@ -68,11 +68,12 @@ include(Sources.cmake)
 target_include_directories(Luau.Common INTERFACE Common/include)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
-target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common)
+target_include_directories(Luau.CLI.lib PUBLIC CLI/include)
+target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common Luau.Config)
 
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
 target_include_directories(Luau.Ast PUBLIC Ast/include)
-target_link_libraries(Luau.Ast PUBLIC Luau.Common Luau.CLI.lib)
+target_link_libraries(Luau.Ast PUBLIC Luau.Common)
 
 target_compile_features(Luau.Compiler PUBLIC cxx_std_17)
 target_include_directories(Luau.Compiler PUBLIC Compiler/include)
