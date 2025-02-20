@@ -1900,6 +1900,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_print_tab_char_fix")
         local _:test<number>
     )");
 
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
     // It should be \t and not \x1
     CHECK_EQ("1\t2", toString(result.errors[0]));
 }
