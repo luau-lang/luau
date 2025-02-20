@@ -25,7 +25,7 @@ Of course, feel free to [create a pull request](https://help.github.com/articles
 If you're thinking of adding a new feature to the language, library, analysis tools, etc., please *don't* start by submitting a pull request.
 The Luau team has internal priorities and a roadmap that may or may not align with specific features, so before starting to work on a feature, please submit an issue describing the missing feature that you'd like to add.
 
-For features that result in observable change of language syntax or semantics, you'll need to [create an RFC](https://github.com/luau-lang/rfcs/blob/master/README.md) to make sure that the feature is needed and well designed.
+For features that result in an observable change to the language's syntax or semantics, you'll need to [create an RFC](https://github.com/luau-lang/rfcs/blob/master/README.md) to make sure that the feature is needed and well-designed.
 
 Finally, please note that Luau tries to carry a minimal feature set. All features must be evaluated not just for the benefits that they provide, but also for the downsides/costs in terms of language simplicity, maintainability, cross-feature interaction etc.
 As such, feature requests may not be accepted even if a comprehensive RFC is written - don't expect Luau to gain a feature just because another programming language has it.
