@@ -23,12 +23,13 @@ Of course, feel free to [create a pull request](https://help.github.com/articles
 ## Features
 
 If you're thinking of adding a new feature to the language, library, analysis tools, etc., please *don't* start by submitting a pull request.
-Luau team has internal priorities and a roadmap that may or may not align with specific features, so before starting to work on a feature please submit an issue describing the missing feature that you'd like to add.
+The Luau team has internal priorities and a roadmap that may or may not align with specific features, so before starting to work on a feature, please submit an issue describing the missing feature that you'd like to add.
 
-For features that result in observable change of language syntax or semantics, you'd need to [create an RFC](https://github.com/luau-lang/rfcs/blob/master/README.md) to make sure that the feature is needed and well designed.
+For features that result in an observable change to the language's syntax or semantics, you'll need to [create an RFC](https://github.com/luau-lang/rfcs/blob/master/README.md) to make sure that the feature is needed and well-designed.
 
-Finally, please note that Luau tries to carry a minimal feature set. All features must be evaluated not just for the benefits that they provide, but also for the downsides/costs in terms of language simplicity, maintainability, cross-feature interaction etc.
+Finally, please note that Luau tries to carry a minimal feature set. All features must be evaluated not just for the benefits that they provide, but also for the downsides/costs in terms of language simplicity, maintainability, cross-feature interaction, etc.
 As such, feature requests may not be accepted even if a comprehensive RFC is written - don't expect Luau to gain a feature just because another programming language has it.
+We generally apply a standard similar to the C\# team's famous [Minus 100 Points](https://learn.microsoft.com/en-us/archive/blogs/ericgu/minus-100-points).
 
 ## Code style
 
@@ -48,9 +49,9 @@ When making code changes please try to make sure they are covered by an existing
 
 ## Performance
 
-One of the central feature of Luau is performance; our runtime in particular is heavily optimized for high performance and low memory consumption, and code is generally carefully tuned to result in close to optimal assembly for x64 and AArch64 architectures. The analysis code is not optimized to the same level of detail, but performance is still very important to make sure that we can support interactive IDE features.
+One of the central features of Luau is performance; our runtime in particular is heavily optimized for high performance and low memory consumption, and code is generally carefully tuned to result in close-to-optimal assembly for x64 and AArch64 architectures. The analysis code is not optimized to the same level of detail, but performance is still very important to make sure that we can support interactive IDE features.
 
-As such, it's important to make sure that the changes, including bug fixes, improve or at least do not regress performance. For VM this can be validated by running `bench.py` script from `bench` folder on two binaries built in Release mode, before and after the changes, although note that our benchmark coverage is not complete and in some cases additional performance testing will be necessary to determine if the change can be merged.
+As such, it's important to make sure that the changes, including bug fixes, improve (or at least do not regress) performance. For the VM, this can be validated by running `bench/bench.py` on two binaries built in Release mode, before and after the changes. Note that our benchmark coverage is not complete, and in some cases, additional performance testing will be necessary to determine if the change can be merged.
 
 ## Feature flags
 
