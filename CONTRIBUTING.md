@@ -49,7 +49,7 @@ When making code changes please try to make sure they are covered by an existing
 
 ## Performance
 
-One of the central features of Luau is performance; our runtime in particular is heavily optimized for high performance and low memory consumption, and code is generally carefully tuned to result in close to optimal assembly for x64 and AArch64 architectures. The analysis code is not optimized to the same level of detail, but performance is still very important to make sure that we can support interactive IDE features.
+One of the central features of Luau is performance; our runtime in particular is heavily optimized for high performance and low memory consumption, and code is generally carefully tuned to result in close-to-optimal assembly for x64 and AArch64 architectures. The analysis code is not optimized to the same level of detail, but performance is still very important to make sure that we can support interactive IDE features.
 
 As such, it's important to make sure that the changes, including bug fixes, improve or at least do not regress performance. For the VM, this can be validated by running `bench.py` script from `bench` folder on two binaries built in Release mode, before and after the changes, although note that our benchmark coverage is not complete and in some cases additional performance testing will be necessary to determine if the change can be merged.
 
