@@ -29,8 +29,8 @@ jobs:
   build:
     needs: ["create-release"]
     strategy:
-      matrix: # using ubuntu-20.04 to build a Linux binary targeting older glibc to improve compatibility
-        os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
+      matrix: # not using ubuntu-latest to improve compatibility
+        os: [{name: ubuntu, version: ubuntu-22.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
     name: ${{matrix.os.name}}
     runs-on: ${{matrix.os.version}}
     steps:

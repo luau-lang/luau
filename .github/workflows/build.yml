@@ -86,7 +86,7 @@ jobs:
         Debug/luau-compile tests/conformance/assert.lua
 
   coverage:
-    runs-on: ubuntu-20.04 # needed for clang++-10 to avoid gcov compatibility issues
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - name: install
@@ -94,7 +94,7 @@ jobs:
         sudo apt install llvm
     - name: make coverage
       run: |
-        CXX=clang++-10 make -j2 config=coverage native=1 coverage
+        CXX=clang++ make -j2 config=coverage native=1 coverage
     - name: upload coverage
       uses: codecov/codecov-action@v3
       with:
