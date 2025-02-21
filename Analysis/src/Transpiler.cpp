@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(LuauStoreCSTData)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 
 namespace
 {
@@ -666,7 +667,8 @@ struct Printer_DEPRECATED
             writer.keyword("do");
             for (const auto& s : block->body)
                 visualize(*s);
-            writer.advance(block->location.end);
+            if (!FFlag::LuauFixDoBlockEndLocation)
+                writer.advance(block->location.end);
             writeEnd(program.location);
         }
         else if (const auto& a = program.as<AstStatIf>())
@@ -2036,15 +2038,23 @@ struct Printer
         {
             if (writeTypes)
             {
+                const auto* cstNode = lookupCstNode<CstStatTypeAlias>(a);
+
                 if (a->exported)
                     writer.keyword("export");
 
+                if (cstNode)
+                    advance(cstNode->typeKeywordPosition);
+
                 writer.keyword("type");
+                advance(a->nameLocation.begin);
                 writer.identifier(a->name.value);
                 if (a->generics.size > 0 || a->genericPacks.size > 0)
                 {
+                    if (cstNode)
+                        advance(cstNode->genericsOpenPosition);
                     writer.symbol("<");
-                    CommaSeparatorInserter comma(writer);
+                    CommaSeparatorInserter comma(writer, cstNode ? cstNode->genericsCommaPositions.begin() : nullptr);
 
                     for (auto o : a->generics)
                     {
@@ -2055,7 +2065,15 @@ struct Printer
 
                         if (o->defaultValue)
                         {
-                            writer.maybeSpace(o->defaultValue->location.begin, 2);
+                            const auto* genericTypeCstNode = lookupCstNode<CstGenericType>(o);
+
+                            if (genericTypeCstNode)
+                            {
+                                LUAU_ASSERT(genericTypeCstNode->defaultEqualsPosition.has_value());
+                                advance(*genericTypeCstNode->defaultEqualsPosition);
+                            }
+                            else
+                                writer.maybeSpace(o->defaultValue->location.begin, 2);
                             writer.symbol("=");
                             visualizeTypeAnnotation(*o->defaultValue);
                         }
@@ -2065,21 +2083,36 @@ struct Printer
                     {
                         comma();
 
+                        const auto* genericTypePackCstNode = lookupCstNode<CstGenericTypePack>(o);
+
                         writer.advance(o->location.begin);
                         writer.identifier(o->name.value);
+                        if (genericTypePackCstNode)
+                            advance(genericTypePackCstNode->ellipsisPosition);
                         writer.symbol("...");
 
                         if (o->defaultValue)
                         {
-                            writer.maybeSpace(o->defaultValue->location.begin, 2);
+                            if (cstNode)
+                            {
+                                LUAU_ASSERT(genericTypePackCstNode->defaultEqualsPosition.has_value());
+                                advance(*genericTypePackCstNode->defaultEqualsPosition);
+                            }
+                            else
+                                writer.maybeSpace(o->defaultValue->location.begin, 2);
                             writer.symbol("=");
                             visualizeTypePackAnnotation(*o->defaultValue, false);
                         }
                     }
 
+                    if (cstNode)
+                        advance(cstNode->genericsClosePosition);
                     writer.symbol(">");
                 }
-                writer.maybeSpace(a->type->location.begin, 2);
+                if (cstNode)
+                    advance(cstNode->equalsPosition);
+                else
+                    writer.maybeSpace(a->type->location.begin, 2);
                 writer.symbol("=");
                 visualizeTypeAnnotation(*a->type);
             }

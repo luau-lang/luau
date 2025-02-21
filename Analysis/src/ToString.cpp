@@ -1865,6 +1865,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, EqualityConstraint>)
             return "equality: " + tos(c.resultType) + " ~ " + tos(c.assignmentType);
+        else if constexpr (std::is_same_v<T, TableCheckConstraint>)
+            return "table_check " + tos(c.expectedType) + " :> " + tos(c.exprType);
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

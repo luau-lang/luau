@@ -1168,7 +1168,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstTypeGroup",
             [&]()
             {
-                write("type", node->type);
+                write("inner", node->type);
             }
         );
         return false;

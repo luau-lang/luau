@@ -22,6 +22,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingFixTailPack)
 
 namespace Luau
 {
@@ -858,7 +859,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             else
                 return SubtypingResult{false}
                     .withSuperComponent(TypePath::PackField::Tail)
-                    .withError({scope->location, UnexpectedTypePackInSubtyping{*subTail}});
+                    .withError({scope->location, UnexpectedTypePackInSubtyping{FFlag::LuauSubtypingFixTailPack ? *superTail : *subTail}});
         }
         else
             return {false};

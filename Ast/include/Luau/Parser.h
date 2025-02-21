@@ -144,7 +144,7 @@ private:
     AstStat* parseReturn();
 
     // type Name `=' Type
-    AstStat* parseTypeAlias(const Location& start, bool exported);
+    AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported);
@@ -294,7 +294,12 @@ private:
     Name parseIndexName(const char* context, const Position& previous);
 
     // `<' namelist `>'
-    std::pair<AstArray<AstGenericType*>, AstArray<AstGenericTypePack*>> parseGenericTypeList(bool withDefaultValues);
+    std::pair<AstArray<AstGenericType*>, AstArray<AstGenericTypePack*>> parseGenericTypeList(
+        bool withDefaultValues,
+        Position* openPosition = nullptr,
+        TempVector<Position>* commaPositions = nullptr,
+        Position* closePosition = nullptr
+    );
 
     // `<' Type[, ...] `>'
     AstArray<AstTypeOrPack> parseTypeParams(

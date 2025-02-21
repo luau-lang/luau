@@ -38,7 +38,7 @@ private:
     {
         Page* next;
 
-        char data[8192];
+        alignas(8) char data[8192];
     };
 
     Page* root;

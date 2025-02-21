@@ -9,7 +9,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauGeneralizationRemoveRecursiveUpperBound)
+LUAU_FASTFLAG(LuauGeneralizationRemoveRecursiveUpperBound2)
 
 using namespace Luau;
 
@@ -2445,7 +2445,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauEqSatSimplification, true},
-        {FFlag::LuauGeneralizationRemoveRecursiveUpperBound, true},
+        {FFlag::LuauGeneralizationRemoveRecursiveUpperBound2, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(

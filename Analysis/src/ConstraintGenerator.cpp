@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAGVARIABLE(LuauDeferBidirectionalInferenceForTableAssignment)
 
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAGVARIABLE(LuauInferLocalTypesInMultipleAssignments)
@@ -2998,30 +2999,46 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     if (expectedType)
     {
-        Unifier2 unifier{arena, builtinTypes, NotNull{scope.get()}, ice};
-        std::vector<TypeId> toBlock;
-        // This logic is incomplete as we want to re-run this
-        // _after_ blocked types have resolved, but this
-        // allows us to do some bidirectional inference.
-        toBlock = findBlockedTypesIn(expr, NotNull{&module->astTypes});
-
-        if (toBlock.empty())
+        if (FFlag::LuauDeferBidirectionalInferenceForTableAssignment)
         {
-            matchLiteralType(
-                NotNull{&module->astTypes},
-                NotNull{&module->astExpectedTypes},
-                builtinTypes,
-                arena,
-                NotNull{&unifier},
-                *expectedType,
-                ty,
-                expr,
-                toBlock
+            addConstraint(
+                scope,
+                expr->location,
+                TableCheckConstraint{
+                    *expectedType,
+                    ty,
+                    expr,
+                    NotNull{&module->astTypes},
+                    NotNull{&module->astExpectedTypes},
+                }
             );
-            // The visitor we ran prior should ensure that there are no
-            // blocked types that we would encounter while matching on
-            // this expression.
-            LUAU_ASSERT(toBlock.empty());
+        }
+        else
+        {
+            Unifier2 unifier{arena, builtinTypes, NotNull{scope.get()}, ice};
+            std::vector<TypeId> toBlock;
+            // This logic is incomplete as we want to re-run this
+            // _after_ blocked types have resolved, but this
+            // allows us to do some bidirectional inference.
+            toBlock = findBlockedTypesIn(expr, NotNull{&module->astTypes});
+            if (toBlock.empty())
+            {
+                matchLiteralType(
+                    NotNull{&module->astTypes},
+                    NotNull{&module->astExpectedTypes},
+                    builtinTypes,
+                    arena,
+                    NotNull{&unifier},
+                    *expectedType,
+                    ty,
+                    expr,
+                    toBlock
+                );
+                // The visitor we ran prior should ensure that there are no
+                // blocked types that we would encounter while matching on
+                // this expression.
+                LUAU_ASSERT(toBlock.empty());
+            }
         }
     }
 

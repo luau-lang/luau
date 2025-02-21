@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 
 using namespace Luau;
 
@@ -854,6 +855,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
+    ScopedFastFlag _{FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true};
+
     CheckResult result = check(R"(
 --!strict
 -- At one point this produced a UAF
@@ -865,15 +868,19 @@ local y: T<string> = { a = { c = nil, d = 5 }, b = 37 }
 y.a.c = y
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
-
     if (FFlag::LuauSolverV2)
-        CHECK(
-            toString(result.errors.at(0)) ==
-            R"(Type '{ a: { c: nil, d: number }, b: number }' could not be converted into 'T<number>'; type { a: { c: nil, d: number }, b: number }[read "a"][read "c"] (nil) is not exactly T<number>[read "a"][read "c"][0] (T<number>))"
-        );
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        auto mismatch = get<TypeMismatch>(result.errors.at(0));
+        CHECK(mismatch);
+        CHECK_EQ(toString(mismatch->givenType), "{ a: { c: T<string>?, d: number }, b: number }");
+        CHECK_EQ(toString(mismatch->wantedType), "T<string>");
+        std::string reason = "at [read \"a\"][read \"d\"], number is not exactly string\n\tat [read \"b\"], number is not exactly string";
+        CHECK_EQ(mismatch->reason, reason);
+    }
     else
     {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
         const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
 caused by:
   Property 'a' is not compatible.

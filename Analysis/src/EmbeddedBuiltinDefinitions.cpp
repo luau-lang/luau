@@ -3,6 +3,7 @@
 
 LUAU_FASTFLAG(LuauBufferBitMethods2)
 LUAU_FASTFLAG(LuauVector2Constructor)
+LUAU_FASTFLAGVARIABLE(LuauDebugInfoDefn)
 
 namespace Luau
 {
@@ -210,6 +211,15 @@ declare table: {
 static const std::string kBuiltinDefinitionDebugSrc = R"BUILTIN_SRC(
 
 declare debug: {
+    info: ((thread: thread, level: number, options: string) -> ...any) & ((level: number, options: string) -> ...any) & (<A..., R1...>(func: (A...) -> R1..., options: string) -> ...any),
+    traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionDebugSrc_DEPRECATED = R"BUILTIN_SRC(
+
+declare debug: {
     info: (<R...>(thread: thread, level: number, options: string) -> R...) & (<R...>(level: number, options: string) -> R...) & (<A..., R1..., R2...>(func: (A...) -> R1..., options: string) -> R2...),
     traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
 }
@@ -362,7 +372,7 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
     result += kBuiltinDefinitionTableSrc;
-    result += kBuiltinDefinitionDebugSrc;
+    result += FFlag::LuauDebugInfoDefn ? kBuiltinDefinitionDebugSrc : kBuiltinDefinitionDebugSrc_DEPRECATED;
     result += kBuiltinDefinitionUtf8Src;
 
     result += FFlag::LuauBufferBitMethods2 ? kBuiltinDefinitionBufferSrc : kBuiltinDefinitionBufferSrc_DEPRECATED;

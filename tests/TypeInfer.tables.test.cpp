@@ -25,7 +25,8 @@ LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
 LUAU_FASTFLAG(LuauDontInPlaceMutateTableType)
 LUAU_FASTFLAG(LuauAllowNonSharedTableTypesInLiteral)
 LUAU_FASTFLAG(LuauFollowTableFreeze)
-LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes)
+LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
+LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5012,7 +5013,7 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
     // bidirectional inference is known to be broken.
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPrecalculateMutatedFreeTypes, true},
+        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
     };
 
     auto result = check(R"(
@@ -5151,6 +5152,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_musnt_assert")
            table.freeze(self)
         end
     )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_property_with_call")
+{
+    ScopedFastFlag _{FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true};
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        type t = {
+            key: boolean?,
+            time: number,
+        }
+
+        local function num(): number
+            return 0
+        end
+
+        local _: t = {
+            time = num(),
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "empty_union_container_overflow")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local CellRenderer = {}
+        function CellRenderer:init(props)
+            self._separators = {
+                unhighlight = function()
+                    local cellKey, prevCellKey = self.props.cellKey, self.props.prevCellKey
+                    self.props.onUpdateSeparators({ cellKey, prevCellKey })
+                end,
+                updateProps = function (select, newProps)
+                    local cellKey, prevCellKey = self.props.cellKey, self.props.prevCellKey
+                    self.props.onUpdateSeparators({ if select == 'leading' then prevCellKey else cellKey })
+                end
+            }
+        end
+    )"));
 }
 
 TEST_SUITE_END();

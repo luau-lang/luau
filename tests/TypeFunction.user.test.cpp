@@ -7,8 +7,10 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauTypeFunFixHydratedClasses)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
+LUAU_FASTFLAG(LuauTypeFunSingletonEquality)
 LUAU_FASTFLAG(LuauUserTypeFunTypeofReturnsType)
 LUAU_FASTFLAG(LuauTypeFunPrintFix)
 
@@ -489,7 +491,10 @@ local function notok(idx: fail<number>): never return idx end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    CHECK(toString(result.errors[0]) == R"('fail' type function errored at runtime: [string "fail"]:7: type.inner: cannot call inner method on non-negation type: `number` type)");
+    CHECK(
+        toString(result.errors[0]) ==
+        R"('fail' type function errored at runtime: [string "fail"]:7: type.inner: cannot call inner method on non-negation type: `number` type)"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
@@ -634,6 +639,21 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works")
             return arg
         end
         local function ok(idx: serialize_class<BaseClass>): BaseClass return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauTypeFunFixHydratedClasses{FFlag::LuauTypeFunFixHydratedClasses, true};
+
+    CheckResult result = check(R"(
+        type function serialize_class(arg)
+            return arg
+        end
+        local function ok(idx: serialize_class<typeof(confusingBaseClassInstance)>): typeof(confusingBaseClassInstance) return idx end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1866,6 +1886,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
     auto simplified = eqSatSimplify(NotNull{simplifier.get()}, ty);
     REQUIRE(simplified);
     CHECK_EQ("t0<number & string>", toString(simplified->result)); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_bool")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauTypeFunSingletonEquality{FFlag::LuauTypeFunSingletonEquality, true};
+
+    CheckResult result = check(R"(
+type function compare(arg)
+    return types.singleton(types.singleton(false) == arg)
+end
+
+local function ok(idx: compare<false>): true return idx end
+local function ok(idx: compare<true>): false return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_string")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauTypeFunSingletonEquality{FFlag::LuauTypeFunSingletonEquality, true};
+
+    CheckResult result = check(R"(
+type function compare(arg)
+    return types.singleton(types.singleton("") == arg)
+end
+
+local function ok(idx: compare<"">): true return idx end
+local function ok(idx: compare<"a">): false return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_type_userdata_returns_type")

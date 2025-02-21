@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauFixFunctionNameStartPosition)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 
 namespace
 {
@@ -2508,6 +2509,40 @@ TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
     CHECK(funcType->returnTypes.types.data[0]->is<AstTypeGroup>());
 }
 
+TEST_CASE_FIXTURE(Fixture, "inner_and_outer_scope_of_functions_have_correct_end_position")
+{
+
+    AstStatBlock* stat = parse(R"(
+        local function foo()
+            local x = 1
+        end
+    )");
+    REQUIRE(stat);
+    REQUIRE_EQ(1, stat->body.size);
+
+    auto func = stat->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(func);
+    CHECK_EQ(func->func->body->location, Location{{1, 28}, {3, 8}});
+    CHECK_EQ(func->location, Location{{1, 8}, {3, 11}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "do_block_end_location_is_after_end_token")
+{
+    ScopedFastFlag _{FFlag::LuauFixDoBlockEndLocation, true};
+
+    AstStatBlock* stat = parse(R"(
+        do
+            local x = 1
+        end
+    )");
+    REQUIRE(stat);
+    REQUIRE_EQ(1, stat->body.size);
+
+    auto block = stat->body.data[0]->as<AstStatBlock>();
+    REQUIRE(block);
+    CHECK_EQ(block->location, Location{{1, 8}, {3, 11}});
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ParseErrorRecovery");
@@ -3786,7 +3821,7 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     }
     else
         CHECK(unionTy->types.data[0]->is<AstTypeFunction>()); // () -> ()
-    CHECK(unionTy->types.data[1]->is<AstTypeReference>()); // nil
+    CHECK(unionTy->types.data[1]->is<AstTypeReference>());    // nil
 }
 
 TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")
