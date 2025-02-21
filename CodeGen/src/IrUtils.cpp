@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrUtils.h"
 
+#include "Luau/CodeGenOptions.h"
 #include "Luau/IrBuilder.h"
 
 #include "BitUtils.h"
@@ -9,10 +10,14 @@
 #include "lua.h"
 #include "lnumutils.h"
 
+#include <algorithm>
+#include <vector>
+
 #include <limits.h>
 #include <math.h>
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot);
+LUAU_FASTFLAG(LuauCodeGenLerp);
 
 namespace Luau
 {
@@ -70,6 +75,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::SQRT_NUM:
     case IrCmd::ABS_NUM:
     case IrCmd::SIGN_NUM:
+    case IrCmd::SELECT_NUM:
         return IrValueKind::Double;
     case IrCmd::ADD_VEC:
     case IrCmd::SUB_VEC:
@@ -654,6 +660,16 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             double v = function.doubleOp(inst.a);
 
             substitute(function, inst, build.constDouble(v > 0.0 ? 1.0 : v < 0.0 ? -1.0 : 0.0));
+        }
+        break;
+    case IrCmd::SELECT_NUM:
+        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
+        if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+        {
+            double c = function.doubleOp(inst.c);
+            double d = function.doubleOp(inst.d);
+
+            substitute(function, inst, c == d ? inst.b : inst.a);
         }
         break;
     case IrCmd::NOT_ANY:

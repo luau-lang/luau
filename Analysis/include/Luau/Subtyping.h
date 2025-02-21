@@ -1,13 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Set.h"
+#include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/TypePath.h"
-#include "Luau/TypeFunction.h"
-#include "Luau/TypeCheckLimits.h"
-#include "Luau/DenseHash.h"
 
 #include <vector>
 #include <optional>
@@ -134,6 +135,7 @@ struct Subtyping
 {
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
+    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> iceReporter;
@@ -155,6 +157,7 @@ struct Subtyping
     Subtyping(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> typeArena,
+        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> iceReporter

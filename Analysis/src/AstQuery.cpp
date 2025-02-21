@@ -13,7 +13,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAGVARIABLE(LuauDocumentationAtPosition)
+LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 
 namespace Luau
 {
@@ -43,11 +43,26 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstStat* stat) override
     {
-        if (stat->location.begin < pos && pos <= stat->location.end)
+        if (FFlag::LuauExtendStatEndPosWithSemicolon)
         {
-            ancestry.push_back(stat);
-            return true;
+            // Consider 'local myLocal = 4;|' and 'local myLocal = 4', where '|' is the cursor position. In both cases, the cursor position is equal
+            // to `AstStatLocal.location.end`. However, in the first case (semicolon), we are starting a new statement, whilst in the second case
+            // (no semicolon) we are still part of the AstStatLocal, hence the different comparison check.
+            if (stat->location.begin < pos && (stat->hasSemicolon ? pos < stat->location.end : pos <= stat->location.end))
+            {
+                ancestry.push_back(stat);
+                return true;
+            }
         }
+        else
+        {
+            if (stat->location.begin < pos && pos <= stat->location.end)
+            {
+                ancestry.push_back(stat);
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -518,7 +533,6 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
     const AstName& index
 )
 {
-    LUAU_ASSERT(FFlag::LuauDocumentationAtPosition);
     auto indexIt = mtable->props.find("__index");
     if (indexIt == mtable->props.end())
         return std::nullopt;
@@ -575,26 +589,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 }
                 else if (const ClassType* ctv = get<ClassType>(parentTy))
                 {
-                    if (FFlag::LuauDocumentationAtPosition)
-                    {
-                        while (ctv)
-                        {
-                            if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
-                            {
-                                if (FFlag::LuauSolverV2)
-                                {
-                                    if (auto ty = propIt->second.readTy)
-                                        return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
-                                }
-                                else
-                                    return checkOverloadedDocumentationSymbol(
-                                        module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol
-                                    );
-                            }
-                            ctv = ctv->parent ? Luau::get<Luau::ClassType>(*ctv->parent) : nullptr;
-                        }
-                    }
-                    else
+                    while (ctv)
                     {
                         if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
                         {
@@ -608,17 +603,15 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                                     module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol
                                 );
                         }
+                        ctv = ctv->parent ? Luau::get<Luau::ClassType>(*ctv->parent) : nullptr;
                     }
                 }
-                else if (FFlag::LuauDocumentationAtPosition)
+                else if (const PrimitiveType* ptv = get<PrimitiveType>(parentTy); ptv && ptv->metatable)
                 {
-                    if (const PrimitiveType* ptv = get<PrimitiveType>(parentTy); ptv && ptv->metatable)
+                    if (auto mtable = get<TableType>(*ptv->metatable))
                     {
-                        if (auto mtable = get<TableType>(*ptv->metatable))
-                        {
-                            if (std::optional<std::string> docSymbol = getMetatableDocumentation(module, parentExpr, mtable, indexName->index))
-                                return docSymbol;
-                        }
+                        if (std::optional<std::string> docSymbol = getMetatableDocumentation(module, parentExpr, mtable, indexName->index))
+                            return docSymbol;
                     }
                 }
             }

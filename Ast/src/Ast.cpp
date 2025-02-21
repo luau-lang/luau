@@ -1091,6 +1091,18 @@ void AstTypeSingletonString::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+AstTypeGroup::AstTypeGroup(const Location& location, AstType* type)
+    : AstType(ClassIndex(), location)
+    , type(type)
+{
+}
+
+void AstTypeGroup::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+        type->visit(visitor);
+}
+
 AstTypeError::AstTypeError(const Location& location, const AstArray<AstType*>& types, bool isMissing, unsigned messageIndex)
     : AstType(ClassIndex(), location)
     , types(types)
@@ -1151,10 +1163,7 @@ void AstTypePackGeneric::visit(AstVisitor* visitor)
 
 bool isLValue(const AstExpr* expr)
 {
-    return expr->is<AstExprLocal>()
-        || expr->is<AstExprGlobal>()
-        || expr->is<AstExprIndexName>()
-        || expr->is<AstExprIndexExpr>();
+    return expr->is<AstExprLocal>() || expr->is<AstExprGlobal>() || expr->is<AstExprIndexName>() || expr->is<AstExprIndexExpr>();
 }
 
 AstName getIdentifier(AstExpr* node)

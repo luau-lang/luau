@@ -8,8 +8,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauDocumentationAtPosition)
-
 struct DocumentationSymbolFixture : BuiltinsFixture
 {
     std::optional<DocumentationSymbol> getDocSymbol(const std::string& source, Position position)
@@ -167,7 +165,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_overloaded_function_prop")
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "string_metatable_method")
 {
-    ScopedFastFlag sff{FFlag::LuauDocumentationAtPosition, true};
     std::optional<DocumentationSymbol> symbol = getDocSymbol(
         R"(
         local x: string = "Foo"
@@ -181,7 +178,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "string_metatable_method")
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "parent_class_method")
 {
-    ScopedFastFlag sff{FFlag::LuauDocumentationAtPosition, true};
     loadDefinition(R"(
         declare class Foo
             function bar(self, x: string): number

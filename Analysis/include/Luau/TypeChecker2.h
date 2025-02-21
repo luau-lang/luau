@@ -2,15 +2,16 @@
 
 #pragma once
 
-#include "Luau/Error.h"
-#include "Luau/NotNull.h"
 #include "Luau/Common.h"
-#include "Luau/TypeUtils.h"
+#include "Luau/EqSatSimplification.h"
+#include "Luau/Error.h"
+#include "Luau/Normalize.h"
+#include "Luau/NotNull.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeOrPack.h"
-#include "Luau/Normalize.h"
-#include "Luau/Subtyping.h"
+#include "Luau/TypeUtils.h"
 
 namespace Luau
 {
@@ -60,8 +61,9 @@ struct Reasonings
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
-    NotNull<UnifierSharedState> sharedState,
+    NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
     const SourceModule& sourceModule,
@@ -71,6 +73,7 @@ void check(
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
+    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DcrLogger* logger;
     const NotNull<TypeCheckLimits> limits;
@@ -90,6 +93,7 @@ struct TypeChecker2
 
     TypeChecker2(
         NotNull<BuiltinTypes> builtinTypes,
+        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<UnifierSharedState> unifierState,
         NotNull<TypeCheckLimits> limits,
@@ -112,14 +116,14 @@ private:
     std::optional<StackPusher> pushStack(AstNode* node);
     void checkForInternalTypeFunction(TypeId ty, Location location);
     TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location);
-    TypePackId lookupPack(AstExpr* expr);
+    TypePackId lookupPack(AstExpr* expr) const;
     TypeId lookupType(AstExpr* expr);
     TypeId lookupAnnotation(AstType* annotation);
-    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation);
-    TypeId lookupExpectedType(AstExpr* expr);
-    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena);
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation) const;
+    TypeId lookupExpectedType(AstExpr* expr) const;
+    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena) const;
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena);
-    Scope* findInnermostScope(Location location);
+    Scope* findInnermostScope(Location location) const;
     void visit(AstStat* stat);
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);
@@ -156,7 +160,7 @@ private:
     void visit(AstExprVarargs* expr);
     void visitCall(AstExprCall* call);
     void visit(AstExprCall* call);
-    std::optional<TypeId> tryStripUnionFromNil(TypeId ty);
+    std::optional<TypeId> tryStripUnionFromNil(TypeId ty) const;
     TypeId stripFromNilAndReport(TypeId ty, const Location& location);
     void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context, TypeId astIndexExprTy);
     void visit(AstExprIndexName* indexName, ValueContext context);
@@ -212,6 +216,9 @@ private:
         TypeId astIndexExprType,
         std::vector<TypeError>& errors
     );
+
+    // Avoid duplicate warnings being emitted for the same global variable.
+    DenseHashSet<std::string> warnedGlobals{""};
 
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const;
     bool isErrorSuppressing(Location loc, TypeId ty);

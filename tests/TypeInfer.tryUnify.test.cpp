@@ -42,12 +42,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 {
-    Type functionOne{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
+    Type functionOne{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
     }};
 
-    Type functionTwo{
-        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}
-    };
+    Type functionTwo{TypeVariant{FunctionType(
+        arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)})
+    )}};
 
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(!state.failure);
@@ -60,14 +61,16 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 {
-    TypePackVar argPackOne{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
-    Type functionOne{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
+    TypePackVar argPackOne{TypePack{{arena.freshType(builtinTypes, globalScope->level)}, std::nullopt}};
+    Type functionOne{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
     }};
 
     Type functionOneSaved = functionOne.clone();
 
-    TypePackVar argPackTwo{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
-    Type functionTwo{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->stringType}))
+    TypePackVar argPackTwo{TypePack{{arena.freshType(builtinTypes, globalScope->level)}, std::nullopt}};
+    Type functionTwo{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({builtinTypes->stringType}))
     }};
 
     Type functionTwoSaved = functionTwo.clone();
@@ -83,11 +86,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 {
     Type tableOne{TypeVariant{
-        TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
+        TableType{{{"foo", {arena.freshType(builtinTypes, globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
     Type tableTwo{TypeVariant{
-        TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
+        TableType{{{"foo", {arena.freshType(builtinTypes, globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
     CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type(), *getMutable<TableType>(&tableTwo)->props["foo"].type());
@@ -106,7 +109,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 {
     Type tableOne{TypeVariant{
         TableType{
-            {{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->numberType}}},
+            {{"foo", {arena.freshType(builtinTypes, globalScope->level)}}, {"bar", {builtinTypes->numberType}}},
             std::nullopt,
             globalScope->level,
             TableState::Unsealed
@@ -115,7 +118,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 
     Type tableTwo{TypeVariant{
         TableType{
-            {{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->stringType}}},
+            {{"foo", {arena.freshType(builtinTypes, globalScope->level)}}, {"bar", {builtinTypes->stringType}}},
             std::nullopt,
             globalScope->level,
             TableState::Unsealed
@@ -295,7 +298,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
 {
-    Type redirect{FreeType{TypeLevel{}}};
+    Type redirect{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
     Type table{TableType{}};
     Type metatable{MetatableType{&redirect, &table}};
     redirect = BoundType{&metatable}; // Now we have a metatable that is recursive on the table type
@@ -318,7 +321,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 {
-    TypeId a = arena.addType(Type{FreeType{TypeLevel{}}});
+    TypeId a = arena.freshType(builtinTypes, TypeLevel{});
     TypeId b = builtinTypes->numberType;
 
     state.tryUnify(a, b);
@@ -381,7 +384,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
     TypePackVar packTmp{TypePack{{builtinTypes->anyType}, &variadicAny}};
     TypePackVar packSub{TypePack{{builtinTypes->anyType, builtinTypes->anyType}, &packTmp}};
 
-    Type freeTy{FreeType{TypeLevel{}}};
+    Type freeTy{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
     TypePackVar freeTp{FreeTypePack{TypeLevel{}}};
     TypePackVar packSuper{TypePack{{&freeTy}, &freeTp}};
 
@@ -438,10 +441,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_two_unions_under_dcr_does_not_creat
     const std::shared_ptr<Scope> scope = globalScope;
     const std::shared_ptr<Scope> nestedScope = std::make_shared<Scope>(scope);
 
-    const TypeId outerType = arena.freshType(scope.get());
-    const TypeId outerType2 = arena.freshType(scope.get());
+    const TypeId outerType = arena.freshType(builtinTypes, scope.get());
+    const TypeId outerType2 = arena.freshType(builtinTypes, scope.get());
 
-    const TypeId innerType = arena.freshType(nestedScope.get());
+    const TypeId innerType = arena.freshType(builtinTypes, nestedScope.get());
 
     state.enableNewSolver();
 

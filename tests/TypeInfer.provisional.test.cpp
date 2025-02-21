@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+
 #include "Luau/TypeInfer.h"
 #include "Luau/RecursionCounter.h"
 
@@ -11,6 +12,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(DebugLuauEqSatSimplification);
+LUAU_FASTFLAG(LuauStoreCSTData);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauTarjanChildLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
@@ -45,7 +48,16 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expected = R"(
+    const std::string expected = FFlag::LuauStoreCSTData ? R"(
+        function f(a:{fn:()->(a,b...)}): ()
+            if type(a) == 'boolean' then
+                local a1:boolean=a
+            elseif a.fn() then
+                local a2:{fn:()->(a,b...)}=a
+            end
+        end
+    )"
+                                                         : R"(
         function f(a:{fn:()->(a,b...)}): ()
             if type(a) == 'boolean'then
                 local a1:boolean=a
@@ -55,7 +67,16 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expectedWithNewSolver = R"(
+    const std::string expectedWithNewSolver = FFlag::LuauStoreCSTData ? R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean' then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn() then
+                local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
+            end
+        end
+    )"
+                                                                      : R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean'then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
@@ -65,8 +86,29 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    if (FFlag::LuauSolverV2)
+    const std::string expectedWithEqSat = FFlag::LuauStoreCSTData ? R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean' then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn() then
+                local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
+            end
+        end
+    )"
+                                                                  : R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean'then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn()then
+                local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
+            end
+        end
+    )";
+
+    if (FFlag::LuauSolverV2 && !FFlag::DebugLuauEqSatSimplification)
         CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
+    else if (FFlag::LuauSolverV2 && FFlag::DebugLuauEqSatSimplification)
+        CHECK_EQ(expectedWithEqSat, decorateWithTypes(code));
     else
         CHECK_EQ(expected, decorateWithTypes(code));
 }
@@ -522,10 +564,10 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
     std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
 
-    TypeId free1 = arena.addType(FreeType{scope.get()});
+    TypeId free1 = arena.freshType(builtinTypes, scope.get());
     TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
-    TypeId free2 = arena.addType(FreeType{scope.get()});
+    TypeId free2 = arena.freshType(builtinTypes, scope.get());
     TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;
@@ -653,13 +695,15 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
+        SimplifierPtr simplifier = newSimplifier(NotNull{&getMainModule()->internalTypes}, builtinTypes);
+
         ModulePtr module = getMainModule();
         REQUIRE(module);
 
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, NotNull{simplifier.get()}, ice);
     }
 };
 } // namespace
@@ -950,10 +994,10 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 
     std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
 
-    TypeId free1 = arena.addType(FreeType{scope.get()});
+    TypeId free1 = arena.freshType(builtinTypes, scope.get());
     TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
-    TypeId free2 = arena.addType(FreeType{scope.get()});
+    TypeId free2 = arena.freshType(builtinTypes, scope.get());
     TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;
@@ -1269,7 +1313,7 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cache
     TableType* table = getMutable<TableType>(tableTy);
     REQUIRE(table);
 
-    TypeId freeTy = arena.freshType(&globalScope);
+    TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
 
     table->props["foo"] = Property::rw(freeTy);
 

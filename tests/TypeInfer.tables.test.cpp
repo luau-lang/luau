@@ -18,9 +18,11 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauRetrySubtypingWithoutHiddenPack)
 LUAU_FASTFLAG(LuauTableKeysAreRValues)
 LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
+LUAU_FASTFLAG(LuauDontInPlaceMutateTableType)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2375,7 +2377,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauRetrySubtypingWithoutHiddenPack)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -2383,15 +2385,6 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
         // This is not actually the expected behavior, but the typemismatch we were seeing before was for the wrong reason.
         // The behavior of this test is just regressed generally in the new solver, and will need to be consciously addressed.
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-        CHECK(get<TypeMismatch>(result.errors[0]));
-        CHECK(Location{{6, 45}, {6, 46}} == result.errors[0].location);
-
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[1]));
     }
 
     // TODO: test behavior is wrong with LuauInstantiateInSubtyping until we can re-enable the covariant requirement for instantiation in subtyping
@@ -3815,6 +3808,11 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
+        {FFlag::LuauTrackInteriorFreeTablesOnScope, true},
+    };
+
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -3824,17 +3822,14 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
 
     if (FFlag::LuauSolverV2)
     {
-        LUAU_REQUIRE_ERROR_COUNT(4, result);
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
 
         CHECK(toString(result.errors[0]) == "Parameter 's' has been reduced to never. This function is not callable with any possible value.");
-        // FIXME: These free types should have been generalized by now.
         CHECK(
             toString(result.errors[1]) ==
-            "Parameter 's' is required to be a subtype of '{- read absolutely_no_scalar_has_this_method: ('a <: (never) -> ('b, c...)) -}' here."
+            "Parameter 's' is required to be a subtype of '{ read absolutely_no_scalar_has_this_method: (never) -> (unknown, ...unknown) }' here."
         );
         CHECK(toString(result.errors[2]) == "Parameter 's' is required to be a subtype of 'string' here.");
-        CHECK(get<CannotCallNonFunction>(result.errors[3]));
-
         CHECK_EQ("(never) -> string", toString(requireType("f")));
     }
     else
@@ -5002,7 +4997,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  } } }'",
+        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  "
+        "} } }'",
         toString(result.errors[0])
     );
 }
@@ -5061,6 +5057,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_property_reads")
 
         local arr:{number} = {}
         arr[t.id] = 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_in_literal")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontInPlaceMutateTableType, true},
+    };
+
+    auto result = check(R"(
+        type Foo = {
+            [string]: {
+                Min: number,
+                Max: number
+            }
+        }
+        local Foos: Foo = {
+            ["Foo"] = {
+                Min = -1,
+                Max = 1
+            },
+            ["Foo"] = {
+                Min = -1,
+                Max = 1
+            }
+        }
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

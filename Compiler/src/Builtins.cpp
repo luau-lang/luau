@@ -3,8 +3,11 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
+#include "Luau/Lexer.h"
 
-LUAU_FASTFLAGVARIABLE(LuauVectorBuiltins)
+#include <array>
+
+LUAU_FASTFLAGVARIABLE(LuauCompileMathLerp)
 
 namespace Luau
 {
@@ -136,6 +139,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_MATH_SIGN;
         if (builtin.method == "round")
             return LBF_MATH_ROUND;
+        if (FFlag::LuauCompileMathLerp && builtin.method == "lerp")
+            return LBF_MATH_LERP;
     }
 
     if (builtin.object == "bit32")
@@ -222,7 +227,7 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BUFFER_WRITEF64;
     }
 
-    if (FFlag::LuauVectorBuiltins && builtin.object == "vector")
+    if (builtin.object == "vector")
     {
         if (builtin.method == "create")
             return LBF_VECTOR;
@@ -270,23 +275,58 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
 struct BuiltinVisitor : AstVisitor
 {
     DenseHashMap<AstExprCall*, int>& result;
+    std::array<bool, 256> builtinIsDisabled;
 
     const DenseHashMap<AstName, Global>& globals;
     const DenseHashMap<AstLocal*, Variable>& variables;
 
     const CompileOptions& options;
+    const AstNameTable& names;
 
     BuiltinVisitor(
         DenseHashMap<AstExprCall*, int>& result,
         const DenseHashMap<AstName, Global>& globals,
         const DenseHashMap<AstLocal*, Variable>& variables,
-        const CompileOptions& options
+        const CompileOptions& options,
+        const AstNameTable& names
     )
         : result(result)
         , globals(globals)
         , variables(variables)
         , options(options)
+        , names(names)
     {
+        builtinIsDisabled.fill(false);
+
+        if (const char* const* ptr = options.disabledBuiltins)
+        {
+            for (; *ptr; ++ptr)
+            {
+                if (const char* dot = strchr(*ptr, '.'))
+                {
+                    AstName library = names.getWithType(*ptr, dot - *ptr).first;
+                    AstName name = names.get(dot + 1);
+
+                    if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
+                    {
+                        Builtin builtin = Builtin{library, name};
+
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
+                    }
+                }
+                else
+                {
+                    if (AstName name = names.get(*ptr); name.value && getGlobalState(globals, name) == Global::Default)
+                    {
+                        Builtin builtin = Builtin{AstName(), name};
+
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
+                    }
+                }
+            }
+        }
     }
 
     bool visit(AstExprCall* node) override
@@ -296,6 +336,9 @@ struct BuiltinVisitor : AstVisitor
             return true;
 
         int bfid = getBuiltinFunctionId(builtin, options);
+
+        if (bfid >= 0 && builtinIsDisabled[bfid])
+            bfid = -1;
 
         // getBuiltinFunctionId optimistically assumes all select() calls are builtin but actually the second argument must be a vararg
         if (bfid == LBF_SELECT_VARARG && !(node->args.size == 2 && node->args.data[1]->is<AstExprVarargs>()))
@@ -313,10 +356,11 @@ void analyzeBuiltins(
     const DenseHashMap<AstName, Global>& globals,
     const DenseHashMap<AstLocal*, Variable>& variables,
     const CompileOptions& options,
-    AstNode* root
+    AstNode* root,
+    const AstNameTable& names
 )
 {
-    BuiltinVisitor visitor{result, globals, variables, options};
+    BuiltinVisitor visitor{result, globals, variables, options, names};
     root->visit(&visitor);
 }
 
@@ -510,6 +554,10 @@ BuiltinInfo getBuiltinInfo(int bfid)
     case LBF_VECTOR_MIN:
     case LBF_VECTOR_MAX:
         return {-1, 1}; // variadic
+
+    case LBF_MATH_LERP:
+        LUAU_ASSERT(FFlag::LuauCompileMathLerp);
+        return {3, 1, BuiltinInfo::Flag_NoneSafe};
     }
 
     LUAU_UNREACHABLE();

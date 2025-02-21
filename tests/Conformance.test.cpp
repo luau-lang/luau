@@ -31,16 +31,16 @@ extern int optimizationLevel;
 void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
-LUAU_FASTFLAG(LuauMathMap)
+LUAU_FASTFLAG(LuauMathLerp)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
-LUAU_FASTFLAG(LuauVectorDefinitions)
-LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoInvArgLeftovers)
 LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauVectorBuiltins)
-LUAU_FASTFLAG(LuauVectorMetatable)
+LUAU_FASTFLAG(LuauVector2Constructor)
+LUAU_FASTFLAG(LuauBufferBitMethods2)
+LUAU_FASTFLAG(LuauCodeGenLimitLiveSlotReuse)
+LUAU_FASTFLAG(LuauMathMapDefinition)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -654,12 +654,14 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
+    ScopedFastFlag luauBufferBitMethods{FFlag::LuauBufferBitMethods2, true};
+
     runConformance("buffers.luau");
 }
 
 TEST_CASE("Math")
 {
-    ScopedFastFlag LuauMathMap{FFlag::LuauMathMap, true};
+    ScopedFastFlag LuauMathLerp{FFlag::LuauMathLerp, true};
 
     runConformance("math.luau");
 }
@@ -891,10 +893,9 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauVectorBuiltins{FFlag::LuauVectorBuiltins, true};
     ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
     ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
-    ScopedFastFlag luauVectorMetatable{FFlag::LuauVectorMetatable, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -911,7 +912,7 @@ TEST_CASE("VectorLibrary")
         copts.optimizationLevel = 2;
     }
 
-    runConformance("vector_library.luau", [](lua_State* L) {}, nullptr, nullptr, &copts);
+    runConformance("vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -985,7 +986,9 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauVectorDefinitions{FFlag::LuauVectorDefinitions, true};
+    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
+    ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, true};
+    ScopedFastFlag luauMathMapDefinition{FFlag::LuauMathMapDefinition, true};
 
     runConformance(
         "types.luau",
@@ -1018,9 +1021,7 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag luauDebugInfoInvArgLeftovers{DFFlag::LuauDebugInfoInvArgLeftovers, true};
-
-    runConformance("debug.luau");
+    runConformance("debug.lua");
 }
 
 TEST_CASE("Debugger")
@@ -1384,6 +1385,25 @@ TEST_CASE("ApiTables")
     // lua_rawgeti
     CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
     CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    lua_pop(L, 1);
+
+    // lua_clonetable
+    lua_clonetable(L, -1);
+
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // modify clone
+    lua_pushnumber(L, 456.0);
+    lua_rawsetfield(L, -2, "key");
+
+    // remove clone
+    lua_pop(L, 1);
+
+    // check original
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
     lua_pop(L, 1);
 
     // lua_cleartable
@@ -2576,6 +2596,8 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauCodeGenLimitLiveSlotReuse{FFlag::LuauCodeGenLimitLiveSlotReuse, true};
+
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;

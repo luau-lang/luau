@@ -9,8 +9,6 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorDeadStoreElim)
-
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
 namespace Luau
@@ -326,27 +324,19 @@ static bool tryReplaceTagWithFullStore(
         // And value store has to follow, as the pre-DSO code would not allow GC to observe an incomplete stack variable
         if (tag != LUA_TNIL && regInfo.valueInstIdx != ~0u)
         {
-            if (FFlag::LuauCodeGenVectorDeadStoreElim)
-            {
-                IrInst& prevValueInst = function.instructions[regInfo.valueInstIdx];
+            IrInst& prevValueInst = function.instructions[regInfo.valueInstIdx];
 
-                if (prevValueInst.cmd == IrCmd::STORE_VECTOR)
-                {
-                    CODEGEN_ASSERT(prevValueInst.e.kind == IrOpKind::None);
-                    IrOp prevValueX = prevValueInst.b;
-                    IrOp prevValueY = prevValueInst.c;
-                    IrOp prevValueZ = prevValueInst.d;
-                    replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, targetOp, prevValueX, prevValueY, prevValueZ, tagOp});
-                }
-                else
-                {
-                    IrOp prevValueOp = prevValueInst.b;
-                    replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, tagOp, prevValueOp});
-                }
+            if (prevValueInst.cmd == IrCmd::STORE_VECTOR)
+            {
+                CODEGEN_ASSERT(prevValueInst.e.kind == IrOpKind::None);
+                IrOp prevValueX = prevValueInst.b;
+                IrOp prevValueY = prevValueInst.c;
+                IrOp prevValueZ = prevValueInst.d;
+                replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, targetOp, prevValueX, prevValueY, prevValueZ, tagOp});
             }
             else
             {
-                IrOp prevValueOp = function.instructions[regInfo.valueInstIdx].b;
+                IrOp prevValueOp = prevValueInst.b;
                 replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, tagOp, prevValueOp});
             }
         }
@@ -385,7 +375,7 @@ static bool tryReplaceTagWithFullStore(
             state.hasGcoToClear |= regInfo.maybeGco;
             return true;
         }
-        else if (FFlag::LuauCodeGenVectorDeadStoreElim && prev.cmd == IrCmd::STORE_VECTOR)
+        else if (prev.cmd == IrCmd::STORE_VECTOR)
         {
             // If the 'nil' is stored, we keep 'STORE_TAG Rn, tnil' as it writes the 'full' TValue
             if (tag != LUA_TNIL)
@@ -455,7 +445,7 @@ static bool tryReplaceValueWithFullStore(
             regInfo.tvalueInstIdx = instIndex;
             return true;
         }
-        else if (FFlag::LuauCodeGenVectorDeadStoreElim && prev.cmd == IrCmd::STORE_VECTOR)
+        else if (prev.cmd == IrCmd::STORE_VECTOR)
         {
             IrOp prevTagOp = prev.e;
             CODEGEN_ASSERT(prevTagOp.kind != IrOpKind::None);
@@ -483,8 +473,6 @@ static bool tryReplaceVectorValueWithFullStore(
     StoreRegInfo& regInfo
 )
 {
-    CODEGEN_ASSERT(FFlag::LuauCodeGenVectorDeadStoreElim);
-
     // If the tag+value pair is established, we can mark both as dead and use a single split TValue store
     if (regInfo.tagInstIdx != ~0u && regInfo.valueInstIdx != ~0u)
     {
@@ -631,29 +619,22 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::STORE_VECTOR:
         if (inst.a.kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodeGenVectorDeadStoreElim)
-            {
-                int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(inst.a);
 
-                if (function.cfg.captured.regs.test(reg))
-                    return;
+            if (function.cfg.captured.regs.test(reg))
+                return;
 
-                StoreRegInfo& regInfo = state.info[reg];
+            StoreRegInfo& regInfo = state.info[reg];
 
-                if (tryReplaceVectorValueWithFullStore(state, build, function, block, index, regInfo))
-                    break;
+            if (tryReplaceVectorValueWithFullStore(state, build, function, block, index, regInfo))
+                break;
 
-                // Partial value store can be removed by a new one if the tag is known
-                if (regInfo.knownTag != kUnknownTag)
-                    state.killValueStore(regInfo);
+            // Partial value store can be removed by a new one if the tag is known
+            if (regInfo.knownTag != kUnknownTag)
+                state.killValueStore(regInfo);
 
-                regInfo.valueInstIdx = index;
-                regInfo.maybeGco = false;
-            }
-            else
-            {
-                state.useReg(vmRegOp(inst.a));
-            }
+            regInfo.valueInstIdx = index;
+            regInfo.maybeGco = false;
         }
         break;
     case IrCmd::STORE_TVALUE:

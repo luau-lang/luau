@@ -32,7 +32,9 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauMetatableFollow)
+LUAU_FASTFLAGVARIABLE(LuauOldSolverCreatesChildScopePointers)
+LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -761,8 +763,12 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatRepeat& state
 
 struct Demoter : Substitution
 {
-    Demoter(TypeArena* arena)
+    TypeArena* arena = nullptr;
+    NotNull<BuiltinTypes> builtins;
+    Demoter(TypeArena* arena, NotNull<BuiltinTypes> builtins)
         : Substitution(TxnLog::empty(), arena)
+        , arena(arena)
+        , builtins(builtins)
     {
     }
 
@@ -788,7 +794,8 @@ struct Demoter : Substitution
     {
         auto ftv = get<FreeType>(ty);
         LUAU_ASSERT(ftv);
-        return addType(FreeType{demotedLevel(ftv->level)});
+        return FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtins, demotedLevel(ftv->level))
+                                                  : addType(FreeType{demotedLevel(ftv->level)});
     }
 
     TypePackId clean(TypePackId tp) override
@@ -835,7 +842,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatReturn& retur
         }
     }
 
-    Demoter demoter{&currentModule->internalTypes};
+    Demoter demoter{&currentModule->internalTypes, builtinTypes};
     demoter.demote(expectedTypes);
 
     TypePackId retPack = checkExprList(scope, return_.location, return_.list, false, {}, expectedTypes).type;
@@ -2799,10 +2806,10 @@ TypeId TypeChecker::checkRelationalOperation(
                 reportError(
                     expr.location,
                     GenericError{
-                    format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
-                }
-                    );
-                }
+                        format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(), toString(expr.op).c_str())
+                    }
+                );
+            }
 
             return booleanType;
         }
@@ -2866,7 +2873,7 @@ TypeId TypeChecker::checkRelationalOperation(
             std::optional<TypeId> metamethod = findMetatableEntry(lhsType, metamethodName, expr.location, /* addErrors= */ true);
             if (metamethod)
             {
-                if (const FunctionType* ftv = get<FunctionType>(FFlag::LuauMetatableFollow ? follow(*metamethod) : *metamethod))
+                if (const FunctionType* ftv = get<FunctionType>(follow(*metamethod)))
                 {
                     if (isEquality)
                     {
@@ -4408,7 +4415,7 @@ std::vector<std::optional<TypeId>> TypeChecker::getExpectedTypesForCall(const st
         }
     }
 
-    Demoter demoter{&currentModule->internalTypes};
+    Demoter demoter{&currentModule->internalTypes, builtinTypes};
     demoter.demote(expectedTypes);
 
     return expectedTypes;
@@ -4506,10 +4513,10 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(
 
     // When this function type has magic functions and did return something, we select that overload instead.
     // TODO: pass in a Unifier object to the magic functions? This will allow the magic functions to cooperate with overload resolution.
-    if (ftv->magicFunction)
+    if (ftv->magic)
     {
         // TODO: We're passing in the wrong TypePackId. Should be argPack, but a unit test fails otherwise. CLI-40458
-        if (std::optional<WithPredicate<TypePackId>> ret = ftv->magicFunction(*this, scope, expr, argListResult))
+        if (std::optional<WithPredicate<TypePackId>> ret = ftv->magic->handleOldSolver(*this, scope, expr, argListResult))
             return std::make_unique<WithPredicate<TypePackId>>(std::move(*ret));
     }
 
@@ -5205,6 +5212,13 @@ LUAU_NOINLINE void TypeChecker::reportErrorCodeTooComplex(const Location& locati
 ScopePtr TypeChecker::childFunctionScope(const ScopePtr& parent, const Location& location, int subLevel)
 {
     ScopePtr scope = std::make_shared<Scope>(parent, subLevel);
+    if (FFlag::LuauOldSolverCreatesChildScopePointers)
+    {
+        scope->location = location;
+        scope->returnType = parent->returnType;
+        parent->children.emplace_back(scope.get());
+    }
+
     currentModule->scopes.push_back(std::make_pair(location, scope));
     return scope;
 }
@@ -5215,6 +5229,12 @@ ScopePtr TypeChecker::childScope(const ScopePtr& parent, const Location& locatio
     ScopePtr scope = std::make_shared<Scope>(parent);
     scope->level = parent->level;
     scope->varargPack = parent->varargPack;
+    if (FFlag::LuauOldSolverCreatesChildScopePointers)
+    {
+        scope->location = location;
+        scope->returnType = parent->returnType;
+        parent->children.emplace_back(scope.get());
+    }
 
     currentModule->scopes.push_back(std::make_pair(location, scope));
     return scope;
@@ -5260,7 +5280,8 @@ TypeId TypeChecker::freshType(const ScopePtr& scope)
 
 TypeId TypeChecker::freshType(TypeLevel level)
 {
-    return currentModule->internalTypes.addType(Type(FreeType(level)));
+    return FFlag::LuauFreeTypesMustHaveBounds ? currentModule->internalTypes.freshType(builtinTypes, level)
+                                              : currentModule->internalTypes.addType(Type(FreeType(level)));
 }
 
 TypeId TypeChecker::singletonType(bool value)
@@ -5705,6 +5726,12 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {
+        if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+        {
+            if (un->types.size == 1)
+                return resolveType(scope, *un->types.data[0]);
+        }
+
         std::vector<TypeId> types;
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
@@ -5713,11 +5740,21 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     }
     else if (const auto& un = annotation.as<AstTypeIntersection>())
     {
+        if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+        {
+            if (un->types.size == 1)
+                return resolveType(scope, *un->types.data[0]);
+        }
+
         std::vector<TypeId> types;
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
 
         return addType(IntersectionType{types});
+    }
+    else if (const auto& g = annotation.as<AstTypeGroup>())
+    {
+        return resolveType(scope, *g->type);
     }
     else if (const auto& tsb = annotation.as<AstTypeSingletonBool>())
     {

@@ -22,7 +22,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
-LUAU_FASTFLAGVARIABLE(LuauRetrySubtypingWithoutHiddenPack)
 
 namespace Luau
 {
@@ -396,12 +395,14 @@ TypePackId* SubtypingEnvironment::getMappedPackBounds(TypePackId tp)
 Subtyping::Subtyping(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> typeArena,
+    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter
 )
     : builtinTypes(builtinTypes)
     , arena(typeArena)
+    , simplifier(simplifier)
     , normalizer(normalizer)
     , typeFunctionRuntime(typeFunctionRuntime)
     , iceReporter(iceReporter)
@@ -1472,15 +1473,14 @@ SubtypingResult Subtyping::isCovariantWith(
 
         // If subtyping failed in the argument packs, we should check if there's a hidden variadic tail and try ignoring it.
         // This might cause subtyping correctly because the sub type here may not have a hidden variadic tail or equivalent.
-        if (FFlag::LuauRetrySubtypingWithoutHiddenPack && !result.isSubtype)
+        if (!result.isSubtype)
         {
             auto [arguments, tail] = flatten(superFunction->argTypes);
 
             if (auto variadic = get<VariadicTypePack>(tail); variadic && variadic->hidden)
             {
-                result.orElse(
-                    isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope).withBothComponent(TypePath::PackField::Arguments)
-                );
+                result.orElse(isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope)
+                                  .withBothComponent(TypePath::PackField::Arguments));
             }
         }
     }
@@ -1861,7 +1861,7 @@ TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
 
 std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const TypeFunctionInstanceType* functionInstance, NotNull<Scope> scope)
 {
-    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, iceReporter, NotNull{&limits}};
+    TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, iceReporter, NotNull{&limits}};
     TypeId function = arena->addType(*functionInstance);
     FunctionGraphReductionResult result = reduceTypeFunctions(function, {}, context, true);
     ErrorVec errors;

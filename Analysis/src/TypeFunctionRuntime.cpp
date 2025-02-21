@@ -14,9 +14,9 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixRegister)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixNoReadWrite)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunThreadBuffer)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunFixInner)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunGenerics)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunCloneTail)
 
 namespace Luau
 {
@@ -134,11 +134,9 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "number";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
         return "string";
-    else if (auto s = get<TypeFunctionPrimitiveType>(ty);
-             FFlag::LuauUserTypeFunThreadBuffer && s && s->type == TypeFunctionPrimitiveType::Type::Thread)
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Thread)
         return "thread";
-    else if (auto s = get<TypeFunctionPrimitiveType>(ty);
-             FFlag::LuauUserTypeFunThreadBuffer && s && s->type == TypeFunctionPrimitiveType::Type::Buffer)
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Buffer)
         return "buffer";
     else if (get<TypeFunctionUnknownType>(ty))
         return "unknown";
@@ -160,6 +158,8 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "function";
     else if (get<TypeFunctionClassType>(ty))
         return "class";
+    else if (FFlag::LuauUserTypeFunGenerics && get<TypeFunctionGenericType>(ty))
+        return "generic";
 
     LUAU_UNREACHABLE();
     luaL_error(L, "VM encountered unexpected type variant when determining tag");
@@ -264,6 +264,20 @@ static int createSingleton(lua_State* L)
     }
 
     luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
+}
+
+// Luau: `types.generic(name: string, ispack: boolean?) -> type
+// Create a generic type with the specified type. If an optinal boolean is set to true, result is a generic pack
+static int createGeneric(lua_State* L)
+{
+    const char* name = luaL_checkstring(L, 1);
+    bool isPack = luaL_optboolean(L, 2, false);
+
+    if (strlen(name) == 0)
+        luaL_error(L, "types.generic: generic name cannot be empty");
+
+    allocTypeUserData(L, TypeFunctionGenericType{/* isNamed */ true, isPack, name});
+    return 1;
 }
 
 // Luau: `self:value() -> type`
@@ -413,10 +427,21 @@ static int getNegatedValue(lua_State* L)
         luaL_error(L, "type.inner: expected 1 argument, but got %d", argumentCount);
 
     TypeFunctionTypeId self = getTypeUserData(L, 1);
-    if (auto tfnt = get<TypeFunctionNegationType>(self); !tfnt)
-        allocTypeUserData(L, tfnt->type->type);
+    
+    if (FFlag::LuauUserTypeFunFixInner)
+    {
+        if (auto tfnt = get<TypeFunctionNegationType>(self); tfnt)
+            allocTypeUserData(L, tfnt->type->type);
+        else
+            luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
+    }
     else
-        luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
+    {
+        if (auto tfnt = get<TypeFunctionNegationType>(self); !tfnt)
+            allocTypeUserData(L, tfnt->type->type);
+        else
+            luaL_error(L, "type.inner: cannot call inner method on non-negation type: `%s` type", getTag(L, self).c_str());
+    }
 
     return 1;
 }
@@ -657,10 +682,8 @@ static int readTableProp(lua_State* L)
     auto prop = tftt->props.at(tfsst->value);
     if (prop.readTy)
         allocTypeUserData(L, (*prop.readTy)->type);
-    else if (FFlag::LuauUserTypeFunFixNoReadWrite)
-        lua_pushnil(L);
     else
-        luaL_error(L, "type.readproperty: property %s is write-only, and therefore does not have a read type.", tfsst->value.c_str());
+        lua_pushnil(L);
 
     return 1;
 }
@@ -697,10 +720,8 @@ static int writeTableProp(lua_State* L)
     auto prop = tftt->props.at(tfsst->value);
     if (prop.writeTy)
         allocTypeUserData(L, (*prop.writeTy)->type);
-    else if (FFlag::LuauUserTypeFunFixNoReadWrite)
-        lua_pushnil(L);
     else
-        luaL_error(L, "type.writeproperty: property %s is read-only, and therefore does not have a write type.", tfsst->value.c_str());
+        lua_pushnil(L);
 
     return 1;
 }
@@ -768,9 +789,159 @@ static int setTableMetatable(lua_State* L)
     return 0;
 }
 
-// Luau: `types.newfunction(parameters: {head: {type}?, tail: type?}, returns: {head: {type}?, tail: type?}) -> type`
-// Returns the type instance representing a function
-static int createFunction(lua_State* L)
+static std::tuple<std::vector<TypeFunctionTypeId>, std::vector<TypeFunctionTypePackId>> getGenerics(lua_State* L, int idx, const char* fname)
+{
+    std::vector<TypeFunctionTypeId> types;
+    std::vector<TypeFunctionTypePackId> packs;
+
+    if (lua_istable(L, idx))
+    {
+        lua_pushvalue(L, idx);
+
+        for (int i = 1; i <= lua_objlen(L, -1); i++)
+        {
+            lua_pushinteger(L, i);
+            lua_gettable(L, -2);
+
+            if (lua_isnil(L, -1))
+            {
+                lua_pop(L, 1);
+                break;
+            }
+
+            TypeFunctionTypeId ty = getTypeUserData(L, -1);
+
+            if (auto gty = get<TypeFunctionGenericType>(ty))
+            {
+                if (gty->isPack)
+                {
+                    packs.push_back(allocateTypeFunctionTypePack(L, TypeFunctionGenericTypePack{gty->isNamed, gty->name}));
+                }
+                else
+                {
+                    if (!packs.empty())
+                        luaL_error(L, "%s: generic type cannot follow a generic pack", fname);
+
+                    types.push_back(ty);
+                }
+            }
+            else
+            {
+                luaL_error(L, "%s: table member was not a generic type", fname);
+            }
+
+            lua_pop(L, 1);
+        }
+
+        lua_pop(L, 1);
+    }
+    else if (!lua_isnoneornil(L, idx))
+    {
+        luaL_typeerrorL(L, idx, "table");
+    }
+
+    return {types, packs};
+}
+
+static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx)
+{
+    TypeFunctionTypePackId result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{});
+
+    std::vector<TypeFunctionTypeId> head;
+
+    if (lua_istable(L, headIdx))
+    {
+        lua_pushvalue(L, headIdx);
+
+        for (int i = 1; i <= lua_objlen(L, -1); i++)
+        {
+            lua_pushinteger(L, i);
+            lua_gettable(L, -2);
+
+            if (lua_isnil(L, -1))
+            {
+                lua_pop(L, 1);
+                break;
+            }
+
+            head.push_back(getTypeUserData(L, -1));
+            lua_pop(L, 1);
+        }
+
+        lua_pop(L, 1);
+    }
+
+    std::optional<TypeFunctionTypePackId> tail;
+
+    if (auto type = optionalTypeUserData(L, tailIdx))
+    {
+        if (auto gty = get<TypeFunctionGenericType>(*type); gty && gty->isPack)
+            tail = allocateTypeFunctionTypePack(L, TypeFunctionGenericTypePack{gty->isNamed, gty->name});
+        else
+            tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
+    }
+
+    if (head.size() == 0 && tail.has_value())
+        result = *tail;
+    else
+        result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{head, tail});
+
+    return result;
+}
+
+static void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
+{
+    if (auto tftp = get<TypeFunctionTypePack>(tp))
+    {
+        lua_createtable(L, 0, 2);
+
+        if (!tftp->head.empty())
+        {
+            lua_createtable(L, int(tftp->head.size()), 0);
+            int pos = 1;
+
+            for (auto el : tftp->head)
+            {
+                allocTypeUserData(L, el->type);
+                lua_rawseti(L, -2, pos++);
+            }
+
+            lua_setfield(L, -2, "head");
+        }
+
+        if (tftp->tail.has_value())
+        {
+            if (auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail))
+                allocTypeUserData(L, tfvp->type->type);
+            else if (auto tfgp = get<TypeFunctionGenericTypePack>(*tftp->tail))
+                allocTypeUserData(L, TypeFunctionGenericType{tfgp->isNamed, true, tfgp->name});
+            else
+                luaL_error(L, "unsupported type pack type");
+
+            lua_setfield(L, -2, "tail");
+        }
+    }
+    else if (auto tfvp = get<TypeFunctionVariadicTypePack>(tp))
+    {
+        lua_createtable(L, 0, 1);
+
+        allocTypeUserData(L, tfvp->type->type);
+        lua_setfield(L, -2, "tail");
+    }
+    else if (auto tfgp = get<TypeFunctionGenericTypePack>(tp))
+    {
+        lua_createtable(L, 0, 1);
+
+        allocTypeUserData(L, TypeFunctionGenericType{tfgp->isNamed, true, tfgp->name});
+        lua_setfield(L, -2, "tail");
+    }
+    else
+    {
+        luaL_error(L, "unsupported type pack type");
+    }
+}
+
+static int createFunction_DEPRECATED(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
     if (argumentCount > 2)
@@ -858,7 +1029,62 @@ static int createFunction(lua_State* L)
     else if (!lua_isnoneornil(L, 2))
         luaL_typeerrorL(L, 2, "table");
 
-    allocTypeUserData(L, TypeFunctionFunctionType{argTypes, retTypes});
+    allocTypeUserData(L, TypeFunctionFunctionType{{}, {}, argTypes, retTypes});
+
+    return 1;
+}
+
+// Luau: `types.newfunction(parameters: {head: {type}?, tail: type?}, returns: {head: {type}?, tail: type?}, generics: {type}?) -> type`
+// Returns the type instance representing a function
+static int createFunction(lua_State* L)
+{
+    int argumentCount = lua_gettop(L);
+    if (argumentCount > 3)
+        luaL_error(L, "types.newfunction: expected 0-3 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypePackId argTypes = nullptr;
+
+    if (lua_istable(L, 1))
+    {
+        lua_getfield(L, 1, "head");
+        lua_getfield(L, 1, "tail");
+
+        argTypes = getTypePack(L, -2, -1);
+
+        lua_pop(L, 2);
+    }
+    else if (!lua_isnoneornil(L, 1))
+    {
+        luaL_typeerrorL(L, 1, "table");
+    }
+    else
+    {
+        argTypes = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{});
+    }
+
+    TypeFunctionTypePackId retTypes = nullptr;
+
+    if (lua_istable(L, 2))
+    {
+        lua_getfield(L, 2, "head");
+        lua_getfield(L, 2, "tail");
+
+        retTypes = getTypePack(L, -2, -1);
+
+        lua_pop(L, 2);
+    }
+    else if (!lua_isnoneornil(L, 2))
+    {
+        luaL_typeerrorL(L, 2, "table");
+    }
+    else
+    {
+        retTypes = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{});
+    }
+
+    auto [genericTypes, genericPacks] = getGenerics(L, 3, "types.newfunction");
+
+    allocTypeUserData(L, TypeFunctionFunctionType{std::move(genericTypes), std::move(genericPacks), argTypes, retTypes});
 
     return 1;
 }
@@ -876,38 +1102,45 @@ static int setFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setparameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    std::vector<TypeFunctionTypeId> head{};
-    if (lua_istable(L, 2))
+    if (FFlag::LuauUserTypeFunGenerics)
     {
-        int argSize = lua_objlen(L, 2);
-        for (int i = 1; i <= argSize; i++)
-        {
-            lua_pushinteger(L, i);
-            lua_gettable(L, 2);
-
-            if (lua_isnil(L, -1))
-            {
-                lua_pop(L, 1);
-                break;
-            }
-
-            TypeFunctionTypeId ty = getTypeUserData(L, -1);
-            head.push_back(ty);
-
-            lua_pop(L, 1); // Remove `ty` from stack
-        }
+        tfft->argTypes = getTypePack(L, 2, 3);
     }
-    else if (!lua_isnoneornil(L, 2))
-        luaL_typeerrorL(L, 2, "table");
+    else
+    {
+        std::vector<TypeFunctionTypeId> head{};
+        if (lua_istable(L, 2))
+        {
+            int argSize = lua_objlen(L, 2);
+            for (int i = 1; i <= argSize; i++)
+            {
+                lua_pushinteger(L, i);
+                lua_gettable(L, 2);
 
-    std::optional<TypeFunctionTypePackId> tail;
-    if (auto type = optionalTypeUserData(L, 3))
-        tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
+                if (lua_isnil(L, -1))
+                {
+                    lua_pop(L, 1);
+                    break;
+                }
 
-    if (head.size() == 0 && tail.has_value()) // Make argTypes a variadic type pack
-        tfft->argTypes = *tail;
-    else // Make argTypes a type pack
-        tfft->argTypes = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{head, tail});
+                TypeFunctionTypeId ty = getTypeUserData(L, -1);
+                head.push_back(ty);
+
+                lua_pop(L, 1); // Remove `ty` from stack
+            }
+        }
+        else if (!lua_isnoneornil(L, 2))
+            luaL_typeerrorL(L, 2, "table");
+
+        std::optional<TypeFunctionTypePackId> tail;
+        if (auto type = optionalTypeUserData(L, 3))
+            tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
+
+        if (head.size() == 0 && tail.has_value()) // Make argTypes a variadic type pack
+            tfft->argTypes = *tail;
+        else // Make argTypes a type pack
+            tfft->argTypes = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{head, tail});
+    }
 
     return 0;
 }
@@ -925,52 +1158,60 @@ static int getFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.parameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    if (auto tftp = get<TypeFunctionTypePack>(tfft->argTypes))
+    if (FFlag::LuauUserTypeFunGenerics)
     {
-        int size = 0;
-        if (tftp->head.size() > 0)
-            size++;
-        if (tftp->tail.has_value())
-            size++;
-
-        lua_createtable(L, 0, size);
-
-        int argSize = (int)tftp->head.size();
-        if (argSize > 0)
+        pushTypePack(L, tfft->argTypes);
+    }
+    else
+    {
+        if (auto tftp = get<TypeFunctionTypePack>(tfft->argTypes))
         {
-            lua_createtable(L, argSize, 0);
-            for (int i = 0; i < argSize; i++)
+            int size = 0;
+            if (tftp->head.size() > 0)
+                size++;
+            if (tftp->tail.has_value())
+                size++;
+
+            lua_createtable(L, 0, size);
+
+            int argSize = (int)tftp->head.size();
+            if (argSize > 0)
             {
-                allocTypeUserData(L, tftp->head[i]->type);
-                lua_rawseti(L, -2, i + 1); // Luau is 1-indexed while C++ is 0-indexed
+                lua_createtable(L, argSize, 0);
+                for (int i = 0; i < argSize; i++)
+                {
+                    allocTypeUserData(L, tftp->head[i]->type);
+                    lua_rawseti(L, -2, i + 1); // Luau is 1-indexed while C++ is 0-indexed
+                }
+                lua_setfield(L, -2, "head");
             }
-            lua_setfield(L, -2, "head");
+
+            if (tftp->tail.has_value())
+            {
+                auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail);
+                if (!tfvp)
+                    LUAU_ASSERT(!"We should only be supporting variadic packs as TypeFunctionTypePack.tail at the moment");
+
+                allocTypeUserData(L, tfvp->type->type);
+                lua_setfield(L, -2, "tail");
+            }
+
+            return 1;
         }
 
-        if (tftp->tail.has_value())
+        if (auto tfvp = get<TypeFunctionVariadicTypePack>(tfft->argTypes))
         {
-            auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail);
-            if (!tfvp)
-                LUAU_ASSERT(!"We should only be supporting variadic packs as TypeFunctionTypePack.tail at the moment");
+            lua_createtable(L, 0, 1);
 
             allocTypeUserData(L, tfvp->type->type);
             lua_setfield(L, -2, "tail");
+
+            return 1;
         }
 
-        return 1;
+        lua_createtable(L, 0, 0);
     }
 
-    if (auto tfvp = get<TypeFunctionVariadicTypePack>(tfft->argTypes))
-    {
-        lua_createtable(L, 0, 1);
-
-        allocTypeUserData(L, tfvp->type->type);
-        lua_setfield(L, -2, "tail");
-
-        return 1;
-    }
-
-    lua_createtable(L, 0, 0);
     return 1;
 }
 
@@ -987,38 +1228,45 @@ static int setFunctionReturns(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setreturns: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    std::vector<TypeFunctionTypeId> head{};
-    if (lua_istable(L, 2))
+    if (FFlag::LuauUserTypeFunGenerics)
     {
-        int argSize = lua_objlen(L, 2);
-        for (int i = 1; i <= argSize; i++)
-        {
-            lua_pushinteger(L, i);
-            lua_gettable(L, 2);
-
-            if (lua_isnil(L, -1))
-            {
-                lua_pop(L, 1);
-                break;
-            }
-
-            TypeFunctionTypeId ty = getTypeUserData(L, -1);
-            head.push_back(ty);
-
-            lua_pop(L, 1); // Remove `ty` from stack
-        }
+        tfft->retTypes = getTypePack(L, 2, 3);
     }
-    else if (!lua_isnoneornil(L, 2))
-        luaL_typeerrorL(L, 2, "table");
+    else
+    {
+        std::vector<TypeFunctionTypeId> head{};
+        if (lua_istable(L, 2))
+        {
+            int argSize = lua_objlen(L, 2);
+            for (int i = 1; i <= argSize; i++)
+            {
+                lua_pushinteger(L, i);
+                lua_gettable(L, 2);
 
-    std::optional<TypeFunctionTypePackId> tail;
-    if (auto type = optionalTypeUserData(L, 3))
-        tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
+                if (lua_isnil(L, -1))
+                {
+                    lua_pop(L, 1);
+                    break;
+                }
 
-    if (head.size() == 0 && tail.has_value()) // Make retTypes a variadic type pack
-        tfft->retTypes = *tail;
-    else // Make retTypes a type pack
-        tfft->retTypes = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{head, tail});
+                TypeFunctionTypeId ty = getTypeUserData(L, -1);
+                head.push_back(ty);
+
+                lua_pop(L, 1); // Remove `ty` from stack
+            }
+        }
+        else if (!lua_isnoneornil(L, 2))
+            luaL_typeerrorL(L, 2, "table");
+
+        std::optional<TypeFunctionTypePackId> tail;
+        if (auto type = optionalTypeUserData(L, 3))
+            tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
+
+        if (head.size() == 0 && tail.has_value()) // Make retTypes a variadic type pack
+            tfft->retTypes = *tail;
+        else // Make retTypes a type pack
+            tfft->retTypes = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{head, tail});
+    }
 
     return 0;
 }
@@ -1036,52 +1284,109 @@ static int getFunctionReturns(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.returns: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    if (auto tftp = get<TypeFunctionTypePack>(tfft->retTypes))
+    if (FFlag::LuauUserTypeFunGenerics)
     {
-        int size = 0;
-        if (tftp->head.size() > 0)
-            size++;
-        if (tftp->tail.has_value())
-            size++;
-
-        lua_createtable(L, 0, size);
-
-        int argSize = (int)tftp->head.size();
-        if (argSize > 0)
+        pushTypePack(L, tfft->retTypes);
+    }
+    else
+    {
+        if (auto tftp = get<TypeFunctionTypePack>(tfft->retTypes))
         {
-            lua_createtable(L, argSize, 0);
-            for (int i = 0; i < argSize; i++)
+            int size = 0;
+            if (tftp->head.size() > 0)
+                size++;
+            if (tftp->tail.has_value())
+                size++;
+
+            lua_createtable(L, 0, size);
+
+            int argSize = (int)tftp->head.size();
+            if (argSize > 0)
             {
-                allocTypeUserData(L, tftp->head[i]->type);
-                lua_rawseti(L, -2, i + 1); // Luau is 1-indexed while C++ is 0-indexed
+                lua_createtable(L, argSize, 0);
+                for (int i = 0; i < argSize; i++)
+                {
+                    allocTypeUserData(L, tftp->head[i]->type);
+                    lua_rawseti(L, -2, i + 1); // Luau is 1-indexed while C++ is 0-indexed
+                }
+                lua_setfield(L, -2, "head");
             }
-            lua_setfield(L, -2, "head");
+
+            if (tftp->tail.has_value())
+            {
+                auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail);
+                if (!tfvp)
+                    LUAU_ASSERT(!"We should only be supporting variadic packs as TypeFunctionTypePack.tail at the moment");
+
+                allocTypeUserData(L, tfvp->type->type);
+                lua_setfield(L, -2, "tail");
+            }
+
+            return 1;
         }
 
-        if (tftp->tail.has_value())
+        if (auto tfvp = get<TypeFunctionVariadicTypePack>(tfft->retTypes))
         {
-            auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail);
-            if (!tfvp)
-                LUAU_ASSERT(!"We should only be supporting variadic packs as TypeFunctionTypePack.tail at the moment");
+            lua_createtable(L, 0, 1);
 
             allocTypeUserData(L, tfvp->type->type);
             lua_setfield(L, -2, "tail");
+
+            return 1;
         }
 
-        return 1;
+        lua_createtable(L, 0, 0);
     }
 
-    if (auto tfvp = get<TypeFunctionVariadicTypePack>(tfft->retTypes))
+    return 1;
+}
+
+// Luau: `self:setgenerics(generics: {type}?)`
+static int setFunctionGenerics(lua_State* L)
+{
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfft = getMutable<TypeFunctionFunctionType>(self);
+    if (!tfft)
+        luaL_error(L, "type.setgenerics: expected self to be a function, but got %s instead", getTag(L, self).c_str());
+
+    int argumentCount = lua_gettop(L);
+    if (argumentCount > 3)
+        luaL_error(L, "type.setgenerics: expected 3 arguments, but got %d", argumentCount);
+
+    auto [genericTypes, genericPacks] = getGenerics(L, 2, "types.setgenerics");
+
+    tfft->generics = std::move(genericTypes);
+    tfft->genericPacks = std::move(genericPacks);
+
+    return 0;
+}
+
+// Luau: `self:generics() -> {type}`
+static int getFunctionGenerics(lua_State* L)
+{
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfft = get<TypeFunctionFunctionType>(self);
+    if (!tfft)
+        luaL_error(L, "type.generics: expected self to be a function, but got %s instead", getTag(L, self).c_str());
+
+    lua_createtable(L, int(tfft->generics.size()) + int(tfft->genericPacks.size()), 0);
+
+    int pos = 1;
+
+    for (const auto& el : tfft->generics)
     {
-        lua_createtable(L, 0, 1);
-
-        allocTypeUserData(L, tfvp->type->type);
-        lua_setfield(L, -2, "tail");
-
-        return 1;
+        allocTypeUserData(L, el->type);
+        lua_rawseti(L, -2, pos++);
     }
 
-    lua_createtable(L, 0, 0);
+    for (const auto& el : tfft->genericPacks)
+    {
+        auto gty = get<TypeFunctionGenericTypePack>(el);
+        LUAU_ASSERT(gty);
+        allocTypeUserData(L, TypeFunctionGenericType{gty->isNamed, true, gty->name});
+        lua_rawseti(L, -2, pos++);
+    }
+
     return 1;
 }
 
@@ -1104,6 +1409,36 @@ static int getClassParent(lua_State* L)
     else
         allocTypeUserData(L, (*tfct->parent)->type);
 
+    return 1;
+}
+
+// Luau: `self:name() -> string?`
+// Returns the name of the generic or 'nil' if the generic is unnamed
+static int getGenericName(lua_State* L)
+{
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfgt = get<TypeFunctionGenericType>(self);
+    if (!tfgt)
+        luaL_error(L, "type.name: expected self to be a generic, but got %s instead", getTag(L, self).c_str());
+
+    if (tfgt->isNamed)
+        lua_pushstring(L, tfgt->name.c_str());
+    else
+        lua_pushnil(L);
+
+    return 1;
+}
+
+// Luau: `self:ispack() -> boolean`
+// Returns true if the generic is a pack
+static int getGenericIsPack(lua_State* L)
+{
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfgt = get<TypeFunctionGenericType>(self);
+    if (!tfgt)
+        luaL_error(L, "type.ispack: expected self to be a generic, but got %s instead", getTag(L, self).c_str());
+
+    lua_pushboolean(L, tfgt->isPack);
     return 1;
 }
 
@@ -1376,7 +1711,7 @@ static int checkTag(lua_State* L)
 
 TypeFunctionTypeId deepClone(NotNull<TypeFunctionRuntime> runtime, TypeFunctionTypeId ty); // Forward declaration
 
-// Luau: `types.copy(arg: string) -> type`
+// Luau: `types.copy(arg: type) -> type`
 // Returns a deep copy of the argument
 static int deepCopy(lua_State* L)
 {
@@ -1408,8 +1743,6 @@ static int isEqualToType(lua_State* L)
 
 void registerTypesLibrary(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauUserTypeFunFixRegister);
-
     luaL_Reg fields[] = {
         {"unknown", createUnknown},
         {"never", createNever},
@@ -1417,8 +1750,8 @@ void registerTypesLibrary(lua_State* L)
         {"boolean", createBoolean},
         {"number", createNumber},
         {"string", createString},
-        {FFlag::LuauUserTypeFunThreadBuffer ? "thread" : nullptr, FFlag::LuauUserTypeFunThreadBuffer ? createThread : nullptr},
-        {FFlag::LuauUserTypeFunThreadBuffer ? "buffer" : nullptr, FFlag::LuauUserTypeFunThreadBuffer ? createBuffer : nullptr},
+        {"thread", createThread},
+        {"buffer", createBuffer},
         {nullptr, nullptr}
     };
 
@@ -1428,8 +1761,9 @@ void registerTypesLibrary(lua_State* L)
         {"unionof", createUnion},
         {"intersectionof", createIntersection},
         {"newtable", createTable},
-        {"newfunction", createFunction},
+        {"newfunction", FFlag::LuauUserTypeFunGenerics ? createFunction : createFunction_DEPRECATED},
         {"copy", deepCopy},
+        {FFlag::LuauUserTypeFunGenerics ? "generic" : nullptr, FFlag::LuauUserTypeFunGenerics ? createGeneric : nullptr},
 
         {nullptr, nullptr}
     };
@@ -1464,167 +1798,106 @@ static int typeUserdataIndex(lua_State* L)
 
 void registerTypeUserData(lua_State* L)
 {
-    if (FFlag::LuauUserTypeFunFixRegister)
-    {
-        luaL_Reg typeUserdataMethods[] = {
-            {"is", checkTag},
+    luaL_Reg typeUserdataMethods[] = {
+        {"is", checkTag},
 
-            // Negation type methods
-            {"inner", getNegatedValue},
+        // Negation type methods
+        {"inner", getNegatedValue},
 
-            // Singleton type methods
-            {"value", getSingletonValue},
+        // Singleton type methods
+        {"value", getSingletonValue},
 
-            // Table type methods
-            {"setproperty", setTableProp},
-            {"setreadproperty", setReadTableProp},
-            {"setwriteproperty", setWriteTableProp},
-            {"readproperty", readTableProp},
-            {"writeproperty", writeTableProp},
-            {"properties", getProps},
-            {"setindexer", setTableIndexer},
-            {"setreadindexer", setTableReadIndexer},
-            {"setwriteindexer", setTableWriteIndexer},
-            {"indexer", getIndexer},
-            {"readindexer", getReadIndexer},
-            {"writeindexer", getWriteIndexer},
-            {"setmetatable", setTableMetatable},
-            {"metatable", getMetatable},
+        // Table type methods
+        {"setproperty", setTableProp},
+        {"setreadproperty", setReadTableProp},
+        {"setwriteproperty", setWriteTableProp},
+        {"readproperty", readTableProp},
+        {"writeproperty", writeTableProp},
+        {"properties", getProps},
+        {"setindexer", setTableIndexer},
+        {"setreadindexer", setTableReadIndexer},
+        {"setwriteindexer", setTableWriteIndexer},
+        {"indexer", getIndexer},
+        {"readindexer", getReadIndexer},
+        {"writeindexer", getWriteIndexer},
+        {"setmetatable", setTableMetatable},
+        {"metatable", getMetatable},
 
-            // Function type methods
-            {"setparameters", setFunctionParameters},
-            {"parameters", getFunctionParameters},
-            {"setreturns", setFunctionReturns},
-            {"returns", getFunctionReturns},
+        // Function type methods
+        {"setparameters", setFunctionParameters},
+        {"parameters", getFunctionParameters},
+        {"setreturns", setFunctionReturns},
+        {"returns", getFunctionReturns},
+        {"setgenerics", setFunctionGenerics},
+        {"generics", getFunctionGenerics},
 
-            // Union and Intersection type methods
-            {"components", getComponents},
+        // Union and Intersection type methods
+        {"components", getComponents},
 
-            // Class type methods
-            {"parent", getClassParent},
+        // Class type methods
+        {"parent", getClassParent},
 
-            {nullptr, nullptr}
-        };
+        // Function type methods (cont.)
+        {FFlag::LuauUserTypeFunGenerics ? "setgenerics" : nullptr, FFlag::LuauUserTypeFunGenerics ? setFunctionGenerics : nullptr},
+        {FFlag::LuauUserTypeFunGenerics ? "generics" : nullptr, FFlag::LuauUserTypeFunGenerics ? getFunctionGenerics : nullptr},
 
-        // Create and register metatable for type userdata
-        luaL_newmetatable(L, "type");
+        // Generic type methods
+        {FFlag::LuauUserTypeFunGenerics ? "name" : nullptr, FFlag::LuauUserTypeFunGenerics ? getGenericName : nullptr},
+        {FFlag::LuauUserTypeFunGenerics ? "ispack" : nullptr, FFlag::LuauUserTypeFunGenerics ? getGenericIsPack : nullptr},
 
-        // Protect metatable from being changed
-        lua_pushstring(L, "The metatable is locked");
-        lua_setfield(L, -2, "__metatable");
+        {nullptr, nullptr}
+    };
 
-        lua_pushcfunction(L, isEqualToType, "__eq");
-        lua_setfield(L, -2, "__eq");
+    // Create and register metatable for type userdata
+    luaL_newmetatable(L, "type");
 
-        // Indexing will be a dynamic function because some type fields are dynamic
-        lua_newtable(L);
-        luaL_register(L, nullptr, typeUserdataMethods);
-        lua_setreadonly(L, -1, true);
-        lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
-        lua_setfield(L, -2, "__index");
+    // Protect metatable from being changed
+    lua_pushstring(L, "The metatable is locked");
+    lua_setfield(L, -2, "__metatable");
 
-        lua_setreadonly(L, -1, true);
-        lua_pop(L, 1);
-    }
-    else
-    {
-        // List of fields for type userdata
-        luaL_Reg typeUserdataFields[] = {
-            {"unknown", createUnknown},
-            {"never", createNever},
-            {"any", createAny},
-            {"boolean", createBoolean},
-            {"number", createNumber},
-            {"string", createString},
-            {nullptr, nullptr}
-        };
+    lua_pushcfunction(L, isEqualToType, "__eq");
+    lua_setfield(L, -2, "__eq");
 
-        // List of methods for type userdata
-        luaL_Reg typeUserdataMethods[] = {
-            {"singleton", createSingleton},
-            {"negationof", createNegation},
-            {"unionof", createUnion},
-            {"intersectionof", createIntersection},
-            {"newtable", createTable},
-            {"newfunction", createFunction},
-            {"copy", deepCopy},
+    // Indexing will be a dynamic function because some type fields are dynamic
+    lua_newtable(L);
+    luaL_register(L, nullptr, typeUserdataMethods);
+    lua_setreadonly(L, -1, true);
+    lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
+    lua_setfield(L, -2, "__index");
 
-            // Common methods
-            {"is", checkTag},
-
-            // Negation type methods
-            {"inner", getNegatedValue},
-
-            // Singleton type methods
-            {"value", getSingletonValue},
-
-            // Table type methods
-            {"setproperty", setTableProp},
-            {"setreadproperty", setReadTableProp},
-            {"setwriteproperty", setWriteTableProp},
-            {"readproperty", readTableProp},
-            {"writeproperty", writeTableProp},
-            {"properties", getProps},
-            {"setindexer", setTableIndexer},
-            {"setreadindexer", setTableReadIndexer},
-            {"setwriteindexer", setTableWriteIndexer},
-            {"indexer", getIndexer},
-            {"readindexer", getReadIndexer},
-            {"writeindexer", getWriteIndexer},
-            {"setmetatable", setTableMetatable},
-            {"metatable", getMetatable},
-
-            // Function type methods
-            {"setparameters", setFunctionParameters},
-            {"parameters", getFunctionParameters},
-            {"setreturns", setFunctionReturns},
-            {"returns", getFunctionReturns},
-
-            // Union and Intersection type methods
-            {"components", getComponents},
-
-            // Class type methods
-            {"parent", getClassParent},
-            {"indexer", getIndexer},
-            {nullptr, nullptr}
-        };
-
-        // Create and register metatable for type userdata
-        luaL_newmetatable(L, "type");
-
-        // Protect metatable from being fetched.
-        lua_pushstring(L, "The metatable is locked");
-        lua_setfield(L, -2, "__metatable");
-
-        // Set type userdata metatable's __eq to type_equals()
-        lua_pushcfunction(L, isEqualToType, "__eq");
-        lua_setfield(L, -2, "__eq");
-
-        // Set type userdata metatable's __index to itself
-        lua_pushvalue(L, -1); // Push a copy of type userdata metatable
-        lua_setfield(L, -2, "__index");
-
-        luaL_register(L, nullptr, typeUserdataMethods);
-
-        // Set fields for type userdata
-        for (luaL_Reg* l = typeUserdataFields; l->name; l++)
-        {
-            l->func(L);
-            lua_setfield(L, -2, l->name);
-        }
-
-        // Set types library as a global name "types"
-        lua_setglobal(L, "types");
-    }
+    lua_setreadonly(L, -1, true);
+    lua_pop(L, 1);
 
     // Sets up a destructor for the type userdata.
     lua_setuserdatadtor(L, kTypeUserdataTag, deallocTypeUserData);
 }
 
 // Used to redirect all the removed global functions to say "this function is unsupported"
-int unsupportedFunction(lua_State* L)
+static int unsupportedFunction(lua_State* L)
 {
     luaL_errorL(L, "this function is not supported in type functions");
+    return 0;
+}
+
+static int print(lua_State* L)
+{
+    std::string result;
+
+    int n = lua_gettop(L);
+    for (int i = 1; i <= n; i++)
+    {
+        size_t l = 0;
+        const char* s = luaL_tolstring(L, i, &l); // convert to string using __tostring et al
+        if (i > 1)
+            result.append('\t', 1);
+        result.append(s, l);
+        lua_pop(L, 1);
+    }
+
+    auto ctx = getTypeFunctionRuntime(L);
+
+    ctx->messages.push_back(std::move(result));
+
     return 0;
 }
 
@@ -1660,12 +1933,15 @@ void setTypeFunctionEnvironment(lua_State* L)
     lua_pop(L, 1);
 
     // Remove certain global functions from the base library
-    static const std::string unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
+    static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
     for (auto& name : unavailableGlobals)
     {
-        lua_pushcfunction(L, unsupportedFunction, "Removing global function from type function environment");
-        lua_setglobal(L, name.c_str());
+        lua_pushcfunction(L, unsupportedFunction, name);
+        lua_setglobal(L, name);
     }
+
+    lua_pushcfunction(L, print, "print");
+    lua_setglobal(L, "print");
 }
 
 void resetTypeFunctionState(lua_State* L)
@@ -1821,6 +2097,27 @@ bool areEqual(SeenSet& seen, const TypeFunctionFunctionType& lhs, const TypeFunc
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
 
+    if (FFlag::LuauUserTypeFunGenerics)
+    {
+        if (lhs.generics.size() != rhs.generics.size())
+            return false;
+
+        for (auto l = lhs.generics.begin(), r = rhs.generics.begin(); l != lhs.generics.end() && r != rhs.generics.end(); ++l, ++r)
+        {
+            if (!areEqual(seen, **l, **r))
+                return false;
+        }
+
+        if (lhs.genericPacks.size() != rhs.genericPacks.size())
+            return false;
+
+        for (auto l = lhs.genericPacks.begin(), r = rhs.genericPacks.begin(); l != lhs.genericPacks.end() && r != rhs.genericPacks.end(); ++l, ++r)
+        {
+            if (!areEqual(seen, **l, **r))
+                return false;
+        }
+    }
+
     if (bool(lhs.argTypes) != bool(rhs.argTypes))
         return false;
 
@@ -1921,6 +2218,16 @@ bool areEqual(SeenSet& seen, const TypeFunctionType& lhs, const TypeFunctionType
             return areEqual(seen, *lf, *rf);
     }
 
+    if (FFlag::LuauUserTypeFunGenerics)
+    {
+        {
+            const TypeFunctionGenericType* lg = get<TypeFunctionGenericType>(&lhs);
+            const TypeFunctionGenericType* rg = get<TypeFunctionGenericType>(&rhs);
+            if (lg && rg)
+                return lg->isNamed == rg->isNamed && lg->isPack == rg->isPack && lg->name == rg->name;
+        }
+    }
+
     return false;
 }
 
@@ -1965,6 +2272,16 @@ bool areEqual(SeenSet& seen, const TypeFunctionTypePackVar& lhs, const TypeFunct
         const TypeFunctionVariadicTypePack* rv = get<TypeFunctionVariadicTypePack>(&rhs);
         if (lv && rv)
             return areEqual(seen, *lv, *rv);
+    }
+
+    if (FFlag::LuauUserTypeFunGenerics)
+    {
+        {
+            const TypeFunctionGenericTypePack* lg = get<TypeFunctionGenericTypePack>(&lhs);
+            const TypeFunctionGenericTypePack* rg = get<TypeFunctionGenericTypePack>(&rhs);
+            if (lg && rg)
+                return lg->isNamed == rg->isNamed && lg->name == rg->name;
+        }
     }
 
     return false;
@@ -2156,12 +2473,10 @@ private:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
             case TypeFunctionPrimitiveType::Thread:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Thread));
                 break;
             case TypeFunctionPrimitiveType::Buffer:
-                if (FFlag::LuauUserTypeFunThreadBuffer)
-                    target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Buffer));
                 break;
             default:
                 break;
@@ -2191,10 +2506,14 @@ private:
         else if (auto f = get<TypeFunctionFunctionType>(ty))
         {
             TypeFunctionTypePackId emptyTypePack = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{});
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{emptyTypePack, emptyTypePack});
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{{}, {}, emptyTypePack, emptyTypePack});
         }
         else if (auto c = get<TypeFunctionClassType>(ty))
             target = ty; // Don't copy a class since they are immutable
+        else if (auto g = get<TypeFunctionGenericType>(ty); FFlag::LuauUserTypeFunGenerics && g)
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionGenericType{g->isNamed, g->isPack, g->name});
+        else
+            LUAU_ASSERT(!"Unknown type");
 
         types[ty] = target;
         queue.emplace_back(ty, target);
@@ -2212,6 +2531,10 @@ private:
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{{}});
         else if (auto vPack = get<TypeFunctionVariadicTypePack>(tp))
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionVariadicTypePack{});
+        else if (auto gPack = get<TypeFunctionGenericTypePack>(tp); gPack && FFlag::LuauUserTypeFunGenerics)
+            target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionGenericTypePack{gPack->isNamed, gPack->name});
+        else
+            LUAU_ASSERT(!"Unknown type");
 
         packs[tp] = target;
         queue.emplace_back(tp, target);
@@ -2242,6 +2565,9 @@ private:
             cloneChildren(f1, f2);
         else if (auto [c1, c2] = std::tuple{getMutable<TypeFunctionClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
             cloneChildren(c1, c2);
+        else if (auto [g1, g2] = std::tuple{getMutable<TypeFunctionGenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)};
+                 FFlag::LuauUserTypeFunGenerics && g1 && g2)
+            cloneChildren(g1, g2);
         else
             LUAU_ASSERT(!"Unknown pair?"); // First and argument should always represent the same types
     }
@@ -2253,6 +2579,9 @@ private:
         else if (auto [vPack1, vPack2] = std::tuple{getMutable<TypeFunctionVariadicTypePack>(tp), getMutable<TypeFunctionVariadicTypePack>(tftp)};
                  vPack1 && vPack2)
             cloneChildren(vPack1, vPack2);
+        else if (auto [gPack1, gPack2] = std::tuple{getMutable<TypeFunctionGenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)};
+                 FFlag::LuauUserTypeFunGenerics && gPack1 && gPack2)
+            cloneChildren(gPack1, gPack2);
         else
             LUAU_ASSERT(!"Unknown pair?"); // First and argument should always represent the same types
     }
@@ -2333,6 +2662,17 @@ private:
 
     void cloneChildren(TypeFunctionFunctionType* f1, TypeFunctionFunctionType* f2)
     {
+        if (FFlag::LuauUserTypeFunGenerics)
+        {
+            f2->generics.reserve(f1->generics.size());
+            for (auto ty : f1->generics)
+                f2->generics.push_back(shallowClone(ty));
+
+            f2->genericPacks.reserve(f1->genericPacks.size());
+            for (auto tp : f1->genericPacks)
+                f2->genericPacks.push_back(shallowClone(tp));
+        }
+
         f2->argTypes = shallowClone(f1->argTypes);
         f2->retTypes = shallowClone(f1->retTypes);
     }
@@ -2342,15 +2682,31 @@ private:
         // noop.
     }
 
+    void cloneChildren(TypeFunctionGenericType* g1, TypeFunctionGenericType* g2)
+    {
+        // noop.
+    }
+
     void cloneChildren(TypeFunctionTypePack* t1, TypeFunctionTypePack* t2)
     {
         for (TypeFunctionTypeId& ty : t1->head)
             t2->head.push_back(shallowClone(ty));
+
+        if (FFlag::LuauUserTypeFunCloneTail)
+        {
+            if (t1->tail)
+                t2->tail = shallowClone(*t1->tail);
+        }
     }
 
     void cloneChildren(TypeFunctionVariadicTypePack* v1, TypeFunctionVariadicTypePack* v2)
     {
         v2->type = shallowClone(v1->type);
+    }
+
+    void cloneChildren(TypeFunctionGenericTypePack* g1, TypeFunctionGenericTypePack* g2)
+    {
+        // noop.
     }
 };
 

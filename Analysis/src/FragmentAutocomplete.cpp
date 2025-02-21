@@ -6,6 +6,7 @@
 #include "Luau/Autocomplete.h"
 #include "Luau/Common.h"
 #include "Luau/EqSatSimplification.h"
+#include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/Module.h"
@@ -19,15 +20,20 @@
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/Module.h"
-
+#include "Luau/Clone.h"
 #include "AutocompleteCore.h"
-
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauAllowFragmentParsing);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
+
+LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteBugfixes)
+LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver)
+LUAU_FASTFLAGVARIABLE(LuauMixedModeDefFinderTraversesTypeOf)
+LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
+LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
 
 namespace
 {
@@ -48,6 +54,96 @@ void copyModuleMap(Luau::DenseHashMap<K, V>& result, const Luau::DenseHashMap<K,
 
 namespace Luau
 {
+
+template<typename K, typename V>
+void cloneModuleMap(TypeArena& destArena, CloneState& cloneState, const Luau::DenseHashMap<K, V>& source, Luau::DenseHashMap<K, V>& dest)
+{
+    for (auto [k, v] : source)
+    {
+        dest[k] = Luau::clone(v, destArena, cloneState);
+    }
+}
+
+struct MixedModeIncrementalTCDefFinder : public AstVisitor
+{
+    bool visit(AstExprLocal* local) override
+    {
+        referencedLocalDefs.emplace_back(local->local, local);
+        return true;
+    }
+
+    bool visit(AstTypeTypeof* node) override
+    {
+        // We need to traverse typeof expressions because they may refer to locals that we need
+        // to populate the local environment for fragment typechecking. For example, `typeof(m)`
+        // requires that we find the local/global `m` and place it in the environment.
+        // The default behaviour here is to return false, and have individual visitors override
+        // the specific behaviour they need.
+        return FFlag::LuauMixedModeDefFinderTraversesTypeOf;
+    }
+
+    // ast defs is just a mapping from expr -> def in general
+    // will get built up by the dfg builder
+
+    // localDefs, we need to copy over
+    std::vector<std::pair<AstLocal*, AstExpr*>> referencedLocalDefs;
+};
+
+void cloneAndSquashScopes(
+    CloneState& cloneState,
+    const Scope* staleScope,
+    const ModulePtr& staleModule,
+    NotNull<TypeArena> destArena,
+    NotNull<DataFlowGraph> dfg,
+    AstStatBlock* program,
+    Scope* destScope
+)
+{
+    std::vector<const Scope*> scopes;
+    for (const Scope* current = staleScope; current; current = current->parent.get())
+    {
+        scopes.emplace_back(current);
+    }
+
+    // in reverse order (we need to clone the parents and override defs as we go down the list)
+    for (auto it = scopes.rbegin(); it != scopes.rend(); ++it)
+    {
+        const Scope* curr = *it;
+        // Clone the lvalue types
+        for (const auto& [def, ty] : curr->lvalueTypes)
+            destScope->lvalueTypes[def] = Luau::clone(ty, *destArena, cloneState);
+        // Clone the rvalueRefinements
+        for (const auto& [def, ty] : curr->rvalueRefinements)
+            destScope->rvalueRefinements[def] = Luau::clone(ty, *destArena, cloneState);
+        for (const auto& [n, m] : curr->importedTypeBindings)
+        {
+            std::unordered_map<Name, TypeFun> importedBindingTypes;
+            for (const auto& [v, tf] : m)
+                importedBindingTypes[v] = Luau::clone(tf, *destArena, cloneState);
+            destScope->importedTypeBindings[n] = m;
+        }
+
+        // Finally, clone up the bindings
+        for (const auto& [s, b] : curr->bindings)
+        {
+            destScope->bindings[s] = Luau::clone(b, *destArena, cloneState);
+        }
+    }
+
+    // The above code associates defs with TypeId's in the scope
+    // so that lookup to locals will succeed.
+    MixedModeIncrementalTCDefFinder finder;
+    program->visit(&finder);
+    std::vector<std::pair<AstLocal*, AstExpr*>> locals = std::move(finder.referencedLocalDefs);
+    for (auto [loc, expr] : locals)
+    {
+        if (std::optional<Binding> binding = staleScope->linearSearchForBinding(loc->name.value, true))
+        {
+            destScope->lvalueTypes[dfg->getDef(expr)] = Luau::clone(binding->typeId, *destArena, cloneState);
+        }
+    }
+    return;
+}
 
 static FrontendModuleResolver& getModuleResolver(Frontend& frontend, std::optional<FrontendOptions> options)
 {
@@ -200,7 +296,7 @@ ScopePtr findClosestScope(const ModulePtr& module, const AstStat* nearestStateme
     return closest;
 }
 
-FragmentParseResult parseFragment(
+std::optional<FragmentParseResult> parseFragment(
     const SourceModule& srcModule,
     std::string_view src,
     const Position& cursorPos,
@@ -245,6 +341,9 @@ FragmentParseResult parseFragment(
     opts.captureComments = true;
     opts.parseFragment = FragmentParseResumeSettings{std::move(result.localMap), std::move(result.localStack), startPos};
     ParseResult p = Luau::Parser::parse(srcStart, parseLength, *nameTbl, *fragmentResult.alloc.get(), opts);
+    // This means we threw a ParseError and we should decline to offer autocomplete here.
+    if (p.root == nullptr)
+        return std::nullopt;
 
     std::vector<AstNode*> fabricatedAncestry = std::move(result.ancestry);
 
@@ -258,16 +357,39 @@ FragmentParseResult parseFragment(
     fragmentResult.root = std::move(p.root);
     fragmentResult.ancestry = std::move(fabricatedAncestry);
     fragmentResult.nearestStatement = nearestStatement;
+    fragmentResult.commentLocations = std::move(p.commentLocations);
     return fragmentResult;
+}
+
+ModulePtr cloneModule(CloneState& cloneState, const ModulePtr& source, std::unique_ptr<Allocator> alloc)
+{
+    freeze(source->internalTypes);
+    freeze(source->interfaceTypes);
+    ModulePtr incremental = std::make_shared<Module>();
+    incremental->name = source->name;
+    incremental->humanReadableName = source->humanReadableName;
+    incremental->allocator = std::move(alloc);
+    //  Clone types
+    cloneModuleMap(incremental->internalTypes, cloneState, source->astTypes, incremental->astTypes);
+    cloneModuleMap(incremental->internalTypes, cloneState, source->astTypePacks, incremental->astTypePacks);
+    cloneModuleMap(incremental->internalTypes, cloneState, source->astExpectedTypes, incremental->astExpectedTypes);
+
+    cloneModuleMap(incremental->internalTypes, cloneState, source->astOverloadResolvedTypes, incremental->astOverloadResolvedTypes);
+
+    cloneModuleMap(incremental->internalTypes, cloneState, source->astForInNextTypes, incremental->astForInNextTypes);
+
+    copyModuleMap(incremental->astScopes, source->astScopes);
+
+    return incremental;
 }
 
 ModulePtr copyModule(const ModulePtr& result, std::unique_ptr<Allocator> alloc)
 {
-    freeze(result->internalTypes);
-    freeze(result->interfaceTypes);
     ModulePtr incrementalModule = std::make_shared<Module>();
     incrementalModule->name = result->name;
-    incrementalModule->humanReadableName = result->humanReadableName;
+    incrementalModule->humanReadableName = "Incremental$" + result->humanReadableName;
+    incrementalModule->internalTypes.owningModule = incrementalModule.get();
+    incrementalModule->interfaceTypes.owningModule = incrementalModule.get();
     incrementalModule->allocator = std::move(alloc);
     // Don't need to keep this alive (it's already on the source module)
     copyModuleVec(incrementalModule->scopes, result->scopes);
@@ -285,21 +407,6 @@ ModulePtr copyModule(const ModulePtr& result, std::unique_ptr<Allocator> alloc)
     // Don't need to clone declared Globals;
     return incrementalModule;
 }
-
-struct MixedModeIncrementalTCDefFinder : public AstVisitor
-{
-    bool visit(AstExprLocal* local) override
-    {
-        referencedLocalDefs.push_back({local->local, local});
-        return true;
-    }
-
-    // ast defs is just a mapping from expr -> def in general
-    // will get built up by the dfg builder
-
-    // localDefs, we need to copy over
-    std::vector<std::pair<AstLocal*, AstExpr*>> referencedLocalDefs;
-};
 
 void mixedModeCompatibility(
     const ScopePtr& bottomScopeStale,
@@ -339,7 +446,9 @@ FragmentTypeCheckResult typecheckFragment_(
 {
     freeze(stale->internalTypes);
     freeze(stale->interfaceTypes);
-    ModulePtr incrementalModule = copyModule(stale, std::move(astAllocator));
+    CloneState cloneState{frontend.builtinTypes};
+    ModulePtr incrementalModule =
+        FFlag::LuauCloneIncrementalModule ? cloneModule(cloneState, stale, std::move(astAllocator)) : copyModule(stale, std::move(astAllocator));
     incrementalModule->checkedInNewSolver = true;
     unfreeze(incrementalModule->internalTypes);
     unfreeze(incrementalModule->interfaceTypes);
@@ -366,7 +475,8 @@ FragmentTypeCheckResult typecheckFragment_(
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
     /// Create a DataFlowGraph just for the surrounding context
-    auto dfg = DataFlowGraphBuilder::build(root, iceHandler);
+    DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
+
     SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
@@ -386,25 +496,34 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&dfg},
         {}
     };
+    std::shared_ptr<Scope> freshChildOfNearestScope = nullptr;
+    if (FFlag::LuauCloneIncrementalModule)
+    {
+        freshChildOfNearestScope = std::make_shared<Scope>(closestScope);
+        incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
+        cg.rootScope = freshChildOfNearestScope.get();
 
-    cg.rootScope = stale->getModuleScope().get();
-    // Any additions to the scope must occur in a fresh scope
-    auto freshChildOfNearestScope = std::make_shared<Scope>(closestScope);
-    incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
-
-    // Update freshChildOfNearestScope with the appropriate lvalueTypes
-    mixedModeCompatibility(closestScope, freshChildOfNearestScope, stale, NotNull{&dfg}, root);
-
-    // closest Scope -> children = { ...., freshChildOfNearestScope}
-    // We need to trim nearestChild from the scope hierarcy
-    closestScope->children.push_back(NotNull{freshChildOfNearestScope.get()});
-    // Visit just the root - we know the scope it should be in
-    cg.visitFragmentRoot(freshChildOfNearestScope, root);
-    // Trim nearestChild from the closestScope
-    Scope* back = closestScope->children.back().get();
-    LUAU_ASSERT(back == freshChildOfNearestScope.get());
-    closestScope->children.pop_back();
-
+        cloneAndSquashScopes(
+            cloneState, closestScope.get(), stale, NotNull{&incrementalModule->internalTypes}, NotNull{&dfg}, root, freshChildOfNearestScope.get()
+        );
+        cg.visitFragmentRoot(freshChildOfNearestScope, root);
+    }
+    else
+    {
+        // Any additions to the scope must occur in a fresh scope
+        cg.rootScope = stale->getModuleScope().get();
+        freshChildOfNearestScope = std::make_shared<Scope>(closestScope);
+        incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
+        mixedModeCompatibility(closestScope, freshChildOfNearestScope, stale, NotNull{&dfg}, root);
+        // closest Scope -> children = { ...., freshChildOfNearestScope}
+        // We need to trim nearestChild from the scope hierarcy
+        closestScope->children.emplace_back(freshChildOfNearestScope.get());
+        cg.visitFragmentRoot(freshChildOfNearestScope, root);
+        // Trim nearestChild from the closestScope
+        Scope* back = closestScope->children.back().get();
+        LUAU_ASSERT(back == freshChildOfNearestScope.get());
+        closestScope->children.pop_back();
+    }
 
     /// Initialize the constraint solver and run it
     ConstraintSolver cs{
@@ -444,7 +563,7 @@ FragmentTypeCheckResult typecheckFragment_(
 }
 
 
-FragmentTypeCheckResult typecheckFragment(
+std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     Frontend& frontend,
     const ModuleName& moduleName,
     const Position& cursorPos,
@@ -453,6 +572,13 @@ FragmentTypeCheckResult typecheckFragment(
     std::optional<Position> fragmentEndPosition
 )
 {
+
+    if (FFlag::LuauBetterReverseDependencyTracking)
+    {
+        if (!frontend.allModuleDependenciesValid(moduleName, opts && opts->forAutocomplete))
+            return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
+    }
+
     const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
     if (!sourceModule)
     {
@@ -468,13 +594,30 @@ FragmentTypeCheckResult typecheckFragment(
         return {};
     }
 
-    FragmentParseResult parseResult = parseFragment(*sourceModule, src, cursorPos, fragmentEndPosition);
+    if (FFlag::LuauIncrementalAutocompleteBugfixes && FFlag::LuauReferenceAllocatorInNewSolver)
+    {
+        if (sourceModule->allocator.get() != module->allocator.get())
+        {
+            return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
+        }
+    }
+
+    auto tryParse = parseFragment(*sourceModule, src, cursorPos, fragmentEndPosition);
+
+    if (!tryParse)
+        return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
+
+    FragmentParseResult& parseResult = *tryParse;
+
+    if (isWithinComment(parseResult.commentLocations, fragmentEndPosition.value_or(cursorPos)))
+        return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
+
     FrontendOptions frontendOptions = opts.value_or(frontend.options);
     const ScopePtr& closestScope = findClosestScope(module, parseResult.nearestStatement);
     FragmentTypeCheckResult result =
         typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions);
     result.ancestry = std::move(parseResult.ancestry);
-    return result;
+    return {FragmentTypeCheckStatus::Success, result};
 }
 
 
@@ -498,7 +641,14 @@ FragmentAutocompleteResult fragmentAutocomplete(
         return {};
     }
 
-    auto tcResult = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition);
+    // If the cursor is within a comment in the stale source module we should avoid providing a recommendation
+    if (isWithinComment(*sourceModule, fragmentEndPosition.value_or(cursorPosition)))
+        return {};
+
+    auto [tcStatus, tcResult] = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition);
+    if (tcStatus == FragmentTypeCheckStatus::SkipAutocomplete)
+        return {};
+
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
 
     TypeArena arenaForFragmentAutocomplete;

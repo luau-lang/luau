@@ -263,7 +263,7 @@ typedef struct Udata
 
     int len;
 
-    struct Table* metatable;
+    struct LuaTable* metatable;
 
     union
     {
@@ -390,7 +390,7 @@ typedef struct Closure
     uint8_t preload;
 
     GCObject* gclist;
-    struct Table* env;
+    struct LuaTable* env;
 
     union
     {
@@ -454,7 +454,7 @@ typedef struct LuaNode
     }
 
 // clang-format off
-typedef struct Table
+typedef struct LuaTable
 {
     CommonHeader;
 
@@ -473,11 +473,11 @@ typedef struct Table
     };
 
 
-    struct Table* metatable;
+    struct LuaTable* metatable;
     TValue* array;  // array part
     LuaNode* node;
     GCObject* gclist;
-} Table;
+} LuaTable;
 // clang-format on
 
 /*

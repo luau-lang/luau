@@ -1,17 +1,25 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Common.h"
+#include "Luau/Config.h"
+
 #include "ScopedFlags.h"
 #include "lua.h"
 #include "lualib.h"
 
-#include "Repl.h"
-#include "FileUtils.h"
+#include "Luau/Repl.h"
+#include "Luau/FileUtils.h"
 
 #include "doctest.h"
 
 #include <algorithm>
+#include <cstring>
 #include <initializer_list>
 #include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #if __APPLE__
 #include <TargetConditionals.h>
@@ -112,7 +120,7 @@ public:
         for (int i = 0; i < 20; ++i)
         {
             bool engineTestDir = isDirectory(luauDirAbs + "/Client/Luau/tests");
-            bool luauTestDir = isDirectory(luauDirAbs + "/luau/tests/require");
+            bool luauTestDir = isDirectory(luauDirAbs + "/tests/require");
 
             if (engineTestDir || luauTestDir)
             {
@@ -121,12 +129,6 @@ public:
                     luauDirRel += "/Client/Luau";
                     luauDirAbs += "/Client/Luau";
                 }
-                else
-                {
-                    luauDirRel += "/luau";
-                    luauDirAbs += "/luau";
-                }
-
 
                 if (type == PathType::Relative)
                     return luauDirRel;
@@ -217,21 +219,43 @@ TEST_CASE("PathResolution")
     std::string prefix = "/";
 #endif
 
-    CHECK(resolvePath(prefix + "Users/modules/module.luau", "") == prefix + "Users/modules/module.luau");
-    CHECK(resolvePath(prefix + "Users/modules/module.luau", "a/string/that/should/be/ignored") == prefix + "Users/modules/module.luau");
-    CHECK(resolvePath(prefix + "Users/modules/module.luau", "./a/string/that/should/be/ignored") == prefix + "Users/modules/module.luau");
-    CHECK(resolvePath(prefix + "Users/modules/module.luau", "/a/string/that/should/be/ignored") == prefix + "Users/modules/module.luau");
-    CHECK(resolvePath(prefix + "Users/modules/module.luau", "/Users/modules") == prefix + "Users/modules/module.luau");
+    // tuple format: {inputPath, inputBaseFilePath, expected}
+    std::vector<std::tuple<std::string, std::string, std::string>> tests = {
+        // 1. Basic path resolution
+        // a. Relative to a relative path that begins with './'
+        {"./dep", "./src/modules/module.luau", "./src/modules/dep"},
+        {"../dep", "./src/modules/module.luau", "./src/dep"},
+        {"../../dep", "./src/modules/module.luau", "./dep"},
+        {"../../", "./src/modules/module.luau", "./"},
 
-    CHECK(resolvePath("../module", "") == "../module");
-    CHECK(resolvePath("../../module", "") == "../../module");
-    CHECK(resolvePath("../module/..", "") == "../");
-    CHECK(resolvePath("../module/../..", "") == "../../");
+        // b. Relative to a relative path that begins with '../'
+        {"./dep", "../src/modules/module.luau", "../src/modules/dep"},
+        {"../dep", "../src/modules/module.luau", "../src/dep"},
+        {"../../dep", "../src/modules/module.luau", "../dep"},
+        {"../../", "../src/modules/module.luau", "../"},
 
-    CHECK(resolvePath("../dependency", prefix + "Users/modules/module.luau") == prefix + "Users/dependency");
-    CHECK(resolvePath("../dependency/", prefix + "Users/modules/module.luau") == prefix + "Users/dependency");
-    CHECK(resolvePath("../../../../../Users/dependency", prefix + "Users/modules/module.luau") == prefix + "Users/dependency");
-    CHECK(resolvePath("../..", prefix + "Users/modules/module.luau") == prefix);
+        // c. Relative to an absolute path
+        {"./dep", prefix + "src/modules/module.luau", prefix + "src/modules/dep"},
+        {"../dep", prefix + "src/modules/module.luau", prefix + "src/dep"},
+        {"../../dep", prefix + "src/modules/module.luau", prefix + "dep"},
+        {"../../", prefix + "src/modules/module.luau", prefix},
+
+
+        // 2. Check behavior for extraneous ".."
+        // a. Relative paths retain '..' and append if needed
+        {"../../../", "./src/modules/module.luau", "../"},
+        {"../../../", "../src/modules/module.luau", "../../"},
+
+        // b. Absolute paths ignore '..' if already at root
+        {"../../../", prefix + "src/modules/module.luau", prefix},
+    };
+
+    for (const auto& [inputPath, inputBaseFilePath, expected] : tests)
+    {
+        std::optional<std::string> resolved = resolvePath(inputPath, inputBaseFilePath);
+        CHECK(resolved);
+        CHECK_EQ(resolved, expected);
+    }
 }
 
 TEST_CASE("PathNormalization")
@@ -242,34 +266,57 @@ TEST_CASE("PathNormalization")
     std::string prefix = "/";
 #endif
 
-    // Relative path
-    std::optional<std::string> result = normalizePath("../../modules/module");
-    CHECK(result);
-    std::string normalized = *result;
-    std::vector<std::string> variants = {
-        "./.././.././modules/./module/", "placeholder/../../../modules/module", "../placeholder/placeholder2/../../../modules/module"
-    };
-    for (const std::string& variant : variants)
-    {
-        result = normalizePath(variant);
-        CHECK(result);
-        CHECK(normalized == *result);
-    }
+    // pair format: {input, expected}
+    std::vector<std::pair<std::string, std::string>> tests = {
+        // 1. Basic formatting checks
+        {"", "./"},
+        {".", "./"},
+        {"..", "../"},
+        {"a/relative/path", "./a/relative/path"},
 
-    // Absolute path
-    result = normalizePath(prefix + "Users/modules/module");
-    CHECK(result);
-    normalized = *result;
-    variants = {
-        "Users/Users/Users/.././.././modules/./module/",
-        "placeholder/../Users/..//Users/modules/module",
-        "Users/../placeholder/placeholder2/../../Users/modules/module"
+
+        // 2. Paths containing extraneous '.' and '/' symbols
+        {"./remove/extraneous/symbols/", "./remove/extraneous/symbols"},
+        {"./remove/extraneous//symbols", "./remove/extraneous/symbols"},
+        {"./remove/extraneous/symbols/.", "./remove/extraneous/symbols"},
+        {"./remove/extraneous/./symbols", "./remove/extraneous/symbols"},
+
+        {"../remove/extraneous/symbols/", "../remove/extraneous/symbols"},
+        {"../remove/extraneous//symbols", "../remove/extraneous/symbols"},
+        {"../remove/extraneous/symbols/.", "../remove/extraneous/symbols"},
+        {"../remove/extraneous/./symbols", "../remove/extraneous/symbols"},
+
+        {prefix + "remove/extraneous/symbols/", prefix + "remove/extraneous/symbols"},
+        {prefix + "remove/extraneous//symbols", prefix + "remove/extraneous/symbols"},
+        {prefix + "remove/extraneous/symbols/.", prefix + "remove/extraneous/symbols"},
+        {prefix + "remove/extraneous/./symbols", prefix + "remove/extraneous/symbols"},
+
+
+        // 3. Paths containing '..'
+        // a. '..' removes the erasable component before it
+        {"./remove/me/..", "./remove"},
+        {"./remove/me/../", "./remove"},
+
+        {"../remove/me/..", "../remove"},
+        {"../remove/me/../", "../remove"},
+
+        {prefix + "remove/me/..", prefix + "remove"},
+        {prefix + "remove/me/../", prefix + "remove"},
+
+        // b. '..' stays if path is relative and component is non-erasable
+        {"./..", "../"},
+        {"./../", "../"},
+
+        {"../..", "../../"},
+        {"../../", "../../"},
+
+        // c. '..' disappears if path is absolute and component is non-erasable
+        {prefix + "..", prefix},
     };
-    for (const std::string& variant : variants)
+
+    for (const auto& [input, expected] : tests)
     {
-        result = normalizePath(prefix + variant);
-        CHECK(result);
-        CHECK(normalized == *result);
+        CHECK_EQ(normalizePath(input), expected);
     }
 }
 
@@ -489,6 +536,65 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasHasIllegalFormat")
 
     runProtectedRequire(emptyAlias);
     assertOutputContainsAll({"false", " is not a valid alias"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireFromLuauBinary")
+{
+    char executable[] = "luau";
+    std::vector<std::string> paths = {
+        getLuauDirectory(PathType::Relative) + "/tests/require/without_config/dependency.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/dependency.luau"
+    };
+
+    for (const std::string& path : paths)
+    {
+        std::vector<char> pathStr(path.size() + 1);
+        strncpy(pathStr.data(), path.c_str(), path.size());
+        pathStr[path.size()] = '\0';
+
+        char* argv[2] = {executable, pathStr.data()};
+        CHECK_EQ(replMain(2, argv), 0);
+    }
+}
+
+TEST_CASE("ParseAliases")
+{
+    std::string configJson = R"({
+    "aliases": {
+        "MyAlias": "/my/alias/path",
+    }
+})";
+
+    Luau::Config config;
+
+    Luau::ConfigOptions::AliasOptions aliasOptions;
+    aliasOptions.configLocation = "/default/location";
+    aliasOptions.overwriteAliases = true;
+
+    Luau::ConfigOptions options{false, aliasOptions};
+
+    std::optional<std::string> error = Luau::parseConfig(configJson, config, options);
+    REQUIRE(!error);
+
+    auto checkContents = [](Luau::Config& config) -> void
+    {
+        CHECK(config.aliases.size() == 1);
+        REQUIRE(config.aliases.contains("myalias"));
+
+        Luau::Config::AliasInfo& aliasInfo = config.aliases["myalias"];
+        CHECK(aliasInfo.value == "/my/alias/path");
+        CHECK(aliasInfo.originalCase == "MyAlias");
+    };
+
+    checkContents(config);
+
+    // Ensure that copied Configs retain the same information
+    Luau::Config copyConstructedConfig = config;
+    checkContents(copyConstructedConfig);
+
+    Luau::Config copyAssignedConfig;
+    copyAssignedConfig = config;
+    checkContents(copyAssignedConfig);
 }
 
 TEST_SUITE_END();

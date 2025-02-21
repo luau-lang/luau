@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -1648,7 +1649,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             if (FFlag::LuauSolverV2)
                 return freshType(NotNull{types}, builtinTypes, scope);
             else
-                return types->freshType(scope, level);
+                return FFlag::LuauFreeTypesMustHaveBounds ? types->freshType(builtinTypes, scope, level) : types->freshType_DEPRECATED(scope, level);
         };
 
         const TypePackId emptyTp = types->addTypePack(TypePack{{}, std::nullopt});

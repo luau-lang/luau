@@ -6,7 +6,6 @@
 #include "lstate.h"
 #include "lvm.h"
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCoroCheckStack, false)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
 
 #define CO_STATUS_ERROR -1
@@ -41,7 +40,7 @@ static int auxresume(lua_State* L, lua_State* co, int narg)
             luaL_error(L, "too many arguments to resume");
         lua_xmove(L, co, narg);
     }
-    else if (DFFlag::LuauCoroCheckStack)
+    else
     {
         // coroutine might be completely full already
         if ((co->top - co->base) > LUAI_MAXCSTACK)

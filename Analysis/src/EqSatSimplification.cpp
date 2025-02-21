@@ -92,18 +92,24 @@ size_t TTable::Hash::operator()(const TTable& value) const
     return hash;
 }
 
-uint32_t StringCache::add(std::string_view s)
+StringId StringCache::add(std::string_view s)
 {
-    size_t hash = std::hash<std::string_view>()(s);
-    if (uint32_t* it = strings.find(hash))
+    /* Important subtlety: This use of DenseHashMap<std::string_view, StringId>
+     * is okay because std::hash<std::string_view> works solely on the bytes
+     * referred by the string_view.
+     *
+     * In other words, two string views which contain the same bytes will have
+     * the same hash whether or not their addresses are the same.
+     */
+    if (StringId* it = strings.find(s))
         return *it;
 
     char* storage = static_cast<char*>(allocator.allocate(s.size()));
     memcpy(storage, s.data(), s.size());
 
-    uint32_t result = uint32_t(views.size());
+    StringId result = StringId(views.size());
     views.emplace_back(storage, s.size());
-    strings[hash] = result;
+    strings[s] = result;
     return result;
 }
 
@@ -143,6 +149,61 @@ static bool isTerminal(const EType& node)
            node.get<TNever>() || node.get<TNoRefine>();
 }
 
+static bool areTerminalAndDefinitelyDisjoint(const EType& lhs, const EType& rhs)
+{
+    // If either node is non-terminal, then we early exit: we're not going to
+    // do a state space search for whether something like:
+    //  (A | B | C | D) & (E | F | G | H)
+    // ... is a disjoint intersection.
+    if (!isTerminal(lhs) || !isTerminal(rhs))
+        return false;
+
+    // Special case some types that aren't strict, disjoint subsets.
+    if (lhs.get<TTopClass>() || lhs.get<TClass>())
+        return !(rhs.get<TTopClass>() || rhs.get<TClass>());
+
+    // Handling strings / booleans: these are the types for which we
+    // expect something like:
+    //
+    //  "foo" & ~"bar"
+    //
+    // ... to simplify to "foo".
+    if (lhs.get<TString>())
+        return !(rhs.get<TString>() || rhs.get<SString>());
+
+    if (lhs.get<TBoolean>())
+        return !(rhs.get<TBoolean>() || rhs.get<SBoolean>());
+
+    if (auto lhsSString = lhs.get<SString>())
+    {
+        auto rhsSString = rhs.get<SString>();
+        if (!rhsSString)
+            return !rhs.get<TString>();
+        return lhsSString->value() != rhsSString->value();
+    }
+
+    if (auto lhsSBoolean = lhs.get<SBoolean>())
+    {
+        auto rhsSBoolean = rhs.get<SBoolean>();
+        if (!rhsSBoolean)
+            return !rhs.get<TBoolean>();
+        return lhsSBoolean->value() != rhsSBoolean->value();
+    }
+
+    // At this point:
+    // - We know both nodes are terminal
+    // - We know that the LHS is not any boolean, string, or class
+    // At this point, we have two classes of checks left:
+    // - Whether the two enodes are exactly the same set (now that the static
+    //   sets have been covered).
+    // - Whether one of the enodes is a large semantic set such as TAny,
+    //   TUnknown, or TError.
+    return !(
+        lhs.index() == rhs.index() || lhs.get<TUnknown>() || rhs.get<TUnknown>() || lhs.get<TAny>() || rhs.get<TAny>() || lhs.get<TNoRefine>() ||
+        rhs.get<TNoRefine>() || lhs.get<TError>() || rhs.get<TError>() || lhs.get<TOpaque>() || rhs.get<TOpaque>()
+    );
+}
+
 static bool isTerminal(const EGraph& egraph, Id eclass)
 {
     const auto& nodes = egraph[eclass].nodes;
@@ -151,7 +212,7 @@ static bool isTerminal(const EGraph& egraph, Id eclass)
         nodes.end(),
         [](auto& a)
         {
-            return isTerminal(a);
+            return isTerminal(a.node);
         }
     );
 }
@@ -335,11 +396,31 @@ Id toId(
     {
         LUAU_ASSERT(tfun->packArguments.empty());
 
+        if (tfun->userFuncName) {
+            // TODO: User defined type functions are pseudo-effectful: error
+            // reporting is done via the `print` statement, so running a
+            // UDTF multiple times may end up double erroring. egraphs
+            // currently may induce type functions to be reduced multiple
+            // times. We should probably opt _not_ to process user defined
+            // type functions at all.
+            return egraph.add(TOpaque{ty});
+        }
+
         std::vector<Id> parts;
+        parts.reserve(tfun->typeArguments.size());
         for (TypeId part : tfun->typeArguments)
             parts.push_back(toId(egraph, builtinTypes, mappingIdToClass, typeToMappingId, boundNodes, strings, part));
 
-        return cache(egraph.add(TTypeFun{tfun->function.get(), std::move(parts)}));
+        // This looks sily, but we're making a copy of the specific
+        // `TypeFunctionInstanceType` outside of the provided arena so that
+        // we can access the members without fear of the specific TFIT being
+        // overwritten with a bound type.
+        return cache(egraph.add(TTypeFun{
+            std::make_shared<const TypeFunctionInstanceType>(
+                tfun->function, tfun->typeArguments, tfun->packArguments, tfun->userFuncName, tfun->userFuncData
+            ),
+            std::move(parts)
+        }));
     }
     else if (get<NoRefineType>(ty))
         return egraph.add(TNoRefine{});
@@ -399,7 +480,7 @@ static size_t computeCost(std::unordered_map<Id, size_t>& bestNodes, const EGrap
     if (auto it = costs.find(id); it != costs.end())
         return it->second;
 
-    const std::vector<EType>& nodes = egraph[id].nodes;
+    const std::vector<Node<EType>>& nodes = egraph[id].nodes;
 
     size_t minCost = std::numeric_limits<size_t>::max();
     size_t bestNode = std::numeric_limits<size_t>::max();
@@ -416,7 +497,7 @@ static size_t computeCost(std::unordered_map<Id, size_t>& bestNodes, const EGrap
     // First, quickly scan for a terminal type.  If we can find one, it is obviously the best.
     for (size_t index = 0; index < nodes.size(); ++index)
     {
-        if (isTerminal(nodes[index]))
+        if (isTerminal(nodes[index].node))
         {
             minCost = 1;
             bestNode = index;
@@ -468,44 +549,44 @@ static size_t computeCost(std::unordered_map<Id, size_t>& bestNodes, const EGrap
     {
         const auto& node = nodes[index];
 
-        if (node.get<TBound>())
+        if (node.node.get<TBound>())
             updateCost(BOUND_PENALTY, index); // TODO: This could probably be an assert now that we don't need rewrite rules to handle TBound.
-        else if (node.get<TFunction>())
+        else if (node.node.get<TFunction>())
         {
             minCost = 1;
             bestNode = index;
         }
-        else if (auto tbl = node.get<TTable>())
+        else if (auto tbl = node.node.get<TTable>())
         {
             // TODO: We could make the penalty a parameter to computeChildren.
             std::optional<size_t> maybeCost = computeChildren(tbl->operands(), minCost);
             if (maybeCost)
                 updateCost(TABLE_TYPE_PENALTY + *maybeCost, index);
         }
-        else if (node.get<TImportedTable>())
+        else if (node.node.get<TImportedTable>())
         {
             minCost = IMPORTED_TABLE_PENALTY;
             bestNode = index;
         }
-        else if (auto u = node.get<Union>())
+        else if (auto u = node.node.get<Union>())
         {
             std::optional<size_t> maybeCost = computeChildren(u->operands(), minCost);
             if (maybeCost)
                 updateCost(SET_TYPE_PENALTY + *maybeCost, index);
         }
-        else if (auto i = node.get<Intersection>())
+        else if (auto i = node.node.get<Intersection>())
         {
             std::optional<size_t> maybeCost = computeChildren(i->operands(), minCost);
             if (maybeCost)
                 updateCost(SET_TYPE_PENALTY + *maybeCost, index);
         }
-        else if (auto negation = node.get<Negation>())
+        else if (auto negation = node.node.get<Negation>())
         {
             std::optional<size_t> maybeCost = computeChildren(negation->operands(), minCost);
             if (maybeCost)
                 updateCost(NEGATION_PENALTY + *maybeCost, index);
         }
-        else if (auto tfun = node.get<TTypeFun>())
+        else if (auto tfun = node.node.get<TTypeFun>())
         {
             std::optional<size_t> maybeCost = computeChildren(tfun->operands(), minCost);
             if (maybeCost)
@@ -574,28 +655,34 @@ TypeId flattenTableNode(
             // If a TTable is its own basis, it must be the case that some other
             // node on this eclass is a TImportedTable.  Let's use that.
 
+            bool found = false;
+
             for (size_t i = 0; i < eclass.nodes.size(); ++i)
             {
-                if (eclass.nodes[i].get<TImportedTable>())
+                if (eclass.nodes[i].node.get<TImportedTable>())
                 {
+                    found = true;
                     index = i;
                     break;
                 }
             }
 
-            // If we couldn't find one, we don't know what to do.  Use ErrorType.
-            LUAU_ASSERT(0);
-            return builtinTypes->errorType;
+            if (!found)
+            {
+                // If we couldn't find one, we don't know what to do.  Use ErrorType.
+                LUAU_ASSERT(0);
+                return builtinTypes->errorType;
+            }
         }
 
         const auto& node = eclass.nodes[index];
-        if (const TTable* ttable = node.get<TTable>())
+        if (const TTable* ttable = node.node.get<TTable>())
         {
             stack.push_back(ttable);
             id = ttable->getBasis();
             continue;
         }
-        else if (const TImportedTable* ti = node.get<TImportedTable>())
+        else if (const TImportedTable* ti = node.node.get<TImportedTable>())
         {
             importedTable = ti;
             break;
@@ -622,7 +709,8 @@ TypeId flattenTableNode(
             StringId propName = t->propNames[i];
             const Id propType = t->propTypes()[i];
 
-            resultTable.props[strings.asString(propName)] = Property{fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, propType)};
+            resultTable.props[strings.asString(propName)] =
+                Property{fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, propType)};
         }
     }
 
@@ -646,7 +734,7 @@ TypeId fromId(
     size_t index = bestNodes.at(rootId);
     LUAU_ASSERT(index <= egraph[rootId].nodes.size());
 
-    const EType& node = egraph[rootId].nodes[index];
+    const EType& node = egraph[rootId].nodes[index].node;
 
     if (node.get<TNil>())
         return builtinTypes->nilType;
@@ -703,7 +791,20 @@ TypeId fromId(
         if (parts.empty())
             return builtinTypes->neverType;
         else if (parts.size() == 1)
-            return fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, parts[0]);
+        {
+            TypeId placeholder = arena->addType(BlockedType{});
+            seen[rootId] = placeholder;
+            auto result = fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, parts[0]);
+            if (follow(result) == placeholder)
+            {
+                emplaceType<GenericType>(asMutable(placeholder), "EGRAPH-SINGLETON-CYCLE");
+            }
+            else
+            {
+                emplaceType<BoundType>(asMutable(placeholder), result);
+            }
+            return result;
+        }
         else
         {
             TypeId res = arena->addType(BlockedType{});
@@ -768,7 +869,11 @@ TypeId fromId(
         for (Id part : tfun->operands())
             args.push_back(fromId(egraph, strings, builtinTypes, arena, bestNodes, seen, newTypeFunctions, part));
 
-        asMutable(res)->ty.emplace<TypeFunctionInstanceType>(*tfun->value(), std::move(args));
+        auto oldInstance = tfun->value();
+
+        asMutable(res)->ty.emplace<TypeFunctionInstanceType>(
+            oldInstance->function, std::move(args), std::vector<TypePackId>(), oldInstance->userFuncName, oldInstance->userFuncData
+        );
 
         newTypeFunctions.push_back(res);
 
@@ -848,12 +953,20 @@ std::string mkDesc(
     const int RULE_PADDING = 35;
     const std::string rulePadding(std::max<size_t>(0, RULE_PADDING - rule.size()), ' ');
     const std::string fromIdStr = ""; // "(" + std::to_string(uint32_t(from)) + ") ";
-    const std::string toIdStr = ""; // "(" + std::to_string(uint32_t(to)) + ") ";
+    const std::string toIdStr = "";   // "(" + std::to_string(uint32_t(to)) + ") ";
 
     return rule + ":" + rulePadding + fromIdStr + toString(fromTy, opts) + " <=> " + toIdStr + toString(toTy, opts);
 }
 
-std::string mkDesc(EGraph& egraph, const StringCache& strings, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Id from, Id to, const std::string& rule)
+std::string mkDesc(
+    EGraph& egraph,
+    const StringCache& strings,
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    Id from,
+    Id to,
+    const std::string& rule
+)
 {
     if (!FFlag::DebugLuauLogSimplification)
         return "";
@@ -906,7 +1019,7 @@ static std::string getNodeName(const StringCache& strings, const EType& node)
     else if (node.get<TNever>())
         return "never";
     else if (auto tfun = node.get<TTypeFun>())
-        return "tfun " + tfun->value()->name;
+        return "tfun " + tfun->value()->function->name;
     else if (node.get<Negation>())
         return "~";
     else if (node.get<Invalid>())
@@ -928,8 +1041,9 @@ std::string toDot(const StringCache& strings, const EGraph& egraph)
 
     for (const auto& [id, eclass] : egraph.getAllClasses())
     {
-        for (const auto& node : eclass.nodes)
+        for (const auto& n : eclass.nodes)
         {
+            const EType& node = n.node;
             if (!node.operands().empty())
                 populated.insert(id);
             for (Id op : node.operands())
@@ -950,7 +1064,7 @@ std::string toDot(const StringCache& strings, const EGraph& egraph)
 
         for (size_t index = 0; index < eclass.nodes.size(); ++index)
         {
-            const auto& node = eclass.nodes[index];
+            const auto& node = eclass.nodes[index].node;
 
             const std::string label = getNodeName(strings, node);
             const std::string nodeName = "n" + std::to_string(uint32_t(id)) + "_" + std::to_string(index);
@@ -965,7 +1079,7 @@ std::string toDot(const StringCache& strings, const EGraph& egraph)
     {
         for (size_t index = 0; index < eclass.nodes.size(); ++index)
         {
-            const auto& node = eclass.nodes[index];
+            const auto& node = eclass.nodes[index].node;
 
             const std::string label = getNodeName(strings, node);
             const std::string nodeName = "n" + std::to_string(uint32_t(egraph.find(id))) + "_" + std::to_string(index);
@@ -1001,7 +1115,7 @@ static Tag const* isTag(const EGraph& egraph, Id id)
 {
     for (const auto& node : egraph[id].nodes)
     {
-        if (auto n = isTag<Tag>(node))
+        if (auto n = isTag<Tag>(node.node))
             return n;
     }
     return nullptr;
@@ -1037,7 +1151,7 @@ protected:
     {
         for (const auto& node : (*egraph)[id].nodes)
         {
-            if (auto n = node.get<Tag>())
+            if (auto n = node.node.get<Tag>())
                 return n;
         }
         return nullptr;
@@ -1225,8 +1339,10 @@ const EType* findSubtractableClass(const EGraph& egraph, std::unordered_set<Id>&
     const EType* bestUnion = nullptr;
     std::optional<size_t> unionSize;
 
-    for (const auto& node : egraph[id].nodes)
+    for (const auto& n : egraph[id].nodes)
     {
+        const EType& node = n.node;
+
         if (isTerminal(node))
             return &node;
 
@@ -1342,14 +1458,14 @@ bool subtract(EGraph& egraph, CanonicalizedType& ct, Id part)
     return true;
 }
 
-Id fromCanonicalized(EGraph& egraph, CanonicalizedType& ct)
+static std::pair<Id, size_t> fromCanonicalized(EGraph& egraph, CanonicalizedType& ct)
 {
     if (ct.isUnknown())
     {
         if (ct.errorPart)
-            return egraph.add(TAny{});
+            return {egraph.add(TAny{}), 1};
         else
-            return egraph.add(TUnknown{});
+            return {egraph.add(TUnknown{}), 1};
     }
 
     std::vector<Id> parts;
@@ -1387,7 +1503,12 @@ Id fromCanonicalized(EGraph& egraph, CanonicalizedType& ct)
     parts.insert(parts.end(), ct.functionParts.begin(), ct.functionParts.end());
     parts.insert(parts.end(), ct.otherParts.begin(), ct.otherParts.end());
 
-    return mkUnion(egraph, std::move(parts));
+    std::sort(parts.begin(), parts.end());
+    auto it = std::unique(parts.begin(), parts.end());
+    parts.erase(it, parts.end());
+
+    const size_t size = parts.size();
+    return {mkUnion(egraph, std::move(parts)), size};
 }
 
 void addChildren(const EGraph& egraph, const EType* enode, VecDeque<Id>& worklist)
@@ -1433,7 +1554,7 @@ const Tag* Simplifier::isTag(Id id) const
 {
     for (const auto& node : get(id).nodes)
     {
-        if (const Tag* ty = node.get<Tag>())
+        if (const Tag* ty = node.node.get<Tag>())
             return ty;
     }
 
@@ -1464,6 +1585,16 @@ void Simplifier::subst(Id from, Id to, const std::string& ruleName, const std::u
     std::string desc;
     if (FFlag::DebugLuauLogSimplification)
         desc = mkDesc(egraph, stringCache, arena, builtinTypes, from, to, forceNodes, ruleName);
+    substs.emplace_back(from, to, desc);
+}
+
+void Simplifier::subst(Id from, size_t boringIndex, Id to, const std::string& ruleName, const std::unordered_map<Id, size_t>& forceNodes)
+{
+    std::string desc;
+    if (FFlag::DebugLuauLogSimplification)
+        desc = mkDesc(egraph, stringCache, arena, builtinTypes, from, to, forceNodes, ruleName);
+
+    egraph.markBoring(from, boringIndex);
     substs.emplace_back(from, to, desc);
 }
 
@@ -1517,9 +1648,12 @@ void Simplifier::simplifyUnion(Id id)
         for (Id part : u->operands())
             unionWithType(egraph, canonicalized, find(part));
 
-        Id resultId = fromCanonicalized(egraph, canonicalized);
+        const auto [resultId, newSize] = fromCanonicalized(egraph, canonicalized);
 
-        subst(id, resultId, "simplifyUnion", {{id, unionIndex}});
+        if (newSize < u->operands().size())
+            subst(id, unionIndex, resultId, "simplifyUnion", {{id, unionIndex}});
+        else
+            subst(id, resultId, "simplifyUnion", {{id, unionIndex}});
     }
 }
 
@@ -1551,11 +1685,6 @@ std::optional<EType> intersectOne(EGraph& egraph, Id hereId, const EType* hereNo
     if (hereNode->get<Union>() || hereNode->get<Intersection>() || hereNode->get<Negation>() || thereNode->get<Union>() ||
         thereNode->get<Intersection>() || thereNode->get<Negation>() || hereNode->get<TOpaque>() || thereNode->get<TOpaque>())
         return std::nullopt;
-
-    if (hereNode->get<TAny>())
-        return *thereNode;
-    if (thereNode->get<TAny>())
-        return *hereNode;
 
     if (hereNode->get<TUnknown>())
         return *thereNode;
@@ -1732,7 +1861,7 @@ void Simplifier::uninhabitedIntersection(Id id)
             const auto& partNodes = egraph[partId].nodes;
             for (size_t partIndex = 0; partIndex < partNodes.size(); ++partIndex)
             {
-                const EType& N = partNodes[partIndex];
+                const EType& N = partNodes[partIndex].node;
                 if (std::optional<EType> intersection = intersectOne(egraph, accumulator, &accumulatorNode, partId, &N))
                 {
                     if (isTag<TNever>(*intersection))
@@ -1755,9 +1884,14 @@ void Simplifier::uninhabitedIntersection(Id id)
         if ((unsimplified.empty() || !isTag<TUnknown>(accumulator)) && find(accumulator) != id)
             unsimplified.push_back(accumulator);
 
+        const bool isSmaller = unsimplified.size() < parts.size();
+
         const Id result = mkIntersection(egraph, std::move(unsimplified));
 
-        subst(id, result, "uninhabitedIntersection", {{id, index}});
+        if (isSmaller)
+            subst(id, index, result, "uninhabitedIntersection", {{id, index}});
+        else
+            subst(id, result, "uninhabitedIntersection", {{id, index}});
     }
 }
 
@@ -1788,14 +1922,19 @@ void Simplifier::intersectWithNegatedClass(Id id)
                     const auto& iNodes = egraph[iId].nodes;
                     for (size_t iIndex = 0; iIndex < iNodes.size(); ++iIndex)
                     {
-                        const EType& iNode = iNodes[iIndex];
+                        const EType& iNode = iNodes[iIndex].node;
                         if (isTag<TNil>(iNode) || isTag<TBoolean>(iNode) || isTag<TNumber>(iNode) || isTag<TString>(iNode) || isTag<TThread>(iNode) ||
                             isTag<TTopFunction>(iNode) ||
                             // isTag<TTopTable>(iNode) || // I'm not sure about this one.
                             isTag<SBoolean>(iNode) || isTag<SString>(iNode) || isTag<TFunction>(iNode) || isTag<TNever>(iNode))
                         {
                             // eg string & ~SomeClass
-                            subst(id, iId, "intersectClassWithNegatedClass", {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}});
+                            subst(
+                                id,
+                                iId,
+                                "intersectClassWithNegatedClass",
+                                {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}}
+                            );
                             return;
                         }
 
@@ -1803,27 +1942,37 @@ void Simplifier::intersectWithNegatedClass(Id id)
                         {
                             switch (relateClasses(class_, negatedClass))
                             {
-                                case LeftSuper:
-                                    // eg Instance & ~Part
-                                    // This cannot be meaningfully reduced.
-                                    continue;
-                                case RightSuper:
-                                    subst(id, egraph.add(TNever{}), "intersectClassWithNegatedClass", {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}});
-                                    return;
-                                case Unrelated:
-                                    // Part & ~Folder == Part
+                            case LeftSuper:
+                                // eg Instance & ~Part
+                                // This cannot be meaningfully reduced.
+                                continue;
+                            case RightSuper:
+                                subst(
+                                    id,
+                                    egraph.add(TNever{}),
+                                    "intersectClassWithNegatedClass",
+                                    {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}}
+                                );
+                                return;
+                            case Unrelated:
+                                // Part & ~Folder == Part
+                                {
+                                    std::vector<Id> newParts;
+                                    newParts.reserve(intersection->operands().size() - 1);
+                                    for (Id part : intersection->operands())
                                     {
-                                        std::vector<Id> newParts;
-                                        newParts.reserve(intersection->operands().size() - 1);
-                                        for (Id part : intersection->operands())
-                                        {
-                                            if (part != jId)
-                                                newParts.push_back(part);
-                                        }
-
-                                        Id substId = egraph.add(Intersection{newParts.begin(), newParts.end()});
-                                        subst(id, substId, "intersectClassWithNegatedClass", {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}});
+                                        if (part != jId)
+                                            newParts.push_back(part);
                                     }
+
+                                    Id substId = mkIntersection(egraph, newParts);
+                                    subst(
+                                        id,
+                                        substId,
+                                        "intersectClassWithNegatedClass",
+                                        {{id, intersectionIndex}, {iId, iIndex}, {jId, negationIndex}, {negated, negatedClassIndex}}
+                                    );
+                                }
                             }
                         }
                     }
@@ -1836,6 +1985,74 @@ void Simplifier::intersectWithNegatedClass(Id id)
 
         trySubst(0, 1);
         trySubst(1, 0);
+    }
+}
+
+void Simplifier::intersectWithNegatedAtom(Id id)
+{
+    // Let I and ~J be two arbitrary distinct operands of an intersection where
+    // I and J are terminal but are not type variables. (free, generic, or
+    // otherwise opaque)
+    //
+    // If I and J are equal, then the whole intersection is equivalent to never.
+    //
+    // If I and J are inequal, then J & ~I == J
+
+    for (const auto [intersection, intersectionIndex] : Query<Intersection>(&egraph, id))
+    {
+        const Slice<const Id>& intersectionOperands = intersection->operands();
+        for (size_t i = 0; i < intersectionOperands.size(); ++i)
+        {
+            for (const auto [negation, negationIndex] : Query<Negation>(&egraph, intersectionOperands[i]))
+            {
+                for (size_t negationOperandIndex = 0; negationOperandIndex < egraph[negation->operands()[0]].nodes.size(); ++negationOperandIndex)
+                {
+                    const EType* negationOperand = &egraph[negation->operands()[0]].nodes[negationOperandIndex].node;
+                    if (!isTerminal(*negationOperand) || negationOperand->get<TOpaque>())
+                        continue;
+
+                    for (size_t j = 0; j < intersectionOperands.size(); ++j)
+                    {
+                        if (j == i)
+                            continue;
+
+                        for (size_t jNodeIndex = 0; jNodeIndex < egraph[intersectionOperands[j]].nodes.size(); ++jNodeIndex)
+                        {
+                            const EType* jNode = &egraph[intersectionOperands[j]].nodes[jNodeIndex].node;
+                            if (!isTerminal(*jNode) || jNode->get<TOpaque>())
+                                continue;
+
+                            if (*negationOperand == *jNode)
+                            {
+                                // eg "Hello" & ~"Hello"
+                                // or boolean & ~boolean
+                                subst(
+                                    id,
+                                    egraph.add(TNever{}),
+                                    "intersectWithNegatedAtom",
+                                    {{id, intersectionIndex}, {intersectionOperands[i], negationIndex}, {intersectionOperands[j], jNodeIndex}}
+                                );
+                                return;
+                            }
+                            else if (areTerminalAndDefinitelyDisjoint(*jNode, *negationOperand))
+                            {
+                                // eg "Hello" & ~"World"
+                                // or boolean & ~string
+                                std::vector<Id> newOperands(intersectionOperands.begin(), intersectionOperands.end());
+                                newOperands.erase(newOperands.begin() + std::vector<Id>::difference_type(i));
+
+                                subst(
+                                    id,
+                                    mkIntersection(egraph, std::move(newOperands)),
+                                    "intersectWithNegatedAtom",
+                                    {{id, intersectionIndex}, {intersectionOperands[i], negationIndex}, {intersectionOperands[j], jNodeIndex}}
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2003,7 +2220,7 @@ void Simplifier::expandNegation(Id id)
         if (!ok)
             continue;
 
-        subst(id, fromCanonicalized(egraph, canonicalized), "expandNegation", {{id, index}});
+        subst(id, fromCanonicalized(egraph, canonicalized).first, "expandNegation", {{id, index}});
     }
 }
 
@@ -2160,7 +2377,7 @@ void Simplifier::intersectTableProperty(Id id)
 
                             subst(
                                 id,
-                                egraph.add(Intersection{std::move(newIntersectionParts)}),
+                                mkIntersection(egraph, std::move(newIntersectionParts)),
                                 "intersectTableProperty",
                                 {{id, intersectionIndex}, {iId, table1Index}, {jId, table2Index}}
                             );
@@ -2250,7 +2467,7 @@ void Simplifier::builtinTypeFunctions(Id id)
         if (args.size() != 2)
             continue;
 
-        const std::string& name = tfun->value()->name;
+        const std::string& name = tfun->value()->function->name;
         if (name == "add" || name == "sub" || name == "mul" || name == "div" || name == "idiv" || name == "pow" || name == "mod")
         {
             if (isTag<TNumber>(args[0]) && isTag<TNumber>(args[1]))
@@ -2272,12 +2489,40 @@ void Simplifier::iffyTypeFunctions(Id id)
     {
         const Slice<const Id>& args = tfun->operands();
 
-        const std::string& name = tfun->value()->name;
+        const std::string& name = tfun->value()->function->name;
 
         if (name == "union")
             subst(id, add(Union{std::vector(args.begin(), args.end())}), "iffyTypeFunctions", {{id, index}});
-        else if (name == "intersect" || name == "refine")
+        else if (name == "intersect")
             subst(id, add(Intersection{std::vector(args.begin(), args.end())}), "iffyTypeFunctions", {{id, index}});
+    }
+}
+
+// Replace instances of `lt<X, Y>` and `le<X, Y>` when either X or Y is `number`
+// or `string` with `boolean`. Lua semantics are that if we see the expression:
+//
+//   x < y
+//
+// ... we error if `x` and `y` don't have the same type. We know that for
+// `string` and `number`, comparisons will always return a boolean. So if either
+// of the arguments to `lt<>` are equivalent to `number` or `string`, then the
+// type is effectively `boolean`: either the other type is equivalent, in which
+// case we eval to `boolean`, or we diverge (raise an error).
+void Simplifier::strictMetamethods(Id id)
+{
+    for (const auto [tfun, index] : Query<TTypeFun>(&egraph, id))
+    {
+        const Slice<const Id>& args = tfun->operands();
+
+        const std::string& name = tfun->value()->function->name;
+
+        if (!(name == "lt" || name == "le") || args.size() != 2)
+            continue;
+
+        if (isTag<TNumber>(args[0]) || isTag<TString>(args[0]) || isTag<TNumber>(args[1]) || isTag<TString>(args[1]))
+        {
+            subst(id, add(TBoolean{}), __FUNCTION__, {{id, index}});
+        }
     }
 }
 
@@ -2308,6 +2553,7 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
         &Simplifier::simplifyUnion,
         &Simplifier::uninhabitedIntersection,
         &Simplifier::intersectWithNegatedClass,
+        &Simplifier::intersectWithNegatedAtom,
         &Simplifier::intersectWithNoRefine,
         &Simplifier::cyclicIntersectionOfUnion,
         &Simplifier::cyclicUnionOfIntersection,
@@ -2318,6 +2564,7 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
         &Simplifier::unneededTableModification,
         &Simplifier::builtinTypeFunctions,
         &Simplifier::iffyTypeFunctions,
+        &Simplifier::strictMetamethods,
     };
 
     std::unordered_set<Id> seen;
@@ -2371,9 +2618,9 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
             // try to run any rules on it.
             bool shouldAbort = false;
 
-            for (const EType& enode : egraph[id].nodes)
+            for (const auto& enode : egraph[id].nodes)
             {
-                if (isTerminal(enode))
+                if (isTerminal(enode.node))
                 {
                     shouldAbort = true;
                     break;
@@ -2383,8 +2630,8 @@ std::optional<EqSatSimplificationResult> eqSatSimplify(NotNull<Simplifier> simpl
             if (shouldAbort)
                 continue;
 
-            for (const EType& enode : egraph[id].nodes)
-                addChildren(egraph, &enode, worklist);
+            for (const auto& enode : egraph[id].nodes)
+                addChildren(egraph, &enode.node, worklist);
 
             for (Simplifier::RewriteRuleFn rule : rules)
                 (simplifier.get()->*rule)(id);

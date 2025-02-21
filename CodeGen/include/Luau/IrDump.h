@@ -2,10 +2,12 @@
 #pragma once
 
 #include "Luau/IrData.h"
-#include "Luau/CodeGen.h"
+#include "Luau/CodeGenOptions.h"
 
 #include <string>
 #include <vector>
+
+struct Proto;
 
 namespace Luau
 {
@@ -23,6 +25,7 @@ struct IrToStringContext
     const std::vector<IrBlock>& blocks;
     const std::vector<IrConst>& constants;
     const CfgInfo& cfg;
+    Proto* proto = nullptr;
 };
 
 void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index);

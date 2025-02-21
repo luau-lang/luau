@@ -23,8 +23,8 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
-LUAU_FASTFLAG(LuauNewSolverVisitErrorExprLvalues)
-LUAU_FASTFLAG(LuauDontRefCountTypesInTypeFunctions)
+LUAU_FASTFLAG(InferGlobalTypes)
+LUAU_FASTFLAG(LuauAstTypeGroup)
 
 using namespace Luau;
 
@@ -877,7 +877,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions1")
     CheckResult result = check(R"(local a = if true then "true" else "false")");
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::String);
+    CHECK("string" == toString(aType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions2")
@@ -888,7 +888,7 @@ local a = if false then "a" elseif false then "b" else "c"
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::String);
+    CHECK("string" == toString(aType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")
@@ -1197,13 +1197,26 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     validateErrors(result.errors);
     REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
 
-    CHECK(1 == result.errors.size());
-
     if (FFlag::LuauSolverV2)
-        CHECK(Location{{3, 22}, {3, 42}} == result.errors[0].location);
+    {
+        CHECK(3 == result.errors.size());
+        CHECK(Location{{2, 22}, {2, 41}} == result.errors[0].location);
+        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
+        if (FFlag::LuauAstTypeGroup)
+            CHECK(Location{{3, 22}, {3, 40}} == result.errors[2].location);
+        else
+            CHECK(Location{{3, 23}, {3, 40}} == result.errors[2].location);
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[1]));
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[2]));
+    }
     else
+    {
+        CHECK(1 == result.errors.size());
+
         CHECK(Location{{3, 12}, {3, 46}} == result.errors[0].location);
-    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
@@ -1708,10 +1721,7 @@ TEST_CASE_FIXTURE(Fixture, "react_lua_follow_free_type_ub")
 
 TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNewSolverVisitErrorExprLvalues, true}
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // This should always fail to parse, but shouldn't assert. Previously this
     // would assert as we end up _roughly_ parsing this (with a lot of error
@@ -1727,16 +1737,13 @@ TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
     // in lvalue positions.
     LUAU_REQUIRE_ERRORS(check(R"(
         --!strict
-        (::, 
+        (::,
     )"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         --!strict
@@ -1749,10 +1756,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 
 TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontRefCountTypesInTypeFunctions, true}
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         --!strict
@@ -1761,6 +1765,23 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
             message = "invalid alternate fiber: " .. (name or "UNNAMED alternate")
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
+{
+    ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff_InferGlobalTypes{FFlag::InferGlobalTypes, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        foo = 5
+        print(foo)
+    )");
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 14})));
+
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Unknown global 'foo'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

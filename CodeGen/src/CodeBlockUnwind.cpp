@@ -2,6 +2,7 @@
 #include "Luau/CodeBlockUnwind.h"
 
 #include "Luau/CodeAllocator.h"
+#include "Luau/CodeGenCommon.h"
 #include "Luau/UnwindBuilder.h"
 
 #include <string.h>
@@ -19,9 +20,21 @@
 
 #elif defined(__linux__) || defined(__APPLE__)
 
-// Defined in unwind.h which may not be easily discoverable on various platforms
-extern "C" void __register_frame(const void*) __attribute__((weak));
-extern "C" void __deregister_frame(const void*) __attribute__((weak));
+// __register_frame and __deregister_frame are defined in libgcc or libc++
+// (depending on how it's built). We want to declare them as weak symbols
+// so that if they're provided by a shared library, we'll use them, and if 
+// not, we'll disable some c++ exception handling support. However, if they're
+// declared as weak and the definitions are linked in a static library
+// that's not linked with whole-archive, then the symbols will technically be defined here, 
+// and the linker won't look for the strong ones in the library.
+#ifndef LUAU_ENABLE_REGISTER_FRAME
+#define REGISTER_FRAME_WEAK __attribute__((weak))
+#else
+#define REGISTER_FRAME_WEAK
+#endif
+
+extern "C" void __register_frame(const void*) REGISTER_FRAME_WEAK;
+extern "C" void __deregister_frame(const void*) REGISTER_FRAME_WEAK;
 
 extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
 #endif
@@ -120,7 +133,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 #endif
 
 #elif defined(__linux__) || defined(__APPLE__)
-    if (!__register_frame)
+    if (!&__register_frame)
         return nullptr;
 
     visitFdeEntries(unwindData, __register_frame);
@@ -149,7 +162,7 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
 #endif
 
 #elif defined(__linux__) || defined(__APPLE__)
-    if (!__deregister_frame)
+    if (!&__deregister_frame)
     {
         CODEGEN_ASSERT(!"Cannot deregister unwind information");
         return;

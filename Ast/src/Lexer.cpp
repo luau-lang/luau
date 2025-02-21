@@ -8,7 +8,9 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition)
+LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition2)
+LUAU_FASTFLAGVARIABLE(LexerFixInterpStringStart)
+
 namespace Luau
 {
 
@@ -304,20 +306,51 @@ static char unescape(char ch)
     }
 }
 
+unsigned int Lexeme::getBlockDepth() const
+{
+    LUAU_ASSERT(type == Lexeme::RawString || type == Lexeme::BlockComment);
+
+    // If we have a well-formed string, we are guaranteed to see 2 `]` characters after the end of the string contents
+    LUAU_ASSERT(*(data + length) == ']');
+    unsigned int depth = 0;
+    do
+    {
+        depth++;
+    } while (*(data + length + depth) != ']');
+
+    return depth - 1;
+}
+
+Lexeme::QuoteStyle Lexeme::getQuoteStyle() const
+{
+    LUAU_ASSERT(type == Lexeme::QuotedString);
+
+    // If we have a well-formed string, we are guaranteed to see a closing delimiter after the string
+    LUAU_ASSERT(data);
+
+    char quote = *(data + length);
+    if (quote == '\'')
+        return Lexeme::QuoteStyle::Single;
+    else if (quote == '"')
+        return Lexeme::QuoteStyle::Double;
+
+    LUAU_ASSERT(!"Unknown quote style");
+    return Lexeme::QuoteStyle::Double; // unreachable, but required due to compiler warning
+}
+
 Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Position startPosition)
     : buffer(buffer)
     , bufferSize(bufferSize)
     , offset(0)
-    , line(FFlag::LexerResumesFromPosition ? startPosition.line : 0)
-    , lineOffset(0)
+    , line(FFlag::LexerResumesFromPosition2 ? startPosition.line : 0)
+    , lineOffset(FFlag::LexerResumesFromPosition2 ? 0u - startPosition.column : 0)
     , lexeme(
-          (FFlag::LexerResumesFromPosition ? Location(Position(startPosition.line, startPosition.column), 0) : Location(Position(0, 0), 0)),
+          (FFlag::LexerResumesFromPosition2 ? Location(Position(startPosition.line, startPosition.column), 0) : Location(Position(0, 0), 0)),
           Lexeme::Eof
       )
     , names(names)
     , skipComments(false)
     , readNames(true)
-    , lexResumeOffset(FFlag::LexerResumesFromPosition ? startPosition.column : 0)
 {
 }
 
@@ -372,7 +405,6 @@ Lexeme Lexer::lookahead()
     Location currentPrevLocation = prevLocation;
     size_t currentBraceStackSize = braceStack.size();
     BraceType currentBraceType = braceStack.empty() ? BraceType::Normal : braceStack.back();
-    unsigned int currentLexResumeOffset = lexResumeOffset;
 
     Lexeme result = next();
 
@@ -381,7 +413,6 @@ Lexeme Lexer::lookahead()
     lineOffset = currentLineOffset;
     lexeme = currentLexeme;
     prevLocation = currentPrevLocation;
-    lexResumeOffset = currentLexResumeOffset;
 
     if (braceStack.size() < currentBraceStackSize)
         braceStack.push_back(currentBraceType);
@@ -412,9 +443,10 @@ char Lexer::peekch(unsigned int lookahead) const
     return (offset + lookahead < bufferSize) ? buffer[offset + lookahead] : 0;
 }
 
+LUAU_FORCEINLINE
 Position Lexer::position() const
 {
-    return Position(line, offset - lineOffset + (FFlag::LexerResumesFromPosition ? lexResumeOffset : 0));
+    return Position(line, offset - lineOffset);
 }
 
 LUAU_FORCEINLINE
@@ -433,9 +465,6 @@ void Lexer::consumeAny()
     {
         line++;
         lineOffset = offset + 1;
-        // every new line, we reset
-        if (FFlag::LexerResumesFromPosition)
-            lexResumeOffset = 0;
     }
 
     offset++;
@@ -764,7 +793,7 @@ Lexeme Lexer::readNext()
             return Lexeme(Location(start, 1), '}');
         }
 
-        return readInterpolatedStringSection(position(), Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
+        return readInterpolatedStringSection(FFlag::LexerFixInterpStringStart ? start : position(), Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
     }
 
     case '=':

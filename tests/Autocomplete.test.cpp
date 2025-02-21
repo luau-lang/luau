@@ -2232,7 +2232,7 @@ local ec = e(f@5)
 TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_for_overloads")
 {
     if (FFlag::LuauSolverV2) // CLI-116814 Autocomplete needs to populate expected types for function arguments correctly
-                                                      // (overloads and singletons)
+                             // (overloads and singletons)
         return;
     check(R"(
 local target: ((number) -> string) & ((string) -> number))
@@ -2582,7 +2582,7 @@ end
 TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys")
 {
     if (FFlag::LuauSolverV2) // CLI-116812 AutocompleteTest.suggest_table_keys needs to populate expected types for nested
-                                                      // tables without an annotation
+                             // tables without an annotation
         return;
 
     check(R"(
@@ -3069,7 +3069,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
     if (FFlag::LuauSolverV2) // CLI-116814 Autocomplete needs to populate expected types for function arguments correctly
-                                                      // (overloads and singletons)
+                             // (overloads and singletons)
         return;
 
     check(R"(
@@ -4293,8 +4293,7 @@ end
 foo(@1)
     )");
 
-    const std::optional<std::string> EXPECTED_INSERT =
-        FFlag::LuauSolverV2 ? "function(...: number): number  end" : "function(...): number  end";
+    const std::optional<std::string> EXPECTED_INSERT = FFlag::LuauSolverV2 ? "function(...: number): number  end" : "function(...): number  end";
 
     auto ac = autocomplete('1');
 
@@ -4303,6 +4302,48 @@ foo(@1)
     CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
     REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
     CHECK_EQ(EXPECTED_INSERT, *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_at_end_of_stmt_should_continue_as_part_of_stmt")
+{
+    check(R"(
+local data = { x = 1 }
+local var = data.@1
+    )");
+    auto ac = autocomplete('1');
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("x"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_after_semicolon_should_complete_a_new_statement")
+{
+    check(R"(
+local data = { x = 1 }
+local var = data;@1
+    )");
+    auto ac = autocomplete('1');
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("table"));
+    CHECK(ac.entryMap.count("math"));
+    CHECK_EQ(ac.context, AutocompleteContext::Statement);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_tracing")
+{
+    fileResolver.source["Module/A"] = R"(
+return { x = 0 }
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+local result = require(script.Parent.A)
+local x = 1 + result.
+    )";
+
+    auto ac = autocomplete("Module/B", Position{2, 21});
+
+    CHECK(ac.entryMap.size() == 1);
+    CHECK(ac.entryMap.count("x"));
 }
 
 TEST_SUITE_END();

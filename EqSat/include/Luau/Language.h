@@ -244,6 +244,9 @@ private:
 template<typename Phantom, typename T>
 struct NodeSet
 {
+    template<typename P_, typename T_, typename Find>
+    friend void canonicalize(NodeSet<P_, T_>& node, Find&& find);
+
     template<typename... Args>
     NodeSet(Args&&... args)
         : vector{std::forward<Args>(args)...}
@@ -298,6 +301,9 @@ struct Language final
 
     template<typename T>
     using WithinDomain = std::disjunction<std::is_same<std::decay_t<T>, Ts>...>;
+
+    template<typename Find, typename... Vs>
+    friend void canonicalize(Language<Vs...>& enode, Find&& find);
 
     template<typename T>
     Language(T&& t, std::enable_if_t<WithinDomain<T>::value>* = 0) noexcept
@@ -381,5 +387,38 @@ public:
 private:
     VariantTy v;
 };
+
+template<typename Node, typename Find>
+void canonicalize(Node& node, Find&& find)
+{
+    // An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
+    // canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
+    for (Id& id : node.mutableOperands())
+        id = find(id);
+}
+
+// Canonicalizing the Ids in a NodeSet may result in the set decreasing in size.
+template<typename Phantom, typename T, typename Find>
+void canonicalize(NodeSet<Phantom, T>& node, Find&& find)
+{
+    for (Id& id : node.vector)
+        id = find(id);
+
+    std::sort(begin(node.vector), end(node.vector));
+    auto endIt = std::unique(begin(node.vector), end(node.vector));
+    node.vector.erase(endIt, end(node.vector));
+}
+
+template<typename Find, typename... Vs>
+void canonicalize(Language<Vs...>& enode, Find&& find)
+{
+    visit(
+        [&](auto&& v)
+        {
+            Luau::EqSat::canonicalize(v, find);
+        },
+        enode.v
+    );
+}
 
 } // namespace Luau::EqSat

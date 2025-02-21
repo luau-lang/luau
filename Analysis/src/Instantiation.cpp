@@ -11,6 +11,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -61,9 +62,7 @@ TypeId Instantiation::clean(TypeId ty)
     LUAU_ASSERT(ftv);
 
     FunctionType clone = FunctionType{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
-    clone.magicFunction = ftv->magicFunction;
-    clone.dcrMagicFunction = ftv->dcrMagicFunction;
-    clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
+    clone.magic = ftv->magic;
     clone.tags = ftv->tags;
     clone.argNames = ftv->argNames;
     TypeId result = addType(std::move(clone));
@@ -165,7 +164,7 @@ TypeId ReplaceGenerics::clean(TypeId ty)
     }
     else
     {
-        return addType(FreeType{scope, level});
+        return FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtinTypes, scope, level) : addType(FreeType{scope, level});
     }
 }
 

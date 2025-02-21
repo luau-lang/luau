@@ -599,6 +599,90 @@ end
 
 misc(table.create(16, 0))
 
+local function bitops(size, base)
+  local b = buffer.create(size)
+
+  buffer.writeu32(b, base / 8, 0x12345678)
+
+  assert(buffer.readbits(b, base, 8) == buffer.readu8(b, base / 8))
+  assert(buffer.readbits(b, base, 16) == buffer.readu16(b, base / 8))
+  assert(buffer.readbits(b, base, 32) == buffer.readu32(b, base / 8))
+
+  buffer.writebits(b, base, 32, 0)
+
+  buffer.writebits(b, base, 1, 1)
+  assert(buffer.readi8(b, base / 8) == 1)
+
+  buffer.writebits(b, base + 1, 1, 1)
+  assert(buffer.readi8(b, base / 8) == 3)
+
+  -- construct 00000010 00000000_01000000_00010000_00001000 00001000_00010000_01000010_00100101
+  buffer.writebits(b, base + 0, 1, 0b1)
+  buffer.writebits(b, base + 1, 2, 0b10)
+  buffer.writebits(b, base + 3, 3, 0b100)
+  buffer.writebits(b, base + 6, 4, 0b1000)
+  buffer.writebits(b, base + 10, 5, 0b10000)
+  buffer.writebits(b, base + 15, 6, 0b100000)
+  buffer.writebits(b, base + 21, 7, 0b1000000)
+  buffer.writebits(b, base + 28, 8, 0b10000000)
+  buffer.writebits(b, base + 36, 9, 0b100000000)
+  buffer.writebits(b, base + 45, 10, 0b1000000000)
+  buffer.writebits(b, base + 55, 11, 0b10000000000)
+
+  assert(buffer.readbits(b, base + 0, 32) == 0b00001000_00010000_01000010_00100101)
+  assert(buffer.readbits(b, base + 32, 32) == 0b00000000_01000000_00010000_00001000)
+  
+  assert(buffer.readu32(b, base / 8 + 0) == 0b00001000_00010000_01000010_00100101)
+  assert(buffer.readu32(b, base / 8 + 4) == 0b00000000_01000000_00010000_00001000)
+
+  -- slide the window to touch 5 bytes
+  assert(buffer.readbits(b, base + 1, 32) == 0b00000100000010000010000100010010)
+  assert(buffer.readbits(b, base + 2, 32) == 0b00000010000001000001000010001001)
+  assert(buffer.readbits(b, base + 3, 32) == 0b00000001000000100000100001000100)
+  assert(buffer.readbits(b, base + 4, 32) == 0b10000000100000010000010000100010)
+  assert(buffer.readbits(b, base + 5, 32) == 0b01000000010000001000001000010001)
+  assert(buffer.readbits(b, base + 6, 32) == 0b00100000001000000100000100001000)
+  assert(buffer.readbits(b, base + 7, 32) == 0b00010000000100000010000010000100)
+  assert(buffer.readbits(b, base + 8, 32) == 0b00001000000010000001000001000010)
+  
+  assert(buffer.readbits(b, base + 1, 15) == 0b010000100010010)
+  assert(buffer.readbits(b, base + 2, 15) == 0b001000010001001)
+  assert(buffer.readbits(b, base + 3, 15) == 0b000100001000100)
+  assert(buffer.readbits(b, base + 4, 15) == 0b000010000100010)
+  assert(buffer.readbits(b, base + 5, 15) == 0b000001000010001)
+  assert(buffer.readbits(b, base + 6, 15) == 0b100000100001000)
+  assert(buffer.readbits(b, base + 7, 15) == 0b010000010000100)
+  assert(buffer.readbits(b, base + 8, 15) == 0b001000001000010)
+  
+  -- zero bit
+  buffer.writebits(b, base, 0, 0b1)
+  assert(buffer.readbits(b, base, 32) == 0b00001000_00010000_01000010_00100101)
+  assert(buffer.readbits(b, base, 0) == 0)
+  assert(buffer.readbits(b, size * 8, 0) == 0)
+
+  -- bounds
+  assert(ecall(function() buffer.readbits(b, -1, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readbits(b, size * 8, 1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readbits(b, size * 8 - 1, 2) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readbits(b, 0, 64) end) == "bit count is out of range of [0; 32]")
+
+  assert(ecall(function() buffer.writebits(b, -1, 0, 1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writebits(b, size * 8, 1, 1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writebits(b, size * 8 - 1, 2, 1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writebits(b, 0, 64, 1) end) == "bit count is out of range of [0; 32]")
+
+
+  return b
+end
+
+do
+  bitops(16, 0)
+  bitops(17, 8)
+
+  -- a very large buffer and bit offsets can now be over 32 bits
+  bitops(1024 * 1024 * 1024, 6 * 1024 * 1024 * 1024)
+end
+
 local function testslowcalls()
   getfenv()
 
@@ -619,6 +703,7 @@ local function testslowcalls()
   fromtostring()
   fill()
   misc(table.create(16, 0))
+  bitops(16, 0)
 end
 
 testslowcalls()

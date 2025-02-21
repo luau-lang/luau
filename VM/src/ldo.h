@@ -7,11 +7,21 @@
 #include "luaconf.h"
 #include "ldebug.h"
 
+// returns target stack for 'n' extra elements to reallocate
+// if possible, stack size growth factor is 2x
+#define getgrownstacksize(L, n) ((n) <= L->stacksize ? 2 * L->stacksize : L->stacksize + (n))
+
+#define luaD_checkstackfornewci(L, n) \
+    if ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue)) \
+        luaD_reallocstack(L, getgrownstacksize(L, (n)), 1); \
+    else \
+        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 1));
+
 #define luaD_checkstack(L, n) \
     if ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue)) \
         luaD_growstack(L, n); \
     else \
-        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK));
+        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 0));
 
 #define incr_top(L) \
     { \
@@ -47,7 +57,7 @@ LUAI_FUNC CallInfo* luaD_growCI(lua_State* L);
 LUAI_FUNC void luaD_call(lua_State* L, StkId func, int nresults);
 LUAI_FUNC int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t oldtop, ptrdiff_t ef);
 LUAI_FUNC void luaD_reallocCI(lua_State* L, int newsize);
-LUAI_FUNC void luaD_reallocstack(lua_State* L, int newsize);
+LUAI_FUNC void luaD_reallocstack(lua_State* L, int newsize, int fornewci);
 LUAI_FUNC void luaD_growstack(lua_State* L, int n);
 LUAI_FUNC void luaD_checkCstack(lua_State* L);
 

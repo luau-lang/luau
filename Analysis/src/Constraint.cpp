@@ -3,8 +3,6 @@
 #include "Luau/Constraint.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauDontRefCountTypesInTypeFunctions)
-
 namespace Luau
 {
 
@@ -60,9 +58,8 @@ struct ReferenceCountInitializer : TypeOnceVisitor
         //
         // The default behavior here is `true` for "visit the child types"
         // of this type, hence:
-        return !FFlag::LuauDontRefCountTypesInTypeFunctions;
+        return false;
     }
-
 };
 
 bool isReferenceCountedType(const TypeId typ)

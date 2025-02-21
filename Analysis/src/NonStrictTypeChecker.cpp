@@ -19,8 +19,8 @@
 #include <iostream>
 #include <iterator>
 
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunNonstrict)
 LUAU_FASTFLAGVARIABLE(LuauCountSelfCallsNonstrict)
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -158,6 +158,7 @@ private:
 struct NonStrictTypeChecker
 {
     NotNull<BuiltinTypes> builtinTypes;
+    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     const NotNull<InternalErrorReporter> ice;
     NotNull<TypeArena> arena;
@@ -174,6 +175,7 @@ struct NonStrictTypeChecker
     NonStrictTypeChecker(
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtinTypes,
+        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         const NotNull<InternalErrorReporter> ice,
         NotNull<UnifierSharedState> unifierState,
@@ -182,12 +184,13 @@ struct NonStrictTypeChecker
         Module* module
     )
         : builtinTypes(builtinTypes)
+        , simplifier(simplifier)
         , typeFunctionRuntime(typeFunctionRuntime)
         , ice(ice)
         , arena(arena)
         , module(module)
         , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
-        , subtyping{builtinTypes, arena, NotNull(&normalizer), typeFunctionRuntime, ice}
+        , subtyping{builtinTypes, arena, simplifier, NotNull(&normalizer), typeFunctionRuntime, ice}
         , dfg(dfg)
         , limits(limits)
     {
@@ -209,7 +212,7 @@ struct NonStrictTypeChecker
             return *fst;
         else if (auto ftp = get<FreeTypePack>(pack))
         {
-            TypeId result = arena->addType(FreeType{ftp->scope});
+            TypeId result = FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtinTypes, ftp->scope) : arena->addType(FreeType{ftp->scope});
             TypePackId freeTail = arena->addTypePack(FreeTypePack{ftp->scope});
 
             TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
@@ -232,13 +235,14 @@ struct NonStrictTypeChecker
         if (noTypeFunctionErrors.find(instance))
             return instance;
 
-        ErrorVec errors = reduceTypeFunctions(
-                              instance,
-                              location,
-                              TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits},
-                              true
-        )
-                              .errors;
+        ErrorVec errors =
+            reduceTypeFunctions(
+                instance,
+                location,
+                TypeFunctionContext{arena, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits},
+                true
+            )
+                .errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -424,9 +428,6 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatTypeFunction* typeFunc)
     {
-        if (!FFlag::LuauUserTypeFunNonstrict)
-            reportError(GenericError{"This syntax is not supported"}, typeFunc->location);
-
         return {};
     }
 
@@ -888,6 +889,7 @@ private:
 
 void checkNonStrict(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> ice,
     NotNull<UnifierSharedState> unifierState,
@@ -899,7 +901,9 @@ void checkNonStrict(
 {
     LUAU_TIMETRACE_SCOPE("checkNonStrict", "Typechecking");
 
-    NonStrictTypeChecker typeChecker{NotNull{&module->internalTypes}, builtinTypes, typeFunctionRuntime, ice, unifierState, dfg, limits, module};
+    NonStrictTypeChecker typeChecker{
+        NotNull{&module->internalTypes}, builtinTypes, simplifier, typeFunctionRuntime, ice, unifierState, dfg, limits, module
+    };
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);
