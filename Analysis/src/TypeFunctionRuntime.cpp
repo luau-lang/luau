@@ -1568,12 +1568,6 @@ void registerTypeUserData(lua_State* L)
 
     // Create and register metatable for type userdata
     luaL_newmetatable(L, "type");
-    
-    if (FFlag::LuauUserTypeFunTypeofReturnsType)
-    {
-        lua_pushstring(L, "type");
-        lua_setfield(L, -2, "__type");
-    }
 
     if (FFlag::LuauUserTypeFunTypeofReturnsType)
     {
