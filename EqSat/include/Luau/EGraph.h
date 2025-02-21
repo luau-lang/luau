@@ -66,7 +66,7 @@ struct Node
     };
 };
 
-template <typename L>
+template<typename L>
 struct NodeIterator
 {
 private:

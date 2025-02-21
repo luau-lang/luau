@@ -20,7 +20,6 @@
 #include <utility>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(AutocompleteRequirePathSuggestions2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
@@ -1521,12 +1520,9 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(
     {
         for (const std::string& tag : funcType->tags)
         {
-            if (FFlag::AutocompleteRequirePathSuggestions2)
+            if (tag == kRequireTagName && fileResolver)
             {
-                if (tag == kRequireTagName && fileResolver)
-                {
-                    return convertRequireSuggestionsToAutocompleteEntryMap(fileResolver->getRequireSuggestions(module->name, candidateString));
-                }
+                return convertRequireSuggestionsToAutocompleteEntryMap(fileResolver->getRequireSuggestions(module->name, candidateString));
             }
             if (std::optional<AutocompleteEntryMap> ret = callback(tag, getMethodContainingClass(module, candidate->func), candidateString))
             {

@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
+LUAU_FASTFLAG(LuauSubtypingFixTailPack)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3025,6 +3026,19 @@ TEST_CASE_FIXTURE(Fixture, "hidden_variadics_should_not_break_subtyping")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_wrap_result_call")
+{
+    ScopedFastFlag luauSubtypingFixTailPack{FFlag::LuauSubtypingFixTailPack, true};
+
+    CheckResult result = check(R"(
+        function foo(a, b)
+            coroutine.wrap(a)(b)
+        end
+    )");
+
+    // New solver still reports an error in this case, but the main goal of the test is to not crash
 }
 
 TEST_SUITE_END();

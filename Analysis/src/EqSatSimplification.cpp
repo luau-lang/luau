@@ -396,7 +396,8 @@ Id toId(
     {
         LUAU_ASSERT(tfun->packArguments.empty());
 
-        if (tfun->userFuncName) {
+        if (tfun->userFuncName)
+        {
             // TODO: User defined type functions are pseudo-effectful: error
             // reporting is done via the `print` statement, so running a
             // UDTF multiple times may end up double erroring. egraphs

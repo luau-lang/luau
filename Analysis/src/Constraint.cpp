@@ -146,6 +146,10 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(rpc->tp);
     }
+    else if (auto tcc = get<TableCheckConstraint>(*this))
+    {
+        rci.traverse(tcc->exprType);
+    }
 
     return types;
 }

@@ -11,14 +11,12 @@
 namespace Luau
 {
 
-class AstStat;
-class AstExpr;
+class AstNode;
 class AstStatBlock;
-struct AstLocal;
 
 struct RequireTraceResult
 {
-    DenseHashMap<const AstExpr*, ModuleInfo> exprs{nullptr};
+    DenseHashMap<const AstNode*, ModuleInfo> exprs{nullptr};
 
     std::vector<std::pair<ModuleName, Location>> requireList;
 };

@@ -180,7 +180,7 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 void registerHiddenTypes(Frontend* frontend);
 void createSomeClasses(Frontend* frontend);
 
-template <typename E>
+template<typename E>
 const E* findError(const CheckResult& result)
 {
     for (const auto& e : result.errors)

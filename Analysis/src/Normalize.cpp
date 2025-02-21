@@ -2296,7 +2296,7 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
                     //
                     //  Dog & ~Animal
                     //
-                    // Clearly this intersects to never, so we mark this class as 
+                    // Clearly this intersects to never, so we mark this class as
                     // being removed from the normalized class type.
                     emptyIntersectWithNegation = true;
                     break;

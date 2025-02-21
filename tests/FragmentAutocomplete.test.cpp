@@ -31,7 +31,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauCloneIncrementalModule)
 
 LUAU_FASTFLAG(LuauIncrementalAutocompleteBugfixes)
-LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver)
 LUAU_FASTFLAG(LuauMixedModeDefFinderTraversesTypeOf)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
@@ -65,13 +64,12 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 {
     static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
 
-    ScopedFastFlag sffs[8] = {
+    ScopedFastFlag sffs[7] = {
         {FFlag::LuauAllowFragmentParsing, true},
         {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
         {FFlag::LuauStoreSolverTypeOnModule, true},
         {FFlag::LuauSymbolEquality, true},
         {FFlag::LexerResumesFromPosition2, true},
-        {FFlag::LuauReferenceAllocatorInNewSolver, true},
         {FFlag::LuauIncrementalAutocompleteBugfixes, true},
         {FFlag::LuauBetterReverseDependencyTracking, true},
     };
@@ -925,6 +923,148 @@ tbl.abc.
             CHECK(fragment.acResults.entryMap.count("def"));
             CHECK(fragment.acResults.entryMap.count("egh"));
             CHECK_EQ(fragment.acResults.context, AutocompleteContext::Property);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_functions_complex")
+{
+    const std::string text = R"( local function f1(a1)
+    local l1 = 1;"
+    g1 = 1;"
+end
+
+local function f2(a2)
+    local l2 = 1;
+    g2 = 1;
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{0, 0},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") == 0);
+            CHECK(strings.count("a1") == 0);
+            CHECK(strings.count("l1") == 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") == 0);
+            CHECK(strings.count("a2") == 0);
+            CHECK(strings.count("l2") == 0);
+            CHECK(strings.count("g2") != 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{0, 22},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") != 0);
+            CHECK(strings.count("a1") != 0);
+            CHECK(strings.count("l1") == 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") == 0);
+            CHECK(strings.count("a2") == 0);
+            CHECK(strings.count("l2") == 0);
+            CHECK(strings.count("g2") != 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{1, 17},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") != 0);
+            CHECK(strings.count("a1") != 0);
+            CHECK(strings.count("l1") != 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") == 0);
+            CHECK(strings.count("a2") == 0);
+            CHECK(strings.count("l2") == 0);
+            CHECK(strings.count("g2") != 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{2, 11},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") != 0);
+            CHECK(strings.count("a1") != 0);
+            CHECK(strings.count("l1") != 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") == 0);
+            CHECK(strings.count("a2") == 0);
+            CHECK(strings.count("l2") == 0);
+            CHECK(strings.count("g2") != 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{4, 0},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") != 0);
+            // FIXME: RIDE-11123: This should be zero counts of `a1`.
+            CHECK(strings.count("a1") != 0);
+            CHECK(strings.count("l1") == 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") == 0);
+            CHECK(strings.count("a2") == 0);
+            CHECK(strings.count("l2") == 0);
+            CHECK(strings.count("g2") != 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{6, 17},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") != 0);
+            CHECK(strings.count("a1") == 0);
+            CHECK(strings.count("l1") == 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") != 0);
+            CHECK(strings.count("a2") != 0);
+            CHECK(strings.count("l2") != 0);
+            CHECK(strings.count("g2") != 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        text,
+        text,
+        Position{8, 4},
+        [](FragmentAutocompleteResult& fragment)
+        {
+            auto strings = fragment.acResults.entryMap;
+            CHECK(strings.count("f1") != 0);
+            CHECK(strings.count("a1") == 0);
+            CHECK(strings.count("l1") == 0);
+            CHECK(strings.count("g1") != 0);
+            CHECK(strings.count("f2") != 0);
+            // FIXME: RIDE-11123: This should be zero counts of `a2`.
+            CHECK(strings.count("a2") != 0);
+            CHECK(strings.count("l2") == 0);
+            CHECK(strings.count("g2") != 0);
         }
     );
 }

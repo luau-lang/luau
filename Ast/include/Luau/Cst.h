@@ -270,6 +270,47 @@ public:
     Position functionKeywordPosition;
 };
 
+class CstGenericType : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstGenericType)
+
+    CstGenericType(std::optional<Position> defaultEqualsPosition);
+
+    std::optional<Position> defaultEqualsPosition;
+};
+
+class CstGenericTypePack : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstGenericTypePack)
+
+    CstGenericTypePack(Position ellipsisPosition, std::optional<Position> defaultEqualsPosition);
+
+    Position ellipsisPosition;
+    std::optional<Position> defaultEqualsPosition;
+};
+
+class CstStatTypeAlias : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatTypeAlias)
+
+    CstStatTypeAlias(
+        Position typeKeywordPosition,
+        Position genericsOpenPosition,
+        AstArray<Position> genericsCommaPositions,
+        Position genericsClosePosition,
+        Position equalsPosition
+    );
+
+    Position typeKeywordPosition;
+    Position genericsOpenPosition;
+    AstArray<Position> genericsCommaPositions;
+    Position genericsClosePosition;
+    Position equalsPosition;
+};
+
 class CstTypeReference : public CstNode
 {
 public:

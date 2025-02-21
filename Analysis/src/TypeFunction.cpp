@@ -489,7 +489,6 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
 
         return std::move(reducer.result);
     }
-
 }
 
 FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, TypeFunctionContext ctx, bool force)
@@ -744,11 +743,9 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     resetTypeFunctionState(L);
 
-    // Push serialized arguments onto the stack
-
-    // Since there aren't any new class types being created in type functions, there isn't a deserialization function
-    // class types. Instead, we can keep this map and return the mapping as the "deserialized value"
     std::unique_ptr<TypeFunctionRuntimeBuilderState> runtimeBuilder = std::make_unique<TypeFunctionRuntimeBuilderState>(ctx);
+
+    // Push serialized arguments onto the stack
     for (auto typeParam : typeParams)
     {
         TypeId ty = follow(typeParam);
@@ -2839,9 +2836,9 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     // we're trying to reject any type that has not normalized to a table or a union/intersection of tables.
-    if (targetNorm->hasTops() || targetNorm->hasBooleans() || targetNorm->hasErrors() || targetNorm->hasNils() ||
-        targetNorm->hasNumbers() || targetNorm->hasStrings() || targetNorm->hasThreads() || targetNorm->hasBuffers() ||
-        targetNorm->hasFunctions() || targetNorm->hasTyvars() || targetNorm->hasClasses())
+    if (targetNorm->hasTops() || targetNorm->hasBooleans() || targetNorm->hasErrors() || targetNorm->hasNils() || targetNorm->hasNumbers() ||
+        targetNorm->hasStrings() || targetNorm->hasThreads() || targetNorm->hasBuffers() || targetNorm->hasFunctions() || targetNorm->hasTyvars() ||
+        targetNorm->hasClasses())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     // if the supposed metatable is not a table, we will fail to reduce.
@@ -2899,11 +2896,7 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     return {result, Reduction::MaybeOk, {}, {}};
 }
 
-static TypeFunctionReductionResult<TypeId> getmetatableHelper(
-    TypeId targetTy,
-    const Location& location,
-    NotNull<TypeFunctionContext> ctx
-)
+static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, const Location& location, NotNull<TypeFunctionContext> ctx)
 {
     targetTy = follow(targetTy);
 

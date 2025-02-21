@@ -111,11 +111,7 @@ CstStatForIn::CstStatForIn(AstArray<Position> varsCommaPositions, AstArray<Posit
 {
 }
 
-CstStatAssign::CstStatAssign(
-    AstArray<Position> varsCommaPositions,
-    Position equalsPosition,
-    AstArray<Position> valuesCommaPositions
-)
+CstStatAssign::CstStatAssign(AstArray<Position> varsCommaPositions, Position equalsPosition, AstArray<Position> valuesCommaPositions)
     : CstNode(CstClassIndex())
     , varsCommaPositions(varsCommaPositions)
     , equalsPosition(equalsPosition)
@@ -132,6 +128,35 @@ CstStatCompoundAssign::CstStatCompoundAssign(Position opPosition)
 CstStatLocalFunction::CstStatLocalFunction(Position functionKeywordPosition)
     : CstNode(CstClassIndex())
     , functionKeywordPosition(functionKeywordPosition)
+{
+}
+
+CstGenericType::CstGenericType(std::optional<Position> defaultEqualsPosition)
+    : CstNode(CstClassIndex())
+    , defaultEqualsPosition(defaultEqualsPosition)
+{
+}
+
+CstGenericTypePack::CstGenericTypePack(Position ellipsisPosition, std::optional<Position> defaultEqualsPosition)
+    : CstNode(CstClassIndex())
+    , ellipsisPosition(ellipsisPosition)
+    , defaultEqualsPosition(defaultEqualsPosition)
+{
+}
+
+CstStatTypeAlias::CstStatTypeAlias(
+    Position typeKeywordPosition,
+    Position genericsOpenPosition,
+    AstArray<Position> genericsCommaPositions,
+    Position genericsClosePosition,
+    Position equalsPosition
+)
+    : CstNode(CstClassIndex())
+    , typeKeywordPosition(typeKeywordPosition)
+    , genericsOpenPosition(genericsOpenPosition)
+    , genericsCommaPositions(genericsCommaPositions)
+    , genericsClosePosition(genericsClosePosition)
+    , equalsPosition(equalsPosition)
 {
 }
 

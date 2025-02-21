@@ -51,7 +51,6 @@ struct UnifierSharedState
     UnifierCounters counters;
 
     bool reentrantTypeReduction = false;
-
 };
 
 struct TypeReductionRentrancyGuard final

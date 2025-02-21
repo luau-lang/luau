@@ -2,6 +2,8 @@
 
 #include "Luau/Generalization.h"
 
+#include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Scope.h"
 #include "Luau/Type.h"
 #include "Luau/ToString.h"
@@ -10,7 +12,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
-LUAU_FASTFLAGVARIABLE(LuauGeneralizationRemoveRecursiveUpperBound)
+LUAU_FASTFLAGVARIABLE(LuauGeneralizationRemoveRecursiveUpperBound2)
 
 namespace Luau
 {
@@ -50,7 +52,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
     {
     }
 
-    static void replace(DenseHashSet<TypeId>& seen, TypeId haystack, TypeId needle, TypeId replacement)
+    void replace(DenseHashSet<TypeId>& seen, TypeId haystack, TypeId needle, TypeId replacement)
     {
         haystack = follow(haystack);
 
@@ -97,6 +99,10 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 LUAU_ASSERT(onlyType != haystack);
                 emplaceType<BoundType>(asMutable(haystack), onlyType);
             }
+            else if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound2 && ut->options.empty())
+            {
+                emplaceType<BoundType>(asMutable(haystack), builtinTypes->neverType);
+            }
 
             return;
         }
@@ -139,6 +145,10 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 TypeId onlyType = it->parts[0];
                 LUAU_ASSERT(onlyType != needle);
                 emplaceType<BoundType>(asMutable(needle), onlyType);
+            } 
+            else if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound2 && it->parts.empty())
+            {
+                emplaceType<BoundType>(asMutable(needle), builtinTypes->unknownType);
             }
 
             return;
@@ -233,53 +243,6 @@ struct MutatingGeneralizer : TypeOnceVisitor
         else
         {
             TypeId ub = follow(ft->upperBound);
-            if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound)
-            {
-
-                // If the upper bound is a union type or an intersection type,
-                // and one of it's members is the free type we're
-                // generalizing, don't include it in the upper bound. For a
-                // free type such as:
-                //
-                //  t1 where t1 = D <: 'a <: (A | B | C | t1)
-                //
-                // Naively replacing it with it's upper bound creates:
-                //
-                //  t1 where t1 = A | B | C | t1
-                //
-                // It makes sense to just optimize this and exclude the
-                // recursive component by semantic subtyping rules.
-
-                if (auto itv = get<IntersectionType>(ub))
-                {
-                    std::vector<TypeId> newIds;
-                    newIds.reserve(itv->parts.size());
-                    for (auto part : itv)
-                    {
-                        if (part != ty)
-                            newIds.push_back(part);
-                    }
-                    if (newIds.size() == 1)
-                        ub = newIds[0];
-                    else if (newIds.size() > 0)
-                        ub = arena->addType(IntersectionType{std::move(newIds)});
-                }
-                else if (auto utv = get<UnionType>(ub))
-                {
-                    std::vector<TypeId> newIds;
-                    newIds.reserve(utv->options.size());
-                    for (auto part : utv)
-                    {
-                        if (part != ty)
-                            newIds.push_back(part);
-                    }
-                    if (newIds.size() == 1)
-                        ub = newIds[0];
-                    else if (newIds.size() > 0)
-                        ub = arena->addType(UnionType{std::move(newIds)});
-                }
-            }
-
             if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == ty)
                 upperFree->lowerBound = builtinTypes->neverType;
             else

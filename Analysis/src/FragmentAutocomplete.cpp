@@ -30,7 +30,6 @@ LUAU_FASTFLAG(LuauAllowFragmentParsing);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteBugfixes)
-LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver)
 LUAU_FASTFLAGVARIABLE(LuauMixedModeDefFinderTraversesTypeOf)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
@@ -596,7 +595,7 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
         return {};
     }
 
-    if (FFlag::LuauIncrementalAutocompleteBugfixes && FFlag::LuauReferenceAllocatorInNewSolver)
+    if (FFlag::LuauIncrementalAutocompleteBugfixes)
     {
         if (sourceModule->allocator.get() != module->allocator.get())
         {

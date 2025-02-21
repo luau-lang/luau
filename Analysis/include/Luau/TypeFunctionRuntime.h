@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeFwd.h"
 
 #include <optional>
 #include <string>
@@ -217,7 +218,9 @@ struct TypeFunctionClassType
 
     std::optional<TypeFunctionTypeId> parent;
 
-    std::string name;
+    TypeId classTy;
+
+    std::string name_DEPRECATED;
 };
 
 struct TypeFunctionGenericType

@@ -641,10 +641,7 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
 {
-    ScopedFastFlag flags[] = {
-        {FFlag::LuauNonStrictVisitorImprovements, true},
-        {FFlag::LuauNewNonStrictWarnOnUnknownGlobals, true}
-    };
+    ScopedFastFlag flags[] = {{FFlag::LuauNonStrictVisitorImprovements, true}, {FFlag::LuauNewNonStrictWarnOnUnknownGlobals, true}};
 
     CheckResult result = check(Mode::Nonstrict, R"(
         foo = 5

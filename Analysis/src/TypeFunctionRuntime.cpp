@@ -13,7 +13,10 @@
 #include <set>
 #include <vector>
 
+LUAU_FASTFLAGVARIABLE(LuauTypeFunFixHydratedClasses)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunSingletonEquality)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypeofReturnsType)
 
 namespace Luau
 {
@@ -1565,6 +1568,12 @@ void registerTypeUserData(lua_State* L)
     // Create and register metatable for type userdata
     luaL_newmetatable(L, "type");
 
+    if (FFlag::LuauUserTypeFunTypeofReturnsType)
+    {
+        lua_pushstring(L, "type");
+        lua_setfield(L, -2, "__type");
+    }
+
     // Protect metatable from being changed
     lua_pushstring(L, "The metatable is locked");
     lua_setfield(L, -2, "__metatable");
@@ -1695,14 +1704,14 @@ bool areEqual(SeenSet& seen, const TypeFunctionSingletonType& lhs, const TypeFun
 
     {
         const TypeFunctionBooleanSingleton* lp = get<TypeFunctionBooleanSingleton>(&lhs);
-        const TypeFunctionBooleanSingleton* rp = get<TypeFunctionBooleanSingleton>(&lhs);
+        const TypeFunctionBooleanSingleton* rp = get<TypeFunctionBooleanSingleton>(FFlag::LuauTypeFunSingletonEquality ? &rhs : &lhs);
         if (lp && rp)
             return lp->value == rp->value;
     }
 
     {
         const TypeFunctionStringSingleton* lp = get<TypeFunctionStringSingleton>(&lhs);
-        const TypeFunctionStringSingleton* rp = get<TypeFunctionStringSingleton>(&lhs);
+        const TypeFunctionStringSingleton* rp = get<TypeFunctionStringSingleton>(FFlag::LuauTypeFunSingletonEquality ? &rhs : &lhs);
         if (lp && rp)
             return lp->value == rp->value;
     }
@@ -1855,7 +1864,10 @@ bool areEqual(SeenSet& seen, const TypeFunctionClassType& lhs, const TypeFunctio
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
 
-    return lhs.name == rhs.name;
+    if (FFlag::LuauTypeFunFixHydratedClasses)
+        return lhs.classTy == rhs.classTy;
+    else
+        return lhs.name_DEPRECATED == rhs.name_DEPRECATED;
 }
 
 bool areEqual(SeenSet& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs)
