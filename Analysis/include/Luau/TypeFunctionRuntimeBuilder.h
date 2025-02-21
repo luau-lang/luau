@@ -32,7 +32,7 @@ struct TypeFunctionRuntimeBuilderState
     // Invariant: users can not create a new class types -> any class types that get deserialized must have been an argument to the type function
     // Using this invariant, whenever a ClassType is serialized, we can put it into this map
     // whenever a ClassType is deserialized, we can use this map to return the corresponding value
-    DenseHashMap<std::string, TypeId> classesSerialized{{}};
+    DenseHashMap<std::string, TypeId> classesSerialized_DEPRECATED{{}};
 
     // List of errors that occur during serialization/deserialization
     // At every iteration of serialization/deserialzation, if this list.size() != 0, we halt the process
@@ -40,8 +40,6 @@ struct TypeFunctionRuntimeBuilderState
 
     TypeFunctionRuntimeBuilderState(NotNull<TypeFunctionContext> ctx)
         : ctx(ctx)
-        , classesSerialized({})
-        , errors({})
     {
     }
 };

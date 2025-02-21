@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauAlwaysFillInFunctionCallDiscriminantTypes)
 LUAU_FASTFLAG(LuauStoreCSTData)
 LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 
 
 struct ATSFixture : BuiltinsFixture
@@ -693,6 +694,7 @@ TEST_CASE_FIXTURE(ATSFixture, "mutually_recursive_generic")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true}
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -705,8 +707,7 @@ TEST_CASE_FIXTURE(ATSFixture, "mutually_recursive_generic")
         y.g.i = y
     )";
 
-    CheckResult result1 = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(2, result1);
+    LUAU_REQUIRE_NO_ERRORS(frontend.check("game/Gui/Modules/A"));
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
 

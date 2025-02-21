@@ -118,6 +118,8 @@ struct ConstraintSolver
     // A mapping from free types to the number of unresolved constraints that mention them.
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
 
+    std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes;
+
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
 
@@ -201,6 +203,7 @@ public:
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const TableCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
@@ -421,10 +424,7 @@ public:
 
     ToStringOptions opts;
 
-    void fillInDiscriminantTypes(
-        NotNull<const Constraint> constraint,
-        const std::vector<std::optional<TypeId>>& discriminantTypes
-    );
+    void fillInDiscriminantTypes(NotNull<const Constraint> constraint, const std::vector<std::optional<TypeId>>& discriminantTypes);
 };
 
 void dump(NotNull<Scope> rootScope, struct ToStringOptions& opts);

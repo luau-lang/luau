@@ -16,7 +16,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
-LUAU_FASTFLAG(LuauReferenceAllocatorInNewSolver);
 LUAU_FASTFLAG(LuauSelectivelyRetainDFGArena)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking);
 
@@ -1528,7 +1527,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "get_required_scripts_dirty")
 
 TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_allocator")
 {
-    ScopedFastFlag sff{FFlag::LuauReferenceAllocatorInNewSolver, true};
     fileResolver.source["game/workspace/MyScript"] = R"(
         print("Hello World")
     )";
@@ -1546,10 +1544,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_allocator")
 
 TEST_CASE_FIXTURE(FrontendFixture, "dfg_data_cleared_on_retain_type_graphs_unset")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSelectivelyRetainDFGArena, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauSelectivelyRetainDFGArena, true}};
     fileResolver.source["game/A"] = R"(
 local a = 1
 local b = 2
@@ -1760,7 +1755,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_
 
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = "return require(game:GetService('Gui').Modules.A)";
-    
+
     FrontendOptions opts;
     opts.forAutocomplete = false;
 

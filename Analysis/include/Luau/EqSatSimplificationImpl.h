@@ -105,7 +105,7 @@ private:
     std::vector<Id> storage;
 };
 
-template <typename L>
+template<typename L>
 using Node = EqSat::Node<L>;
 
 using EType = EqSat::Language<

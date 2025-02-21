@@ -408,7 +408,7 @@ TypeId matchLiteralType(
 
         if (FFlag::LuauDontInPlaceMutateTableType)
         {
-            for (const auto& key: keysToDelete)
+            for (const auto& key : keysToDelete)
             {
                 const AstArray<char>& s = key->value;
                 std::string keyStr{s.data, s.data + s.size};

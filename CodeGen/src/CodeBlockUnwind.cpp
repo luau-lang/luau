@@ -22,10 +22,10 @@
 
 // __register_frame and __deregister_frame are defined in libgcc or libc++
 // (depending on how it's built). We want to declare them as weak symbols
-// so that if they're provided by a shared library, we'll use them, and if 
+// so that if they're provided by a shared library, we'll use them, and if
 // not, we'll disable some c++ exception handling support. However, if they're
 // declared as weak and the definitions are linked in a static library
-// that's not linked with whole-archive, then the symbols will technically be defined here, 
+// that's not linked with whole-archive, then the symbols will technically be defined here,
 // and the linker won't look for the strong ones in the library.
 #ifndef LUAU_ENABLE_REGISTER_FRAME
 #define REGISTER_FRAME_WEAK __attribute__((weak))

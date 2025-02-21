@@ -30,7 +30,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatErrorSuppression)
-LUAU_FASTFLAG(AutocompleteRequirePathSuggestions2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauFreezeIgnorePersistent)
@@ -41,68 +40,79 @@ namespace Luau
 
 struct MagicSelect final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicSetMetatable final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicAssert final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicPack final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicRequire final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicClone final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFreeze final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFormat final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
     bool typeCheck(const MagicFunctionTypeCheckContext& ctx) override;
 };
 
 struct MagicMatch final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicGmatch final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFind final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>>
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
@@ -454,16 +464,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         attachMagicFunction(ttv->props["freeze"].type(), std::make_shared<MagicFreeze>());
     }
 
-    if (FFlag::AutocompleteRequirePathSuggestions2)
-    {
-        TypeId requireTy = getGlobalBinding(globals, "require");
-        attachTag(requireTy, kRequireTagName);
-        attachMagicFunction(requireTy, std::make_shared<MagicRequire>());
-    }
-    else
-    {
-        attachMagicFunction(getGlobalBinding(globals, "require"), std::make_shared<MagicRequire>());
-    }
+    TypeId requireTy = getGlobalBinding(globals, "require");
+    attachTag(requireTy, kRequireTagName);
+    attachMagicFunction(requireTy, std::make_shared<MagicRequire>());
 }
 
 static std::vector<TypeId> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
@@ -637,15 +640,15 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
             {
                 switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
                 {
-                    case ErrorSuppression::Suppress:
-                        break;
-                    case ErrorSuppression::NormalizationFailed:
-                        break;
-                    case ErrorSuppression::DoNotSuppress:
-                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+                case ErrorSuppression::Suppress:
+                    break;
+                case ErrorSuppression::NormalizationFailed:
+                    break;
+                case ErrorSuppression::DoNotSuppress:
+                    Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
 
-                        if (!reasonings.suppressed)
-                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+                    if (!reasonings.suppressed)
+                        context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
                 }
             }
             else
@@ -1503,7 +1506,8 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
     return std::nullopt;
 }
 
-std::optional<WithPredicate<TypePackId>> MagicFreeze::handleOldSolver(struct TypeChecker &, const std::shared_ptr<struct Scope> &, const class AstExprCall &, WithPredicate<TypePackId>)
+std::optional<WithPredicate<TypePackId>> MagicFreeze::
+    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>)
 {
     return std::nullopt;
 }

@@ -317,6 +317,74 @@ TEST_CASE("returns_spaces_around_tokens")
     CHECK_EQ(three, transpile(three).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_alias_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type Foo = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type    Foo = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo    = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo =    string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( export type Foo = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( export    type Foo = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X, Y, Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo  <X, Y, Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<  X, Y, Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X  , Y, Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X,   Y, Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X, Y  , Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X, Y,   Z...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X, Y, Z  ...> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X, Y, Z...  > = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_with_defaults_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type Foo<X = string, Z... = ...any> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X   = string, Z... = ...any> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X =   string, Z... = ...any> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X = string, Z...   = ...any> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo<X = string, Z... =   ...any> = string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_CASE("table_literals")
 {
     const std::string code = R"( local t={1, 2, 3, foo='bar', baz=99,[5.5]='five point five', 'end'} )";

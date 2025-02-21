@@ -6,6 +6,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauExtendedSimpleRequire)
+
 using namespace Luau;
 
 namespace
@@ -176,6 +178,61 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_string_indexexpr")
     REQUIRE(local != nullptr);
 
     CHECK_EQ("game/Test", result.exprs[local->values.data[0]].name);
+}
+
+TEST_CASE_FIXTURE(RequireTracerFixture, "follow_group")
+{
+    ScopedFastFlag luauExtendedSimpleRequire{FFlag::LuauExtendedSimpleRequire, true};
+
+    AstStatBlock* block = parse(R"(
+        local R = (((game).Test))
+        require(R)
+    )");
+    REQUIRE_EQ(2, block->body.size);
+
+    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+
+    AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local != nullptr);
+
+    CHECK_EQ("game/Test", result.exprs[local->values.data[0]].name);
+}
+
+TEST_CASE_FIXTURE(RequireTracerFixture, "follow_type_annotation")
+{
+    ScopedFastFlag luauExtendedSimpleRequire{FFlag::LuauExtendedSimpleRequire, true};
+
+    AstStatBlock* block = parse(R"(
+        local R = game.Test :: (typeof(game.Redirect))
+        require(R)
+    )");
+    REQUIRE_EQ(2, block->body.size);
+
+    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+
+    AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local != nullptr);
+
+    CHECK_EQ("game/Redirect", result.exprs[local->values.data[0]].name);
+}
+
+TEST_CASE_FIXTURE(RequireTracerFixture, "follow_type_annotation_2")
+{
+    ScopedFastFlag luauExtendedSimpleRequire{FFlag::LuauExtendedSimpleRequire, true};
+
+    AstStatBlock* block = parse(R"(
+        local R = game.Test :: (typeof(game.Redirect))
+        local N = R.Nested
+        require(N)
+    )");
+    REQUIRE_EQ(3, block->body.size);
+
+    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+
+    AstStatLocal* local = block->body.data[1]->as<AstStatLocal>();
+    REQUIRE(local != nullptr);
+
+    CHECK_EQ("game/Redirect/Nested", result.exprs[local->values.data[0]].name);
 }
 
 TEST_SUITE_END();
