@@ -16,15 +16,16 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauInstantiateInSubtyping);
-LUAU_FASTINT(LuauCheckRecursionLimit);
-LUAU_FASTINT(LuauNormalizeCacheLimit);
-LUAU_FASTINT(LuauRecursionLimit);
-LUAU_FASTINT(LuauTypeInferRecursionLimit);
-LUAU_FASTFLAG(InferGlobalTypes)
+LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTINT(LuauCheckRecursionLimit)
+LUAU_FASTINT(LuauNormalizeCacheLimit)
+LUAU_FASTINT(LuauRecursionLimit)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
+LUAU_FASTFLAG(LuauInferLocalTypesInMultipleAssignments)
 
 using namespace Luau;
 
@@ -819,7 +820,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauNewNonStrictWarnOnUnknownGlobals)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERRORS(result);
@@ -1770,7 +1771,6 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 {
     ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff_InferGlobalTypes{FFlag::InferGlobalTypes, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1782,6 +1782,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 
     REQUIRE_EQ(1, result.errors.size());
     CHECK_EQ("Unknown global 'foo'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "multiple_assignment")
+{
+    ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff_InferLocalTypesInMultipleAssignments{FFlag::LuauInferLocalTypesInMultipleAssignments, true};
+
+    CheckResult result = check(R"(
+        local function requireString(arg: string) end
+        local function requireNumber(arg: number) end
+
+        local function f(): ...number end
+
+        local w: "a", x, y, z = "a", 1, f()
+        requireString(w)
+        requireNumber(x)
+        requireNumber(y)
+        requireNumber(z)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -141,6 +141,16 @@ public:
     Position opPosition;
 };
 
+class CstExprTypeAssertion : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstExprTypeAssertion)
+
+    explicit CstExprTypeAssertion(Position opPosition);
+
+    Position opPosition;
+};
+
 class CstExprIfElse : public CstNode
 {
 public:

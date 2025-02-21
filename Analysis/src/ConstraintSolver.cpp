@@ -37,6 +37,7 @@ LUAU_FASTFLAGVARIABLE(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysFillInFunctionCallDiscriminantTypes)
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTablesOnScope)
+LUAU_FASTFLAGVARIABLE(LuauPrecalculateMutatedFreeTypes)
 
 namespace Luau
 {
@@ -438,6 +439,10 @@ void ConstraintSolver::run()
                 snapshot = logger->prepareStepSnapshot(rootScope, c, force, unsolvedConstraints);
             }
 
+            std::optional<DenseHashSet<TypeId>> mutatedFreeTypes = std::nullopt;
+            if (FFlag::LuauPrecalculateMutatedFreeTypes)
+                mutatedFreeTypes = c->getMaybeMutatedFreeTypes();
+
             bool success = tryDispatch(c, force);
 
             progress |= success;
@@ -447,20 +452,42 @@ void ConstraintSolver::run()
                 unblock(c);
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
 
-                // decrement the referenced free types for this constraint if we dispatched successfully!
-                for (auto ty : c->getMaybeMutatedFreeTypes())
+                if (FFlag::LuauPrecalculateMutatedFreeTypes)
                 {
-                    size_t& refCount = unresolvedConstraints[ty];
-                    if (refCount > 0)
-                        refCount -= 1;
+                    for (auto ty : c->getMaybeMutatedFreeTypes())
+                        mutatedFreeTypes->insert(ty);
+                    for (auto ty : *mutatedFreeTypes)
+                    {
+                        size_t& refCount = unresolvedConstraints[ty];
+                        if (refCount > 0)
+                            refCount -= 1;
 
-                    // We have two constraints that are designed to wait for the
-                    // refCount on a free type to be equal to 1: the
-                    // PrimitiveTypeConstraint and ReduceConstraint. We
-                    // therefore wake any constraint waiting for a free type's
-                    // refcount to be 1 or 0.
-                    if (refCount <= 1)
-                        unblock(ty, Location{});
+                        // We have two constraints that are designed to wait for the
+                        // refCount on a free type to be equal to 1: the
+                        // PrimitiveTypeConstraint and ReduceConstraint. We
+                        // therefore wake any constraint waiting for a free type's
+                        // refcount to be 1 or 0.
+                        if (refCount <= 1)
+                            unblock(ty, Location{});
+                    }
+                }
+                else
+                {
+                    // decrement the referenced free types for this constraint if we dispatched successfully!
+                    for (auto ty : c->getMaybeMutatedFreeTypes())
+                    {
+                        size_t& refCount = unresolvedConstraints[ty];
+                        if (refCount > 0)
+                            refCount -= 1;
+
+                        // We have two constraints that are designed to wait for the
+                        // refCount on a free type to be equal to 1: the
+                        // PrimitiveTypeConstraint and ReduceConstraint. We
+                        // therefore wake any constraint waiting for a free type's
+                        // refcount to be 1 or 0.
+                        if (refCount <= 1)
+                            unblock(ty, Location{});
+                    }
                 }
 
                 if (logger)

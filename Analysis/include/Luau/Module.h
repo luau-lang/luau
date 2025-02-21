@@ -21,6 +21,12 @@ LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
 namespace Luau
 {
 
+using LogLuauProc = void (*)(std::string_view);
+extern LogLuauProc logLuau;
+
+void setLogLuau(LogLuauProc ll);
+void resetLogLuauProc();
+
 struct Module;
 struct AnyTypeSummary;
 

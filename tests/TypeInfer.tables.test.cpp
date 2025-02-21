@@ -23,6 +23,9 @@ LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
 LUAU_FASTFLAG(LuauDontInPlaceMutateTableType)
+LUAU_FASTFLAG(LuauAllowNonSharedTableTypesInLiteral)
+LUAU_FASTFLAG(LuauFollowTableFreeze)
+LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5005,17 +5008,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
 
 TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    // NOTE: All of these examples should have no errors, but
+    // bidirectional inference is known to be broken.
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPrecalculateMutatedFreeTypes, true},
+    };
 
-    // CLI-121540: All of these examples should have no errors.
-
-    LUAU_CHECK_ERROR_COUNT(3, check(R"(
+    auto result = check(R"(
         local function doTheThing(_: { [string]: unknown }) end
         doTheThing({
             ['foo'] = 5,
             ['bar'] = 'heyo',
         })
-    )"));
+    )");
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
 
     LUAU_CHECK_ERROR_COUNT(1, check(R"(
         type Input = { [string]: unknown }
@@ -5028,7 +5036,7 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
 
     // This example previously asserted due to eagerly mutating the underlying
     // table type.
-    LUAU_CHECK_ERROR_COUNT(3, check(R"(
+    result = check(R"(
         type Input = { [string]: unknown }
 
         local function doTheThing(_: Input) end
@@ -5037,7 +5045,9 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
             [('%s'):format('3.14')]=5,
             ['stringField']='Heyo'
         })
-    )"));
+    )");
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
 }
 
 
@@ -5089,6 +5099,58 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_in_literal")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_from_fuzzer")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontInPlaceMutateTableType, true},
+        {FFlag::LuauAllowNonSharedTableTypesInLiteral, true},
+    };
+
+    // This would trigger an assert previously, so we really only care that
+    // there are errors (and there will be: lots of syntax errors).
+    LUAU_CHECK_ERRORS(check(R"(
+        function _(l0,l0) _(_,{n0=_,n0=_,},if l0:n0()[_] then _)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "write_only_table_field_duplicate")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontInPlaceMutateTableType, true},
+        {FFlag::LuauAllowNonSharedTableTypesInLiteral, true},
+    };
+
+    auto result = check(R"(
+        type WriteOnlyTable = { write x: number }
+        local wo: WriteOnlyTable = {
+            x = 42,
+            x = 13,
+        }
+    )");
+
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    CHECK_EQ("write keyword is illegal here", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_musnt_assert")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauFollowTableFreeze, true},
+    };
+
+    auto result = check(R"(
+        local m = {}
+        function m.foo()
+           local self = { entries = entries, _caches = {}}
+           local self = setmetatable(self, {})
+           table.freeze(self)
+        end
+    )");
 }
 
 TEST_SUITE_END();

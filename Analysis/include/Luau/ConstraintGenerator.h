@@ -392,7 +392,7 @@ private:
      **/
     std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(
         const ScopePtr& scope,
-        AstArray<AstGenericType> generics,
+        AstArray<AstGenericType*> generics,
         bool useCache = false,
         bool addTypes = true
     );
@@ -409,7 +409,7 @@ private:
      **/
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(
         const ScopePtr& scope,
-        AstArray<AstGenericTypePack> packs,
+        AstArray<AstGenericTypePack*> packs,
         bool useCache = false,
         bool addTypes = true
     );

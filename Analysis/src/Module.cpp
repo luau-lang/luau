@@ -20,6 +20,26 @@ LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteCommentDetection)
 namespace Luau
 {
 
+static void defaultLogLuau(std::string_view input)
+{
+    // The default is to do nothing because we don't want to mess with
+    // the xml parsing done by the dcr script.
+}
+
+Luau::LogLuauProc logLuau = &defaultLogLuau;
+
+void setLogLuau(LogLuauProc ll)
+{
+    logLuau = ll;
+}
+
+void resetLogLuauProc()
+{
+    logLuau = &defaultLogLuau;
+}
+
+
+
 static bool contains_DEPRECATED(Position pos, Comment comment)
 {
     if (comment.location.contains(pos))

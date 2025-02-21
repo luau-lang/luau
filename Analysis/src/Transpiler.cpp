@@ -898,14 +898,14 @@ struct Printer_DEPRECATED
                     {
                         comma();
 
-                        writer.advance(o.location.begin);
-                        writer.identifier(o.name.value);
+                        writer.advance(o->location.begin);
+                        writer.identifier(o->name.value);
 
-                        if (o.defaultValue)
+                        if (o->defaultValue)
                         {
-                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.maybeSpace(o->defaultValue->location.begin, 2);
                             writer.symbol("=");
-                            visualizeTypeAnnotation(*o.defaultValue);
+                            visualizeTypeAnnotation(*o->defaultValue);
                         }
                     }
 
@@ -913,15 +913,15 @@ struct Printer_DEPRECATED
                     {
                         comma();
 
-                        writer.advance(o.location.begin);
-                        writer.identifier(o.name.value);
+                        writer.advance(o->location.begin);
+                        writer.identifier(o->name.value);
                         writer.symbol("...");
 
-                        if (o.defaultValue)
+                        if (o->defaultValue)
                         {
-                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.maybeSpace(o->defaultValue->location.begin, 2);
                             writer.symbol("=");
-                            visualizeTypePackAnnotation(*o.defaultValue, false);
+                            visualizeTypePackAnnotation(*o->defaultValue, false);
                         }
                     }
 
@@ -978,15 +978,15 @@ struct Printer_DEPRECATED
             {
                 comma();
 
-                writer.advance(o.location.begin);
-                writer.identifier(o.name.value);
+                writer.advance(o->location.begin);
+                writer.identifier(o->name.value);
             }
             for (const auto& o : func.genericPacks)
             {
                 comma();
 
-                writer.advance(o.location.begin);
-                writer.identifier(o.name.value);
+                writer.advance(o->location.begin);
+                writer.identifier(o->name.value);
                 writer.symbol("...");
             }
             writer.symbol(">");
@@ -1115,15 +1115,15 @@ struct Printer_DEPRECATED
                 {
                     comma();
 
-                    writer.advance(o.location.begin);
-                    writer.identifier(o.name.value);
+                    writer.advance(o->location.begin);
+                    writer.identifier(o->name.value);
                 }
                 for (const auto& o : a->genericPacks)
                 {
                     comma();
 
-                    writer.advance(o.location.begin);
-                    writer.identifier(o.name.value);
+                    writer.advance(o->location.begin);
+                    writer.identifier(o->name.value);
                     writer.symbol("...");
                 }
                 writer.symbol(">");
@@ -1690,7 +1690,10 @@ struct Printer
 
             if (writeTypes)
             {
-                writer.maybeSpace(a->annotation->location.begin, 2);
+                if (const auto* cstNode = lookupCstNode<CstExprTypeAssertion>(a))
+                    advance(cstNode->opPosition);
+                else
+                    writer.maybeSpace(a->annotation->location.begin, 2);
                 writer.symbol("::");
                 visualizeTypeAnnotation(*a->annotation);
             }
@@ -2047,14 +2050,14 @@ struct Printer
                     {
                         comma();
 
-                        writer.advance(o.location.begin);
-                        writer.identifier(o.name.value);
+                        writer.advance(o->location.begin);
+                        writer.identifier(o->name.value);
 
-                        if (o.defaultValue)
+                        if (o->defaultValue)
                         {
-                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.maybeSpace(o->defaultValue->location.begin, 2);
                             writer.symbol("=");
-                            visualizeTypeAnnotation(*o.defaultValue);
+                            visualizeTypeAnnotation(*o->defaultValue);
                         }
                     }
 
@@ -2062,15 +2065,15 @@ struct Printer
                     {
                         comma();
 
-                        writer.advance(o.location.begin);
-                        writer.identifier(o.name.value);
+                        writer.advance(o->location.begin);
+                        writer.identifier(o->name.value);
                         writer.symbol("...");
 
-                        if (o.defaultValue)
+                        if (o->defaultValue)
                         {
-                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.maybeSpace(o->defaultValue->location.begin, 2);
                             writer.symbol("=");
-                            visualizeTypePackAnnotation(*o.defaultValue, false);
+                            visualizeTypePackAnnotation(*o->defaultValue, false);
                         }
                     }
 
@@ -2131,15 +2134,15 @@ struct Printer
             {
                 comma();
 
-                writer.advance(o.location.begin);
-                writer.identifier(o.name.value);
+                writer.advance(o->location.begin);
+                writer.identifier(o->name.value);
             }
             for (const auto& o : func.genericPacks)
             {
                 comma();
 
-                writer.advance(o.location.begin);
-                writer.identifier(o.name.value);
+                writer.advance(o->location.begin);
+                writer.identifier(o->name.value);
                 writer.symbol("...");
             }
             writer.symbol(">");
@@ -2312,15 +2315,15 @@ struct Printer
                 {
                     comma();
 
-                    writer.advance(o.location.begin);
-                    writer.identifier(o.name.value);
+                    writer.advance(o->location.begin);
+                    writer.identifier(o->name.value);
                 }
                 for (const auto& o : a->genericPacks)
                 {
                     comma();
 
-                    writer.advance(o.location.begin);
-                    writer.identifier(o.name.value);
+                    writer.advance(o->location.begin);
+                    writer.identifier(o->name.value);
                     writer.symbol("...");
                 }
                 writer.symbol(">");
