@@ -14,6 +14,8 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypeofReturnsType)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunPrintFix)
 
 namespace Luau
 {
@@ -1564,6 +1566,12 @@ void registerTypeUserData(lua_State* L)
 
     // Create and register metatable for type userdata
     luaL_newmetatable(L, "type");
+    
+    if (FFlag::LuauUserTypeFunTypeofReturnsType)
+    {
+        lua_pushstring(L, "type");
+        lua_setfield(L, -2, "__type");
+    }
 
     // Protect metatable from being changed
     lua_pushstring(L, "The metatable is locked");
@@ -1603,7 +1611,12 @@ static int print(lua_State* L)
         size_t l = 0;
         const char* s = luaL_tolstring(L, i, &l); // convert to string using __tostring et al
         if (i > 1)
-            result.append('\t', 1);
+        {
+            if (FFlag::LuauTypeFunPrintFix)
+                result.append(1, '\t');
+            else
+                result.append('\t', 1);
+        }
         result.append(s, l);
         lua_pop(L, 1);
     }

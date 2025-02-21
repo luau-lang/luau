@@ -9,6 +9,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
+LUAU_FASTFLAG(LuauUserTypeFunTypeofReturnsType)
+LUAU_FASTFLAG(LuauTypeFunPrintFix)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1864,6 +1866,44 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
     auto simplified = eqSatSimplify(NotNull{simplifier.get()}, ty);
     REQUIRE(simplified);
     CHECK_EQ("t0<number & string>", toString(simplified->result)); // NOLINT(bugprone-unchecked-optional-access)
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_type_userdata_returns_type")
+{
+    ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUserTypeFunTypeofReturnsType{FFlag::LuauUserTypeFunTypeofReturnsType, true};
+
+    CheckResult result = check(R"(
+type function test(t)
+    print(typeof(t))
+    return t
+end
+
+local _:test<number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == R"(type)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_print_tab_char_fix")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypeFunPrintFix, true}};
+
+    CheckResult result = check(R"(
+        type function test(t)
+            print(1,2)
+
+            return t
+        end
+
+        local _:test<number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    // It should be \t and not \x1
+    CHECK_EQ("1\t2", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();
