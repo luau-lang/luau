@@ -915,7 +915,7 @@ TEST_CASE("VectorLibrary")
         copts.optimizationLevel = 2;
     }
 
-    runConformance("vector_library.lua", [](lua_State* L) {}, nullptr, nullptr, &copts);
+    runConformance("vector_library.luau", [](lua_State* L) {}, nullptr, nullptr, &copts);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -1023,7 +1023,7 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    runConformance("debug.lua");
+    runConformance("debug.luau");
 }
 
 TEST_CASE("Debugger")
