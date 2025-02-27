@@ -153,8 +153,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function f(g: ((true, string) -> ()) & ((false, number) -> ()))
             g(true, 37)
