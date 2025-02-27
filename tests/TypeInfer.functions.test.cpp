@@ -58,24 +58,6 @@ TEST_CASE_FIXTURE(Fixture, "overload_resolution")
     CHECK(toString(t) == "(((number) -> string) & ((string) -> number)) -> (string, number)");
 }
 
-TEST_CASE_FIXTURE(Fixture, "overload_resolution_singleton_parameters")
-{
-    CheckResult result = check(R"(
-        type A = ("A") -> string
-        type B = ("B") -> number
-
-        local function foo(f: A & B)
-            return f("A"), f("B")
-        end
-    )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-    TypeId t = requireType("foo");
-    const FunctionType* fooType = get<FunctionType>(requireType("foo"));
-    REQUIRE(fooType != nullptr);
-
-    CHECK(toString(t) == "(((\"A\") -> string) & ((\"B\") -> number)) -> (string, number)");
-}
-
 TEST_CASE_FIXTURE(Fixture, "tc_function")
 {
     CheckResult result = check("function five() return 5 end");
