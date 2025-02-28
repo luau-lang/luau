@@ -284,7 +284,7 @@ function foo ()
   error("foo")
 end
 
-local fooerr = "closure.lua:284: foo"
+local fooerr = "closure.luau:284: foo"
 
 function goo() foo() end
 x = coroutine.wrap(goo)
