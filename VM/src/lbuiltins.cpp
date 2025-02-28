@@ -25,8 +25,6 @@
 #endif
 #endif
 
-LUAU_FASTFLAG(LuauVector2Constructor)
-
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -1057,60 +1055,33 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 
 static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (FFlag::LuauVector2Constructor)
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
-        {
-            float x = (float)nvalue(arg0);
-            float y = (float)nvalue(args);
-            float z = 0.0f;
+        float x = (float)nvalue(arg0);
+        float y = (float)nvalue(args);
+        float z = 0.0f;
 
-            if (nparams >= 3)
-            {
-                if (!ttisnumber(args + 1))
-                    return -1;
-                z = (float)nvalue(args + 1);
-            }
+        if (nparams >= 3)
+        {
+            if (!ttisnumber(args + 1))
+                return -1;
+            z = (float)nvalue(args + 1);
+        }
 
 #if LUA_VECTOR_SIZE == 4
-            float w = 0.0f;
-            if (nparams >= 4)
-            {
-                if (!ttisnumber(args + 2))
-                    return -1;
-                w = (float)nvalue(args + 2);
-            }
-            setvvalue(res, x, y, z, w);
-#else
-            setvvalue(res, x, y, z, 0.0f);
-#endif
-
-            return 1;
-        }
-    }
-    else
-    {
-        if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+        float w = 0.0f;
+        if (nparams >= 4)
         {
-            double x = nvalue(arg0);
-            double y = nvalue(args);
-            double z = nvalue(args + 1);
-
-#if LUA_VECTOR_SIZE == 4
-            double w = 0.0;
-            if (nparams >= 4)
-            {
-                if (!ttisnumber(args + 2))
-                    return -1;
-                w = nvalue(args + 2);
-            }
-            setvvalue(res, float(x), float(y), float(z), float(w));
+            if (!ttisnumber(args + 2))
+                return -1;
+            w = (float)nvalue(args + 2);
+        }
+        setvvalue(res, x, y, z, w);
 #else
-            setvvalue(res, float(x), float(y), float(z), 0.0f);
+        setvvalue(res, x, y, z, 0.0f);
 #endif
 
-            return 1;
-        }
+        return 1;
     }
 
     return -1;

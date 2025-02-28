@@ -88,6 +88,7 @@ struct ConstraintSolver
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // The entire set of constraints that the solver is trying to resolve.
     std::vector<NotNull<Constraint>> constraints;
+    NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
     ModuleName currentModuleName;
 
@@ -119,6 +120,7 @@ struct ConstraintSolver
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
 
     std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes;
+    std::unordered_map<TypeId, DenseHashSet<const Constraint*>> mutatedFreeTypeToConstraint;
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
@@ -144,6 +146,7 @@ struct ConstraintSolver
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
+        NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
         ModuleName moduleName,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
@@ -171,6 +174,8 @@ struct ConstraintSolver
     bool isDone() const;
 
 private:
+    void generalizeOneType(TypeId ty);
+
     /**
      * Bind a type variable to another type.
      *

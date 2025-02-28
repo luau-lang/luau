@@ -17,7 +17,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot);
-LUAU_FASTFLAG(LuauCodeGenLerp);
 
 namespace Luau
 {
@@ -663,7 +662,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         break;
     case IrCmd::SELECT_NUM:
-        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
         if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
         {
             double c = function.doubleOp(inst.c);

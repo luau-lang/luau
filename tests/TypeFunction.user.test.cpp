@@ -12,6 +12,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypeFunSingletonEquality)
 LUAU_FASTFLAG(LuauUserTypeFunTypeofReturnsType)
+LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
 LUAU_FASTFLAG(LuauTypeFunPrintFix)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -1958,6 +1959,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_print_tab_char_fix")
 
     // It should be \t and not \x1
     CHECK_EQ("1\t2", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "udtf_class_parent_ops")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag readWriteParents{FFlag::LuauTypeFunReadWriteParents, true};
+
+    CheckResult result = check(R"(
+        type function readparentof(arg)
+            return arg:readparent()
+        end
+
+        type function writeparentof(arg)
+            return arg:writeparent()
+        end
+
+        local function ok1(idx: readparentof<ChildClass>): BaseClass return idx end
+        local function ok2(idx: writeparentof<ChildClass>): BaseClass return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

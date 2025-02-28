@@ -96,6 +96,9 @@ struct ConstraintGenerator
     // will enqueue them during solving.
     std::vector<ConstraintPtr> unqueuedConstraints;
 
+    // Map a function's signature scope back to its signature type.
+    DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
+
     // The private scope of type aliases for which the type parameters belong to.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
 

@@ -71,6 +71,19 @@ struct ParseResult
     CstNodeMap cstNodeMap{nullptr};
 };
 
+struct ParseExprResult
+{
+    AstExpr* expr;
+    size_t lines = 0;
+
+    std::vector<HotComment> hotcomments;
+    std::vector<ParseError> errors;
+
+    std::vector<Comment> commentLocations;
+
+    CstNodeMap cstNodeMap{nullptr};
+};
+
 static constexpr const char* kParseNameError = "%error-id%";
 
 } // namespace Luau

@@ -65,11 +65,10 @@ T* getMutable(PendingTypePack* pending)
 // Log of what TypeIds we are rebinding, to be committed later.
 struct TxnLog
 {
-    explicit TxnLog(bool useScopes = false)
+    explicit TxnLog()
         : typeVarChanges(nullptr)
         , typePackChanges(nullptr)
         , ownedSeen()
-        , useScopes(useScopes)
         , sharedSeen(&ownedSeen)
     {
     }

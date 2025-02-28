@@ -3,6 +3,8 @@
 #include "Luau/Constraint.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+
 namespace Luau
 {
 
@@ -111,6 +113,11 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(fchc->argsPack);
     }
+    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::DebugLuauGreedyGeneralization)
+    {
+        rci.traverse(fcc->fn);
+        rci.traverse(fcc->argsPack);
+    }
     else if (auto ptc = get<PrimitiveTypeConstraint>(*this))
     {
         rci.traverse(ptc->freeType);
@@ -118,7 +125,8 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     else if (auto hpc = get<HasPropConstraint>(*this))
     {
         rci.traverse(hpc->resultType);
-        // `HasPropConstraints` should not mutate `subjectType`.
+        if (FFlag::DebugLuauGreedyGeneralization)
+            rci.traverse(hpc->subjectType);
     }
     else if (auto hic = get<HasIndexerConstraint>(*this))
     {

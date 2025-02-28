@@ -15,8 +15,6 @@
 #include "doctest.h"
 #include <iostream>
 
-LUAU_FASTFLAG(LuauCountSelfCallsNonstrict)
-LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAG(LuauNonStrictVisitorImprovements)
 
@@ -619,9 +617,6 @@ buffer.readi8(b, 0)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 {
-    ScopedFastFlag luauCountSelfCallsNonstrict{FFlag::LuauCountSelfCallsNonstrict, true};
-    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
-
     Luau::unfreeze(frontend.globals.globalTypes);
     Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
 
