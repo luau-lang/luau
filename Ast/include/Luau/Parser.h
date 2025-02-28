@@ -63,6 +63,14 @@ public:
         ParseOptions options = ParseOptions()
     );
 
+    static ParseExprResult parseExpr(
+        const char* buffer,
+        std::size_t bufferSize,
+        AstNameTable& names,
+        Allocator& allocator,
+        ParseOptions options = ParseOptions()
+    );
+
 private:
     struct Name;
     struct Binding;

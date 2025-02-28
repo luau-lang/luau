@@ -16,11 +16,14 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauSubtypingFixTailPack)
+LUAU_FASTFLAG(LuauUngeneralizedTypesForRecursiveFunctions)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3039,6 +3042,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_wrap_result_call")
     )");
 
     // New solver still reports an error in this case, but the main goal of the test is to not crash
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generalized_type")
+{
+    ScopedFastFlag crashOnForce{FFlag::DebugLuauAssertOnForcedConstraint, true};
+    ScopedFastFlag sff{FFlag::LuauUngeneralizedTypesForRecursiveFunctions, true};
+
+    CheckResult result = check(R"(
+        --!strict
+
+        function random()
+            return true -- chosen by fair coin toss
+        end
+
+        local f
+        f = 5
+        function f()
+            if random() then f() end
+        end
+    )");
+
+    if (FFlag::LuauSolverV2)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERRORS(result); // errors without typestate, obviously
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generalized_type_2")
+{
+    ScopedFastFlag crashOnForce{FFlag::DebugLuauAssertOnForcedConstraint, true};
+
+    CheckResult result = check(R"(
+        --!strict
+
+        function random()
+            return true -- chosen by fair coin toss
+        end
+
+        local function f()
+            if random() then f() end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

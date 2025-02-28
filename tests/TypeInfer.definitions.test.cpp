@@ -9,7 +9,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAG(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauPreventReentrantTypeFunctionReduction)
@@ -497,7 +496,6 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
-    ScopedFastFlag _{FFlag::LuauNewSolverPrePopulateClasses, true};
     loadDefinition(R"(
         declare class Channel
             Messages: { Message }

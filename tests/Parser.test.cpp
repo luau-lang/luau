@@ -22,7 +22,7 @@ LUAU_FASTFLAG(LuauErrorRecoveryForClassNames)
 LUAU_FASTFLAG(LuauFixFunctionNameStartPosition)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
-LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauAstTypeGroup2)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 
 namespace
@@ -372,7 +372,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_is_an_intersection_type_if_led_with_one_
 
     AstTypeIntersection* returnAnnotation = annotation->returnTypes.types.data[0]->as<AstTypeIntersection>();
     REQUIRE(returnAnnotation != nullptr);
-    if (FFlag::LuauAstTypeGroup)
+    if (FFlag::LuauAstTypeGroup2)
         CHECK(returnAnnotation->types.data[0]->as<AstTypeGroup>());
     else
         CHECK(returnAnnotation->types.data[0]->as<AstTypeReference>());
@@ -2451,7 +2451,7 @@ TEST_CASE_FIXTURE(Fixture, "leading_union_intersection_with_single_type_preserve
 
 TEST_CASE_FIXTURE(Fixture, "parse_simple_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup, true};
+    ScopedFastFlag _{FFlag::LuauAstTypeGroup2, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = (string)
@@ -2469,7 +2469,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_simple_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup, true};
+    ScopedFastFlag _{FFlag::LuauAstTypeGroup2, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = ((string))
@@ -2490,7 +2490,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup, true};
+    ScopedFastFlag _{FFlag::LuauAstTypeGroup2, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = () -> (string)
@@ -3813,7 +3813,7 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     auto unionTy = paramTy.type->as<AstTypeUnion>();
     LUAU_ASSERT(unionTy);
     CHECK_EQ(unionTy->types.size, 2);
-    if (FFlag::LuauAstTypeGroup)
+    if (FFlag::LuauAstTypeGroup2)
     {
         auto groupTy = unionTy->types.data[0]->as<AstTypeGroup>(); // (() -> ())
         REQUIRE(groupTy);

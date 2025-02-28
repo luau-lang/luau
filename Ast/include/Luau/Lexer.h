@@ -187,6 +187,11 @@ public:
     static bool fixupQuotedString(std::string& data);
     static void fixupMultilineString(std::string& data);
 
+    unsigned int getOffset() const
+    {
+        return offset;
+    }
+
 private:
     char peekch() const;
     char peekch(unsigned int lookahead) const;

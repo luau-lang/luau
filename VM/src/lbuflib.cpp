@@ -10,8 +10,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBufferBitMethods2)
-
 // while C API returns 'size_t' for binary compatibility in case of future extensions,
 // in the current implementation, length and offset are limited to 31 bits
 // because offset is limited to an integer, a single 64bit comparison can be used and will not overflow
@@ -330,34 +328,6 @@ static int buffer_writebits(lua_State* L)
     return 0;
 }
 
-static const luaL_Reg bufferlib_DEPRECATED[] = {
-    {"create", buffer_create},
-    {"fromstring", buffer_fromstring},
-    {"tostring", buffer_tostring},
-    {"readi8", buffer_readinteger<int8_t>},
-    {"readu8", buffer_readinteger<uint8_t>},
-    {"readi16", buffer_readinteger<int16_t>},
-    {"readu16", buffer_readinteger<uint16_t>},
-    {"readi32", buffer_readinteger<int32_t>},
-    {"readu32", buffer_readinteger<uint32_t>},
-    {"readf32", buffer_readfp<float, uint32_t>},
-    {"readf64", buffer_readfp<double, uint64_t>},
-    {"writei8", buffer_writeinteger<int8_t>},
-    {"writeu8", buffer_writeinteger<uint8_t>},
-    {"writei16", buffer_writeinteger<int16_t>},
-    {"writeu16", buffer_writeinteger<uint16_t>},
-    {"writei32", buffer_writeinteger<int32_t>},
-    {"writeu32", buffer_writeinteger<uint32_t>},
-    {"writef32", buffer_writefp<float, uint32_t>},
-    {"writef64", buffer_writefp<double, uint64_t>},
-    {"readstring", buffer_readstring},
-    {"writestring", buffer_writestring},
-    {"len", buffer_len},
-    {"copy", buffer_copy},
-    {"fill", buffer_fill},
-    {NULL, NULL},
-};
-
 static const luaL_Reg bufferlib[] = {
     {"create", buffer_create},
     {"fromstring", buffer_fromstring},
@@ -390,7 +360,7 @@ static const luaL_Reg bufferlib[] = {
 
 int luaopen_buffer(lua_State* L)
 {
-    luaL_register(L, LUA_BUFFERLIBNAME, FFlag::LuauBufferBitMethods2 ? bufferlib : bufferlib_DEPRECATED);
+    luaL_register(L, LUA_BUFFERLIBNAME, bufferlib);
 
     return 1;
 }

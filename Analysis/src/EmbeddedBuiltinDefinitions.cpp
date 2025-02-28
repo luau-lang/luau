@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(LuauBufferBitMethods2)
-LUAU_FASTFLAG(LuauVector2Constructor)
 LUAU_FASTFLAGVARIABLE(LuauDebugInfoDefn)
 
 namespace Luau
@@ -239,37 +237,6 @@ declare utf8: {
 
 )BUILTIN_SRC";
 
-static const std::string kBuiltinDefinitionBufferSrc_DEPRECATED = R"BUILTIN_SRC(
---- Buffer API
-declare buffer: {
-    create: @checked (size: number) -> buffer,
-    fromstring: @checked (str: string) -> buffer,
-    tostring: @checked (b: buffer) -> string,
-    len: @checked (b: buffer) -> number,
-    copy: @checked (target: buffer, targetOffset: number, source: buffer, sourceOffset: number?, count: number?) -> (),
-    fill: @checked (b: buffer, offset: number, value: number, count: number?) -> (),
-    readi8: @checked (b: buffer, offset: number) -> number,
-    readu8: @checked (b: buffer, offset: number) -> number,
-    readi16: @checked (b: buffer, offset: number) -> number,
-    readu16: @checked (b: buffer, offset: number) -> number,
-    readi32: @checked (b: buffer, offset: number) -> number,
-    readu32: @checked (b: buffer, offset: number) -> number,
-    readf32: @checked (b: buffer, offset: number) -> number,
-    readf64: @checked (b: buffer, offset: number) -> number,
-    writei8: @checked (b: buffer, offset: number, value: number) -> (),
-    writeu8: @checked (b: buffer, offset: number, value: number) -> (),
-    writei16: @checked (b: buffer, offset: number, value: number) -> (),
-    writeu16: @checked (b: buffer, offset: number, value: number) -> (),
-    writei32: @checked (b: buffer, offset: number, value: number) -> (),
-    writeu32: @checked (b: buffer, offset: number, value: number) -> (),
-    writef32: @checked (b: buffer, offset: number, value: number) -> (),
-    writef64: @checked (b: buffer, offset: number, value: number) -> (),
-    readstring: @checked (b: buffer, offset: number, count: number) -> string,
-    writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
-}
-
-)BUILTIN_SRC";
-
 static const std::string kBuiltinDefinitionBufferSrc = R"BUILTIN_SRC(
 --- Buffer API
 declare buffer: {
@@ -299,36 +266,6 @@ declare buffer: {
     writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
     readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
     writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
-}
-
-)BUILTIN_SRC";
-
-static const std::string kBuiltinDefinitionVectorSrc_NoVector2Ctor_DEPRECATED = R"BUILTIN_SRC(
-
--- While vector would have been better represented as a built-in primitive type, type solver class handling covers most of the properties
-declare class vector
-    x: number
-    y: number
-    z: number
-end
-
-declare vector: {
-    create: @checked (x: number, y: number, z: number) -> vector,
-    magnitude: @checked (vec: vector) -> number,
-    normalize: @checked (vec: vector) -> vector,
-    cross: @checked (vec1: vector, vec2: vector) -> vector,
-    dot: @checked (vec1: vector, vec2: vector) -> number,
-    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
-    floor: @checked (vec: vector) -> vector,
-    ceil: @checked (vec: vector) -> vector,
-    abs: @checked (vec: vector) -> vector,
-    sign: @checked (vec: vector) -> vector,
-    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
-    max: @checked (vector, ...vector) -> vector,
-    min: @checked (vector, ...vector) -> vector,
-
-    zero: vector,
-    one: vector,
 }
 
 )BUILTIN_SRC";
@@ -374,13 +311,8 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionTableSrc;
     result += FFlag::LuauDebugInfoDefn ? kBuiltinDefinitionDebugSrc : kBuiltinDefinitionDebugSrc_DEPRECATED;
     result += kBuiltinDefinitionUtf8Src;
-
-    result += FFlag::LuauBufferBitMethods2 ? kBuiltinDefinitionBufferSrc : kBuiltinDefinitionBufferSrc_DEPRECATED;
-
-    if (FFlag::LuauVector2Constructor)
-        result += kBuiltinDefinitionVectorSrc;
-    else
-        result += kBuiltinDefinitionVectorSrc_NoVector2Ctor_DEPRECATED;
+    result += kBuiltinDefinitionBufferSrc;
+    result += kBuiltinDefinitionVectorSrc;
 
     return result;
 }

@@ -2,6 +2,7 @@
 #include "Luau/Autocomplete.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/TypeArena.h"
 #include "Luau/Module.h"
 #include "Luau/Frontend.h"
@@ -15,6 +16,9 @@ namespace Luau
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback)
 {
+    LUAU_TIMETRACE_SCOPE("Luau::autocomplete", "Autocomplete");
+    LUAU_TIMETRACE_ARGUMENT("name", moduleName.c_str());
+
     const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
     if (!sourceModule)
         return {};

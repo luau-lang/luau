@@ -14,7 +14,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete);
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope);
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
-
+LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 namespace Luau
 {
 
@@ -550,7 +550,10 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
 
 void trackInteriorFreeType(Scope* scope, TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauSolverV2 && FFlag::LuauTrackInteriorFreeTypesOnScope);
+    if (FFlag::LuauDisableNewSolverAssertsInMixedMode)
+        LUAU_ASSERT(FFlag::LuauTrackInteriorFreeTypesOnScope);
+    else
+        LUAU_ASSERT(FFlag::LuauSolverV2 && FFlag::LuauTrackInteriorFreeTypesOnScope);
     for (; scope; scope = scope->parent.get())
     {
         if (scope->interiorFreeTypes)
