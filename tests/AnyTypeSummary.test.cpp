@@ -19,10 +19,10 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
-LUAU_FASTFLAG(LuauAlwaysFillInFunctionCallDiscriminantTypes)
 LUAU_FASTFLAG(LuauStoreCSTData)
-LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauAstTypeGroup2)
 LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
+LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
 
 
 struct ATSFixture : BuiltinsFixture
@@ -76,7 +76,7 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
 
     LUAU_ASSERT(module->ats.typeInfo.size() == 1);
     LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
-    if (FFlag::LuauStoreCSTData && FFlag::LuauAstTypeGroup)
+    if (FFlag::LuauStoreCSTData && FFlag::LuauAstTypeGroup2)
     {
         LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0& (<t0...>( true | any)->(''))");
     }
@@ -84,7 +84,7 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
     {
         LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0 &(<t0...>( true | any)->(''))");
     }
-    else if (FFlag::LuauAstTypeGroup)
+    else if (FFlag::LuauAstTypeGroup2)
     {
         LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0& (<t0 ...>(true | any)->(''))");
     }
@@ -429,7 +429,6 @@ TEST_CASE_FIXTURE(ATSFixture, "CannotExtendTable")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
-        {FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes, true},
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -449,7 +448,14 @@ end
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
 
-    LUAU_ASSERT(module->ats.typeInfo.size() == 0);
+    if (FFlag::LuauSkipNoRefineDuringRefinement)
+    {
+        REQUIRE_EQ(module->ats.typeInfo.size(), 1);
+        CHECK_EQ(module->ats.typeInfo[0].code, Pattern::Assign);
+        CHECK_EQ(module->ats.typeInfo[0].node, "descendant.CollisionGroup = CAR_COLLISION_GROUP");
+    }
+    else
+        LUAU_ASSERT(module->ats.typeInfo.size() == 0);
 }
 
 TEST_CASE_FIXTURE(ATSFixture, "unknown_symbol")
@@ -522,7 +528,6 @@ TEST_CASE_FIXTURE(ATSFixture, "racing_collision_2")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::StudioReportLuauAny2, true},
-        {FFlag::LuauAlwaysFillInFunctionCallDiscriminantTypes, true},
     };
 
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -590,7 +595,10 @@ initialize()
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
 
-    LUAU_ASSERT(module->ats.typeInfo.size() == 11);
+    if (FFlag::LuauSkipNoRefineDuringRefinement)
+        CHECK_EQ(module->ats.typeInfo.size(), 12);
+    else
+        LUAU_ASSERT(module->ats.typeInfo.size() == 11);
     LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg);
     if (FFlag::LuauStoreCSTData)
     {

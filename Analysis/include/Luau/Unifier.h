@@ -93,10 +93,6 @@ struct Unifier
 
     Unifier(NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
 
-    // Configure the Unifier to test for scope subsumption via embedded Scope
-    // pointers rather than TypeLevels.
-    void enableNewSolver();
-
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
     ErrorVec canUnify(TypePackId subTy, TypePackId superTy, bool isFunctionCall = false);
@@ -169,7 +165,6 @@ private:
 
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name);
 
-    TxnLog combineLogsIntoIntersection(std::vector<TxnLog> logs);
     TxnLog combineLogsIntoUnion(std::vector<TxnLog> logs);
 
 public:
@@ -195,11 +190,6 @@ private:
 
     // Available after regular type pack unification errors
     std::optional<int> firstPackErrorPos;
-
-    // If true, we do a bunch of small things differently to work better with
-    // the new type inference engine. Most notably, we use the Scope hierarchy
-    // directly rather than using TypeLevels.
-    bool useNewSolver = false;
 };
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, Scope* outerScope, bool useScope, TypePackId tp);

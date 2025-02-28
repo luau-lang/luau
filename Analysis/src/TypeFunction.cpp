@@ -51,6 +51,8 @@ LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTFLAGVARIABLE(LuauDoNotGeneralizeInTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauPreventReentrantTypeFunctionReduction)
+LUAU_FASTFLAGVARIABLE(LuauIntersectNotNil)
+LUAU_FASTFLAGVARIABLE(LuauSkipNoRefineDuringRefinement)
 
 namespace Luau
 {
@@ -2005,17 +2007,9 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         }
         else
         {
-            /* HACK: Refinements sometimes produce a type T & ~any under the assumption
-             * that ~any is the same as any.  This is so so weird, but refinements needs
-             * some way to say "I may refine this, but I'm not sure."
-             *
-             * It does this by refining on a blocked type and deferring the decision
-             * until it is unblocked.
-             *
-             * Refinements also get negated, so we wind up with types like T & ~*blocked*
-             *
-             * We need to treat T & ~any as T in this case.
-             */
+            if (FFlag::LuauSkipNoRefineDuringRefinement)
+                if (get<NoRefineType>(discriminant))
+                    return {target, {}};
             if (auto nt = get<NegationType>(discriminant))
             {
                 if (get<NoRefineType>(follow(nt->ty)))
@@ -2292,8 +2286,20 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
             continue;
 
         SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, resultTy, ty);
-        if (!result.blockedTypes.empty())
-            return {std::nullopt, Reduction::MaybeOk, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+
+        if (FFlag::LuauIntersectNotNil)
+        {
+            for (TypeId blockedType : result.blockedTypes)
+            {
+                if (!get<GenericType>(blockedType))
+                    return {std::nullopt, Reduction::MaybeOk, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+            }
+        }
+        else
+        {
+            if (!result.blockedTypes.empty())
+                return {std::nullopt, Reduction::MaybeOk, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+        }
 
         resultTy = result.result;
     }

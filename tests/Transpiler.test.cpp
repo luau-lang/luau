@@ -14,7 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauStoreCSTData)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
-LUAU_FASTFLAG(LuauAstTypeGroup);
+LUAU_FASTFLAG(LuauAstTypeGroup2);
 LUAU_FASTFLAG(LexerFixInterpStringStart)
 
 TEST_SUITE_BEGIN("TranspilerTests");
@@ -1175,7 +1175,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested_3")
 {
     std::string code = "local a: nil | (string & number)";
 
-    if (FFlag::LuauAstTypeGroup)
+    if (FFlag::LuauAstTypeGroup2)
         CHECK_EQ("local a:       (string & number)?", transpile(code, {}, true).code);
     else
         CHECK_EQ("local a: (      string & number)?", transpile(code, {}, true).code);
@@ -1729,6 +1729,26 @@ TEST_CASE("transpile_type_table_preserve_property_definition_style")
             ['$$typeof2']: string,
         }
     )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_types_preserve_parentheses_style")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauAstTypeGroup2, true},
+    };
+
+    std::string code = R"( type Foo = number )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = (number) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = ((number)) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = (  (number)  ) )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 

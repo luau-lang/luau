@@ -32,15 +32,10 @@ void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(LuauLibWhereErrorAutoreserve)
-LUAU_FASTFLAG(LuauMathLerp)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
-LUAU_FASTFLAG(LuauVectorLibNativeCodegen)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauVector2Constructor)
-LUAU_FASTFLAG(LuauBufferBitMethods2)
-LUAU_FASTFLAG(LuauCodeGenLimitLiveSlotReuse)
 LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 
 static lua_CompileOptions defaultOptions()
@@ -655,15 +650,11 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
-    ScopedFastFlag luauBufferBitMethods{FFlag::LuauBufferBitMethods2, true};
-
     runConformance("buffers.luau");
 }
 
 TEST_CASE("Math")
 {
-    ScopedFastFlag LuauMathLerp{FFlag::LuauMathLerp, true};
-
     runConformance("math.luau");
 }
 
@@ -896,9 +887,7 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauVectorLibNativeCodegen{FFlag::LuauVectorLibNativeCodegen, true};
     ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
-    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -989,9 +978,6 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauVector2Constructor{FFlag::LuauVector2Constructor, true};
-    ScopedFastFlag luauMathLerp{FFlag::LuauMathLerp, true};
-
     runConformance(
         "types.luau",
         [](lua_State* L)
@@ -2622,8 +2608,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodeGenLimitLiveSlotReuse{FFlag::LuauCodeGenLimitLiveSlotReuse, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;

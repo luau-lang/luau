@@ -29,7 +29,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauTableKeysAreRValues)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
@@ -1848,16 +1847,8 @@ void TypeChecker2::visit(AstExprTable* expr)
 {
     for (const AstExprTable::Item& item : expr->items)
     {
-        if (FFlag::LuauTableKeysAreRValues)
-        {
-            if (item.key)
-                visit(item.key, ValueContext::RValue);
-        }
-        else
-        {
-            if (item.key)
-                visit(item.key, ValueContext::LValue);
-        }
+        if (item.key)
+            visit(item.key, ValueContext::RValue);
         visit(item.value, ValueContext::RValue);
     }
 }

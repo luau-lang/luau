@@ -82,5 +82,65 @@ FragmentAutocompleteResult fragmentAutocomplete(
     std::optional<Position> fragmentEndPosition = std::nullopt
 );
 
+enum class FragmentAutocompleteStatus
+{
+    Success,
+    FragmentTypeCheckFail,
+    InternalIce
+};
+
+struct FragmentAutocompleteStatusResult
+{
+    FragmentAutocompleteStatus status;
+    std::optional<FragmentAutocompleteResult> result;
+};
+
+struct FragmentContext
+{
+    std::string_view newSrc;
+    const ParseResult& newAstRoot;
+    std::optional<FrontendOptions> opts;
+    std::optional<Position> DEPRECATED_fragmentEndPosition;
+};
+
+/**
+ * @brief Attempts to compute autocomplete suggestions from the fragment context.
+ *
+ * This function computes autocomplete suggestions using outdated frontend typechecking data
+ * by patching the fragment context of the new script source content.
+ *
+ * @param frontend The Luau Frontend data structure, which may contain outdated typechecking data.
+ *
+ * @param moduleName The name of the target module, specifying which script the caller wants to request autocomplete for.
+ *
+ * @param cursorPosition The position in the script where the caller wants to trigger autocomplete.
+ *
+ * @param context The fragment context that this API will use to patch the outdated typechecking data.
+ *
+ * @param stringCompletionCB A callback function that provides autocomplete suggestions for string contexts.
+ *
+ * @return
+ * The status indicating whether `fragmentAutocomplete` ran successfully or failed, along with the reason for failure.
+ * Also includes autocomplete suggestions if the status is successful.
+ *
+ * @usage
+ * FragmentAutocompleteStatusResult acStatusResult;
+ * if (shouldFragmentAC)
+ *     acStatusResult = Luau::tryFragmentAutocomplete(...);
+ *
+ * if (acStatusResult.status != Successful)
+ * {
+ *     frontend.check(moduleName, options);
+ *     acStatusResult.acResult = Luau::autocomplete(...);
+ * }
+ * return convertResultWithContext(acStatusResult.acResult);
+ */
+FragmentAutocompleteStatusResult tryFragmentAutocomplete(
+    Frontend& frontend,
+    const ModuleName& moduleName,
+    Position cursorPosition,
+    FragmentContext context,
+    StringCompletionCallback stringCompletionCB
+);
 
 } // namespace Luau

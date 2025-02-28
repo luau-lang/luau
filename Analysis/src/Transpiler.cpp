@@ -12,7 +12,7 @@
 
 LUAU_FASTFLAG(LuauStoreCSTData)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
-LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauAstTypeGroup2)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 
 namespace
@@ -330,7 +330,7 @@ struct Printer_DEPRECATED
         else if (typeCount == 1)
         {
             bool shouldParenthesize = unconditionallyParenthesize && (list.types.size == 0 || !list.types.data[0]->is<AstTypeGroup>());
-            if (FFlag::LuauAstTypeGroup ? shouldParenthesize : unconditionallyParenthesize)
+            if (FFlag::LuauAstTypeGroup2 ? shouldParenthesize : unconditionallyParenthesize)
                 writer.symbol("(");
 
             // Only variadic tail
@@ -343,7 +343,7 @@ struct Printer_DEPRECATED
                 visualizeTypeAnnotation(*list.types.data[0]);
             }
 
-            if (FFlag::LuauAstTypeGroup ? shouldParenthesize : unconditionallyParenthesize)
+            if (FFlag::LuauAstTypeGroup2 ? shouldParenthesize : unconditionallyParenthesize)
                 writer.symbol(")");
         }
         else
@@ -1349,7 +1349,7 @@ struct Printer
         else if (typeCount == 1)
         {
             bool shouldParenthesize = unconditionallyParenthesize && (list.types.size == 0 || !list.types.data[0]->is<AstTypeGroup>());
-            if (FFlag::LuauAstTypeGroup ? shouldParenthesize : unconditionallyParenthesize)
+            if (FFlag::LuauAstTypeGroup2 ? shouldParenthesize : unconditionallyParenthesize)
                 writer.symbol("(");
 
             // Only variadic tail
@@ -1362,7 +1362,7 @@ struct Printer
                 visualizeTypeAnnotation(*list.types.data[0]);
             }
 
-            if (FFlag::LuauAstTypeGroup ? shouldParenthesize : unconditionallyParenthesize)
+            if (FFlag::LuauAstTypeGroup2 ? shouldParenthesize : unconditionallyParenthesize)
                 writer.symbol(")");
         }
         else
@@ -2599,6 +2599,7 @@ struct Printer
         {
             writer.symbol("(");
             visualizeTypeAnnotation(*a->type);
+            advance(Position{a->location.end.line, a->location.end.column - 1});
             writer.symbol(")");
         }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonBool>())

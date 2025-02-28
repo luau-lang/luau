@@ -19,7 +19,6 @@
 #include <iostream>
 #include <iterator>
 
-LUAU_FASTFLAGVARIABLE(LuauCountSelfCallsNonstrict)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAGVARIABLE(LuauNonStrictVisitorImprovements)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictWarnOnUnknownGlobals)
@@ -628,17 +627,6 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprCall* call)
     {
-        if (FFlag::LuauCountSelfCallsNonstrict)
-            return visitCall(call);
-        else
-            return visitCall_DEPRECATED(call);
-    }
-
-    // rename this to `visit` when `FFlag::LuauCountSelfCallsNonstrict` is removed, and clean up above `visit`.
-    NonStrictContext visitCall(AstExprCall* call)
-    {
-        LUAU_ASSERT(FFlag::LuauCountSelfCallsNonstrict);
-
         NonStrictContext fresh{};
         TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
         if (!originalCallTy)
@@ -740,109 +728,6 @@ struct NonStrictTypeChecker
                 {
                     reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), arguments.size()}, call->location);
                     return fresh;
-                }
-            }
-        }
-
-        return fresh;
-    }
-
-    // Remove with `FFlag::LuauCountSelfCallsNonstrict` clean up.
-    NonStrictContext visitCall_DEPRECATED(AstExprCall* call)
-    {
-        LUAU_ASSERT(!FFlag::LuauCountSelfCallsNonstrict);
-
-        NonStrictContext fresh{};
-        TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
-        if (!originalCallTy)
-            return fresh;
-
-        TypeId fnTy = *originalCallTy;
-        if (auto fn = get<FunctionType>(follow(fnTy)))
-        {
-            if (fn->isCheckedFunction)
-            {
-                // We know fn is a checked function, which means it looks like:
-                // (S1, ... SN) -> T &
-                // (~S1, unknown^N-1) -> error &
-                // (unknown, ~S2, unknown^N-2) -> error
-                // ...
-                // ...
-                // (unknown^N-1, ~S_N) -> error
-                std::vector<TypeId> argTypes;
-                argTypes.reserve(call->args.size);
-                // Pad out the arg types array with the types you would expect to see
-                TypePackIterator curr = begin(fn->argTypes);
-                TypePackIterator fin = end(fn->argTypes);
-                while (curr != fin)
-                {
-                    argTypes.push_back(*curr);
-                    ++curr;
-                }
-                if (auto argTail = curr.tail())
-                {
-                    if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*argTail)))
-                    {
-                        while (argTypes.size() < call->args.size)
-                        {
-                            argTypes.push_back(vtp->ty);
-                        }
-                    }
-                }
-
-                std::string functionName = getFunctionNameAsString(*call->func).value_or("");
-                if (call->args.size > argTypes.size())
-                {
-                    // We are passing more arguments than we expect, so we should error
-                    reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), call->args.size}, call->location);
-                    return fresh;
-                }
-
-                for (size_t i = 0; i < call->args.size; i++)
-                {
-                    // For example, if the arg is "hi"
-                    // The actual arg type is string
-                    // The expected arg type is number
-                    // The type of the argument in the overload is ~number
-                    // We will compare arg and ~number
-                    AstExpr* arg = call->args.data[i];
-                    TypeId expectedArgType = argTypes[i];
-                    std::shared_ptr<const NormalizedType> norm = normalizer.normalize(expectedArgType);
-                    DefId def = dfg->getDef(arg);
-                    TypeId runTimeErrorTy;
-                    // If we're dealing with any, negating any will cause all subtype tests to fail
-                    // However, when someone calls this function, they're going to want to be able to pass it anything,
-                    // for that reason, we manually inject never into the context so that the runtime test will always pass.
-                    if (!norm)
-                        reportError(NormalizationTooComplex{}, arg->location);
-
-                    if (norm && get<AnyType>(norm->tops))
-                        runTimeErrorTy = builtinTypes->neverType;
-                    else
-                        runTimeErrorTy = getOrCreateNegation(expectedArgType);
-                    fresh.addContext(def, runTimeErrorTy);
-                }
-
-                // Populate the context and now iterate through each of the arguments to the call to find out if we satisfy the types
-                for (size_t i = 0; i < call->args.size; i++)
-                {
-                    AstExpr* arg = call->args.data[i];
-                    if (auto runTimeFailureType = willRunTimeError(arg, fresh))
-                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
-                }
-
-                if (call->args.size < argTypes.size())
-                {
-                    // We are passing fewer arguments than we expect
-                    // so we need to ensure that the rest of the args are optional.
-                    bool remainingArgsOptional = true;
-                    for (size_t i = call->args.size; i < argTypes.size(); i++)
-                        remainingArgsOptional = remainingArgsOptional && isOptional(argTypes[i]);
-                    if (!remainingArgsOptional)
-                    {
-                        reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), call->args.size}, call->location);
-                        return fresh;
-                    }
                 }
             }
         }

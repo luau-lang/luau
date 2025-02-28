@@ -557,7 +557,7 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
@@ -574,9 +574,6 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
     UnifierSharedState sharedState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
-
-    if (FFlag::LuauSolverV2)
-        u.enableNewSolver();
 
     u.tryUnify(option1, option2);
 
@@ -987,7 +984,7 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
@@ -1004,9 +1001,6 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
     UnifierSharedState sharedState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
-
-    if (FFlag::LuauSolverV2)
-        u.enableNewSolver();
 
     u.tryUnify(option1, option2);
 

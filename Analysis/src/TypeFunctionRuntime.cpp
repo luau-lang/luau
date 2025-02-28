@@ -18,6 +18,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunSingletonEquality)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypeofReturnsType)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunPrintFix)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunReadWriteParents)
 
 namespace Luau
 {
@@ -1110,7 +1111,7 @@ static int getFunctionGenerics(lua_State* L)
 
 // Luau: `self:parent() -> type`
 // Returns the parent of a class type
-static int getClassParent(lua_State* L)
+static int getClassParent_DEPRECATED(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
     if (argumentCount != 1)
@@ -1122,10 +1123,54 @@ static int getClassParent(lua_State* L)
         luaL_error(L, "type.parent: expected self to be a class, but got %s instead", getTag(L, self).c_str());
 
     // If the parent does not exist, we should return nil
-    if (!tfct->parent)
+    if (!tfct->parent_DEPRECATED)
         lua_pushnil(L);
     else
-        allocTypeUserData(L, (*tfct->parent)->type);
+        allocTypeUserData(L, (*tfct->parent_DEPRECATED)->type);
+
+    return 1;
+}
+
+// Luau: `self:readparent() -> type`
+// Returns the read type of the class' parent
+static int getReadParent(lua_State* L)
+{
+    int argumentCount = lua_gettop(L);
+    if (argumentCount != 1)
+        luaL_error(L, "type.parent: expected 1 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfct = get<TypeFunctionClassType>(self);
+    if (!tfct)
+        luaL_error(L, "type.parent: expected self to be a class, but got %s instead", getTag(L, self).c_str());
+
+    // If the parent does not exist, we should return nil
+    if (!tfct->readParent)
+        lua_pushnil(L);
+    else
+        allocTypeUserData(L, (*tfct->readParent)->type);
+
+    return 1;
+}
+//
+// Luau: `self:writeparent() -> type`
+// Returns the write type of the class' parent
+static int getWriteParent(lua_State* L)
+{
+    int argumentCount = lua_gettop(L);
+    if (argumentCount != 1)
+        luaL_error(L, "type.parent: expected 1 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfct = get<TypeFunctionClassType>(self);
+    if (!tfct)
+        luaL_error(L, "type.parent: expected self to be a class, but got %s instead", getTag(L, self).c_str());
+
+    // If the parent does not exist, we should return nil
+    if (!tfct->writeParent)
+        lua_pushnil(L);
+    else
+        allocTypeUserData(L, (*tfct->writeParent)->type);
 
     return 1;
 }
@@ -1553,7 +1598,7 @@ void registerTypeUserData(lua_State* L)
         {"components", getComponents},
 
         // Class type methods
-        {"parent", getClassParent},
+        {FFlag::LuauTypeFunReadWriteParents ? "readparent" : "parent", FFlag::LuauTypeFunReadWriteParents ? getReadParent : getClassParent_DEPRECATED},
 
         // Function type methods (cont.)
         {"setgenerics", setFunctionGenerics},
@@ -1562,6 +1607,9 @@ void registerTypeUserData(lua_State* L)
         // Generic type methods
         {"name", getGenericName},
         {"ispack", getGenericIsPack},
+
+        // move this under Class type methods when removing FFlagLuauTypeFunReadWriteParents
+        {FFlag::LuauTypeFunReadWriteParents ? "writeparent" : nullptr, FFlag::LuauTypeFunReadWriteParents ? getWriteParent : nullptr},
 
         {nullptr, nullptr}
     };

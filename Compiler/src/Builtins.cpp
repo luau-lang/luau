@@ -7,8 +7,6 @@
 
 #include <array>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileMathLerp)
-
 namespace Luau
 {
 namespace Compile
@@ -139,7 +137,7 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_MATH_SIGN;
         if (builtin.method == "round")
             return LBF_MATH_ROUND;
-        if (FFlag::LuauCompileMathLerp && builtin.method == "lerp")
+        if (builtin.method == "lerp")
             return LBF_MATH_LERP;
     }
 
@@ -556,7 +554,6 @@ BuiltinInfo getBuiltinInfo(int bfid)
         return {-1, 1}; // variadic
 
     case LBF_MATH_LERP:
-        LUAU_ASSERT(FFlag::LuauCompileMathLerp);
         return {3, 1, BuiltinInfo::Flag_NoneSafe};
     }
 

@@ -1481,6 +1481,7 @@ ModulePtr check(
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
+        NotNull{&cg.scopeToFunction},
         result->name,
         moduleResolver,
         requireCycles,
