@@ -448,6 +448,13 @@ struct UnexpectedTypePackInSubtyping
     bool operator==(const UnexpectedTypePackInSubtyping& rhs) const;
 };
 
+struct UserDefinedTypeFunctionError
+{
+    std::string message;
+
+    bool operator==(const UserDefinedTypeFunctionError& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -496,7 +503,8 @@ using TypeErrorData = Variant<
     CheckedFunctionIncorrectArgs,
     UnexpectedTypeInSubtyping,
     UnexpectedTypePackInSubtyping,
-    ExplicitFunctionAnnotationRecommended>;
+    ExplicitFunctionAnnotationRecommended,
+    UserDefinedTypeFunctionError>;
 
 struct TypeErrorSummary
 {

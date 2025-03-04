@@ -211,6 +211,16 @@ void Scope::inheritRefinements(const ScopePtr& childScope)
     }
 }
 
+bool Scope::shouldWarnGlobal(std::string name) const
+{
+    for (const Scope* current = this; current; current = current->parent.get())
+    {
+        if (current->globalsToWarn.contains(name))
+            return true;
+    }
+    return false;
+}
+
 bool subsumesStrict(Scope* left, Scope* right)
 {
     while (right)

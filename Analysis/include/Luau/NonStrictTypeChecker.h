@@ -9,11 +9,14 @@ namespace Luau
 {
 
 struct BuiltinTypes;
+struct TypeFunctionRuntime;
 struct UnifierSharedState;
 struct TypeCheckLimits;
 
 void checkNonStrict(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> ice,
     NotNull<UnifierSharedState> unifierState,
     NotNull<const DataFlowGraph> dfg,

@@ -244,7 +244,7 @@ static void reallymarkobject(global_State* g, GCObject* o)
     }
     case LUA_TUSERDATA:
     {
-        Table* mt = gco2u(o)->metatable;
+        LuaTable* mt = gco2u(o)->metatable;
         gray2black(o); // udata are never gray
         if (mt)
             markobject(g, mt);
@@ -292,7 +292,7 @@ static void reallymarkobject(global_State* g, GCObject* o)
     }
 }
 
-static const char* gettablemode(global_State* g, Table* h)
+static const char* gettablemode(global_State* g, LuaTable* h)
 {
     const TValue* mode = gfasttm(g, h->metatable, TM_MODE);
 
@@ -302,13 +302,13 @@ static const char* gettablemode(global_State* g, Table* h)
     return NULL;
 }
 
-static int traversetable(global_State* g, Table* h)
+static int traversetable(global_State* g, LuaTable* h)
 {
     int i;
     int weakkey = 0;
     int weakvalue = 0;
     if (h->metatable)
-        markobject(g, cast_to(Table*, h->metatable));
+        markobject(g, cast_to(LuaTable*, h->metatable));
 
     // is there a weak mode?
     if (const char* modev = gettablemode(g, h))
@@ -436,11 +436,13 @@ static void shrinkstack(lua_State* L)
     int s_used = cast_int(lim - L->stack);      // part of stack in use
     if (L->size_ci > LUAI_MAXCALLS)             // handling overflow?
         return;                                 // do not touch the stacks
-    if (3 * ci_used < L->size_ci && 2 * BASIC_CI_SIZE < L->size_ci)
+
+    if (3 * size_t(ci_used) < size_t(L->size_ci) && 2 * BASIC_CI_SIZE < L->size_ci)
         luaD_reallocCI(L, L->size_ci / 2); // still big enough...
     condhardstacktests(luaD_reallocCI(L, ci_used + 1));
-    if (3 * s_used < L->stacksize && 2 * (BASIC_STACK_SIZE + EXTRA_STACK) < L->stacksize)
-        luaD_reallocstack(L, L->stacksize / 2); // still big enough...
+
+    if (3 * size_t(s_used) < size_t(L->stacksize) && 2 * (BASIC_STACK_SIZE + EXTRA_STACK) < L->stacksize)
+        luaD_reallocstack(L, L->stacksize / 2, 0); // still big enough...
     condhardstacktests(luaD_reallocstack(L, s_used));
 }
 
@@ -457,11 +459,11 @@ static size_t propagatemark(global_State* g)
     {
     case LUA_TTABLE:
     {
-        Table* h = gco2h(o);
+        LuaTable* h = gco2h(o);
         g->gray = h->gclist;
         if (traversetable(g, h)) // table is weak?
             black2gray(o);       // keep it gray
-        return sizeof(Table) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
+        return sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
     }
     case LUA_TFUNCTION:
     {
@@ -551,8 +553,8 @@ static size_t cleartable(lua_State* L, GCObject* l)
     size_t work = 0;
     while (l)
     {
-        Table* h = gco2h(l);
-        work += sizeof(Table) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
+        LuaTable* h = gco2h(l);
+        work += sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
 
         int i = h->sizearray;
         while (i--)
@@ -1153,7 +1155,7 @@ void luaC_barrierf(lua_State* L, GCObject* o, GCObject* v)
         makewhite(g, o);        // mark as white just to avoid other barriers
 }
 
-void luaC_barriertable(lua_State* L, Table* t, GCObject* v)
+void luaC_barriertable(lua_State* L, LuaTable* t, GCObject* v)
 {
     global_State* g = L->global;
     GCObject* o = obj2gco(t);

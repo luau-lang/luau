@@ -107,6 +107,10 @@ static int db_info(lua_State* L)
             break;
 
         default:
+            // restore stack state of another thread as 'f' option might not have been visited yet
+            if (L != L1)
+                lua_settop(L1, l1top);
+
             luaL_argerror(L, arg + 2, "invalid option");
         }
     }

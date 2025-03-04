@@ -7,6 +7,7 @@
 #include "Luau/Unifiable.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauFreezeIgnorePersistent)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
@@ -38,14 +39,26 @@ class TypeCloner
     NotNull<SeenTypes> types;
     NotNull<SeenTypePacks> packs;
 
+    TypeId forceTy = nullptr;
+    TypePackId forceTp = nullptr;
+
     int steps = 0;
 
 public:
-    TypeCloner(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<SeenTypes> types, NotNull<SeenTypePacks> packs)
+    TypeCloner(
+        NotNull<TypeArena> arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<SeenTypes> types,
+        NotNull<SeenTypePacks> packs,
+        TypeId forceTy,
+        TypePackId forceTp
+    )
         : arena(arena)
         , builtinTypes(builtinTypes)
         , types(types)
         , packs(packs)
+        , forceTy(forceTy)
+        , forceTp(forceTp)
     {
     }
 
@@ -112,7 +125,7 @@ private:
         ty = follow(ty, FollowOption::DisableLazyTypeThunks);
         if (auto it = types->find(ty); it != types->end())
             return it->second;
-        else if (ty->persistent)
+        else if (ty->persistent && (!FFlag::LuauFreezeIgnorePersistent || ty != forceTy))
             return ty;
         return std::nullopt;
     }
@@ -122,7 +135,7 @@ private:
         tp = follow(tp);
         if (auto it = packs->find(tp); it != packs->end())
             return it->second;
-        else if (tp->persistent)
+        else if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || tp != forceTp))
             return tp;
         return std::nullopt;
     }
@@ -140,7 +153,7 @@ private:
         }
     }
 
-private:
+public:
     TypeId shallowClone(TypeId ty)
     {
         // We want to [`Luau::follow`] but without forcing the expansion of [`LazyType`]s.
@@ -148,7 +161,7 @@ private:
 
         if (auto clone = find(ty))
             return *clone;
-        else if (ty->persistent)
+        else if (ty->persistent && (!FFlag::LuauFreezeIgnorePersistent || ty != forceTy))
             return ty;
 
         TypeId target = arena->addType(ty->ty);
@@ -174,7 +187,7 @@ private:
 
         if (auto clone = find(tp))
             return *clone;
-        else if (tp->persistent)
+        else if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || tp != forceTp))
             return tp;
 
         TypePackId target = arena->addTypePack(tp->ty);
@@ -189,6 +202,7 @@ private:
         return target;
     }
 
+private:
     Property shallowClone(const Property& p)
     {
         if (FFlag::LuauSolverV2)
@@ -256,8 +270,7 @@ private:
             LUAU_ASSERT(!"Item holds neither TypeId nor TypePackId when enqueuing its children?");
     }
 
-    // ErrorType and ErrorTypePack is an alias to this type.
-    void cloneChildren(Unifiable::Error* t)
+    void cloneChildren(ErrorType* t)
     {
         // noop.
     }
@@ -359,6 +372,11 @@ private:
         // noop.
     }
 
+    void cloneChildren(NoRefineType* t)
+    {
+        // noop.
+    }
+
     void cloneChildren(UnionType* t)
     {
         for (TypeId& ty : t->options)
@@ -422,6 +440,11 @@ private:
         t->boundTo = shallowClone(t->boundTo);
     }
 
+    void cloneChildren(ErrorTypePack* t)
+    {
+        // noop.
+    }
+
     void cloneChildren(VariadicTypePack* t)
     {
         t->ty = shallowClone(t->ty);
@@ -448,12 +471,46 @@ private:
 
 } // namespace
 
+TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool ignorePersistent)
+{
+    if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || !ignorePersistent))
+        return tp;
+
+    TypeCloner cloner{
+        NotNull{&dest},
+        cloneState.builtinTypes,
+        NotNull{&cloneState.seenTypes},
+        NotNull{&cloneState.seenTypePacks},
+        nullptr,
+        FFlag::LuauFreezeIgnorePersistent && ignorePersistent ? tp : nullptr
+    };
+
+    return cloner.shallowClone(tp);
+}
+
+TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool ignorePersistent)
+{
+    if (typeId->persistent && (!FFlag::LuauFreezeIgnorePersistent || !ignorePersistent))
+        return typeId;
+
+    TypeCloner cloner{
+        NotNull{&dest},
+        cloneState.builtinTypes,
+        NotNull{&cloneState.seenTypes},
+        NotNull{&cloneState.seenTypePacks},
+        FFlag::LuauFreezeIgnorePersistent && ignorePersistent ? typeId : nullptr,
+        nullptr
+    };
+
+    return cloner.shallowClone(typeId);
+}
+
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
 {
     if (tp->persistent)
         return tp;
 
-    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
+    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}, nullptr, nullptr};
     return cloner.clone(tp);
 }
 
@@ -462,13 +519,13 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
     if (typeId->persistent)
         return typeId;
 
-    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
+    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}, nullptr, nullptr};
     return cloner.clone(typeId);
 }
 
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
 {
-    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
+    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}, nullptr, nullptr};
 
     TypeFun copy = typeFun;
 
@@ -491,6 +548,20 @@ TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
     copy.type = cloner.clone(copy.type);
 
     return copy;
+}
+
+Binding clone(const Binding& binding, TypeArena& dest, CloneState& cloneState)
+{
+    TypeCloner cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}, nullptr, nullptr};
+
+    Binding b;
+    b.deprecated = binding.deprecated;
+    b.deprecatedSuggestion = binding.deprecatedSuggestion;
+    b.documentationSymbol = binding.documentationSymbol;
+    b.location = binding.location;
+    b.typeId = cloner.clone(binding.typeId);
+
+    return b;
 }
 
 } // namespace Luau

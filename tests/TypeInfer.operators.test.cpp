@@ -17,7 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveBadRelationalOperatorWarning)
+LUAU_FASTFLAG(LuauDoNotGeneralizeInTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -631,7 +631,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
 {
     // CLI-116463
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -801,7 +801,10 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
             "Operator '+' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __add",
             toString(result.errors[0])
         );
-        CHECK_EQ("Operator '-' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __sub", toString(result.errors[1]));
+        CHECK_EQ(
+            "Operator '-' could not be applied to operands of types unknown and unknown; there is no corresponding overload for __sub",
+            toString(result.errors[1])
+        );
     }
     else
     {
@@ -812,19 +815,19 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
 {
-    CheckResult result = check(R"(
-    --!strict
-    local t = {}
-    while true and t[1] do
-        print(t[1].test)
-    end
-    )");
+    ScopedFastFlag _{FFlag::LuauDoNotGeneralizeInTypeFunctions, true};
 
-    // This infers a type for `t` of `{unknown}`, and so it makes sense that `t[1].test` would error.
-    if (FFlag::LuauSolverV2)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    // `t` will be inferred to be of type `{ { test: unknown } }` which is
+    // reasonable, in that it's empty with no bounds on its members.  Optimally
+    // we might emit an error here that the `print(...)` expression is
+    // unreachable.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local t = {}
+        while true and t[1] do
+            print(t[1].test)
+        end
+    )"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators")
@@ -860,7 +863,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
     )");
 
     // If DCR is off and the flag to remove this check in the old solver is on, the expected behavior is no errors.
-    if (!FFlag::LuauSolverV2 && FFlag::LuauRemoveBadRelationalOperatorWarning)
+    if (!FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
         return;
@@ -885,7 +888,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
 {
     // There's an extra spurious warning here when the new solver is enabled.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -1426,7 +1429,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array_simplified")
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array")
 {
     // CLI-116480 Subtyping bug: table should probably be a subtype of {[unknown]: unknown}
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 --!strict
@@ -1576,10 +1579,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
         end
 )");
 
-    if (FFlag::LuauRemoveBadRelationalOperatorWarning)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // There is a flag to gate turning this off, and this warning is not
+    // implemented in the new solver, so assert there are no errors.
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_infinite_expansion_of_free_type" * doctest::timeout(1.0))
@@ -1608,6 +1610,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_operator_on_upvalue")
         local function advance(bytes: number)
             byteCursor += bytes
         end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_operator_follow")
+{
+    CheckResult result = check(R"(
+local t1 = {}
+local t2 = {}
+local mt = {}
+
+mt.__eq = function(a, b)
+    return false
+end
+
+setmetatable(t1, mt)
+setmetatable(t2, mt)
+
+if t1 == t2 then
+
+end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

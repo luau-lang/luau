@@ -163,13 +163,49 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_overloaded_function_prop")
     CHECK_EQ(symbol, "@test/global/Foo.new/overload/(string) -> number");
 }
 
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "string_metatable_method")
+{
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(
+        R"(
+        local x: string = "Foo"
+        x:rep(2)
+    )",
+        Position(2, 12)
+    );
+
+    CHECK_EQ(symbol, "@luau/global/string.rep");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "parent_class_method")
+{
+    loadDefinition(R"(
+        declare class Foo
+            function bar(self, x: string): number
+        end
+
+        declare class Bar extends Foo
+            function notbar(self, x: string): number
+        end
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(
+        R"(
+        local x: Bar = Bar.new()
+        x:bar("asdf")
+    )",
+        Position(2, 11)
+    );
+
+    CHECK_EQ(symbol, "@test/globaltype/Foo.bar");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("AstQuery");
 
 TEST_CASE_FIXTURE(Fixture, "last_argument_function_call_type")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     check(R"(
 local function foo() return 2 end

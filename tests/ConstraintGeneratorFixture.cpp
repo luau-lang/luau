@@ -10,6 +10,7 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
+    , simplifier(newSimplifier(NotNull{&arena}, builtinTypes))
     , forceTheFlag{FFlag::LuauSolverV2, true}
 {
     mainModule->name = "MainModule";
@@ -21,10 +22,14 @@ ConstraintGeneratorFixture::ConstraintGeneratorFixture()
 void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 {
     AstStatBlock* root = parse(code);
-    dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
+    dfg = std::make_unique<DataFlowGraph>(
+        DataFlowGraphBuilder::build(root, NotNull{&mainModule->defArena}, NotNull{&mainModule->keyArena}, NotNull{&ice})
+    );
     cg = std::make_unique<ConstraintGenerator>(
         mainModule,
         NotNull{&normalizer},
+        NotNull{simplifier.get()},
+        NotNull{&typeFunctionRuntime},
         NotNull(&moduleResolver),
         builtinTypes,
         NotNull(&ice),
@@ -42,7 +47,21 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 void ConstraintGeneratorFixture::solve(const std::string& code)
 {
     generateConstraints(code);
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, {}};
+    ConstraintSolver cs{
+        NotNull{&normalizer},
+        NotNull{simplifier.get()},
+        NotNull{&typeFunctionRuntime},
+        NotNull{rootScope},
+        constraints,
+        NotNull{&cg->scopeToFunction},
+        "MainModule",
+        NotNull(&moduleResolver),
+        {},
+        &logger,
+        NotNull{dfg.get()},
+        {}
+    };
+
     cs.run();
 }
 

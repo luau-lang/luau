@@ -11,8 +11,8 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNormalizeNotUnknownIntersection)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauFixNormalizedIntersectionOfNegatedClass)
 using namespace Luau;
 
 namespace
@@ -27,7 +27,9 @@ struct IsSubtypeFixture : Fixture
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
+        SimplifierPtr simplifier = newSimplifier(NotNull{&module->internalTypes}, builtinTypes);
+
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, NotNull{simplifier.get()}, ice);
     }
 };
 } // namespace
@@ -849,17 +851,17 @@ TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
+    ScopedFastFlag _{FFlag::LuauFixNormalizedIntersectionOfNegatedClass, true};
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
-    CHECK("Child" == toString(normal("Not<Parent> & Child")));
+    CHECK("never" == toString(normal("Not<Parent> & Child")));
     CHECK("((class & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
     CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
     CHECK(
         "(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
         toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>"))
     );
-
     CHECK("Child" == toString(normal("(Child | Unrelated) & Not<Unrelated>")));
 }
 
@@ -960,7 +962,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "final_types_are_cached")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_not_cached")
 {
-    TypeId a = arena.freshType(&globalScope);
+    TypeId a = arena.freshType(builtinTypes, &globalScope);
 
     std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(a);
     std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(a);
@@ -970,8 +972,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_n
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_with_not_unknown")
 {
-    ScopedFastFlag sff{FFlag::LuauNormalizeNotUnknownIntersection, true};
-
     TypeId notUnknown = arena.addType(NegationType{builtinTypes->unknownType});
     TypeId type = arena.addType(IntersectionType{{builtinTypes->numberType, notUnknown}});
     std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(type);
@@ -1027,6 +1027,111 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
 
     TypeId ty = normalizer.typeFromNormal(*norm);
     CHECK("{ x: number }" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+    ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
+
+    CheckResult result = check(R"(
+--!strict
+
+type Array<T> = { [number] : T}
+type Object = { [number] : any}
+
+type Set<T> = typeof(setmetatable(
+	{} :: {
+		size: number,
+		-- method definitions
+		add: (self: Set<T>, T) -> Set<T>,
+		clear: (self: Set<T>) -> (),
+		delete: (self: Set<T>, T) -> boolean,
+		has: (self: Set<T>, T) -> boolean,
+		ipairs: (self: Set<T>) -> any,
+	},
+	{} :: {
+		__index: Set<T>,
+		__iter: (self: Set<T>) -> (<K, V>({ [K]: V }, K?) -> (K, V), T),
+	}
+))
+
+type Map<K, V> = typeof(setmetatable(
+	{} :: {
+		size: number,
+		-- method definitions
+		set: (self: Map<K, V>, K, V) -> Map<K, V>,
+		get: (self: Map<K, V>, K) -> V | nil,
+		clear: (self: Map<K, V>) -> (),
+		delete: (self: Map<K, V>, K) -> boolean,
+		[K]: V,
+		has: (self: Map<K, V>, K) -> boolean,
+		keys: (self: Map<K, V>) -> Array<K>,
+		values: (self: Map<K, V>) -> Array<V>,
+		entries: (self: Map<K, V>) -> Array<Tuple<K, V>>,
+		ipairs: (self: Map<K, V>) -> any,
+		_map: { [K]: V },
+		_array: { [number]: K },
+		__index: (self: Map<K, V>, key: K) -> V,
+		__iter: (self: Map<K, V>) -> (<K, V>({ [K]: V }, K?) -> (K?, V), V),
+		__newindex: (self: Map<K, V>, key: K, value: V) -> (),
+	},
+	{} :: {
+		__index: Map<K, V>,
+		__iter: (self: Map<K, V>) -> (<K, V>({ [K]: V }, K?) -> (K, V), V),
+		__newindex: (self: Map<K, V>, key: K, value: V) -> (),
+	}
+))
+type mapFn<T, U> = (element: T, index: number) -> U
+type mapFnWithThisArg<T, U> = (thisArg: any, element: T, index: number) -> U
+
+function fromSet<T, U>(
+	value: Set<T>,
+	mapFn: (mapFn<T, U> | mapFnWithThisArg<T, U>)?,
+	thisArg: Object?
+	-- FIXME Luau: need overloading so the return type on this is more sane and doesn't require manual casts
+): Array<U> | Array<T> | Array<string>
+
+    local array : { [number] : string} = {"foo"}
+	return array
+end
+
+function instanceof(tbl: any, class: any): boolean
+    return true
+end
+
+function fromArray<T, U>(
+	value: Array<T>,
+	mapFn: (mapFn<T, U> | mapFnWithThisArg<T, U>)?,
+	thisArg: Object?
+	-- FIXME Luau: need overloading so the return type on this is more sane and doesn't require manual casts
+): Array<U> | Array<T> | Array<string>
+	local array : {[number] : string} = {}
+	return array
+end
+
+return function<T, U>(
+	value: string | Array<T> | Set<T> | Map<any, any>,
+	mapFn: (mapFn<T, U> | mapFnWithThisArg<T, U>)?,
+	thisArg: Object?
+	-- FIXME Luau: need overloading so the return type on this is more sane and doesn't require manual casts
+): Array<U> | Array<T> | Array<string>
+	if value == nil then
+		error("cannot create array from a nil value")
+	end
+	local array: Array<U> | Array<T> | Array<string>
+
+    if instanceof(value, Set) then
+		array = fromSet(value :: Set<T>, mapFn, thisArg)
+	else
+		array = {}
+	end
+
+
+	return array
+end
+)");
 }
 
 TEST_SUITE_END();

@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAcceptIndexingTableUnionsIntersections)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -36,7 +35,7 @@ TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")
 {
     // CLI-114134 We need egraphs to consistently reduce the cyclic union
     // introduced by the increment here.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local count = 0
@@ -122,7 +121,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_arguments")
 TEST_CASE_FIXTURE(Fixture, "optional_arguments_table")
 {
     // CLI-115588 - Bidirectional inference does not happen for assignments
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local a:{a:string, b:string?}
@@ -419,6 +418,9 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
 {
+
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     CheckResult result = check(R"(
         type A = {number}
         function f(a: A?)
@@ -426,8 +428,10 @@ TEST_CASE_FIXTURE(Fixture, "optional_length_error")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
+    // CLI-119936: This shouldn't double error but does under the new solver.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Operator '#' could not be applied to operand of type A?; there is no corresponding overload for __len", toString(result.errors[0]));
+    CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_missing_key_error_details")
@@ -473,7 +477,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "unify_unsealed_table_union_check")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 local x = { x = 3 }
@@ -617,7 +621,7 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     TypeArena& arena = frontend.globals.globalTypes;
     unfreeze(arena);
 
-    TypeId badCyclicUnionTy = arena.freshType(frontend.globals.globalScope.get());
+    TypeId badCyclicUnionTy = arena.freshType(builtinTypes, frontend.globals.globalScope.get());
     UnionType u;
 
     u.options.push_back(badCyclicUnionTy);
@@ -638,16 +642,14 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     )");
 
     // this is a cyclic union of number arrays, so it _is_ a table, even if it's a nonsense type.
-    // no need to generate a NotATable error here.
-    if (FFlag::LuauAcceptIndexingTableUnionsIntersections)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // no need to generate a NotATable error here. The new solver automatically handles this and
+    // correctly reports no errors.
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type A = { x: number, y: (number) -> string } | { z: number, y: (number) -> string }
@@ -723,7 +725,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_generic_typepack_functions")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f<a,b>()
@@ -743,7 +745,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f<a...>()
@@ -764,7 +766,7 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(x : (number) -> number?)
@@ -783,7 +785,7 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(x : () -> (number | string))
@@ -802,7 +804,7 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(x : (...nil) -> (...number?))
@@ -848,7 +850,7 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(x : () -> (number?, ...number))
@@ -879,7 +881,9 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("(({ read x: unknown } & { x: number }) | ({ read x: unknown } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f")));
+    CHECK_EQ(
+        "(({ read x: unknown } & { x: number }) | ({ read x: unknown } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f"))
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")
@@ -916,7 +920,7 @@ TEST_CASE_FIXTURE(Fixture, "union_table_any_property")
 
 TEST_CASE_FIXTURE(Fixture, "union_function_any_args")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(sup : ((...any) -> (...any))?, sub : ((number) -> (...any)))
@@ -940,7 +944,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_any")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_with_optional_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f<T>(x : T?) : {T}

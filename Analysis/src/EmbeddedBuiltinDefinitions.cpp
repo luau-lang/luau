@@ -1,102 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
+LUAU_FASTFLAGVARIABLE(LuauDebugInfoDefn)
+
 namespace Luau
 {
 
-static const std::string kBuiltinDefinitionLuaSrcChecked = R"BUILTIN_SRC(
-
-declare bit32: {
-    band: @checked (...number) -> number,
-    bor: @checked (...number) -> number,
-    bxor: @checked (...number) -> number,
-    btest: @checked (number, ...number) -> boolean,
-    rrotate: @checked (x: number, disp: number) -> number,
-    lrotate: @checked (x: number, disp: number) -> number,
-    lshift: @checked (x: number, disp: number) -> number,
-    arshift: @checked (x: number, disp: number) -> number,
-    rshift: @checked (x: number, disp: number) -> number,
-    bnot: @checked (x: number) -> number,
-    extract: @checked (n: number, field: number, width: number?) -> number,
-    replace: @checked (n: number, v: number, field: number, width: number?) -> number,
-    countlz: @checked (n: number) -> number,
-    countrz: @checked (n: number) -> number,
-    byteswap: @checked (n: number) -> number,
-}
-
-declare math: {
-    frexp: @checked (n: number) -> (number, number),
-    ldexp: @checked (s: number, e: number) -> number,
-    fmod: @checked (x: number, y: number) -> number,
-    modf: @checked (n: number) -> (number, number),
-    pow: @checked (x: number, y: number) -> number,
-    exp: @checked (n: number) -> number,
-
-    ceil: @checked (n: number) -> number,
-    floor: @checked (n: number) -> number,
-    abs: @checked (n: number) -> number,
-    sqrt: @checked (n: number) -> number,
-
-    log: @checked (n: number, base: number?) -> number,
-    log10: @checked (n: number) -> number,
-
-    rad: @checked (n: number) -> number,
-    deg: @checked (n: number) -> number,
-
-    sin: @checked (n: number) -> number,
-    cos: @checked (n: number) -> number,
-    tan: @checked (n: number) -> number,
-    sinh: @checked (n: number) -> number,
-    cosh: @checked (n: number) -> number,
-    tanh: @checked (n: number) -> number,
-    atan: @checked (n: number) -> number,
-    acos: @checked (n: number) -> number,
-    asin: @checked (n: number) -> number,
-    atan2: @checked (y: number, x: number) -> number,
-
-    min: @checked (number, ...number) -> number,
-    max: @checked (number, ...number) -> number,
-
-    pi: number,
-    huge: number,
-
-    randomseed: @checked (seed: number) -> (),
-    random: @checked (number?, number?) -> number,
-
-    sign: @checked (n: number) -> number,
-    clamp: @checked (n: number, min: number, max: number) -> number,
-    noise: @checked (x: number, y: number?, z: number?) -> number,
-    round: @checked (n: number) -> number,
-}
-
-type DateTypeArg = {
-    year: number,
-    month: number,
-    day: number,
-    hour: number?,
-    min: number?,
-    sec: number?,
-    isdst: boolean?,
-}
-
-type DateTypeResult = {
-    year: number,
-    month: number,
-    wday: number,
-    yday: number,
-    day: number,
-    hour: number,
-    min: number,
-    sec: number,
-    isdst: boolean,
-}
-
-declare os: {
-    time: (time: DateTypeArg?) -> number,
-    date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
-    difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
-    clock: () -> number,
-}
+static const std::string kBuiltinDefinitionBaseSrc = R"BUILTIN_SRC(
 
 @checked declare function require(target: any): any
 
@@ -144,6 +54,119 @@ declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> 
 
 @checked declare function newproxy(mt: boolean?): any
 
+-- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
+declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionBit32Src = R"BUILTIN_SRC(
+
+declare bit32: {
+    band: @checked (...number) -> number,
+    bor: @checked (...number) -> number,
+    bxor: @checked (...number) -> number,
+    btest: @checked (number, ...number) -> boolean,
+    rrotate: @checked (x: number, disp: number) -> number,
+    lrotate: @checked (x: number, disp: number) -> number,
+    lshift: @checked (x: number, disp: number) -> number,
+    arshift: @checked (x: number, disp: number) -> number,
+    rshift: @checked (x: number, disp: number) -> number,
+    bnot: @checked (x: number) -> number,
+    extract: @checked (n: number, field: number, width: number?) -> number,
+    replace: @checked (n: number, v: number, field: number, width: number?) -> number,
+    countlz: @checked (n: number) -> number,
+    countrz: @checked (n: number) -> number,
+    byteswap: @checked (n: number) -> number,
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionMathSrc = R"BUILTIN_SRC(
+
+declare math: {
+    frexp: @checked (n: number) -> (number, number),
+    ldexp: @checked (s: number, e: number) -> number,
+    fmod: @checked (x: number, y: number) -> number,
+    modf: @checked (n: number) -> (number, number),
+    pow: @checked (x: number, y: number) -> number,
+    exp: @checked (n: number) -> number,
+
+    ceil: @checked (n: number) -> number,
+    floor: @checked (n: number) -> number,
+    abs: @checked (n: number) -> number,
+    sqrt: @checked (n: number) -> number,
+
+    log: @checked (n: number, base: number?) -> number,
+    log10: @checked (n: number) -> number,
+
+    rad: @checked (n: number) -> number,
+    deg: @checked (n: number) -> number,
+
+    sin: @checked (n: number) -> number,
+    cos: @checked (n: number) -> number,
+    tan: @checked (n: number) -> number,
+    sinh: @checked (n: number) -> number,
+    cosh: @checked (n: number) -> number,
+    tanh: @checked (n: number) -> number,
+    atan: @checked (n: number) -> number,
+    acos: @checked (n: number) -> number,
+    asin: @checked (n: number) -> number,
+    atan2: @checked (y: number, x: number) -> number,
+
+    min: @checked (number, ...number) -> number,
+    max: @checked (number, ...number) -> number,
+
+    pi: number,
+    huge: number,
+
+    randomseed: @checked (seed: number) -> (),
+    random: @checked (number?, number?) -> number,
+
+    sign: @checked (n: number) -> number,
+    clamp: @checked (n: number, min: number, max: number) -> number,
+    noise: @checked (x: number, y: number?, z: number?) -> number,
+    round: @checked (n: number) -> number,
+    map: @checked (x: number, inmin: number, inmax: number, outmin: number, outmax: number) -> number,
+    lerp: @checked (a: number, b: number, t: number) -> number,
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionOsSrc = R"BUILTIN_SRC(
+
+type DateTypeArg = {
+    year: number,
+    month: number,
+    day: number,
+    hour: number?,
+    min: number?,
+    sec: number?,
+    isdst: boolean?,
+}
+
+type DateTypeResult = {
+    year: number,
+    month: number,
+    wday: number,
+    yday: number,
+    day: number,
+    hour: number,
+    min: number,
+    sec: number,
+    isdst: boolean,
+}
+
+declare os: {
+    time: (time: DateTypeArg?) -> number,
+    date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
+    difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
+    clock: () -> number,
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+
 declare coroutine: {
     create: <A..., R...>(f: (A...) -> R...) -> thread,
     resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
@@ -154,6 +177,10 @@ declare coroutine: {
     isyieldable: () -> boolean,
     close: @checked (co: thread) -> (boolean, any)
 }
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionTableSrc = R"BUILTIN_SRC(
 
 declare table: {
     concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
@@ -177,10 +204,27 @@ declare table: {
     isfrozen: <K, V>(t: {[K]: V}) -> boolean,
 }
 
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionDebugSrc = R"BUILTIN_SRC(
+
+declare debug: {
+    info: ((thread: thread, level: number, options: string) -> ...any) & ((level: number, options: string) -> ...any) & (<A..., R1...>(func: (A...) -> R1..., options: string) -> ...any),
+    traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionDebugSrc_DEPRECATED = R"BUILTIN_SRC(
+
 declare debug: {
     info: (<R...>(thread: thread, level: number, options: string) -> R...) & (<R...>(level: number, options: string) -> R...) & (<A..., R1..., R2...>(func: (A...) -> R1..., options: string) -> R2...),
     traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
 }
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionUtf8Src = R"BUILTIN_SRC(
 
 declare utf8: {
     char: @checked (...number) -> string,
@@ -191,10 +235,9 @@ declare utf8: {
     offset: @checked (s: string, n: number?, i: number?) -> number,
 }
 
--- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
-declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
+)BUILTIN_SRC";
 
-
+static const std::string kBuiltinDefinitionBufferSrc = R"BUILTIN_SRC(
 --- Buffer API
 declare buffer: {
     create: @checked (size: number) -> buffer,
@@ -221,13 +264,56 @@ declare buffer: {
     writef64: @checked (b: buffer, offset: number, value: number) -> (),
     readstring: @checked (b: buffer, offset: number, count: number) -> string,
     writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
+    readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
+    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver class handling covers most of the properties
+declare class vector
+    x: number
+    y: number
+    z: number
+end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?) -> vector,
+    magnitude: @checked (vec: vector) -> number,
+    normalize: @checked (vec: vector) -> vector,
+    cross: @checked (vec1: vector, vec2: vector) -> vector,
+    dot: @checked (vec1: vector, vec2: vector) -> number,
+    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
+    floor: @checked (vec: vector) -> vector,
+    ceil: @checked (vec: vector) -> vector,
+    abs: @checked (vec: vector) -> vector,
+    sign: @checked (vec: vector) -> vector,
+    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
+    max: @checked (vector, ...vector) -> vector,
+    min: @checked (vector, ...vector) -> vector,
+
+    zero: vector,
+    one: vector,
 }
 
 )BUILTIN_SRC";
 
 std::string getBuiltinDefinitionSource()
 {
-    std::string result = kBuiltinDefinitionLuaSrcChecked;
+    std::string result = kBuiltinDefinitionBaseSrc;
+
+    result += kBuiltinDefinitionBit32Src;
+    result += kBuiltinDefinitionMathSrc;
+    result += kBuiltinDefinitionOsSrc;
+    result += kBuiltinDefinitionCoroutineSrc;
+    result += kBuiltinDefinitionTableSrc;
+    result += FFlag::LuauDebugInfoDefn ? kBuiltinDefinitionDebugSrc : kBuiltinDefinitionDebugSrc_DEPRECATED;
+    result += kBuiltinDefinitionUtf8Src;
+    result += kBuiltinDefinitionBufferSrc;
+    result += kBuiltinDefinitionVectorSrc;
+
     return result;
 }
 

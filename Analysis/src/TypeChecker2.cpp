@@ -7,7 +7,6 @@
 #include "Luau/DcrLogger.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
-#include "Luau/InsertionOrderedMap.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
@@ -27,10 +26,10 @@
 #include "Luau/VisitType.h"
 
 #include <algorithm>
-#include <iostream>
-#include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -173,7 +172,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypeId> mentionedFunctions{nullptr};
     DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
-    InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
+    explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
     {
         TypeFunctionFinder f;
         for (TypeId fn : declStack)
@@ -266,6 +265,8 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
@@ -275,7 +276,7 @@ void check(
 {
     LUAU_TIMETRACE_SCOPE("check", "Typechecking");
 
-    TypeChecker2 typeChecker{builtinTypes, unifierState, limits, logger, &sourceModule, module};
+    TypeChecker2 typeChecker{builtinTypes, simplifier, typeFunctionRuntime, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
 
@@ -292,6 +293,8 @@ void check(
 
 TypeChecker2::TypeChecker2(
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
@@ -299,13 +302,15 @@ TypeChecker2::TypeChecker2(
     Module* module
 )
     : builtinTypes(builtinTypes)
+    , simplifier(simplifier)
+    , typeFunctionRuntime(typeFunctionRuntime)
     , logger(logger)
     , limits(limits)
     , ice(unifierState->iceHandler)
     , sourceModule(sourceModule)
     , module(module)
     , normalizer{&module->internalTypes, builtinTypes, unifierState, /* cacheInhabitance */ true}
-    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{unifierState->iceHandler}}
+    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, simplifier, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
     , subtyping(&_subtyping)
 {
 }
@@ -483,19 +488,22 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         return instance;
     seenTypeFunctionInstances.insert(instance);
 
-    ErrorVec errors = reduceTypeFunctions(
-                          instance,
-                          location,
-                          TypeFunctionContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits},
-                          true
-    )
-                          .errors;
+    ErrorVec errors =
+        reduceTypeFunctions(
+            instance,
+            location,
+            TypeFunctionContext{
+                NotNull{&module->internalTypes}, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits
+            },
+            true
+        )
+            .errors;
     if (!isErrorSuppressing(location, instance))
         reportErrors(std::move(errors));
     return instance;
 }
 
-TypePackId TypeChecker2::lookupPack(AstExpr* expr)
+TypePackId TypeChecker2::lookupPack(AstExpr* expr) const
 {
     // If a type isn't in the type graph, it probably means that a recursion limit was exceeded.
     // We'll just return anyType in these cases.  Typechecking against any is very fast and this
@@ -545,7 +553,7 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
     return checkForTypeFunctionInhabitance(follow(*ty), annotation->location);
 }
 
-std::optional<TypePackId> TypeChecker2::lookupPackAnnotation(AstTypePack* annotation)
+std::optional<TypePackId> TypeChecker2::lookupPackAnnotation(AstTypePack* annotation) const
 {
     TypePackId* tp = module->astResolvedTypePacks.find(annotation);
     if (tp != nullptr)
@@ -553,7 +561,7 @@ std::optional<TypePackId> TypeChecker2::lookupPackAnnotation(AstTypePack* annota
     return {};
 }
 
-TypeId TypeChecker2::lookupExpectedType(AstExpr* expr)
+TypeId TypeChecker2::lookupExpectedType(AstExpr* expr) const
 {
     if (TypeId* ty = module->astExpectedTypes.find(expr))
         return follow(*ty);
@@ -561,7 +569,7 @@ TypeId TypeChecker2::lookupExpectedType(AstExpr* expr)
     return builtinTypes->anyType;
 }
 
-TypePackId TypeChecker2::lookupExpectedPack(AstExpr* expr, TypeArena& arena)
+TypePackId TypeChecker2::lookupExpectedPack(AstExpr* expr, TypeArena& arena) const
 {
     if (TypeId* ty = module->astExpectedTypes.find(expr))
         return arena.addTypePack(TypePack{{follow(*ty)}, std::nullopt});
@@ -585,7 +593,7 @@ TypePackId TypeChecker2::reconstructPack(AstArray<AstExpr*> exprs, TypeArena& ar
     return arena.addTypePack(TypePack{head, tail});
 }
 
-Scope* TypeChecker2::findInnermostScope(Location location)
+Scope* TypeChecker2::findInnermostScope(Location location) const
 {
     Scope* bestScope = module->getModuleScope().get();
 
@@ -1008,7 +1016,8 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     {
         reportError(OptionalValueAccess{iteratorTy}, forInStatement->values.data[0]->location);
     }
-    else if (std::optional<TypeId> iterMmTy = findMetatableEntry(builtinTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
+    else if (std::optional<TypeId> iterMmTy =
+                 findMetatableEntry(builtinTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
     {
         Instantiation instantiation{TxnLog::empty(), &arena, builtinTypes, TypeLevel{}, scope};
 
@@ -1193,8 +1202,6 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 void TypeChecker2::visit(AstStatTypeFunction* stat)
 {
     // TODO: add type checking for user-defined type functions
-
-    reportError(TypeError{stat->location, GenericError{"This syntax is not supported"}});
 }
 
 void TypeChecker2::visit(AstTypeList types)
@@ -1345,7 +1352,17 @@ void TypeChecker2::visit(AstExprGlobal* expr)
 {
     NotNull<Scope> scope = stack.back();
     if (!scope->lookup(expr->name))
+    {
         reportError(UnknownSymbol{expr->name.value, UnknownSymbol::Binding}, expr->location);
+    }
+    else
+    {
+        if (scope->shouldWarnGlobal(expr->name.value) && !warnedGlobals.contains(expr->name.value))
+        {
+            reportError(UnknownSymbol{expr->name.value, UnknownSymbol::Binding}, expr->location);
+            warnedGlobals.insert(expr->name.value);
+        }
+    }
 }
 
 void TypeChecker2::visit(AstExprVarargs* expr)
@@ -1433,10 +1450,11 @@ void TypeChecker2::visitCall(AstExprCall* call)
     TypePackId argsTp = module->internalTypes.addTypePack(args);
     if (auto ftv = get<FunctionType>(follow(*originalCallTy)))
     {
-        if (ftv->dcrMagicTypeCheck)
+        if (ftv->magic)
         {
-            ftv->dcrMagicTypeCheck(MagicFunctionTypeCheckContext{NotNull{this}, builtinTypes, call, argsTp, scope});
-            return;
+            bool usedMagic = ftv->magic->typeCheck(MagicFunctionTypeCheckContext{NotNull{this}, builtinTypes, call, argsTp, scope});
+            if (usedMagic)
+                return;
         }
     }
 
@@ -1444,7 +1462,9 @@ void TypeChecker2::visitCall(AstExprCall* call)
     OverloadResolver resolver{
         builtinTypes,
         NotNull{&module->internalTypes},
+        simplifier,
         NotNull{&normalizer},
+        typeFunctionRuntime,
         NotNull{stack.back()},
         ice,
         limits,
@@ -1540,7 +1560,7 @@ void TypeChecker2::visit(AstExprCall* call)
     visitCall(call);
 }
 
-std::optional<TypeId> TypeChecker2::tryStripUnionFromNil(TypeId ty)
+std::optional<TypeId> TypeChecker2::tryStripUnionFromNil(TypeId ty) const
 {
     if (const UnionType* utv = get<UnionType>(ty))
     {
@@ -1618,8 +1638,7 @@ void TypeChecker2::indexExprMetatableHelper(AstExprIndexExpr* indexExpr, const M
         indexExprMetatableHelper(indexExpr, mtmt, exprType, indexType);
     else
     {
-        LUAU_ASSERT(tt || get<PrimitiveType>(follow(metaTable->table)));
-
+        // CLI-122161: We're not handling unions correctly (probably).
         reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
 }
@@ -1826,11 +1845,10 @@ void TypeChecker2::visit(AstExprFunction* fn)
 
 void TypeChecker2::visit(AstExprTable* expr)
 {
-    // TODO!
     for (const AstExprTable::Item& item : expr->items)
     {
         if (item.key)
-            visit(item.key, ValueContext::LValue);
+            visit(item.key, ValueContext::RValue);
         visit(item.value, ValueContext::RValue);
     }
 }
@@ -2078,7 +2096,10 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                 }
                 else
                 {
-                    expectedRets = module->internalTypes.addTypePack({module->internalTypes.freshType(scope, TypeLevel{})});
+                    expectedRets = module->internalTypes.addTypePack(
+                        {FFlag::LuauFreeTypesMustHaveBounds ? module->internalTypes.freshType(builtinTypes, scope, TypeLevel{})
+                                                            : module->internalTypes.freshType_DEPRECATED(scope, TypeLevel{})}
+                    );
                 }
 
                 TypeId expectedTy = module->internalTypes.addType(FunctionType(expectedArgs, expectedRets));
@@ -2330,7 +2351,8 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         return *fst;
     else if (auto ftp = get<FreeTypePack>(pack))
     {
-        TypeId result = module->internalTypes.addType(FreeType{ftp->scope});
+        TypeId result = FFlag::LuauFreeTypesMustHaveBounds ? module->internalTypes.freshType(builtinTypes, ftp->scope)
+                                                           : module->internalTypes.addType(FreeType{ftp->scope});
         TypePackId freeTail = module->internalTypes.addTypePack(FreeTypePack{ftp->scope});
 
         TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
@@ -2339,7 +2361,7 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
 
         return result;
     }
-    else if (get<Unifiable::Error>(pack))
+    else if (get<ErrorTypePack>(pack))
         return builtinTypes->errorRecoveryType();
     else if (finite(pack) && size(pack) == 0)
         return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`
@@ -2347,30 +2369,30 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         ice->ice("flattenPack got a weird pack!");
 }
 
-void TypeChecker2::visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks)
+void TypeChecker2::visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
 {
     DenseHashSet<AstName> seen{AstName{}};
 
-    for (const auto& g : generics)
+    for (const auto* g : generics)
     {
-        if (seen.contains(g.name))
-            reportError(DuplicateGenericParameter{g.name.value}, g.location);
+        if (seen.contains(g->name))
+            reportError(DuplicateGenericParameter{g->name.value}, g->location);
         else
-            seen.insert(g.name);
+            seen.insert(g->name);
 
-        if (g.defaultValue)
-            visit(g.defaultValue);
+        if (g->defaultValue)
+            visit(g->defaultValue);
     }
 
-    for (const auto& g : genericPacks)
+    for (const auto* g : genericPacks)
     {
-        if (seen.contains(g.name))
-            reportError(DuplicateGenericParameter{g.name.value}, g.location);
+        if (seen.contains(g->name))
+            reportError(DuplicateGenericParameter{g->name.value}, g->location);
         else
-            seen.insert(g.name);
+            seen.insert(g->name);
 
-        if (g.defaultValue)
-            visit(g.defaultValue);
+        if (g->defaultValue)
+            visit(g->defaultValue);
     }
 }
 
@@ -2392,6 +2414,8 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeIntersection>())
         return visit(t);
+    else if (auto t = ty->as<AstTypeGroup>())
+        return visit(t->type);
 }
 
 void TypeChecker2::visit(AstTypeReference* ty)
@@ -3012,10 +3036,8 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         if (tt->indexer)
         {
             TypeId indexType = follow(tt->indexer->indexType);
-            if (isPrim(indexType, PrimitiveType::String))
-                return {NormalizationResult::True, {tt->indexer->indexResultType}};
-            // If the indexer looks like { [any] : _} - the prop lookup should be allowed!
-            else if (get<AnyType>(indexType) || get<UnknownType>(indexType))
+            TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
+            if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, simplifier, *ice))
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
         }
 

@@ -6,18 +6,14 @@
 #include "Luau/Type.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeArena.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
+
+LUAU_FASTFLAGVARIABLE(LuauDontInPlaceMutateTableType)
+LUAU_FASTFLAGVARIABLE(LuauAllowNonSharedTableTypesInLiteral)
 
 namespace Luau
 {
-
-static bool isLiteral(const AstExpr* expr)
-{
-    return (
-        expr->is<AstExprTable>() || expr->is<AstExprFunction>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantString>() ||
-        expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNil>()
-    );
-}
 
 // A fast approximation of subTy <: superTy
 static bool fastIsSubtype(TypeId subTy, TypeId superTy)
@@ -243,6 +239,8 @@ TypeId matchLiteralType(
             return exprType;
         }
 
+        DenseHashSet<AstExprConstantString*> keysToDelete{nullptr};
+
         for (const AstExprTable::Item& item : exprTable->items)
         {
             if (isRecord(item))
@@ -254,8 +252,19 @@ TypeId matchLiteralType(
 
                 Property& prop = it->second;
 
-                // Table literals always initially result in shared read-write types
-                LUAU_ASSERT(prop.isShared());
+                if (FFlag::LuauAllowNonSharedTableTypesInLiteral)
+                {
+                    // If we encounter a duplcate property, we may have already
+                    // set it to be read-only. If that's the case, the only thing
+                    // that will definitely crash is trying to access a write
+                    // only property.
+                    LUAU_ASSERT(!prop.isWriteOnly());
+                }
+                else
+                {
+                    // Table literals always initially result in shared read-write types
+                    LUAU_ASSERT(prop.isShared());
+                }
                 TypeId propTy = *prop.readTy;
 
                 auto it2 = expectedTableTy->props.find(keyStr);
@@ -287,7 +296,10 @@ TypeId matchLiteralType(
                         else
                             tableTy->indexer = TableIndexer{expectedTableTy->indexer->indexType, matchedType};
 
-                        tableTy->props.erase(keyStr);
+                        if (FFlag::LuauDontInPlaceMutateTableType)
+                            keysToDelete.insert(item.key->as<AstExprConstantString>());
+                        else
+                            tableTy->props.erase(keyStr);
                     }
 
                     // If it's just an extra property and the expected type
@@ -381,21 +393,27 @@ TypeId matchLiteralType(
                 const TypeId* keyTy = astTypes->find(item.key);
                 LUAU_ASSERT(keyTy);
                 TypeId tKey = follow(*keyTy);
-                if (get<BlockedType>(tKey))
-                    toBlock.push_back(tKey);
-
+                LUAU_ASSERT(!is<BlockedType>(tKey));
                 const TypeId* propTy = astTypes->find(item.value);
                 LUAU_ASSERT(propTy);
                 TypeId tProp = follow(*propTy);
-                if (get<BlockedType>(tProp))
-                    toBlock.push_back(tProp);
-
+                LUAU_ASSERT(!is<BlockedType>(tProp));
                 // Populate expected types for non-string keys declared with [] (the code below will handle the case where they are strings)
                 if (!item.key->as<AstExprConstantString>() && expectedTableTy->indexer)
                     (*astExpectedTypes)[item.key] = expectedTableTy->indexer->indexType;
             }
             else
                 LUAU_ASSERT(!"Unexpected");
+        }
+
+        if (FFlag::LuauDontInPlaceMutateTableType)
+        {
+            for (const auto& key : keysToDelete)
+            {
+                const AstArray<char>& s = key->value;
+                std::string keyStr{s.data, s.data + s.size};
+                tableTy->props.erase(keyStr);
+            }
         }
 
         // Keys that the expectedType says we should have, but that aren't

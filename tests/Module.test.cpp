@@ -14,7 +14,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTINT(LuauTypeCloneIterationLimit);
-
+LUAU_FASTFLAG(LuauOldSolverCreatesChildScopePointers)
 TEST_SUITE_BEGIN("ModuleTests");
 
 TEST_CASE_FIXTURE(Fixture, "is_within_comment")
@@ -110,9 +110,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     // breaks this test.  I'm not sure if that behaviour change is important or
     // not, but it's tangental to the core purpose of this test.
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local Cyclic = {}
@@ -283,7 +281,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     TypeArena arena;
     TypeId freeTy = freshType(NotNull{&arena}, builtinTypes, nullptr);
@@ -540,6 +538,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_typepack_to_a_persistent_typep
     TypePackId res = clone(boundTo, dest, state);
 
     REQUIRE(res == follow(boundTo));
+}
+
+TEST_CASE_FIXTURE(Fixture, "old_solver_correctly_populates_child_scopes")
+{
+    ScopedFastFlag sff{FFlag::LuauOldSolverCreatesChildScopePointers, true};
+    check(R"(
+--!strict
+if true then
+end
+
+if false then
+end
+
+if true then
+else
+end
+
+local x = {}
+for i,v in x do
+end
+)");
+
+    auto& module = frontend.moduleResolver.getModule("MainModule");
+    CHECK(module->getModuleScope()->children.size() == 7);
 }
 
 TEST_SUITE_END();

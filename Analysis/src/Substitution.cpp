@@ -4,13 +4,15 @@
 #include "Luau/Common.h"
 #include "Luau/Clone.h"
 #include "Luau/TxnLog.h"
+#include "Luau/Type.h"
 
 #include <algorithm>
 #include <stdexcept>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauSyntheticErrors)
 
 namespace Luau
 {
@@ -50,10 +52,32 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             LUAU_ASSERT(ty->persistent);
             return ty;
         }
-        else if constexpr (std::is_same_v<T, ErrorType>)
+        else if constexpr (std::is_same_v<T, NoRefineType>)
         {
             LUAU_ASSERT(ty->persistent);
             return ty;
+        }
+        else if constexpr (std::is_same_v<T, ErrorType>)
+        {
+            if (FFlag::LuauSyntheticErrors)
+            {
+                LUAU_ASSERT(ty->persistent || a.synthetic);
+
+                if (ty->persistent)
+                    return ty;
+
+                // While this code intentionally works (and clones) even if `a.synthetic` is `std::nullopt`,
+                // we still assert above because we consider it a bug to have a non-persistent error type
+                // without any associated metadata. We should always use the persistent version in such cases.
+                ErrorType clone = ErrorType{};
+                clone.synthetic = a.synthetic;
+                return dest.addType(clone);
+            }
+            else
+            {
+                LUAU_ASSERT(ty->persistent);
+                return ty;
+            }
         }
         else if constexpr (std::is_same_v<T, UnknownType>)
         {
@@ -74,9 +98,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             FunctionType clone = FunctionType{a.level, a.scope, a.argTypes, a.retTypes, a.definition, a.hasSelf};
             clone.generics = a.generics;
             clone.genericPacks = a.genericPacks;
-            clone.magicFunction = a.magicFunction;
-            clone.dcrMagicFunction = a.dcrMagicFunction;
-            clone.dcrMagicRefinement = a.dcrMagicRefinement;
+            clone.magic = a.magic;
             clone.tags = a.tags;
             clone.argNames = a.argNames;
             clone.isCheckedFunction = a.isCheckedFunction;
@@ -127,7 +149,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             return dest.addType(NegationType{a.ty});
         else if constexpr (std::is_same_v<T, TypeFunctionInstanceType>)
         {
-            TypeFunctionInstanceType clone{a.function, a.typeArguments, a.packArguments, a.userFuncName, a.userFuncBody};
+            TypeFunctionInstanceType clone{a.function, a.typeArguments, a.packArguments, a.userFuncName, a.userFuncData};
             return dest.addType(std::move(clone));
         }
         else

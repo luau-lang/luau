@@ -9,6 +9,10 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauClipNestedAndRecursiveUnion)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauPreventReentrantTypeFunctionReduction)
+
 TEST_SUITE_BEGIN("DefinitionTests");
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
@@ -443,6 +447,26 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
     CHECK_EQ(toString(requireType("y")), "string");
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_definition_malformed_string")
+{
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
+        declare class Foo
+            ["a\0property"]: string
+        end
+    )",
+        "@test",
+        /* captureComments */ false
+    );
+    freeze(frontend.globals.globalTypes);
+
+    REQUIRE(!result.success);
+    REQUIRE_EQ(result.parseResult.errors.size(), 1);
+    CHECK_EQ(result.parseResult.errors[0].getMessage(), "String literal contains malformed escape sequence or \\0");
+}
 
 TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 {
@@ -472,11 +496,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
-    unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
-        frontend.globals,
-        frontend.globals.globalScope,
-        R"(
+    loadDefinition(R"(
         declare class Channel
             Messages: { Message }
             OnMessage: (message: Message) -> ()
@@ -486,13 +506,19 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
             Text: string
             Channel: Channel
         end
-    )",
-        "@test",
-        /* captureComments */ false
-    );
-    freeze(frontend.globals.globalTypes);
+    )");
 
-    REQUIRE(result.success);
+    CheckResult result = check(R"(
+        local a: Channel
+        local b = a.Messages[1]
+        local c = b.Channel
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Channel");
+    CHECK_EQ(toString(requireType("b")), "Message");
+    CHECK_EQ(toString(requireType("c")), "Channel");
 }
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
@@ -514,6 +540,49 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
 
     REQUIRE(ctv);
     CHECK_EQ(ctv->definitionModuleName, "@test");
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_redefinition_reduces_rightfully")
+{
+    ScopedFastFlag _{FFlag::LuauClipNestedAndRecursiveUnion, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local t: {[string]: string} = {}
+
+        local function f()
+            t = t
+        end
+
+        t = t
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "vector3_overflow")
+{
+    ScopedFastFlag _{FFlag::LuauPreventReentrantTypeFunctionReduction, true};
+    // We set this to zero to ensure that we either run to completion or stack overflow here.
+    ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
+
+    loadDefinition(R"(
+        declare class Vector3
+            function __add(self, other: Vector3): Vector3
+        end
+    )");
+
+    CheckResult result = check(R"(
+--!strict
+local function graphPoint(t : number, points : { Vector3 }) : Vector3
+    local n : number = #points - 1
+    local p : Vector3 = (nil :: any)
+    for i = 0, n do
+        local x = points[i + 1]
+        p = p and p + x or x
+    end
+    return p
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

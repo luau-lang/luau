@@ -121,7 +121,7 @@ static_assert(sizeof(LuaNode) == ABISWITCH(32, 32, 32), "size mismatch for table
 
 static_assert(offsetof(TString, data) == ABISWITCH(24, 20, 20), "size mismatch for string header");
 static_assert(offsetof(Udata, data) == ABISWITCH(16, 16, 12), "size mismatch for userdata header");
-static_assert(sizeof(Table) == ABISWITCH(48, 32, 32), "size mismatch for table header");
+static_assert(sizeof(LuaTable) == ABISWITCH(48, 32, 32), "size mismatch for table header");
 static_assert(offsetof(Buffer, data) == ABISWITCH(8, 8, 8), "size mismatch for buffer header");
 
 const size_t kSizeClasses = LUA_SIZECLASSES;
@@ -192,7 +192,7 @@ struct SizeClassConfig
 const SizeClassConfig kSizeClassConfig;
 
 // size class for a block of size sz; returns -1 for size=0 because empty allocations take no space
-#define sizeclass(sz) (size_t((sz)-1) < kMaxSmallSizeUsed ? kSizeClassConfig.classForSize[sz] : -1)
+#define sizeclass(sz) (size_t((sz) - 1) < kMaxSmallSizeUsed ? kSizeClassConfig.classForSize[sz] : -1)
 
 // metadata for a block is stored in the first pointer of the block
 #define metadata(block) (*(void**)(block))
@@ -504,6 +504,11 @@ void* luaM_new_(lua_State* L, size_t nsize, uint8_t memcat)
     g->totalbytes += nsize;
     g->memcatbytes[memcat] += nsize;
 
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, 0, nsize);
+    }
+
     return block;
 }
 
@@ -538,6 +543,11 @@ GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat)
 
     g->totalbytes += nsize;
     g->memcatbytes[memcat] += nsize;
+
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, 0, nsize);
+    }
 
     return (GCObject*)block;
 }
@@ -618,6 +628,12 @@ void* luaM_realloc_(lua_State* L, void* block, size_t osize, size_t nsize, uint8
     LUAU_ASSERT((nsize == 0) == (result == NULL));
     g->totalbytes = (g->totalbytes - osize) + nsize;
     g->memcatbytes[memcat] += nsize - osize;
+
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, osize, nsize);
+    }
+
     return result;
 }
 

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/EqSatSimplification.h"
 #include "Luau/NotNull.h"
 #include "Luau/Set.h"
 #include "Luau/TypeFwd.h"
@@ -21,10 +22,22 @@ struct Scope;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
-bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
-bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
-bool isConsistentSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
+bool isSubtype(
+    TypeId subTy,
+    TypeId superTy,
+    NotNull<Scope> scope,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
+    InternalErrorReporter& ice
+);
+bool isSubtype(
+    TypePackId subPack,
+    TypePackId superPack,
+    NotNull<Scope> scope,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
+    InternalErrorReporter& ice
+);
 
 class TypeIds
 {
@@ -336,6 +349,7 @@ struct NormalizedType
 };
 
 
+using SeenTablePropPairs = Set<std::pair<TypeId, TypeId>, TypeIdPairHash>;
 
 class Normalizer
 {
@@ -390,7 +404,13 @@ public:
     void unionTablesWithTable(TypeIds& heres, TypeId there);
     void unionTables(TypeIds& heres, const TypeIds& theres);
     NormalizationResult unionNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
-    NormalizationResult unionNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes, int ignoreSmallerTyvars = -1);
+    NormalizationResult unionNormalWithTy(
+        NormalizedType& here,
+        TypeId there,
+        SeenTablePropPairs& seenTablePropPairs,
+        Set<TypeId>& seenSetTypes,
+        int ignoreSmallerTyvars = -1
+    );
 
     // ------- Negations
     std::optional<NormalizedType> negateNormal(const NormalizedType& here);
@@ -407,16 +427,26 @@ public:
     void intersectClassesWithClass(NormalizedClassType& heres, TypeId there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypePackId> intersectionOfTypePacks(TypePackId here, TypePackId there);
-    std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, Set<TypeId>& seenSet);
-    void intersectTablesWithTable(TypeIds& heres, TypeId there, Set<TypeId>& seenSetTypes);
+    std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);
+    void intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSetTypes);
     void intersectTables(TypeIds& heres, const TypeIds& theres);
     std::optional<TypeId> intersectionOfFunctions(TypeId here, TypeId there);
     void intersectFunctionsWithFunction(NormalizedFunctionType& heress, TypeId there);
     void intersectFunctions(NormalizedFunctionType& heress, const NormalizedFunctionType& theress);
-    NormalizationResult intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there, Set<TypeId>& seenSetTypes);
+    NormalizationResult intersectTyvarsWithTy(
+        NormalizedTyvars& here,
+        TypeId there,
+        SeenTablePropPairs& seenTablePropPairs,
+        Set<TypeId>& seenSetTypes
+    );
     NormalizationResult intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
-    NormalizationResult intersectNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes);
-    NormalizationResult normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType, Set<TypeId>& seenSet);
+    NormalizationResult intersectNormalWithTy(NormalizedType& here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSetTypes);
+    NormalizationResult normalizeIntersections(
+        const std::vector<TypeId>& intersections,
+        NormalizedType& outType,
+        SeenTablePropPairs& seenTablePropPairs,
+        Set<TypeId>& seenSet
+    );
 
     // Check for inhabitance
     NormalizationResult isInhabited(TypeId ty);
@@ -426,7 +456,7 @@ public:
 
     // Check for intersections being inhabited
     NormalizationResult isIntersectionInhabited(TypeId left, TypeId right);
-    NormalizationResult isIntersectionInhabited(TypeId left, TypeId right, Set<TypeId>& seenSet);
+    NormalizationResult isIntersectionInhabited(TypeId left, TypeId right, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);
 
     // -------- Convert back from a normalized type to a type
     TypeId typeFromNormal(const NormalizedType& norm);

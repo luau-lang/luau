@@ -68,11 +68,12 @@ include(Sources.cmake)
 target_include_directories(Luau.Common INTERFACE Common/include)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
-target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common)
+target_include_directories(Luau.CLI.lib PUBLIC CLI/include)
+target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common Luau.Config)
 
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
 target_include_directories(Luau.Ast PUBLIC Ast/include)
-target_link_libraries(Luau.Ast PUBLIC Luau.Common Luau.CLI.lib)
+target_link_libraries(Luau.Ast PUBLIC Luau.Common)
 
 target_compile_features(Luau.Compiler PUBLIC cxx_std_17)
 target_include_directories(Luau.Compiler PUBLIC Compiler/include)
@@ -85,6 +86,7 @@ target_link_libraries(Luau.Config PUBLIC Luau.Ast)
 target_compile_features(Luau.Analysis PUBLIC cxx_std_17)
 target_include_directories(Luau.Analysis PUBLIC Analysis/include)
 target_link_libraries(Luau.Analysis PUBLIC Luau.Ast Luau.EqSat Luau.Config)
+target_link_libraries(Luau.Analysis PRIVATE Luau.Compiler Luau.VM)
 
 target_compile_features(Luau.EqSat PUBLIC cxx_std_17)
 target_include_directories(Luau.EqSat PUBLIC EqSat/include)
@@ -123,6 +125,8 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Some gcc versions treat var in `if (type var = val)` as unused
     # Some gcc versions treat variables used in constexpr if blocks as unused
     list(APPEND LUAU_OPTIONS -Wno-unused)
+    # some gcc versions warn maybe uninitialized on optional<string> members on structs
+    list(APPEND LUAU_OPTIONS -Wno-maybe-uninitialized)
 endif()
 
 # Enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
@@ -276,7 +280,7 @@ foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.EqSat Luau.Cod
         if(LIB MATCHES "CodeGen|VM" AND DEPENDS MATCHES "Ast|Analysis|Config|Compiler")
             message(FATAL_ERROR ${LIB} " is a runtime component but it depends on one of the offline components")
         endif()
-        if(LIB MATCHES "Ast|Analysis|EqSat|Compiler" AND DEPENDS MATCHES "CodeGen|VM")
+        if(LIB MATCHES "Ast|EqSat|Compiler" AND DEPENDS MATCHES "CodeGen|VM")
             message(FATAL_ERROR ${LIB} " is an offline component but it depends on one of the runtime components")
         endif()
         if(LIB MATCHES "Ast|Compiler" AND DEPENDS MATCHES "Analysis|Config")

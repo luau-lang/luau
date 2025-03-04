@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 
 using namespace Luau;
 
@@ -143,7 +144,7 @@ TEST_CASE_FIXTURE(Fixture, "properties_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "properties_can_be_instantiated_polytypes")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t: { m: (number)->number } = { m = function(x:number) return x+1 end }
@@ -261,7 +262,7 @@ TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions_errors")
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types_old_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type T = { id: <a>(a) -> a }
@@ -287,7 +288,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types_new_solver")
 
 TEST_CASE_FIXTURE(Fixture, "generic_factories")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type T<a> = { id: (a) -> a }
@@ -310,7 +311,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_factories")
 
 TEST_CASE_FIXTURE(Fixture, "factories_of_generics")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         type T = { id: <a>(a) -> a }
@@ -775,7 +776,7 @@ return exports
 
 TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names_old_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f<T, U...>(a: T, ...: U...) end
@@ -794,7 +795,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names_old_solver")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 type C = () -> ()
@@ -811,7 +812,7 @@ local d: D = c
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 type C = () -> ()
@@ -854,6 +855,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
+    ScopedFastFlag _{FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true};
+
     CheckResult result = check(R"(
 --!strict
 -- At one point this produced a UAF
@@ -865,15 +868,19 @@ local y: T<string> = { a = { c = nil, d = 5 }, b = 37 }
 y.a.c = y
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
-
     if (FFlag::LuauSolverV2)
-        CHECK(
-            toString(result.errors.at(0)) ==
-            R"(Type '{ a: { c: nil, d: number }, b: number }' could not be converted into 'T<number>'; type { a: { c: nil, d: number }, b: number }[read "a"][read "c"] (nil) is not exactly T<number>[read "a"][read "c"][0] (T<number>))"
-        );
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        auto mismatch = get<TypeMismatch>(result.errors.at(0));
+        CHECK(mismatch);
+        CHECK_EQ(toString(mismatch->givenType), "{ a: { c: T<string>?, d: number }, b: number }");
+        CHECK_EQ(toString(mismatch->wantedType), "T<string>");
+        std::string reason = "at [read \"a\"][read \"d\"], number is not exactly string\n\tat [read \"b\"], number is not exactly string";
+        CHECK_EQ(mismatch->reason, reason);
+    }
     else
     {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
         const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
 caused by:
   Property 'a' is not compatible.
@@ -887,7 +894,7 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 --!strict
@@ -907,7 +914,7 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification2")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 --!strict
@@ -927,7 +934,7 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification3")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 --!strict
@@ -947,7 +954,7 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_few")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 function test(a: number)
@@ -966,7 +973,7 @@ wrapper(test)
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 function test2(a: number, b: string)
@@ -1125,7 +1132,11 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("((number) -> number, string) -> number", toString(tm->wantedType));
-    if (FFlag::LuauInstantiateInSubtyping)
+    // The new solver does not attempt to instantiate generics here, so if
+    // either the instantiate in subtyping flag _or_ the new solver flags
+    // are set, assert that we're getting back the original generic
+    // function definition.
+    if (FFlag::LuauInstantiateInSubtyping || FFlag::LuauSolverV2)
         CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
     else
         CHECK_EQ("((number) -> number, number) -> number", toString(tm->givenType));
@@ -1148,7 +1159,11 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("(string, string) -> number", toString(tm->wantedType));
-    if (FFlag::LuauInstantiateInSubtyping)
+    // The new solver does not attempt to instantiate generics here, so if
+    // either the instantiate in subtyping flag _or_ the new solver flags
+    // are set, assert that we're getting back the original generic
+    // function definition.
+    if (FFlag::LuauInstantiateInSubtyping || FFlag::LuauSolverV2)
         CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
     else
         CHECK_EQ("((string) -> number, string) -> number", toString(*tm->givenType));
@@ -1455,7 +1470,7 @@ TEST_CASE_FIXTURE(Fixture, "no_extra_quantification_for_generic_functions")
 
 TEST_CASE_FIXTURE(Fixture, "do_not_always_instantiate_generic_intersection_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         --!strict
@@ -1490,8 +1505,9 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "higher_rank_polymorphism_should_not_accept_instantiated_arguments")
 {
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, false},
         {FFlag::LuauInstantiateInSubtyping, true},
     };
 
@@ -1571,7 +1587,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_implicit_explicit_name_clash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     if (!FFlag::LuauSolverV2)
         return;
@@ -1582,6 +1598,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")
         local function six(): number
             return addOne(5)
         end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_type_subtyping_nested_bounds_with_new_mappings")
+{
+    // Test shows how going over mapped generics in a subtyping check can generate more mapped generics when making a subtyping check between bounds.
+    // It has previously caused iterator invalidation in the new solver, but this specific test doesn't trigger a UAF, only shows an example.
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+type Dispatch<A> = (A) -> ()
+type BasicStateAction<S> = ((S) -> S) | S
+
+function updateReducer<S, I, A>(reducer: (S, A) -> S, initialArg: I, init: ((I) -> S)?): (S, Dispatch<A>)
+    return 1 :: any
+end
+
+function basicStateReducer<S>(state: S, action: BasicStateAction<S>): S
+    return action
+end
+
+function updateState<S>(initialState: (() -> S) | S): (S, Dispatch<BasicStateAction<S>>)
+    return updateReducer(basicStateReducer, initialState)
+end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

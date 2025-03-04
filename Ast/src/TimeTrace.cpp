@@ -3,6 +3,7 @@
 
 #include "Luau/StringUtils.h"
 
+#include <algorithm>
 #include <mutex>
 #include <string>
 
@@ -25,7 +26,7 @@
 
 #include <time.h>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauTimeTracing, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauTimeTracing)
 namespace Luau
 {
 namespace TimeTrace

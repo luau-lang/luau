@@ -6,6 +6,8 @@
 #include "Luau/NotNull.h"
 #include "Luau/TypeFwd.h"
 
+#include <vector>
+
 namespace Luau
 {
 

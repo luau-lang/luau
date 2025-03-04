@@ -2,6 +2,7 @@
 
 #include "Luau/Simplify.h"
 
+#include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Set.h"
@@ -14,6 +15,7 @@
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8);
+LUAU_FASTFLAGVARIABLE(LuauFlagBasicIntersectFollows);
 
 namespace Luau
 {
@@ -29,16 +31,16 @@ struct TypeSimplifier
 
     int recursionDepth = 0;
 
-    TypeId mkNegation(TypeId ty);
+    TypeId mkNegation(TypeId ty) const;
 
     TypeId intersectFromParts(std::set<TypeId> parts);
 
-    TypeId intersectUnionWithType(TypeId unionTy, TypeId right);
+    TypeId intersectUnionWithType(TypeId left, TypeId right);
     TypeId intersectUnions(TypeId left, TypeId right);
-    TypeId intersectNegatedUnion(TypeId unionTy, TypeId right);
+    TypeId intersectNegatedUnion(TypeId left, TypeId right);
 
-    TypeId intersectTypeWithNegation(TypeId a, TypeId b);
-    TypeId intersectNegations(TypeId a, TypeId b);
+    TypeId intersectTypeWithNegation(TypeId left, TypeId right);
+    TypeId intersectNegations(TypeId left, TypeId right);
 
     TypeId intersectIntersectionWithType(TypeId left, TypeId right);
 
@@ -46,8 +48,8 @@ struct TypeSimplifier
     // unions, intersections, or negations.
     std::optional<TypeId> basicIntersect(TypeId left, TypeId right);
 
-    TypeId intersect(TypeId ty, TypeId discriminant);
-    TypeId union_(TypeId ty, TypeId discriminant);
+    TypeId intersect(TypeId left, TypeId right);
+    TypeId union_(TypeId left, TypeId right);
 
     TypeId simplify(TypeId ty);
     TypeId simplify(TypeId ty, DenseHashSet<TypeId>& seen);
@@ -571,7 +573,7 @@ Relation relate(TypeId left, TypeId right)
     return relate(left, right, seen);
 }
 
-TypeId TypeSimplifier::mkNegation(TypeId ty)
+TypeId TypeSimplifier::mkNegation(TypeId ty) const
 {
     TypeId result = nullptr;
 
@@ -1064,6 +1066,12 @@ TypeId TypeSimplifier::intersectIntersectionWithType(TypeId left, TypeId right)
 
 std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 {
+    if (FFlag::LuauFlagBasicIntersectFollows)
+    {
+        left = follow(left);
+        right = follow(right);
+    }
+
     if (get<AnyType>(left) && get<ErrorType>(right))
         return right;
     if (get<AnyType>(right) && get<ErrorType>(left))
@@ -1403,8 +1411,6 @@ TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
     TypeSimplifier s{builtinTypes, arena};
 
     // fprintf(stderr, "Intersect %s and %s ...\n", toString(left).c_str(), toString(right).c_str());
@@ -1418,8 +1424,6 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, std::set<TypeId> parts)
 {
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
     TypeSimplifier s{builtinTypes, arena};
 
     TypeId res = s.intersectFromParts(std::move(parts));
@@ -1429,8 +1433,6 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyUnion(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
     TypeSimplifier s{builtinTypes, arena};
 
     TypeId res = s.union_(left, right);

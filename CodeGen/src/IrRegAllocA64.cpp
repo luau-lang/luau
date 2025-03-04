@@ -2,15 +2,15 @@
 #include "IrRegAllocA64.h"
 
 #include "Luau/AssemblyBuilderA64.h"
-#include "Luau/CodeGen.h"
 #include "Luau/IrUtils.h"
+#include "Luau/LoweringStats.h"
 
 #include "BitUtils.h"
 #include "EmitCommonA64.h"
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64, false)
+LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 
 namespace Luau
 {

@@ -13,6 +13,8 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 
+LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
+
 namespace Luau
 {
 
@@ -41,11 +43,26 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstStat* stat) override
     {
-        if (stat->location.begin < pos && pos <= stat->location.end)
+        if (FFlag::LuauExtendStatEndPosWithSemicolon)
         {
-            ancestry.push_back(stat);
-            return true;
+            // Consider 'local myLocal = 4;|' and 'local myLocal = 4', where '|' is the cursor position. In both cases, the cursor position is equal
+            // to `AstStatLocal.location.end`. However, in the first case (semicolon), we are starting a new statement, whilst in the second case
+            // (no semicolon) we are still part of the AstStatLocal, hence the different comparison check.
+            if (stat->location.begin < pos && (stat->hasSemicolon ? pos < stat->location.end : pos <= stat->location.end))
+            {
+                ancestry.push_back(stat);
+                return true;
+            }
         }
+        else
+        {
+            if (stat->location.begin < pos && pos <= stat->location.end)
+            {
+                ancestry.push_back(stat);
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -509,6 +526,37 @@ static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
     return documentationSymbol;
 }
 
+static std::optional<DocumentationSymbol> getMetatableDocumentation(
+    const Module& module,
+    AstExpr* parentExpr,
+    const TableType* mtable,
+    const AstName& index
+)
+{
+    auto indexIt = mtable->props.find("__index");
+    if (indexIt == mtable->props.end())
+        return std::nullopt;
+
+    TypeId followed = follow(indexIt->second.type());
+    const TableType* ttv = get<TableType>(followed);
+    if (!ttv)
+        return std::nullopt;
+
+    auto propIt = ttv->props.find(index.value);
+    if (propIt == ttv->props.end())
+        return std::nullopt;
+
+    if (FFlag::LuauSolverV2)
+    {
+        if (auto ty = propIt->second.readTy)
+            return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
+    }
+    else
+        return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
+
+    return std::nullopt;
+}
+
 std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const SourceModule& source, const Module& module, Position position)
 {
     std::vector<AstNode*> ancestry = findAstAncestryOfPosition(source, position);
@@ -541,15 +589,29 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 }
                 else if (const ClassType* ctv = get<ClassType>(parentTy))
                 {
-                    if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
+                    while (ctv)
                     {
-                        if (FFlag::LuauSolverV2)
+                        if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
                         {
-                            if (auto ty = propIt->second.readTy)
-                                return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
+                            if (FFlag::LuauSolverV2)
+                            {
+                                if (auto ty = propIt->second.readTy)
+                                    return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
+                            }
+                            else
+                                return checkOverloadedDocumentationSymbol(
+                                    module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol
+                                );
                         }
-                        else
-                            return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
+                        ctv = ctv->parent ? Luau::get<Luau::ClassType>(*ctv->parent) : nullptr;
+                    }
+                }
+                else if (const PrimitiveType* ptv = get<PrimitiveType>(parentTy); ptv && ptv->metatable)
+                {
+                    if (auto mtable = get<TableType>(*ptv->metatable))
+                    {
+                        if (std::optional<std::string> docSymbol = getMetatableDocumentation(module, parentExpr, mtable, indexName->index))
+                            return docSymbol;
                     }
                 }
             }

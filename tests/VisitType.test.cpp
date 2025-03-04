@@ -4,6 +4,7 @@
 
 #include "Luau/RecursionCounter.h"
 
+#include "Luau/Type.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -54,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_throw_when_limit_is_high_enough")
 
 TEST_CASE_FIXTURE(Fixture, "some_free_types_do_not_have_bounds")
 {
-    Type t{FreeType{TypeLevel{}}};
+    Type t{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
 
     (void)toString(&t);
 }

@@ -269,6 +269,12 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
         }
+        else if constexpr (std::is_same_v<T, NoRefineType>)
+        {
+            formatAppend(result, "NoRefineType %d", index);
+            finishNodeLabel(ty);
+            finishNode();
+        }
         else if constexpr (std::is_same_v<T, UnknownType>)
         {
             formatAppend(result, "UnknownType %d", index);
@@ -414,7 +420,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
         finishNodeLabel(tp);
         finishNode();
     }
-    else if (get<Unifiable::Error>(tp))
+    else if (get<ErrorTypePack>(tp))
     {
         formatAppend(result, "ErrorTypePack %d", index);
         finishNodeLabel(tp);

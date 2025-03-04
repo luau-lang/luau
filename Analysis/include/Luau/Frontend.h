@@ -7,6 +7,7 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/RequireTracer.h"
 #include "Luau/Scope.h"
+#include "Luau/Set.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/Variant.h"
 #include "Luau/AnyTypeSummary.h"
@@ -44,21 +45,6 @@ struct LoadDefinitionFileResult
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
 
-std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr);
-
-// Exported only for convenient testing.
-std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& expr);
-
-/** Try to convert an AST fragment into a ModuleName.
- * Returns std::nullopt if the expression cannot be resolved.  This will most likely happen in cases where
- * the import path involves some dynamic computation that we cannot see into at typechecking time.
- *
- * Unintuitively, weirdly-formulated modules (like game.Parent.Parent.Parent.Foo) will successfully produce a ModuleName
- * as long as it falls within the permitted syntax.  This is ok because we will fail to find the module and produce an
- * error when we try during typechecking.
- */
-std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& expr);
-
 struct SourceNode
 {
     bool hasDirtySourceModule() const
@@ -71,13 +57,32 @@ struct SourceNode
         return forAutocomplete ? dirtyModuleForAutocomplete : dirtyModule;
     }
 
+    bool hasInvalidModuleDependency(bool forAutocomplete) const
+    {
+        return forAutocomplete ? invalidModuleDependencyForAutocomplete : invalidModuleDependency;
+    }
+
+    void setInvalidModuleDependency(bool value, bool forAutocomplete)
+    {
+        if (forAutocomplete)
+            invalidModuleDependencyForAutocomplete = value;
+        else
+            invalidModuleDependency = value;
+    }
+
     ModuleName name;
     std::string humanReadableName;
     DenseHashSet<ModuleName> requireSet{{}};
     std::vector<std::pair<ModuleName, Location>> requireLocations;
+    Set<ModuleName> dependents{{}};
+
     bool dirtySourceModule = true;
     bool dirtyModule = true;
     bool dirtyModuleForAutocomplete = true;
+
+    bool invalidModuleDependency = true;
+    bool invalidModuleDependencyForAutocomplete = true;
+
     double autocompleteLimitsMult = 1.0;
 };
 
@@ -132,7 +137,7 @@ struct FrontendModuleResolver : ModuleResolver
     std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
     std::string getHumanReadableModuleName(const ModuleName& moduleName) const override;
 
-    void setModule(const ModuleName& moduleName, ModulePtr module);
+    bool setModule(const ModuleName& moduleName, ModulePtr module);
     void clearModules();
 
 private:
@@ -166,8 +171,12 @@ struct Frontend
     // Parse and typecheck module graph
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
 
+    bool allModuleDependenciesValid(const ModuleName& name, bool forAutocomplete = false) const;
+
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
     void markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty = nullptr);
+
+    void traverseDependents(const ModuleName& name, std::function<bool(SourceNode&)> processSubtree);
 
     /** Borrow a pointer into the SourceModule cache.
      *
@@ -209,6 +218,7 @@ struct Frontend
     );
 
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
+    std::vector<ModuleName> getRequiredScripts(const ModuleName& name);
 
 private:
     ModulePtr check(

@@ -3,6 +3,7 @@
 
 #include "Luau/Variant.h"
 
+#include <optional>
 #include <string>
 
 namespace Luau
@@ -94,19 +95,29 @@ struct Bound
     Id boundTo;
 };
 
+template<typename Id>
 struct Error
 {
     // This constructor has to be public, since it's used in Type and TypePack,
     // but shouldn't be called directly. Please use errorRecoveryType() instead.
-    Error();
+    explicit Error();
+
+    explicit Error(Id synthetic)
+        : synthetic{synthetic}
+    {
+    }
 
     int index;
+
+    // This is used to create an error that can be rendered out using this field
+    // as appropriate metadata for communicating it to the user.
+    std::optional<Id> synthetic;
 
 private:
     static int nextIndex;
 };
 
 template<typename Id, typename... Value>
-using Variant = Luau::Variant<Bound<Id>, Error, Value...>;
+using Variant = Luau::Variant<Bound<Id>, Error<Id>, Value...>;
 
 } // namespace Luau::Unifiable

@@ -20,6 +20,7 @@
 #include <string>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauSyntheticErrors)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -38,7 +39,7 @@ LUAU_FASTFLAG(LuauSolverV2)
  * 3: Suffix free/generic types with their scope pointer, if present.
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
-LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
 
 namespace Luau
 {
@@ -856,6 +857,11 @@ struct TypeStringifier
         state.emit("any");
     }
 
+    void operator()(TypeId, const NoRefineType&)
+    {
+        state.emit("*no-refine*");
+    }
+
     void operator()(TypeId, const UnionType& uv)
     {
         if (state.hasSeen(&uv))
@@ -865,6 +871,8 @@ struct TypeStringifier
             return;
         }
 
+        LUAU_ASSERT(uv.options.size() > 1);
+
         bool optional = false;
         bool hasNonNilDisjunct = false;
 
@@ -873,7 +881,7 @@ struct TypeStringifier
         {
             el = follow(el);
 
-            if (isNil(el))
+            if (state.opts.useQuestionMarks && isNil(el))
             {
                 optional = true;
                 continue;
@@ -991,7 +999,15 @@ struct TypeStringifier
     void operator()(TypeId, const ErrorType& tv)
     {
         state.result.error = true;
-        state.emit("*error-type*");
+
+        if (FFlag::LuauSyntheticErrors && tv.synthetic)
+        {
+            state.emit("*error-type<");
+            stringify(*tv.synthetic);
+            state.emit(">*");
+        }
+        else
+            state.emit("*error-type*");
     }
 
     void operator()(TypeId, const LazyType& ltv)
@@ -1040,6 +1056,7 @@ struct TypeStringifier
             state.emit(tfitv.userFuncName->value);
         else
             state.emit(tfitv.function->name);
+
         state.emit("<");
 
         bool comma = false;
@@ -1165,10 +1182,18 @@ struct TypePackStringifier
         state.unsee(&tp);
     }
 
-    void operator()(TypePackId, const Unifiable::Error& error)
+    void operator()(TypePackId, const ErrorTypePack& error)
     {
         state.result.error = true;
-        state.emit("*error-type*");
+
+        if (FFlag::LuauSyntheticErrors && error.synthetic)
+        {
+            state.emit("*");
+            stringify(*error.synthetic);
+            state.emit("*");
+        }
+        else
+            state.emit("*error-type*");
     }
 
     void operator()(TypePackId, const VariadicTypePack& pack)
@@ -1840,6 +1865,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, EqualityConstraint>)
             return "equality: " + tos(c.resultType) + " ~ " + tos(c.assignmentType);
+        else if constexpr (std::is_same_v<T, TableCheckConstraint>)
+            return "table_check " + tos(c.expectedType) + " :> " + tos(c.exprType);
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

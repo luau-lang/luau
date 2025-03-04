@@ -17,7 +17,7 @@ LUAU_FASTFLAG(LuauUnifierRecursionOnRestart);
 struct TryUnifyFixture : Fixture
 {
     // Cannot use `TryUnifyFixture` under DCR.
-    ScopedFastFlag noDcr{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     TypeArena arena;
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
@@ -32,7 +32,7 @@ TEST_SUITE_BEGIN("TryUnifyTests");
 TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 {
     Type numberOne{TypeVariant{PrimitiveType{PrimitiveType::Number}}};
-    Type numberTwo = numberOne;
+    Type numberTwo = numberOne.clone();
 
     state.tryUnify(&numberTwo, &numberOne);
 
@@ -42,12 +42,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 {
-    Type functionOne{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
+    Type functionOne{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
     }};
 
-    Type functionTwo{
-        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}
-    };
+    Type functionTwo{TypeVariant{FunctionType(
+        arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)})
+    )}};
 
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(!state.failure);
@@ -60,17 +61,19 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 {
-    TypePackVar argPackOne{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
-    Type functionOne{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
+    TypePackVar argPackOne{TypePack{{arena.freshType(builtinTypes, globalScope->level)}, std::nullopt}};
+    Type functionOne{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))
     }};
 
-    Type functionOneSaved = functionOne;
+    Type functionOneSaved = functionOne.clone();
 
-    TypePackVar argPackTwo{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
-    Type functionTwo{TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->stringType}))
+    TypePackVar argPackTwo{TypePack{{arena.freshType(builtinTypes, globalScope->level)}, std::nullopt}};
+    Type functionTwo{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(builtinTypes, globalScope->level)}), arena.addTypePack({builtinTypes->stringType}))
     }};
 
-    Type functionTwoSaved = functionTwo;
+    Type functionTwoSaved = functionTwo.clone();
 
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(state.failure);
@@ -83,11 +86,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 {
     Type tableOne{TypeVariant{
-        TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
+        TableType{{{"foo", {arena.freshType(builtinTypes, globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
     Type tableTwo{TypeVariant{
-        TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
+        TableType{{{"foo", {arena.freshType(builtinTypes, globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
     CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type(), *getMutable<TableType>(&tableTwo)->props["foo"].type());
@@ -106,7 +109,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 {
     Type tableOne{TypeVariant{
         TableType{
-            {{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->numberType}}},
+            {{"foo", {arena.freshType(builtinTypes, globalScope->level)}}, {"bar", {builtinTypes->numberType}}},
             std::nullopt,
             globalScope->level,
             TableState::Unsealed
@@ -115,7 +118,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 
     Type tableTwo{TypeVariant{
         TableType{
-            {{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->stringType}}},
+            {{"foo", {arena.freshType(builtinTypes, globalScope->level)}}, {"bar", {builtinTypes->stringType}}},
             std::nullopt,
             globalScope->level,
             TableState::Unsealed
@@ -154,7 +157,7 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_intersection_sub_anything")
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_never")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : never
@@ -166,7 +169,7 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_never")
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_anything")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : boolean
@@ -178,7 +181,7 @@ TEST_CASE_FIXTURE(Fixture, "uninhabited_table_sub_anything")
 
 TEST_CASE_FIXTURE(Fixture, "members_of_failed_typepack_unification_are_unified_with_errorType")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg: number) end
@@ -195,7 +198,7 @@ TEST_CASE_FIXTURE(Fixture, "members_of_failed_typepack_unification_are_unified_w
 
 TEST_CASE_FIXTURE(Fixture, "result_of_failed_typepack_unification_is_constrained")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function f(arg: number) return arg end
@@ -295,7 +298,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
 {
-    Type redirect{FreeType{TypeLevel{}}};
+    Type redirect{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
     Type table{TableType{}};
     Type metatable{MetatableType{&redirect, &table}};
     redirect = BoundType{&metatable}; // Now we have a metatable that is recursive on the table type
@@ -318,7 +321,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 {
-    TypeId a = arena.addType(Type{FreeType{TypeLevel{}}});
+    TypeId a = arena.freshType(builtinTypes, TypeLevel{});
     TypeId b = builtinTypes->numberType;
 
     state.tryUnify(a, b);
@@ -338,50 +341,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
     CHECK_EQ(a->owningArena, &arena);
 }
 
-TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table")
-{
-    TableType::Props freeProps{
-        {"foo", {builtinTypes->numberType}},
-    };
-
-    TypeId free = arena.addType(TableType{freeProps, std::nullopt, TypeLevel{}, TableState::Free});
-
-    TableType::Props indexProps{
-        {"foo", {builtinTypes->stringType}},
-    };
-
-    TypeId index = arena.addType(TableType{indexProps, std::nullopt, TypeLevel{}, TableState::Sealed});
-
-    TableType::Props mtProps{
-        {"__index", {index}},
-    };
-
-    TypeId mt = arena.addType(TableType{mtProps, std::nullopt, TypeLevel{}, TableState::Sealed});
-
-    TypeId target = arena.addType(TableType{TableState::Unsealed, TypeLevel{}});
-    TypeId metatable = arena.addType(MetatableType{target, mt});
-
-    state.enableNewSolver();
-    state.tryUnify(metatable, free);
-    state.log.commit();
-
-    REQUIRE_EQ(state.errors.size(), 1);
-    const std::string expected = R"(Type
-    '{ @metatable {| __index: {| foo: string |} |}, {  } }'
-could not be converted into
-    '{- foo: number -}'
-caused by:
-  Type 'number' could not be converted into 'string')";
-    CHECK_EQ(expected, toString(state.errors[0]));
-}
-
 TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
 {
     TypePackVar variadicAny{VariadicTypePack{builtinTypes->anyType}};
     TypePackVar packTmp{TypePack{{builtinTypes->anyType}, &variadicAny}};
     TypePackVar packSub{TypePack{{builtinTypes->anyType, builtinTypes->anyType}, &packTmp}};
 
-    Type freeTy{FreeType{TypeLevel{}}};
+    Type freeTy{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
     TypePackVar freeTp{FreeTypePack{TypeLevel{}}};
     TypePackVar packSuper{TypePack{{&freeTy}, &freeTp}};
 
@@ -398,101 +364,6 @@ local l0:(any)&(typeof(_)),l0:(any)|(any) = _,_
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-}
-
-static TypeId createTheType(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Scope* scope, TypeId freeTy)
-{
-    /*
-    ({|
-        render: (
-            (('a) -> ()) | {| current: 'a |}
-        ) -> nil
-    |}) -> ()
-    */
-    TypePackId emptyPack = arena.addTypePack({});
-
-    return arena.addType(FunctionType{
-        arena.addTypePack({arena.addType(TableType{
-            TableType::Props{
-                {{"render",
-                  Property(arena.addType(FunctionType{
-                      arena.addTypePack({arena.addType(UnionType{
-                          {arena.addType(FunctionType{arena.addTypePack({freeTy}), emptyPack}),
-                           arena.addType(TableType{TableType::Props{{"current", {freeTy}}}, std::nullopt, TypeLevel{}, scope, TableState::Sealed})}
-                      })}),
-                      arena.addTypePack({builtinTypes->nilType})
-                  }))}}
-            },
-            std::nullopt,
-            TypeLevel{},
-            scope,
-            TableState::Sealed
-        })}),
-        emptyPack
-    });
-};
-
-// See CLI-71190
-TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_two_unions_under_dcr_does_not_create_a_BoundType_cycle")
-{
-    const std::shared_ptr<Scope> scope = globalScope;
-    const std::shared_ptr<Scope> nestedScope = std::make_shared<Scope>(scope);
-
-    const TypeId outerType = arena.freshType(scope.get());
-    const TypeId outerType2 = arena.freshType(scope.get());
-
-    const TypeId innerType = arena.freshType(nestedScope.get());
-
-    state.enableNewSolver();
-
-    SUBCASE("equal_scopes")
-    {
-        TypeId one = createTheType(arena, builtinTypes, scope.get(), outerType);
-        TypeId two = createTheType(arena, builtinTypes, scope.get(), outerType2);
-
-        state.tryUnify(one, two);
-        state.log.commit();
-
-        ToStringOptions opts;
-
-        CHECK(follow(outerType) == follow(outerType2));
-    }
-
-    SUBCASE("outer_scope_is_subtype")
-    {
-        TypeId one = createTheType(arena, builtinTypes, scope.get(), outerType);
-        TypeId two = createTheType(arena, builtinTypes, scope.get(), innerType);
-
-        state.tryUnify(one, two);
-        state.log.commit();
-
-        ToStringOptions opts;
-
-        CHECK(follow(outerType) == follow(innerType));
-
-        // The scope of outerType exceeds that of innerType.  The latter should be bound to the former.
-        const BoundType* bt = get_if<BoundType>(&innerType->ty);
-        REQUIRE(bt);
-        CHECK(bt->boundTo == outerType);
-    }
-
-    SUBCASE("outer_scope_is_supertype")
-    {
-        TypeId one = createTheType(arena, builtinTypes, scope.get(), innerType);
-        TypeId two = createTheType(arena, builtinTypes, scope.get(), outerType);
-
-        state.tryUnify(one, two);
-        state.log.commit();
-
-        ToStringOptions opts;
-
-        CHECK(follow(outerType) == follow(innerType));
-
-        // The scope of outerType exceeds that of innerType.  The latter should be bound to the former.
-        const BoundType* bt = get_if<BoundType>(&innerType->ty);
-        REQUIRE(bt);
-        CHECK(bt->boundTo == outerType);
-    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_full_restart_recursion")

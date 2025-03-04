@@ -11,6 +11,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauLibWhereErrorAutoreserve)
+
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
@@ -67,6 +69,7 @@ static l_noret tag_error(lua_State* L, int narg, int tag)
     luaL_typeerrorL(L, narg, lua_typename(L, tag));
 }
 
+// Can be called without stack space reservation
 void luaL_where(lua_State* L, int level)
 {
     lua_Debug ar;
@@ -75,9 +78,14 @@ void luaL_where(lua_State* L, int level)
         lua_pushfstring(L, "%s:%d: ", ar.short_src, ar.currentline);
         return;
     }
+
+    if (FFlag::LuauLibWhereErrorAutoreserve)
+        lua_rawcheckstack(L, 1);
+
     lua_pushliteral(L, ""); // else, no information available...
 }
 
+// Can be called without stack space reservation
 l_noret luaL_errorL(lua_State* L, const char* fmt, ...)
 {
     va_list argp;

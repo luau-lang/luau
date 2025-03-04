@@ -219,7 +219,7 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_only_cyclic_union")
  */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    Type ftv11{FreeType{TypeLevel{}}};
+    Type ftv11{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
     TypePackVar tp17{TypePack{}};
@@ -469,8 +469,8 @@ TEST_CASE("content_reassignment")
     myAny.documentationSymbol = "@global/any";
 
     TypeArena arena;
-
-    TypeId futureAny = arena.addType(FreeType{TypeLevel{}});
+    BuiltinTypes builtinTypes;
+    TypeId futureAny = arena.freshType(NotNull{&builtinTypes}, TypeLevel{});
     asMutable(futureAny)->reassign(myAny);
 
     CHECK(get<AnyType>(futureAny) != nullptr);

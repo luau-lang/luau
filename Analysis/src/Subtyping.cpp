@@ -5,6 +5,7 @@
 #include "Luau/Common.h"
 #include "Luau/Error.h"
 #include "Luau/Normalize.h"
+#include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Substitution.h"
@@ -20,7 +21,8 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingFixTailPack)
 
 namespace Luau
 {
@@ -258,43 +260,32 @@ SubtypingResult SubtypingResult::any(const std::vector<SubtypingResult>& results
 
 struct ApplyMappedGenerics : Substitution
 {
-    using MappedGenerics = DenseHashMap<TypeId, SubtypingEnvironment::GenericBounds>;
-    using MappedGenericPacks = DenseHashMap<TypePackId, TypePackId>;
-
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
 
-    MappedGenerics& mappedGenerics;
-    MappedGenericPacks& mappedGenericPacks;
+    SubtypingEnvironment& env;
 
-
-    ApplyMappedGenerics(
-        NotNull<BuiltinTypes> builtinTypes,
-        NotNull<TypeArena> arena,
-        MappedGenerics& mappedGenerics,
-        MappedGenericPacks& mappedGenericPacks
-    )
+    ApplyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, SubtypingEnvironment& env)
         : Substitution(TxnLog::empty(), arena)
         , builtinTypes(builtinTypes)
         , arena(arena)
-        , mappedGenerics(mappedGenerics)
-        , mappedGenericPacks(mappedGenericPacks)
+        , env(env)
     {
     }
 
     bool isDirty(TypeId ty) override
     {
-        return mappedGenerics.contains(ty);
+        return env.containsMappedType(ty);
     }
 
     bool isDirty(TypePackId tp) override
     {
-        return mappedGenericPacks.contains(tp);
+        return env.containsMappedPack(tp);
     }
 
     TypeId clean(TypeId ty) override
     {
-        const auto& bounds = mappedGenerics[ty];
+        const auto& bounds = env.getMappedTypeBounds(ty);
 
         if (bounds.upperBound.empty())
             return builtinTypes->unknownType;
@@ -307,7 +298,12 @@ struct ApplyMappedGenerics : Substitution
 
     TypePackId clean(TypePackId tp) override
     {
-        return mappedGenericPacks[tp];
+        if (auto it = env.getMappedPackBounds(tp))
+            return *it;
+
+        // Clean is only called when isDirty found a pack bound
+        LUAU_ASSERT(!"Unreachable");
+        return nullptr;
     }
 
     bool ignoreChildren(TypeId ty) override
@@ -325,19 +321,91 @@ struct ApplyMappedGenerics : Substitution
 
 std::optional<TypeId> SubtypingEnvironment::applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty)
 {
-    ApplyMappedGenerics amg{builtinTypes, arena, mappedGenerics, mappedGenericPacks};
+    ApplyMappedGenerics amg{builtinTypes, arena, *this};
     return amg.substitute(ty);
+}
+
+const TypeId* SubtypingEnvironment::tryFindSubstitution(TypeId ty) const
+{
+    if (auto it = substitutions.find(ty))
+        return it;
+
+    if (parent)
+        return parent->tryFindSubstitution(ty);
+
+    return nullptr;
+}
+
+const SubtypingResult* SubtypingEnvironment::tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const
+{
+    if (auto it = ephemeralCache.find(subAndSuper))
+        return it;
+
+    if (parent)
+        return parent->tryFindSubtypingResult(subAndSuper);
+
+    return nullptr;
+}
+
+bool SubtypingEnvironment::containsMappedType(TypeId ty) const
+{
+    if (mappedGenerics.contains(ty))
+        return true;
+
+    if (parent)
+        return parent->containsMappedType(ty);
+
+    return false;
+}
+
+bool SubtypingEnvironment::containsMappedPack(TypePackId tp) const
+{
+    if (mappedGenericPacks.contains(tp))
+        return true;
+
+    if (parent)
+        return parent->containsMappedPack(tp);
+
+    return false;
+}
+
+SubtypingEnvironment::GenericBounds& SubtypingEnvironment::getMappedTypeBounds(TypeId ty)
+{
+    if (auto it = mappedGenerics.find(ty))
+        return *it;
+
+    if (parent)
+        return parent->getMappedTypeBounds(ty);
+
+    LUAU_ASSERT(!"Use containsMappedType before asking for bounds!");
+    return mappedGenerics[ty];
+}
+
+TypePackId* SubtypingEnvironment::getMappedPackBounds(TypePackId tp)
+{
+    if (auto it = mappedGenericPacks.find(tp))
+        return it;
+
+    if (parent)
+        return parent->getMappedPackBounds(tp);
+
+    // This fallback is reachable in valid cases, unlike the final part of getMappedTypeBounds
+    return nullptr;
 }
 
 Subtyping::Subtyping(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> typeArena,
+    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter
 )
     : builtinTypes(builtinTypes)
     , arena(typeArena)
+    , simplifier(simplifier)
     , normalizer(normalizer)
+    , typeFunctionRuntime(typeFunctionRuntime)
     , iceReporter(iceReporter)
 {
 }
@@ -379,7 +447,10 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
             result.isSubtype = false;
         }
 
-        SubtypingResult boundsResult = isCovariantWith(env, lowerBound, upperBound, scope);
+
+        SubtypingEnvironment boundsEnv;
+        boundsEnv.parent = &env;
+        SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
         boundsResult.reasoning.clear();
 
         result.andAlso(boundsResult);
@@ -442,20 +513,30 @@ struct SeenSetPopper
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope)
 {
+    UnifierCounters& counters = normalizer->sharedState->counters;
+    RecursionCounter rc(&counters.recursionCount);
+
+    if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
+    {
+        SubtypingResult result;
+        result.normalizationTooComplex = true;
+        return result;
+    }
+
     subTy = follow(subTy);
     superTy = follow(superTy);
 
-    if (TypeId* subIt = env.substitutions.find(subTy); subIt && *subIt)
+    if (const TypeId* subIt = env.tryFindSubstitution(subTy); subIt && *subIt)
         subTy = *subIt;
 
-    if (TypeId* superIt = env.substitutions.find(superTy); superIt && *superIt)
+    if (const TypeId* superIt = env.tryFindSubstitution(superTy); superIt && *superIt)
         superTy = *superIt;
 
-    SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
+    const SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
     if (cachedResult)
         return *cachedResult;
 
-    cachedResult = env.ephemeralCache.find({subTy, superTy});
+    cachedResult = env.tryFindSubtypingResult({subTy, superTy});
     if (cachedResult)
         return *cachedResult;
 
@@ -700,7 +781,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     std::vector<TypeId> headSlice(begin(superHead), begin(superHead) + headSize);
                     TypePackId superTailPack = arena->addTypePack(std::move(headSlice), superTail);
 
-                    if (TypePackId* other = env.mappedGenericPacks.find(*subTail))
+                    if (TypePackId* other = env.getMappedPackBounds(*subTail))
                         // TODO: TypePath can't express "slice of a pack + its tail".
                         results.push_back(isCovariantWith(env, *other, superTailPack, scope).withSubComponent(TypePath::PackField::Tail));
                     else
@@ -755,7 +836,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     std::vector<TypeId> headSlice(begin(subHead), begin(subHead) + headSize);
                     TypePackId subTailPack = arena->addTypePack(std::move(headSlice), subTail);
 
-                    if (TypePackId* other = env.mappedGenericPacks.find(*superTail))
+                    if (TypePackId* other = env.getMappedPackBounds(*superTail))
                         // TODO: TypePath can't express "slice of a pack + its tail".
                         results.push_back(isContravariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
                     else
@@ -778,7 +859,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             else
                 return SubtypingResult{false}
                     .withSuperComponent(TypePath::PackField::Tail)
-                    .withError({scope->location, UnexpectedTypePackInSubtyping{*subTail}});
+                    .withError({scope->location, UnexpectedTypePackInSubtyping{FFlag::LuauSubtypingFixTailPack ? *superTail : *subTail}});
         }
         else
             return {false};
@@ -1316,6 +1397,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope)
 {
     return isCovariantWith(env, subMt->table, superMt->table, scope)
+        .withBothComponent(TypePath::TypeField::Table)
         .andAlso(isCovariantWith(env, subMt->metatable, superMt->metatable, scope).withBothComponent(TypePath::TypeField::Metatable));
 }
 
@@ -1389,6 +1471,19 @@ SubtypingResult Subtyping::isCovariantWith(
         result.orElse(
             isContravariantWith(env, subFunction->argTypes, superFunction->argTypes, scope).withBothComponent(TypePath::PackField::Arguments)
         );
+
+        // If subtyping failed in the argument packs, we should check if there's a hidden variadic tail and try ignoring it.
+        // This might cause subtyping correctly because the sub type here may not have a hidden variadic tail or equivalent.
+        if (!result.isSubtype)
+        {
+            auto [arguments, tail] = flatten(superFunction->argTypes);
+
+            if (auto variadic = get<VariadicTypePack>(tail); variadic && variadic->hidden)
+            {
+                result.orElse(isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope)
+                                  .withBothComponent(TypePath::PackField::Arguments));
+            }
+        }
     }
 
     result.andAlso(isCovariantWith(env, subFunction->retTypes, superFunction->retTypes, scope).withBothComponent(TypePath::PackField::Returns));
@@ -1688,12 +1783,18 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId supe
         if (!get<GenericType>(subTy))
             return false;
 
+        if (!env.mappedGenerics.find(subTy) && env.containsMappedType(subTy))
+            iceReporter->ice("attempting to modify bounds of a potentially visited generic");
+
         env.mappedGenerics[subTy].upperBound.insert(superTy);
     }
     else
     {
         if (!get<GenericType>(superTy))
             return false;
+
+        if (!env.mappedGenerics.find(superTy) && env.containsMappedType(superTy))
+            iceReporter->ice("attempting to modify bounds of a potentially visited generic");
 
         env.mappedGenerics[superTy].lowerBound.insert(subTy);
     }
@@ -1740,7 +1841,7 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypePackId subTp, TypePac
     if (!get<GenericTypePack>(subTp))
         return false;
 
-    if (TypePackId* m = env.mappedGenericPacks.find(subTp))
+    if (TypePackId* m = env.getMappedPackBounds(subTp))
         return *m == superTp;
 
     env.mappedGenericPacks[subTp] = superTp;
@@ -1761,7 +1862,7 @@ TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
 
 std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const TypeFunctionInstanceType* functionInstance, NotNull<Scope> scope)
 {
-    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
+    TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, iceReporter, NotNull{&limits}};
     TypeId function = arena->addType(*functionInstance);
     FunctionGraphReductionResult result = reduceTypeFunctions(function, {}, context, true);
     ErrorVec errors;

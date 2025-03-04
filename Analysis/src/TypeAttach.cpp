@@ -145,6 +145,12 @@ public:
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("any"), std::nullopt, Location());
     }
+
+    AstType* operator()(const NoRefineType&)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*no-refine*"), std::nullopt, Location());
+    }
+
     AstType* operator()(const TableType& ttv)
     {
         RecursionCounter counter(&count);
@@ -255,24 +261,24 @@ public:
         if (hasSeen(&ftv))
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("<Cycle>"), std::nullopt, Location());
 
-        AstArray<AstGenericType> generics;
+        AstArray<AstGenericType*> generics;
         generics.size = ftv.generics.size();
-        generics.data = static_cast<AstGenericType*>(allocator->allocate(sizeof(AstGenericType) * generics.size));
+        generics.data = static_cast<AstGenericType**>(allocator->allocate(sizeof(AstGenericType) * generics.size));
         size_t numGenerics = 0;
         for (auto it = ftv.generics.begin(); it != ftv.generics.end(); ++it)
         {
             if (auto gtv = get<GenericType>(*it))
-                generics.data[numGenerics++] = {AstName(gtv->name.c_str()), Location(), nullptr};
+                generics.data[numGenerics++] = allocator->alloc<AstGenericType>(Location(), AstName(gtv->name.c_str()), nullptr);
         }
 
-        AstArray<AstGenericTypePack> genericPacks;
+        AstArray<AstGenericTypePack*> genericPacks;
         genericPacks.size = ftv.genericPacks.size();
-        genericPacks.data = static_cast<AstGenericTypePack*>(allocator->allocate(sizeof(AstGenericTypePack) * genericPacks.size));
+        genericPacks.data = static_cast<AstGenericTypePack**>(allocator->allocate(sizeof(AstGenericTypePack) * genericPacks.size));
         size_t numGenericPacks = 0;
         for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
         {
             if (auto gtv = get<GenericTypePack>(*it))
-                genericPacks.data[numGenericPacks++] = {AstName(gtv->name.c_str()), Location(), nullptr};
+                genericPacks.data[numGenericPacks++] = allocator->alloc<AstGenericTypePack>(Location(), AstName(gtv->name.c_str()), nullptr);
         }
 
         AstArray<AstType*> argTypes;
@@ -323,7 +329,7 @@ public:
             Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
         );
     }
-    AstType* operator()(const Unifiable::Error&)
+    AstType* operator()(const ErrorType&)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("Unifiable<Error>"), std::nullopt, Location());
     }
@@ -380,8 +386,12 @@ public:
     }
     AstType* operator()(const NegationType& ntv)
     {
-        // FIXME: do the same thing we do with ErrorType
-        throw InternalCompilerError("Cannot convert NegationType into AstNode");
+        AstArray<AstTypeOrPack> params;
+        params.size = 1;
+        params.data = static_cast<AstTypeOrPack*>(allocator->allocate(sizeof(AstType*)));
+        params.data[0] = AstTypeOrPack{Luau::visit(*this, ntv.ty->ty), nullptr};
+
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("negate"), std::nullopt, Location(), true, params);
     }
     AstType* operator()(const TypeFunctionInstanceType& tfit)
     {
@@ -452,7 +462,7 @@ public:
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("free"));
     }
 
-    AstTypePack* operator()(const Unifiable::Error&) const
+    AstTypePack* operator()(const ErrorTypePack&) const
     {
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("Unifiable<Error>"));
     }

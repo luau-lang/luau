@@ -106,10 +106,10 @@ FValue<T>* FValue<T>::list = nullptr;
     { \
     extern Luau::FValue<bool> flag; \
     }
-#define LUAU_FASTFLAGVARIABLE(flag, def) \
+#define LUAU_FASTFLAGVARIABLE(flag) \
     namespace FFlag \
     { \
-    Luau::FValue<bool> flag(#flag, def, false); \
+    Luau::FValue<bool> flag(#flag, false, false); \
     }
 #define LUAU_FASTINT(flag) \
     namespace FInt \

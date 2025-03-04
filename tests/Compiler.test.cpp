@@ -3,6 +3,8 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/StringUtils.h"
 
+#include "luacode.h"
+
 #include "ScopedFlags.h"
 
 #include "doctest.h"
@@ -24,17 +26,61 @@ LUAU_FASTINT(LuauRecursionLimit)
 
 using namespace Luau;
 
-static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
+static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
+{
+    // While 'vector' is built-in, because of LUA_VECTOR_SIZE VM configuration, compiler cannot provide the right default by itself
+    if (strcmp(library, "vector") == 0)
+    {
+        if (strcmp(member, "zero") == 0)
+            return Luau::setCompileConstantVector(constant, 0.0f, 0.0f, 0.0f, 0.0f);
+
+        if (strcmp(member, "one") == 0)
+            return Luau::setCompileConstantVector(constant, 1.0f, 1.0f, 1.0f, 0.0f);
+    }
+
+    if (strcmp(library, "Vector3") == 0)
+    {
+        if (strcmp(member, "one") == 0)
+            return Luau::setCompileConstantVector(constant, 1.0f, 1.0f, 1.0f, 0.0f);
+
+        if (strcmp(member, "xAxis") == 0)
+            return Luau::setCompileConstantVector(constant, 1.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    if (strcmp(library, "test") == 0)
+    {
+        if (strcmp(member, "some_nil") == 0)
+            return Luau::setCompileConstantNil(constant);
+
+        if (strcmp(member, "some_boolean") == 0)
+            return Luau::setCompileConstantBoolean(constant, true);
+
+        if (strcmp(member, "some_number") == 0)
+            return Luau::setCompileConstantNumber(constant, 4.75);
+
+        if (strcmp(member, "some_string") == 0)
+            return Luau::setCompileConstantString(constant, "test", 4);
+    }
+}
+
+static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, int typeInfoLevel = 0, bool enableVectors = false)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
+    options.typeInfoLevel = typeInfoLevel;
     if (enableVectors)
     {
         options.vectorLib = "Vector3";
         options.vectorCtor = "new";
     }
+
+    static const char* kLibrariesWithConstants[] = {"vector", "Vector3", "test", nullptr};
+    options.librariesWithKnownMembers = kLibrariesWithConstants;
+
+    options.libraryMemberConstantCb = luauLibraryConstantLookup;
+
     Luau::compileOrThrow(bcb, source, options);
 
     return bcb.dumpFunction(id);
@@ -93,6 +139,8 @@ TEST_CASE("BytecodeIsStable")
     // Note: these aren't strictly bound to specific bytecode versions, but must monotonically increase to keep backwards compat
     CHECK(LBF_VECTOR == 54);
     CHECK(LBF_TOSTRING == 63);
+    CHECK(LBF_BUFFER_WRITEF64 == 77);
+    CHECK(LBF_VECTOR_MAX == 88);
 
     // Bytecode capture type (serialized & in-memory)
     CHECK(LCT_UPVAL == 2); // bytecode v1
@@ -1432,6 +1480,125 @@ RETURN R0 1
     // nested arith expression with groups
     CHECK_EQ("\n" + compileFunction0("return (2 + 2) * 2"), R"(
 LOADN R0 8
+RETURN R0 1
+)");
+}
+
+TEST_CASE("ConstantFoldVectorArith")
+{
+    CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a + b", 0, 2), R"(
+LOADK R0 K0 [3, 6, 11]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a - b", 0, 2), R"(
+LOADK R0 K0 [-1, -2, -5]
+RETURN R0 1
+)");
+
+    // Multiplication by infinity cannot be folded as it creates a non-zero value in W
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   "local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a * n, a * b, n * b, a * math.huge", 0, 2
+               ),
+        R"(
+LOADK R0 K0 [2, 4, 6]
+LOADK R1 K1 [2, 8, 24]
+LOADK R2 K2 [4, 8, 16]
+LOADK R4 K4 [1, 2, 3]
+MULK R3 R4 K3 [inf]
+RETURN R0 4
+)"
+    );
+
+    // Divisions creating an infinity in W cannot be constant-folded
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   "local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a / n, a / b, n / b, a / math.huge", 0, 2
+               ),
+        R"(
+LOADK R0 K0 [0.5, 1, 1.5]
+LOADK R2 K1 [1, 2, 3]
+LOADK R3 K2 [2, 4, 8]
+DIV R1 R2 R3
+LOADK R3 K2 [2, 4, 8]
+DIVRK R2 K3 [2] R3
+LOADK R3 K4 [0, 0, 0]
+RETURN R0 4
+)"
+    );
+
+    // Divisions creating an infinity in W cannot be constant-folded
+    CHECK_EQ(
+        "\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3), vector.create(2, 4, 8); return a // n, a // b, n // b", 0, 2),
+        R"(
+LOADK R0 K0 [0, 1, 1]
+LOADK R2 K1 [1, 2, 3]
+LOADK R3 K2 [2, 4, 8]
+IDIV R1 R2 R3
+LOADN R3 2
+LOADK R4 K2 [2, 4, 8]
+IDIV R2 R3 R4
+RETURN R0 3
+)"
+    );
+
+    CHECK_EQ("\n" + compileFunction("local a = vector.create(1, 2, 3); return -a", 0, 2), R"(
+LOADK R0 K0 [-1, -2, -3]
+RETURN R0 1
+)");
+}
+
+TEST_CASE("ConstantFoldVectorArith4Wide")
+{
+    CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a + b", 0, 2), R"(
+LOADK R0 K0 [3, 6, 11, 5]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a - b", 0, 2), R"(
+LOADK R0 K0 [-1, -2, -5, 3]
+RETURN R0 1
+)");
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   "local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a * n, a * b, n * b, a * math.huge", 0, 2
+               ),
+        R"(
+LOADK R0 K0 [2, 4, 6, 8]
+LOADK R1 K1 [2, 8, 24, 4]
+LOADK R2 K2 [4, 8, 16, 2]
+LOADK R3 K3 [inf, inf, inf, inf]
+RETURN R0 4
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   "local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a / n, a / b, n / b, a / math.huge", 0, 2
+               ),
+        R"(
+LOADK R0 K0 [0.5, 1, 1.5, 2]
+LOADK R1 K1 [0.5, 0.5, 0.375, 4]
+LOADK R2 K2 [1, 0.5, 0.25, 2]
+LOADK R3 K3 [0, 0, 0]
+RETURN R0 4
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction("local n = 2; local a, b = vector.create(1, 2, 3, 4), vector.create(2, 4, 8, 1); return a // n, a // b, n // b", 0, 2),
+        R"(
+LOADK R0 K0 [0, 1, 1, 2]
+LOADK R1 K1 [0, 0, 0, 4]
+LOADK R2 K2 [1, 0, 0, 2]
+RETURN R0 3
+)"
+    );
+
+    CHECK_EQ("\n" + compileFunction("local a = vector.create(1, 2, 3, 4); return -a", 0, 2), R"(
+LOADK R0 K0 [-1, -2, -3, -4]
 RETURN R0 1
 )");
 }
@@ -2794,6 +2961,14 @@ TEST_CASE("TypeAliasing")
     Luau::CompileOptions options;
     Luau::ParseOptions parseOptions;
     CHECK_NOTHROW(Luau::compileOrThrow(bcb, "type A = number local a: A = 1", options, parseOptions));
+}
+
+TEST_CASE("TypeFunction")
+{
+    Luau::BytecodeBuilder bcb;
+    Luau::CompileOptions options;
+    Luau::ParseOptions parseOptions;
+    CHECK_NOTHROW(Luau::compileOrThrow(bcb, "type function a() return types.any end", options, parseOptions));
 }
 
 TEST_CASE("DebugLineInfo")
@@ -4915,36 +5090,78 @@ L0: RETURN R3 -1
 )");
 }
 
-TEST_CASE("VectorLiterals")
+TEST_CASE("VectorConstants")
 {
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return vector.create(1, 2)", 0, 2, 0), R"(
+LOADK R0 K0 [1, 2, 0]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("return vector.create(1, 2, 3)", 0, 2, 0), R"(
 LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("print(vector.create(1, 2, 3))", 0, 2, 0), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3]
 CALL R0 1 0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("print(vector.create(1, 2, 3, 4))", 0, 2, 0), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3, 4]
 CALL R0 1 0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return vector.create(0, 0, 0), vector.create(-0, 0, 0)", 0, 2, 0), R"(
 LOADK R0 K0 [0, 0, 0]
 LOADK R1 K1 [-0, 0, 0]
 RETURN R0 2
 )");
 
-    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, /*enableVectors*/ true), R"(
+    CHECK_EQ("\n" + compileFunction("return type(vector.create(0, 0, 0))", 0, 2, 0), R"(
 LOADK R0 K0 ['vector']
 RETURN R0 1
+)");
+
+    // test legacy constructor
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, 0, /*enableVectors*/ true), R"(
+LOADK R0 K0 [1, 2, 3]
+RETURN R0 1
+)");
+}
+
+TEST_CASE("VectorConstantFields")
+{
+    CHECK_EQ("\n" + compileFunction("return vector.one, vector.zero", 0, 2), R"(
+LOADK R0 K0 [1, 1, 1]
+LOADK R1 K1 [0, 0, 0]
+RETURN R0 2
+)");
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.one, Vector3.xAxis", 0, 2, 0, /*enableVectors*/ true), R"(
+LOADK R0 K0 [1, 1, 1]
+LOADK R1 K1 [1, 0, 0]
+RETURN R0 2
+)");
+
+    CHECK_EQ("\n" + compileFunction("return vector.one == vector.create(1, 1, 1)", 0, 2), R"(
+LOADB R0 1
+RETURN R0 1
+)");
+}
+
+TEST_CASE("CustomConstantFields")
+{
+    CHECK_EQ("\n" + compileFunction("return test.some_nil, test.some_boolean, test.some_number, test.some_string", 0, 2), R"(
+LOADNIL R0
+LOADB R1 1
+LOADK R2 K0 [4.75]
+LOADK R3 K1 ['test']
+RETURN R0 4
 )");
 }
 
@@ -7670,6 +7887,39 @@ RETURN R0 1
     );
 }
 
+TEST_CASE("BuiltinFoldingProhibitedInOptions")
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::CompileOptions options;
+    options.optimizationLevel = 2;
+
+    // math.floor from the test is excluded in this list on purpose
+    static const char* kDisabledBuiltins[] = {"tostring", "math.abs", "math.sqrt", nullptr};
+    options.disabledBuiltins = kDisabledBuiltins;
+
+    Luau::compileOrThrow(bcb, "return math.abs(-42), math.floor(-1.5), math.sqrt(9), (tostring(2))", options);
+
+    std::string result = bcb.dumpFunction(0);
+
+    CHECK_EQ(
+        "\n" + result,
+        R"(
+GETIMPORT R0 2 [math.abs]
+LOADN R1 -42
+CALL R0 1 1
+LOADN R1 -2
+GETIMPORT R2 4 [math.sqrt]
+LOADN R3 9
+CALL R2 1 1
+GETIMPORT R3 6 [tostring]
+LOADN R4 2
+CALL R3 1 1
+RETURN R0 4
+)"
+    );
+}
+
 TEST_CASE("LocalReassign")
 {
     // locals can be re-assigned and the register gets reused
@@ -8406,6 +8656,19 @@ end
     );
 }
 
+TEST_CASE("BuiltinTypeVector")
+{
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function myfunc(test: Instance, pos: vector)
+end
+)"),
+        R"(
+0: function(userdata, vector)
+)"
+    );
+}
+
 TEST_CASE("TypeAliasScoping")
 {
     CHECK_EQ(
@@ -8487,6 +8750,23 @@ end
 1: function(any, nil)
 2: function(any, nil)
 3: function(any, nil)
+)"
+    );
+}
+
+TEST_CASE("TypeGroup")
+{
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function myfunc(test: (string), foo: nil)
+end
+
+function myfunc2(test: (string | nil), foo: nil)
+end
+)"),
+        R"(
+0: function(string, nil)
+1: function(string?, nil)
 )"
     );
 }
@@ -8816,8 +9096,7 @@ RETURN R0 1
 
 TEST_CASE("ArithRevK")
 {
-    // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
-    // other operators are not important enough to optimize reverse constant forms for
+    // - and / have special optimized form for reverse constants; in absence of type information, we can't optimize other ops
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local x: number = unknown
@@ -8830,6 +9109,34 @@ ADD R1 R2 R0
 SUBRK R2 K2 [2] R0
 LOADN R4 2
 MUL R3 R4 R0
+DIVRK R4 K2 [2] R0
+LOADN R6 2
+MOD R5 R6 R0
+LOADN R7 2
+IDIV R6 R7 R0
+LOADN R8 2
+POW R7 R8 R0
+RETURN R1 7
+)"
+    );
+
+    // the same code with type information can optimize commutative operators (+ and *) as well
+    // other operators are not important enough to optimize reverse constant forms for
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x: number = unknown
+return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
+)",
+                   0,
+                   2,
+                   1
+               ),
+        R"(
+GETIMPORT R0 1 [unknown]
+ADDK R1 R0 K2 [2]
+SUBRK R2 K2 [2] R0
+MULK R3 R0 K2 [2]
 DIVRK R4 K2 [2] R0
 LOADN R6 2
 MOD R5 R6 R0

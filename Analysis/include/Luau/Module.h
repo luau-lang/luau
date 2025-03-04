@@ -9,14 +9,23 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeArena.h"
 #include "Luau/AnyTypeSummary.h"
+#include "Luau/DataFlowGraph.h"
 
 #include <memory>
 #include <vector>
 #include <unordered_map>
 #include <optional>
 
+LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
+
 namespace Luau
 {
+
+using LogLuauProc = void (*)(std::string_view);
+extern LogLuauProc logLuau;
+
+void setLogLuau(LogLuauProc ll);
+void resetLogLuauProc();
 
 struct Module;
 struct AnyTypeSummary;
@@ -54,6 +63,7 @@ struct SourceModule
     }
 };
 
+bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos);
 bool isWithinComment(const SourceModule& sourceModule, Position pos);
 bool isWithinComment(const ParseResult& result, Position pos);
 
@@ -66,6 +76,9 @@ struct RequireCycle
 struct Module
 {
     ~Module();
+
+    // TODO: Clip this when we clip FFlagLuauSolverV2
+    bool checkedInNewSolver = false;
 
     ModuleName name;
     std::string humanReadableName;
@@ -131,6 +144,11 @@ struct Module
 
     TypePackId returnType = nullptr;
     std::unordered_map<Name, TypeFun> exportedTypeBindings;
+
+    // Arenas related to the DFG must persist after the DFG no longer exists, as
+    // Module objects maintain raw pointers to objects in these arenas.
+    DefArena defArena;
+    RefinementKeyArena keyArena;
 
     bool hasModuleScope() const;
     ScopePtr getModuleScope() const;

@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 using namespace Luau;
 
@@ -27,7 +28,7 @@ template<class BaseType>
 struct ACFixtureImpl : BaseType
 {
     ACFixtureImpl()
-        : BaseType(true, true)
+        : BaseType(true)
     {
     }
 
@@ -149,40 +150,6 @@ struct ACFixture : ACFixtureImpl<Fixture>
 struct ACBuiltinsFixture : ACFixtureImpl<BuiltinsFixture>
 {
 };
-
-#define LUAU_CHECK_HAS_KEY(map, key) \
-    do \
-    { \
-        auto&& _m = (map); \
-        auto&& _k = (key); \
-        const size_t count = _m.count(_k); \
-        CHECK_MESSAGE(count, "Map should have key \"" << _k << "\""); \
-        if (!count) \
-        { \
-            MESSAGE("Keys: (count " << _m.size() << ")"); \
-            for (const auto& [k, v] : _m) \
-            { \
-                MESSAGE("\tkey: " << k); \
-            } \
-        } \
-    } while (false)
-
-#define LUAU_CHECK_HAS_NO_KEY(map, key) \
-    do \
-    { \
-        auto&& _m = (map); \
-        auto&& _k = (key); \
-        const size_t count = _m.count(_k); \
-        CHECK_MESSAGE(!count, "Map should not have key \"" << _k << "\""); \
-        if (count) \
-        { \
-            MESSAGE("Keys: (count " << _m.size() << ")"); \
-            for (const auto& [k, v] : _m) \
-            { \
-                MESSAGE("\tkey: " << k); \
-            } \
-        } \
-    } while (false)
 
 TEST_SUITE_BEGIN("AutocompleteTest");
 
@@ -2265,7 +2232,7 @@ local ec = e(f@5)
 TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_for_overloads")
 {
     if (FFlag::LuauSolverV2) // CLI-116814 Autocomplete needs to populate expected types for function arguments correctly
-                                                      // (overloads and singletons)
+                             // (overloads and singletons)
         return;
     check(R"(
 local target: ((number) -> string) & ((string) -> number))
@@ -2615,7 +2582,7 @@ end
 TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys")
 {
     if (FFlag::LuauSolverV2) // CLI-116812 AutocompleteTest.suggest_table_keys needs to populate expected types for nested
-                                                      // tables without an annotation
+                             // tables without an annotation
         return;
 
     check(R"(
@@ -3102,7 +3069,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
     if (FFlag::LuauSolverV2) // CLI-116814 Autocomplete needs to populate expected types for function arguments correctly
-                                                      // (overloads and singletons)
+                             // (overloads and singletons)
         return;
 
     check(R"(
@@ -3815,6 +3782,39 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.
     CHECK(ac.entryMap.count("Instance"));
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
+{
+    // TODO: in old solver, type resolve can't handle the type in this test without a stack overflow
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
+
+    const int parts = 100;
+    std::string source;
+
+    source += "function f()\n";
+
+    std::string prefix;
+    for (int i = 0; i < parts; i++)
+        formatAppend(prefix, "(nil|({a%d:number}&", i);
+    formatAppend(prefix, "(nil|{a%d:number})", parts);
+    for (int i = 0; i < parts; i++)
+        formatAppend(prefix, "))");
+
+    source += "local x1 : " + prefix + "\n";
+    source += "local y : {a1:number} = x@1\n";
+
+    source += "end\n";
+
+    check(source);
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("true"));
+    CHECK(ac.entryMap.count("x1"));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "strict_mode_force")
 {
     check(R"(
@@ -4293,8 +4293,7 @@ end
 foo(@1)
     )");
 
-    const std::optional<std::string> EXPECTED_INSERT =
-        FFlag::LuauSolverV2 ? "function(...: number): number  end" : "function(...): number  end";
+    const std::optional<std::string> EXPECTED_INSERT = FFlag::LuauSolverV2 ? "function(...: number): number  end" : "function(...): number  end";
 
     auto ac = autocomplete('1');
 
@@ -4303,6 +4302,48 @@ foo(@1)
     CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
     REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
     CHECK_EQ(EXPECTED_INSERT, *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_at_end_of_stmt_should_continue_as_part_of_stmt")
+{
+    check(R"(
+local data = { x = 1 }
+local var = data.@1
+    )");
+    auto ac = autocomplete('1');
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("x"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_after_semicolon_should_complete_a_new_statement")
+{
+    check(R"(
+local data = { x = 1 }
+local var = data;@1
+    )");
+    auto ac = autocomplete('1');
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("table"));
+    CHECK(ac.entryMap.count("math"));
+    CHECK_EQ(ac.context, AutocompleteContext::Statement);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_tracing")
+{
+    fileResolver.source["Module/A"] = R"(
+return { x = 0 }
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+local result = require(script.Parent.A)
+local x = 1 + result.
+    )";
+
+    auto ac = autocomplete("Module/B", Position{2, 21});
+
+    CHECK(ac.entryMap.size() == 1);
+    CHECK(ac.entryMap.count("x"));
 }
 
 TEST_SUITE_END();

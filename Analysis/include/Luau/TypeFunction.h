@@ -1,29 +1,68 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/ConstraintSolver.h"
+#include "Luau/Constraint.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypeFwd.h"
 
 #include <functional>
 #include <string>
 #include <optional>
 
+struct lua_State;
+
 namespace Luau
 {
 
 struct TypeArena;
 struct TxnLog;
+struct ConstraintSolver;
 class Normalizer;
+
+using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
+
+struct TypeFunctionRuntime
+{
+    TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
+    ~TypeFunctionRuntime();
+
+    // Return value is an error message if registration failed
+    std::optional<std::string> registerFunction(AstStatTypeFunction* function);
+
+    // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
+    TypedAllocator<TypeFunctionType> typeArena;
+    TypedAllocator<TypeFunctionTypePackVar> typePackArena;
+
+    NotNull<InternalErrorReporter> ice;
+    NotNull<TypeCheckLimits> limits;
+
+    StateRef state;
+
+    // Set of functions which have their environment table initialized
+    DenseHashSet<AstStatTypeFunction*> initialized{nullptr};
+
+    // Evaluation of type functions should only be performed in the absence of parse errors in the source module
+    bool allowEvaluation = true;
+
+    // Output created by 'print' function
+    std::vector<std::string> messages;
+
+private:
+    void prepareState();
+};
 
 struct TypeFunctionContext
 {
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtins;
     NotNull<Scope> scope;
+    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> ice;
     NotNull<TypeCheckLimits> limits;
 
@@ -32,33 +71,26 @@ struct TypeFunctionContext
     // The constraint being reduced in this run of the reduction
     const Constraint* constraint;
 
-    std::optional<AstName> userFuncName;          // Name of the user-defined type function; only available for UDTFs
-    std::optional<AstExprFunction*> userFuncBody; // Body of the user-defined type function; only available for UDTFs
+    std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
 
-    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
-        : arena(cs->arena)
-        , builtins(cs->builtinTypes)
-        , scope(scope)
-        , normalizer(cs->normalizer)
-        , ice(NotNull{&cs->iceReporter})
-        , limits(NotNull{&cs->limits})
-        , solver(cs.get())
-        , constraint(constraint.get())
-    {
-    }
+    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint);
 
     TypeFunctionContext(
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtins,
         NotNull<Scope> scope,
+        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> ice,
         NotNull<TypeCheckLimits> limits
     )
         : arena(arena)
         , builtins(builtins)
         , scope(scope)
+        , simplifier(simplifier)
         , normalizer(normalizer)
+        , typeFunctionRuntime(typeFunctionRuntime)
         , ice(ice)
         , limits(limits)
         , solver(nullptr)
@@ -66,7 +98,17 @@ struct TypeFunctionContext
     {
     }
 
-    NotNull<Constraint> pushConstraint(ConstraintV&& c);
+    NotNull<Constraint> pushConstraint(ConstraintV&& c) const;
+};
+
+enum class Reduction
+{
+    // The type function is either known to be reducible or the determination is blocked.
+    MaybeOk,
+    // The type function is known to be irreducible, but maybe not be erroneous, e.g. when it's over generics or free types.
+    Irreducible,
+    // The type function is known to be irreducible, and is definitely erroneous.
+    Erroneous,
 };
 
 /// Represents a reduction result, which may have successfully reduced the type,
@@ -75,19 +117,25 @@ struct TypeFunctionContext
 template<typename Ty>
 struct TypeFunctionReductionResult
 {
+
     /// The result of the reduction, if any. If this is nullopt, the type function
     /// could not be reduced.
     std::optional<Ty> result;
-    /// Whether the result is uninhabited: whether we know, unambiguously and
-    /// permanently, whether this type function reduction results in an
-    /// uninhabitable type. This will trigger an error to be reported.
-    bool uninhabited;
+    /// Indicates the status of this reduction: is `Reduction::Irreducible` if
+    /// the this result indicates the type function is irreducible, and
+    /// `Reduction::Erroneous` if this result indicates the type function is
+    /// erroneous. `Reduction::MaybeOk` otherwise.
+    Reduction reductionStatus;
     /// Any types that need to be progressed or mutated before the reduction may
     /// proceed.
     std::vector<TypeId> blockedTypes;
     /// Any type packs that need to be progressed or mutated before the
     /// reduction may proceed.
     std::vector<TypePackId> blockedPacks;
+    /// A runtime error message from user-defined type functions
+    std::optional<std::string> error;
+    /// Messages printed out from user-defined type functions
+    std::vector<std::string> messages;
 };
 
 template<typename T>
@@ -121,6 +169,7 @@ struct TypePackFunction
 struct FunctionGraphReductionResult
 {
     ErrorVec errors;
+    ErrorVec messages;
     DenseHashSet<TypeId> blockedTypes{nullptr};
     DenseHashSet<TypePackId> blockedPacks{nullptr};
     DenseHashSet<TypeId> reducedTypes{nullptr};
@@ -191,6 +240,9 @@ struct BuiltinTypeFunctions
     TypeFunction rawkeyofFunc;
     TypeFunction indexFunc;
     TypeFunction rawgetFunc;
+
+    TypeFunction setmetatableFunc;
+    TypeFunction getmetatableFunc;
 
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };

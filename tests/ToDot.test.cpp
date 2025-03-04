@@ -322,12 +322,9 @@ n3 [label="TableType 3"];
 
 TEST_CASE_FIXTURE(Fixture, "free")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
-    Type type{TypeVariant{FreeType{TypeLevel{0, 0}}}};
-
+    Type type{TypeVariant{FreeType{TypeLevel{0, 0}, builtinTypes->neverType, builtinTypes->unknownType}}};
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(
@@ -433,7 +430,7 @@ n1 [label="FreeTypePack 1"];
 
 TEST_CASE_FIXTURE(Fixture, "error_pack")
 {
-    TypePackVar pack{TypePackVariant{Unifiable::Error{}}};
+    TypePackVar pack{TypePackVariant{ErrorTypePack{}}};
 
     ToDotOptions opts;
     opts.showPointers = false;

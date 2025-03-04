@@ -13,7 +13,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAttributeSyntax);
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -45,7 +44,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "free_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check("local a");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -166,7 +165,7 @@ TEST_CASE_FIXTURE(Fixture, "named_metatable")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function createTbl(): NamedMetatable
@@ -212,8 +211,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
         CHECK(
             "t2 where "
             "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }" ==
-            a
+            "t2 = { @metatable t1, { x: number, y: number, z: number } }" == a
         );
     }
     else
@@ -594,7 +592,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 local function target(callback: nil) return callback(4, "hello") end
@@ -964,12 +962,12 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
         std::vector<TypeId>{builtinTypes->numberType}, // Type Function Arguments
         {},
         {AstName{"woohoo"}}, // Type Function Name
-        std::nullopt
+        {},
     };
 
     Type tv{tftt};
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauUserDefinedTypeFunctions)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(&tv, {}), "woohoo<number>");
 }
 

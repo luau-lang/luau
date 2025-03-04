@@ -17,6 +17,7 @@ using namespace Luau::TypePath;
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
+LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds);
 
 struct TypePathFixture : Fixture
 {
@@ -237,6 +238,23 @@ TEST_CASE_FIXTURE(ClassFixture, "metatables")
     SUBCASE("table")
     {
         TYPESOLVE_CODE(R"(
+            type Table = { foo: number }
+            type Metatable = { bar: number }
+            local tbl: Table = { foo = 123 }
+            local mt: Metatable = { bar = 456 }
+            local res = setmetatable(tbl, mt)
+        )");
+
+        // Tricky test setup because 'setmetatable' mutates the argument 'tbl' type
+        auto result = traverseForType(requireType("res"), Path(TypeField::Table), builtinTypes);
+        auto expected = lookupType("Table");
+        REQUIRE(expected);
+        CHECK(result == follow(*expected));
+    }
+
+    SUBCASE("metatable")
+    {
+        TYPESOLVE_CODE(R"(
             local mt = { foo = 123 }
             local tbl = setmetatable({}, mt)
         )");
@@ -260,7 +278,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "bounds")
         TypeArena& arena = frontend.globals.globalTypes;
         unfreeze(arena);
 
-        TypeId ty = arena.freshType(frontend.globals.globalScope.get());
+        TypeId ty = arena.freshType(frontend.builtinTypes, frontend.globals.globalScope.get());
         FreeType* ft = getMutable<FreeType>(ty);
 
         SUBCASE("upper")
@@ -521,9 +539,7 @@ TEST_SUITE_BEGIN("TypePathToString");
 
 TEST_CASE("field")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CHECK(toString(PathBuilder().prop("foo").build()) == R"(["foo"])");
 }
@@ -550,9 +566,7 @@ TEST_CASE("empty_path")
 
 TEST_CASE("prop")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     Path p = PathBuilder().prop("foo").build();
     CHECK(p == Path(TypePath::Property{"foo"}));

@@ -27,6 +27,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -478,24 +479,12 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     return false;
 }
 
-FreeType::FreeType(TypeLevel level)
+// New constructors
+FreeType::FreeType(TypeLevel level, TypeId lowerBound, TypeId upperBound)
     : index(Unifiable::freshIndex())
     , level(level)
-    , scope(nullptr)
-{
-}
-
-FreeType::FreeType(Scope* scope)
-    : index(Unifiable::freshIndex())
-    , level{}
-    , scope(scope)
-{
-}
-
-FreeType::FreeType(Scope* scope, TypeLevel level)
-    : index(Unifiable::freshIndex())
-    , level(level)
-    , scope(scope)
+    , lowerBound(lowerBound)
+    , upperBound(upperBound)
 {
 }
 
@@ -505,6 +494,40 @@ FreeType::FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound)
     , lowerBound(lowerBound)
     , upperBound(upperBound)
 {
+}
+
+FreeType::FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId upperBound)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+    , lowerBound(lowerBound)
+    , upperBound(upperBound)
+{
+}
+
+// Old constructors
+FreeType::FreeType(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(nullptr)
+{
+    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
+}
+
+FreeType::FreeType(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , level{}
+    , scope(scope)
+{
+    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
+}
+
+FreeType::FreeType(Scope* scope, TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+{
+    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
 }
 
 GenericType::GenericType()
@@ -554,12 +577,12 @@ BlockedType::BlockedType()
 {
 }
 
-Constraint* BlockedType::getOwner() const
+const Constraint* BlockedType::getOwner() const
 {
     return owner;
 }
 
-void BlockedType::setOwner(Constraint* newOwner)
+void BlockedType::setOwner(const Constraint* newOwner)
 {
     LUAU_ASSERT(owner == nullptr);
 
@@ -569,7 +592,7 @@ void BlockedType::setOwner(Constraint* newOwner)
     owner = newOwner;
 }
 
-void BlockedType::replaceOwner(Constraint* newOwner)
+void BlockedType::replaceOwner(const Constraint* newOwner)
 {
     owner = newOwner;
 }
@@ -999,6 +1022,11 @@ Type& Type::operator=(const Type& rhs)
     return *this;
 }
 
+Type Type::clone() const
+{
+    return *this;
+}
+
 TypeId makeFunction(
     TypeArena& arena,
     std::optional<TypeId> selfType,
@@ -1030,6 +1058,7 @@ BuiltinTypes::BuiltinTypes()
     , unknownType(arena->addType(Type{UnknownType{}, /*persistent*/ true}))
     , neverType(arena->addType(Type{NeverType{}, /*persistent*/ true}))
     , errorType(arena->addType(Type{ErrorType{}, /*persistent*/ true}))
+    , noRefineType(arena->addType(Type{NoRefineType{}, /*persistent*/ true}))
     , falsyType(arena->addType(Type{UnionType{{falseType, nilType}}, /*persistent*/ true}))
     , truthyType(arena->addType(Type{NegationType{falsyType}, /*persistent*/ true}))
     , optionalNumberType(arena->addType(Type{UnionType{{numberType, nilType}}, /*persistent*/ true}))
@@ -1039,7 +1068,7 @@ BuiltinTypes::BuiltinTypes()
     , unknownTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{unknownType}, /*persistent*/ true}))
     , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
     , uninhabitableTypePack(arena->addTypePack(TypePackVar{TypePack{{neverType}, neverTypePack}, /*persistent*/ true}))
-    , errorTypePack(arena->addTypePack(TypePackVar{Unifiable::Error{}, /*persistent*/ true}))
+    , errorTypePack(arena->addTypePack(TypePackVar{ErrorTypePack{}, /*persistent*/ true}))
 {
     freeze(*arena);
 }

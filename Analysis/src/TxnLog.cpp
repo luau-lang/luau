@@ -93,8 +93,8 @@ void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
 
         if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
         {
-            TypeId leftTy = arena->addType((*leftRep)->pending);
-            TypeId rightTy = arena->addType(rightRep->pending);
+            TypeId leftTy = arena->addType((*leftRep)->pending.clone());
+            TypeId rightTy = arena->addType(rightRep->pending.clone());
             typeVarChanges[ty]->pending.ty = IntersectionType{{leftTy, rightTy}};
         }
         else
@@ -170,8 +170,8 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 
         if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
         {
-            TypeId leftTy = arena->addType((*leftRep)->pending);
-            TypeId rightTy = arena->addType(rightRep->pending);
+            TypeId leftTy = arena->addType((*leftRep)->pending.clone());
+            TypeId rightTy = arena->addType(rightRep->pending.clone());
 
             if (follow(leftTy) == follow(rightTy))
                 typeVarChanges[ty] = std::move(rightRep);
@@ -217,7 +217,7 @@ TxnLog TxnLog::inverse()
     for (auto& [ty, _rep] : typeVarChanges)
     {
         if (!_rep->dead)
-            inversed.typeVarChanges[ty] = std::make_unique<PendingType>(*ty);
+            inversed.typeVarChanges[ty] = std::make_unique<PendingType>(ty->clone());
     }
 
     for (auto& [tp, _rep] : typePackChanges)
@@ -292,7 +292,7 @@ PendingType* TxnLog::queue(TypeId ty)
     auto& pending = typeVarChanges[ty];
     if (!pending || (*pending).dead)
     {
-        pending = std::make_unique<PendingType>(*ty);
+        pending = std::make_unique<PendingType>(ty->clone());
         pending->pending.owningArena = nullptr;
     }
 

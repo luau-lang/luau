@@ -52,7 +52,7 @@ struct GenericTypePack
 };
 
 using BoundTypePack = Unifiable::Bound<TypePackId>;
-using ErrorTypePack = Unifiable::Error;
+using ErrorTypePack = Unifiable::Error<TypePackId>;
 
 using TypePackVariant =
     Unifiable::Variant<TypePackId, FreeTypePack, GenericTypePack, TypePack, VariadicTypePack, BlockedTypePack, TypeFunctionInstanceTypePack>;

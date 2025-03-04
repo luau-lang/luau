@@ -15,9 +15,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauOkWithIteratingOverTableProperties)
-
-LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -155,7 +152,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
     // CLI-116494 The generics K and V are leaking out of the next() function somehow.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local n
@@ -195,10 +192,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (DFFlag::LuauImproveNonFunctionCallError)
-        CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
-    else
-        CHECK_EQ("Cannot call non-function string", toString(result.errors[0]));
+    CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
@@ -276,7 +270,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 {
     // We report a spuriouus duplicate error here.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local bad_iter = 5
@@ -293,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")
 {
     // Spurious duplicate errors
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function hasDivisors(value: number, table)
@@ -345,7 +339,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
 {
     // CLI-116496
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function prime_iter(state, index)
@@ -699,8 +693,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
     if (FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         local t = {}
         for _ in t do
@@ -765,7 +757,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t: {string} = {}
@@ -782,10 +774,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-        {FFlag::LuauOkWithIteratingOverTableProperties, true}
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t = {}
@@ -937,8 +926,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
 
 TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
 {
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         function print(x) end
 
@@ -1093,9 +1080,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 {
     // CLI-116498 - Sometimes you can iterate over tables with no indexer.
-    ScopedFastFlag sff0{FFlag::LuauSolverV2, false};
-
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f()
@@ -1118,8 +1103,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties_nonstrict")
 {
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local function f()

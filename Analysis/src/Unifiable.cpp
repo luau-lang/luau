@@ -1,5 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Unifiable.h"
+#include "Luau/TypeFwd.h"
+#include "Luau/TypePack.h"
 
 namespace Luau
 {
@@ -13,12 +15,17 @@ int freshIndex()
     return ++nextIndex;
 }
 
-Error::Error()
+template<typename Id>
+Error<Id>::Error()
     : index(++nextIndex)
 {
 }
 
-int Error::nextIndex = 0;
+template<typename Id>
+int Error<Id>::nextIndex = 0;
+
+template struct Error<TypeId>;
+template struct Error<TypePackId>;
 
 } // namespace Unifiable
 } // namespace Luau
