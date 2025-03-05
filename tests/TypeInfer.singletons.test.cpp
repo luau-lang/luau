@@ -153,6 +153,8 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters")
 {
+    ScopedFastFlag sff{FFlag::LuauPropagateExpectedTypesForCalls, true};
+
     CheckResult result = check(R"(
         type A = ("A") -> string
         type B = ("B") -> number
