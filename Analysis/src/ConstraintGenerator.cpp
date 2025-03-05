@@ -32,6 +32,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+LUAU_FASTFLAG(LuauPropagateExpectedTypesForCalls)
 
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPrePopulateClasses)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverPopulateTableLocations)
@@ -2031,8 +2032,8 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
         {
-            std::optional<TypeId> expectedType;
-            if (i < expectedTypesForCall.size())
+            std::optional<TypeId> expectedType = std::nullopt;
+            if (FFlag::LuauPropagateExpectedTypesForCalls && i < expectedTypesForCall.size())
             {
                 expectedType = expectedTypesForCall[i];
             }
@@ -2043,7 +2044,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         else
         {
             std::vector<std::optional<Luau::TypeId>> expectedTypes = {};
-            if (i < expectedTypesForCall.size()) 
+            if (FFlag::LuauPropagateExpectedTypesForCalls && i < expectedTypesForCall.size()) 
             {
                 expectedTypes.insert(expectedTypes.end(), expectedTypesForCall.begin() + i, expectedTypesForCall.end());
             }
