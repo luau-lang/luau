@@ -32,7 +32,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
-LUAU_FASTFLAG(LuauPropagateExpectedTypesForCalls)
+LUAU_FASTFLAGVARIABLE(LuauPropagateExpectedTypesForCalls)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
