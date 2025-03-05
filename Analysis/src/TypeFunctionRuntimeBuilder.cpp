@@ -20,6 +20,7 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 LUAU_FASTFLAG(LuauTypeFunFixHydratedClasses)
+LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
 
 namespace Luau
 {
@@ -212,13 +213,13 @@ private:
             {
                 // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the
                 // original class
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, ty});
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty});
             }
             else
             {
                 state->classesSerialized_DEPRECATED[c->name] = ty;
                 target = typeFunctionRuntime->typeArena.allocate(
-                    TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, /* classTy */ nullptr, c->name}
+                    TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, /* classTy */ nullptr, c->name}
                 );
             }
         }
@@ -441,7 +442,20 @@ private:
             c2->metatable = shallowSerialize(*c1->metatable);
 
         if (c1->parent)
-            c2->parent = shallowSerialize(*c1->parent);
+        {
+            TypeFunctionTypeId parent = shallowSerialize(*c1->parent);
+
+            if (FFlag::LuauTypeFunReadWriteParents)
+            {
+                // we don't yet have read/write parents in the type inference engine.
+                c2->readParent = parent;
+                c2->writeParent = parent;
+            }
+            else
+            {
+                c2->parent_DEPRECATED = parent;
+            }
+        }
     }
 
     void serializeChildren(const GenericType* g1, TypeFunctionGenericType* g2)

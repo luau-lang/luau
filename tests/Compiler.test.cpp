@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauVector2Constants)
 
 using namespace Luau;
 
@@ -5093,8 +5092,6 @@ L0: RETURN R3 -1
 
 TEST_CASE("VectorConstants")
 {
-    ScopedFastFlag luauVector2Constants{FFlag::LuauVector2Constants, true};
-
     CHECK_EQ("\n" + compileFunction("return vector.create(1, 2)", 0, 2, 0), R"(
 LOADK R0 K0 [1, 2, 0]
 RETURN R0 1

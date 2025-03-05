@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNewSolverPopulateTableLocations)
 
 using namespace Luau;
 
@@ -464,13 +463,10 @@ local b: B.T = a
 
     if (FFlag::LuauSolverV2)
     {
-        if (FFlag::LuauNewSolverPopulateTableLocations)
-            CHECK(
-                toString(result.errors.at(0)) ==
-                "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; at [read \"x\"], number is not exactly string"
-            );
-        else
-            CHECK(toString(result.errors.at(0)) == "Type 'T' could not be converted into 'T'; at [read \"x\"], number is not exactly string");
+        CHECK(
+            toString(result.errors.at(0)) ==
+            "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; at [read \"x\"], number is not exactly string"
+        );
     }
     else
     {
@@ -513,13 +509,10 @@ local b: B.T = a
 
     if (FFlag::LuauSolverV2)
     {
-        if (FFlag::LuauNewSolverPopulateTableLocations)
-            CHECK(
-                toString(result.errors.at(0)) ==
-                "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; at [read \"x\"], number is not exactly string"
-            );
-        else
-            CHECK(toString(result.errors.at(0)) == "Type 'T' could not be converted into 'T'; at [read \"x\"], number is not exactly string");
+        CHECK(
+            toString(result.errors.at(0)) ==
+            "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; at [read \"x\"], number is not exactly string"
+        );
     }
     else
     {

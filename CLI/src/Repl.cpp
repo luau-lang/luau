@@ -791,8 +791,6 @@ int replMain(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
 
-    setLuauFlagsDefault();
-
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
 #endif

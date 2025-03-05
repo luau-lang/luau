@@ -13,7 +13,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
 {
@@ -706,7 +705,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::SELECT_NUM:
     {
-        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
         inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a, inst.b, inst.c, inst.d});
 
         RegisterA64 temp1 = tempDouble(inst.a);

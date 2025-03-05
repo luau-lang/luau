@@ -18,8 +18,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauTableKeysAreRValues)
-LUAU_FASTFLAG(LuauAllowNilAssignmentToIndexer)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
 LUAU_FASTFLAG(LuauDontInPlaceMutateTableType)
@@ -1932,7 +1930,7 @@ TEST_CASE_FIXTURE(Fixture, "type_mismatch_on_massive_table_is_cut_short")
 
 TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_even_on_non_lvalue_base_expr")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(): { [string]: number }
@@ -1991,9 +1989,6 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_even_on_non_lvalue_base_expr")
 
 TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_on_generic_map")
 {
-
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type MyMap<K, V> = { [K]: V }
         function set<K, V>(m: MyMap<K, V>, k: K, v: V)
@@ -2010,8 +2005,7 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_on_generic_map")
 
 TEST_CASE_FIXTURE(Fixture, "key_setting_inference_given_nil_upper_bound")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
-
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function setkey_object(t: { [string]: number }, v)
             t.foo = v
@@ -2942,16 +2936,12 @@ TEST_CASE_FIXTURE(Fixture, "table_length")
 
 TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_indexer")
 {
-    // CLI-100076 - Assigning a table key to `nil` in the presence of an indexer should always be permitted
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
-    CheckResult result = check("local a = {} a[0] = 7  a[0] = nil");
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    LUAU_REQUIRE_NO_ERRORS(check("local a = {} a[0] = 7  a[0] = nil"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "wrong_assign_does_hit_indexer")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAllowNilAssignmentToIndexer, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local a = {}
@@ -5055,7 +5045,6 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
 TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_property_reads")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff{FFlag::LuauTableKeysAreRValues, true};
 
     // none of the `t.id` accesses here should error
     auto result = check(R"(

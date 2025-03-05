@@ -26,7 +26,6 @@
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauAllowFragmentParsing);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteBugfixes)
@@ -98,6 +97,7 @@ void cloneAndSquashScopes(
     Scope* destScope
 )
 {
+    LUAU_TIMETRACE_SCOPE("Luau::cloneAndSquashScopes", "FragmentAutocomplete");
     std::vector<const Scope*> scopes;
     for (const Scope* current = staleScope; current; current = current->parent.get())
     {
@@ -364,6 +364,7 @@ std::optional<FragmentParseResult> parseFragment(
 
 ModulePtr cloneModule(CloneState& cloneState, const ModulePtr& source, std::unique_ptr<Allocator> alloc)
 {
+    LUAU_TIMETRACE_SCOPE("Luau::cloneModule", "FragmentAutocomplete");
     freeze(source->internalTypes);
     freeze(source->interfaceTypes);
     ModulePtr incremental = std::make_shared<Module>();
@@ -445,6 +446,8 @@ FragmentTypeCheckResult typecheckFragment_(
     const FrontendOptions& opts
 )
 {
+    LUAU_TIMETRACE_SCOPE("Luau::typecheckFragment_", "FragmentAutocomplete");
+
     freeze(stale->internalTypes);
     freeze(stale->interfaceTypes);
     CloneState cloneState{frontend.builtinTypes};
@@ -533,6 +536,7 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
+        NotNull{&cg.scopeToFunction},
         incrementalModule->name,
         NotNull{&resolver},
         {},
@@ -573,6 +577,8 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     std::optional<Position> fragmentEndPosition
 )
 {
+    LUAU_TIMETRACE_SCOPE("Luau::typecheckFragment", "FragmentAutocomplete");
+    LUAU_TIMETRACE_ARGUMENT("name", moduleName.c_str());
 
     if (FFlag::LuauBetterReverseDependencyTracking)
     {
@@ -621,6 +627,35 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     return {FragmentTypeCheckStatus::Success, result};
 }
 
+FragmentAutocompleteStatusResult tryFragmentAutocomplete(
+    Frontend& frontend,
+    const ModuleName& moduleName,
+    Position cursorPosition,
+    FragmentContext context,
+    StringCompletionCallback stringCompletionCB
+)
+{
+    // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
+    try
+    {
+        Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
+            frontend,
+            context.newSrc,
+            moduleName,
+            cursorPosition,
+            context.opts,
+            std::move(stringCompletionCB),
+            context.DEPRECATED_fragmentEndPosition
+        );
+        return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
+    }
+    catch (const Luau::InternalCompilerError& e)
+    {
+        if (FFlag::LogFragmentsFromAutocomplete)
+            logLuau(e.what());
+        return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
+    }
+}
 
 FragmentAutocompleteResult fragmentAutocomplete(
     Frontend& frontend,
@@ -632,8 +667,9 @@ FragmentAutocompleteResult fragmentAutocomplete(
     std::optional<Position> fragmentEndPosition
 )
 {
-    LUAU_ASSERT(FFlag::LuauAllowFragmentParsing);
     LUAU_ASSERT(FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
+    LUAU_TIMETRACE_SCOPE("Luau::fragmentAutocomplete", "FragmentAutocomplete");
+    LUAU_TIMETRACE_ARGUMENT("name", moduleName.c_str());
 
     const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
     if (!sourceModule)

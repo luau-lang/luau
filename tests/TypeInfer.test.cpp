@@ -23,7 +23,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAstTypeGroup)
+LUAU_FASTFLAG(LuauAstTypeGroup2)
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAG(LuauInferLocalTypesInMultipleAssignments)
 
@@ -1201,10 +1201,13 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     if (FFlag::LuauSolverV2)
     {
         CHECK(3 == result.errors.size());
-        CHECK(Location{{2, 22}, {2, 41}} == result.errors[0].location);
+        if (FFlag::LuauAstTypeGroup2)
+            CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
+        else
+            CHECK(Location{{2, 22}, {2, 41}} == result.errors[0].location);
         CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-        if (FFlag::LuauAstTypeGroup)
-            CHECK(Location{{3, 22}, {3, 40}} == result.errors[2].location);
+        if (FFlag::LuauAstTypeGroup2)
+            CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
         else
             CHECK(Location{{3, 23}, {3, 40}} == result.errors[2].location);
         CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));

@@ -17,7 +17,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
-LUAU_FASTFLAG(LuauCodeGenLerp)
 
 namespace Luau
 {
@@ -625,7 +624,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::SELECT_NUM:
     {
-        LUAU_ASSERT(FFlag::LuauCodeGenLerp);
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.c, inst.d}); // can't reuse b if a is a memory operand
 
         ScopedRegX64 tmp{regs, SizeX64::xmmword};

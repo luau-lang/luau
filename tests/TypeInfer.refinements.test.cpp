@@ -10,6 +10,8 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauGeneralizationRemoveRecursiveUpperBound2)
+LUAU_FASTFLAG(LuauIntersectNotNil)
+LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
 
 using namespace Luau;
 
@@ -2457,6 +2459,71 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
     )"));
 
     CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "nonnil_refinement_on_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauIntersectNotNil, true};
+
+    CheckResult result = check(R"(
+        local function printOptional<T>(item: T?, printer: (T) -> string): string
+            if item ~= nil then
+                return printer(item)
+            else
+                return ""
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauSolverV2)
+        CHECK_EQ("T & ~nil", toString(requireTypeAtPosition({3, 31})));
+    else
+        CHECK_EQ("T", toString(requireTypeAtPosition({3, 31})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "truthy_refinement_on_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauIntersectNotNil, true};
+
+    CheckResult result = check(R"(
+        local function printOptional<T>(item: T?, printer: (T) -> string): string
+            if item then
+                return printer(item)
+            else
+                return ""
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauSolverV2)
+        CHECK_EQ("T & ~(false?)", toString(requireTypeAtPosition({3, 31})));
+    else
+        CHECK_EQ("T", toString(requireTypeAtPosition({3, 31})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "truthy_call_of_function_with_table_value_as_argument_should_not_refine_value_as_never")
+{
+    ScopedFastFlag sff{FFlag::LuauSkipNoRefineDuringRefinement, true};
+
+    CheckResult result = check(R"(
+        type Item = {}
+
+        local function predicate(value: Item): boolean
+            return true
+        end
+
+        local function checkValue(value: Item)
+            if predicate(value) then
+                local _ = value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Item", toString(requireTypeAtPosition({8, 27})));
+    CHECK_EQ("Item", toString(requireTypeAtPosition({9, 28})));
 }
 
 TEST_SUITE_END();
