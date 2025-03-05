@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauPropagateExpectedTypesForCalls);
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
