@@ -32,9 +32,10 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauOldSolverCreatesChildScopePointers)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
+
+LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
 
 namespace Luau
 {
@@ -255,6 +256,8 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
     currentModule->names = module.names;
+    if (FFlag::LuauModuleHoldsAstRoot)
+        currentModule->root = module.root;
 
     iceHandler->moduleName = module.name;
     normalizer.arena = &currentModule->internalTypes;
@@ -5212,12 +5215,9 @@ LUAU_NOINLINE void TypeChecker::reportErrorCodeTooComplex(const Location& locati
 ScopePtr TypeChecker::childFunctionScope(const ScopePtr& parent, const Location& location, int subLevel)
 {
     ScopePtr scope = std::make_shared<Scope>(parent, subLevel);
-    if (FFlag::LuauOldSolverCreatesChildScopePointers)
-    {
-        scope->location = location;
-        scope->returnType = parent->returnType;
-        parent->children.emplace_back(scope.get());
-    }
+    scope->location = location;
+    scope->returnType = parent->returnType;
+    parent->children.emplace_back(scope.get());
 
     currentModule->scopes.push_back(std::make_pair(location, scope));
     return scope;
@@ -5229,12 +5229,9 @@ ScopePtr TypeChecker::childScope(const ScopePtr& parent, const Location& locatio
     ScopePtr scope = std::make_shared<Scope>(parent);
     scope->level = parent->level;
     scope->varargPack = parent->varargPack;
-    if (FFlag::LuauOldSolverCreatesChildScopePointers)
-    {
-        scope->location = location;
-        scope->returnType = parent->returnType;
-        parent->children.emplace_back(scope.get());
-    }
+    scope->location = location;
+    scope->returnType = parent->returnType;
+    parent->children.emplace_back(scope.get());
 
     currentModule->scopes.push_back(std::make_pair(location, scope));
     return scope;

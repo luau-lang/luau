@@ -12,6 +12,8 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauGeneralizationRemoveRecursiveUpperBound2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
+LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
+LUAU_FASTFLAG(LuauDoNotLeakNilInRefinement)
 
 using namespace Luau;
 
@@ -2021,14 +2023,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
+    // Function calls are treated as (potentially) `nil`, the same as table
+    // access, for UX.
     CHECK_EQ("nil", toString(requireTypeAtPosition({8, 28})));
-    if (FFlag::LuauSolverV2)
-    {
-        // CLI-115478 - This should be never
-        CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
-    }
-    else
-        CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
+    CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_with_colon_after_refining_not_to_be_nil")
@@ -2524,6 +2522,44 @@ TEST_CASE_FIXTURE(Fixture, "truthy_call_of_function_with_table_value_as_argument
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("Item", toString(requireTypeAtPosition({8, 27})));
     CHECK_EQ("Item", toString(requireTypeAtPosition({9, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_are_not_nillable")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotLeakNilInRefinement, true};
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        local BEFORE_SLASH_PATTERN = "^(.*)[\\/]"
+        function operateOnPath(path: string): string?
+            local fileName = string.gsub(path, BEFORE_SLASH_PATTERN, "")
+            if string.match(fileName, "^init%.") then
+                return "path=" .. fileName
+            end
+            return nil
+        end
+    )"));
+
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1528_method_calls_are_not_nillable")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotLeakNilInRefinement, true};
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        type RunService = {
+            IsRunning: (RunService) -> boolean
+        }
+        type Game = {
+            GetRunService: (Game) -> RunService
+        }
+        local function getServices(g: Game): RunService
+            local service = g:GetRunService()
+            if service:IsRunning() then
+                return service
+            end
+            error("Oh no! The service isn't running!")
+        end
+    )"));
 }
 
 TEST_SUITE_END();

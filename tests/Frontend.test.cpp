@@ -14,10 +14,11 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(DebugLuauFreezeArena);
-LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(DebugLuauFreezeArena)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauSelectivelyRetainDFGArena)
-LUAU_FASTFLAG(LuauBetterReverseDependencyTracking);
+LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
+LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
 
 namespace
 {
@@ -1540,6 +1541,23 @@ TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_allocator")
 
     CHECK_EQ(module->allocator.get(), source->allocator.get());
     CHECK_EQ(module->names.get(), source->names.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_correct_ast_root")
+{
+    ScopedFastFlag sff{FFlag::LuauModuleHoldsAstRoot, true};
+    fileResolver.source["game/workspace/MyScript"] = R"(
+        print("Hello World")
+    )";
+
+    frontend.check("game/workspace/MyScript");
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/workspace/MyScript");
+    SourceModule* source = frontend.getSourceModule("game/workspace/MyScript");
+    CHECK(module);
+    CHECK(source);
+
+    CHECK_EQ(module->root, source->root);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "dfg_data_cleared_on_retain_type_graphs_unset")

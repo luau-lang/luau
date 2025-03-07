@@ -18,6 +18,7 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAGVARIABLE(LuauUnifyMetatableWithAny)
 
 namespace Luau
 {
@@ -235,6 +236,10 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     auto superMetatable = get<MetatableType>(superTy);
     if (subMetatable && superMetatable)
         return unify(subMetatable, superMetatable);
+    else if (FFlag::LuauUnifyMetatableWithAny && subMetatable && superAny)
+        return unify(subMetatable, superAny);
+    else if (FFlag::LuauUnifyMetatableWithAny && subAny && superMetatable)
+        return unify(subAny, superMetatable);
     else if (subMetatable) // if we only have one metatable, unify with the inner table
         return unify(subMetatable->table, superTy);
     else if (superMetatable) // if we only have one metatable, unify with the inner table
@@ -522,6 +527,16 @@ bool Unifier2::unify(const TableType* subTable, const AnyType* superAny)
     }
 
     return true;
+}
+
+bool Unifier2::unify(const MetatableType* subMetatable, const AnyType*)
+{
+    return unify(subMetatable->metatable, builtinTypes->anyType) && unify(subMetatable->table, builtinTypes->anyType);
+}
+
+bool Unifier2::unify(const AnyType*, const MetatableType* superMetatable)
+{
+    return unify(builtinTypes->anyType, superMetatable->metatable) && unify(builtinTypes->anyType, superMetatable->table);
 }
 
 // FIXME?  This should probably return an ErrorVec or an optional<TypeError>

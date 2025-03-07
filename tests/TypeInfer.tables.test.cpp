@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
+#include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
@@ -25,6 +26,7 @@ LUAU_FASTFLAG(LuauAllowNonSharedTableTypesInLiteral)
 LUAU_FASTFLAG(LuauFollowTableFreeze)
 LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
 LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
+LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5181,6 +5183,159 @@ TEST_CASE_FIXTURE(Fixture, "empty_union_container_overflow")
             }
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "inference_in_constructor")
+{
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        local function new(y)
+            local t: { x: number } = { x = y }
+            return t
+        end
+    )"));
+    if (FFlag::LuauSolverV2)
+        CHECK_EQ("(number) -> { x: number }", toString(requireType("new")));
+    else
+        CHECK_EQ("(number) -> {| x: number |}", toString(requireType("new")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_optional_in_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceUpcast, true},
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        local Numbers = { zero = 0 }
+        local function FuncA(): { Value: number? }
+            return { Value = Numbers.zero }
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_mismatched_optional_in_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+    };
+
+    auto result = check(R"(
+        local Numbers = { str = ( "" :: string ) }
+        local function FuncB(): { Value: number? }
+            return {
+                Value = Numbers.str
+            }
+        end
+    )");
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    auto err = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ(toString(err->givenTp), "{ Value: string }");
+    CHECK_EQ(toString(err->wantedTp), "{ Value: number? }");
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_function_in_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceUpcast, true},
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        local t: { (() -> ())? } = {
+            function() end,
+        }
+    )"));
+
+    auto result = check(R"(
+        local t: { ((number) -> ())? } = {
+            function(_: string) end,
+        }
+    )");
+
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ(toString(err->givenType), "{(string) -> ()}");
+    CHECK_EQ(toString(err->wantedType), "{((number) -> ())?}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1596_expression_in_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceUpcast, true},
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        type foo = {abc: number?}
+        local x: foo = {abc = 100}
+        local y: foo = {abc = 10 * 10}
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1615_parametrized_type_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        type Pair<Node> = { sep: {}? }
+        local a: Pair<{}> = {
+            sep = nil,
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1543_optional_generic_param")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+    };
+
+    LUAU_CHECK_NO_ERRORS(check(R"(
+        type foo<T> = { bar: T? }
+
+        local foo: foo<any> = { bar = "foobar" }
+        local foo: foo<any> = { }
+        local foo: foo<nil> = { }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+    };
+
+    auto result = check(R"(
+        type Book = { title: string, author: string }
+        local b: Book = { title = "The Odyssey" }
+        local t: { Book } = {
+            { title = "The Illiad", author = "Homer" },
+            { author = "Virgil" }
+        }
+    )");
+
+    LUAU_CHECK_ERROR_COUNT(2, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ(toString(err->givenType), "{ title: string }");
+    CHECK_EQ(toString(err->wantedType), "Book");
+    CHECK_EQ(result.errors[0].location, Location{{2, 24}, {2, 49}});
+    err = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(err);
+    CHECK_EQ(toString(err->givenType), "{{ author: string } | { author: string, title: string }}");
+    CHECK_EQ(toString(err->wantedType), "{Book}");
+    CHECK_EQ(result.errors[1].location, Location{{3, 28}, {6, 9}});
+
 }
 
 TEST_SUITE_END();
