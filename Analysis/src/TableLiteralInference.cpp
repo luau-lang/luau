@@ -1,8 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/TableLiteralInference.h"
+
 #include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/Normalize.h"
 #include "Luau/Simplify.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeArena.h"
@@ -11,6 +15,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauDontInPlaceMutateTableType)
 LUAU_FASTFLAGVARIABLE(LuauAllowNonSharedTableTypesInLiteral)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceUpcast)
 
 namespace Luau
 {
@@ -112,6 +117,7 @@ TypeId matchLiteralType(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena,
     NotNull<Unifier2> unifier,
+    NotNull<Subtyping> subtyping,
     TypeId expectedType,
     TypeId exprType,
     const AstExpr* expr,
@@ -133,7 +139,17 @@ TypeId matchLiteralType(
      * by the expected type.
      */
     if (!isLiteral(expr))
-        return exprType;
+    {
+        if (FFlag::LuauBidirectionalInferenceUpcast)
+        {
+            auto result = subtyping->isSubtype(/*subTy=*/exprType, /*superTy=*/expectedType, unifier->scope);
+            return result.isSubtype
+                ? expectedType
+                : exprType;
+        }
+        else
+            return exprType;
+    }
 
     expectedType = follow(expectedType);
     exprType = follow(exprType);
@@ -210,7 +226,16 @@ TypeId matchLiteralType(
         return exprType;
     }
 
-    // TODO: lambdas
+
+    if (FFlag::LuauBidirectionalInferenceUpcast && expr->is<AstExprFunction>())
+    {
+        // TODO: Push argument / return types into the lambda. For now, just do 
+        // the non-literal thing: check for a subtype and upcast if valid.
+        auto result = subtyping->isSubtype(/*subTy=*/exprType, /*superTy=*/expectedType, unifier->scope);
+        return result.isSubtype 
+            ? expectedType
+            : exprType;
+    }
 
     if (auto exprTable = expr->as<AstExprTable>())
     {
@@ -229,7 +254,7 @@ TypeId matchLiteralType(
 
                 if (tt)
                 {
-                    TypeId res = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *tt, exprType, expr, toBlock);
+                    TypeId res = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *tt, exprType, expr, toBlock);
 
                     parts.push_back(res);
                     return arena->addType(UnionType{std::move(parts)});
@@ -285,6 +310,7 @@ TypeId matchLiteralType(
                             builtinTypes,
                             arena,
                             unifier,
+                            subtyping,
                             expectedTableTy->indexer->indexResultType,
                             propTy,
                             item.value,
@@ -300,6 +326,7 @@ TypeId matchLiteralType(
                             keysToDelete.insert(item.key->as<AstExprConstantString>());
                         else
                             tableTy->props.erase(keyStr);
+
                     }
 
                     // If it's just an extra property and the expected type
@@ -323,21 +350,21 @@ TypeId matchLiteralType(
                 if (expectedProp.isShared())
                 {
                     matchedType =
-                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedReadTy, propTy, item.value, toBlock);
+                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedReadTy, propTy, item.value, toBlock);
                     prop.readTy = matchedType;
                     prop.writeTy = matchedType;
                 }
                 else if (expectedReadTy)
                 {
                     matchedType =
-                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedReadTy, propTy, item.value, toBlock);
+                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedReadTy, propTy, item.value, toBlock);
                     prop.readTy = matchedType;
                     prop.writeTy.reset();
                 }
                 else if (expectedWriteTy)
                 {
                     matchedType =
-                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedWriteTy, propTy, item.value, toBlock);
+                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedWriteTy, propTy, item.value, toBlock);
                     prop.readTy.reset();
                     prop.writeTy = matchedType;
                 }
@@ -371,6 +398,7 @@ TypeId matchLiteralType(
                         builtinTypes,
                         arena,
                         unifier,
+                        subtyping,
                         expectedTableTy->indexer->indexResultType,
                         *propTy,
                         item.value,

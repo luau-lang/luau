@@ -23,6 +23,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
@@ -1342,6 +1343,15 @@ static AutocompleteContext autocompleteExpression(
     LUAU_ASSERT(!ancestry.empty());
 
     AstNode* node = ancestry.rbegin()[0];
+
+    if (FFlag::DebugLuauMagicVariableNames)
+    {
+        InternalErrorReporter ice;
+        if (auto local = node->as<AstExprLocal>(); local && local->local->name == "_luau_autocomplete_ice")
+            ice.ice("_luau_autocomplete_ice encountered", local->location);
+        if (auto global = node->as<AstExprGlobal>(); global && global->name == "_luau_autocomplete_ice")
+            ice.ice("_luau_autocomplete_ice encountered", global->location);
+    }
 
     if (node->is<AstExprIndexName>())
     {

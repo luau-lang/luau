@@ -20,6 +20,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeNegationFix)
 LUAU_FASTFLAGVARIABLE(LuauFixInfiniteRecursionInNormalization)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizedIntersectionOfNegatedClass)
 
@@ -3305,7 +3306,12 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             return NormalizationResult::True;
         }
         else if (auto nt = get<NegationType>(t))
+        {
+            if (FFlag::LuauNormalizeNegationFix)
+                here.tyvars = std::move(tyvars);
+
             return intersectNormalWithTy(here, nt->ty, seenTablePropPairs, seenSetTypes);
+        }
         else
         {
             // TODO negated unions, intersections, table, and function.

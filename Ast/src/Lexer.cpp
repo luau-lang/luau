@@ -8,7 +8,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LexerResumesFromPosition2)
 LUAU_FASTFLAGVARIABLE(LexerFixInterpStringStart)
 
 namespace Luau
@@ -342,12 +341,9 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names, Positio
     : buffer(buffer)
     , bufferSize(bufferSize)
     , offset(0)
-    , line(FFlag::LexerResumesFromPosition2 ? startPosition.line : 0)
-    , lineOffset(FFlag::LexerResumesFromPosition2 ? 0u - startPosition.column : 0)
-    , lexeme(
-          (FFlag::LexerResumesFromPosition2 ? Location(Position(startPosition.line, startPosition.column), 0) : Location(Position(0, 0), 0)),
-          Lexeme::Eof
-      )
+    , line(startPosition.line)
+    , lineOffset(0u - startPosition.column)
+    , lexeme((Location(Position(startPosition.line, startPosition.column), 0)), Lexeme::Eof)
     , names(names)
     , skipComments(false)
     , readNames(true)

@@ -57,7 +57,8 @@ struct FragmentAutocompleteResult
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* root, const Position& cursorPos);
 
 std::optional<FragmentParseResult> parseFragment(
-    const SourceModule& srcModule,
+    AstStatBlock* root,
+    AstNameTable* names,
     std::string_view src,
     const Position& cursorPos,
     std::optional<Position> fragmentEndPosition
@@ -98,7 +99,7 @@ struct FragmentAutocompleteStatusResult
 struct FragmentContext
 {
     std::string_view newSrc;
-    const ParseResult& newAstRoot;
+    const ParseResult& freshParse;
     std::optional<FrontendOptions> opts;
     std::optional<Position> DEPRECATED_fragmentEndPosition;
 };

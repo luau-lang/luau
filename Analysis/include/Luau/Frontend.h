@@ -32,6 +32,7 @@ struct ModuleResolver;
 struct ParseResult;
 struct HotComment;
 struct BuildQueueItem;
+struct BuildQueueWorkState;
 struct FrontendCancellationToken;
 struct AnyTypeSummary;
 
@@ -216,6 +217,11 @@ struct Frontend
         std::function<void(std::function<void()> task)> executeTask = {},
         std::function<bool(size_t done, size_t total)> progress = {}
     );
+    std::vector<ModuleName> checkQueuedModules_DEPRECATED(
+        std::optional<FrontendOptions> optionOverride = {},
+        std::function<void(std::function<void()> task)> executeTask = {},
+        std::function<bool(size_t done, size_t total)> progress = {}
+    );
 
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
     std::vector<ModuleName> getRequiredScripts(const ModuleName& name);
@@ -251,6 +257,9 @@ private:
     void checkBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);
+    void performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos);
+    void sendQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos);
+    void sendQueueCycleItemTask(std::shared_ptr<BuildQueueWorkState> state);
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 

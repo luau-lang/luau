@@ -635,6 +635,7 @@ struct TypeSearcher : TypeVisitor
     TypeId needle;
     Polarity current = Polarity::Positive;
 
+    size_t count = 0;
     Polarity result = Polarity::None;
 
     explicit TypeSearcher(TypeId needle)
@@ -649,7 +650,10 @@ struct TypeSearcher : TypeVisitor
     bool visit(TypeId ty) override
     {
         if (ty == needle)
-            result = Polarity(int(result) | int(current));
+        {
+            ++count;
+            result = Polarity(size_t(result) | size_t(current));
+        }
 
         return true;
     }
@@ -749,7 +753,7 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
 
             case TypeSearcher::Polarity::Negative:
             case TypeSearcher::Polarity::Mixed:
-                if (get<UnknownType>(upperBound))
+                if (get<UnknownType>(upperBound) && ts.count > 1)
                 {
                     asMutable(ty)->reassign(Type{GenericType{tyScope}});
                     function->generics.emplace_back(ty);
@@ -759,7 +763,7 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
                 break;
 
             case TypeSearcher::Polarity::Positive:
-            if (get<UnknownType>(lowerBound))
+            if (get<UnknownType>(lowerBound) && ts.count > 1)
             {
                 asMutable(ty)->reassign(Type{GenericType{tyScope}});
                 function->generics.emplace_back(ty);
@@ -1370,9 +1374,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     TypePackId argsPack = follow(c.argsPack);
     TypePackId result = follow(c.result);
 
-    if (isBlocked(fn) || hasUnresolvedConstraints(fn))
+    if (FFlag::DebugLuauGreedyGeneralization)
     {
-        return block(c.fn, constraint);
+        if (isBlocked(fn))
+            return block(c.fn, constraint);
+    }
+    else
+    {
+        if (isBlocked(fn) || hasUnresolvedConstraints(fn))
+        {
+            return block(c.fn, constraint);
+        }
     }
 
     if (get<AnyType>(fn))
@@ -1658,8 +1670,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
         else if (expr->is<AstExprTable>())
         {
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+            Subtyping sp{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
             std::vector<TypeId> toBlock;
-            (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, expectedArgTy, actualArgTy, expr, toBlock);
+            (void)matchLiteralType(
+                c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&sp}, expectedArgTy, actualArgTy, expr, toBlock
+            );
             LUAU_ASSERT(toBlock.empty());
         }
     }
@@ -1683,8 +1698,9 @@ bool ConstraintSolver::tryDispatch(const TableCheckConstraint& c, NotNull<const 
         return false;
 
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+    Subtyping sp{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
     std::vector<TypeId> toBlock;
-    (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, c.expectedType, c.exprType, c.table, toBlock);
+    (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&sp}, c.expectedType, c.exprType, c.table, toBlock);
     LUAU_ASSERT(toBlock.empty());
     return true;
 }
