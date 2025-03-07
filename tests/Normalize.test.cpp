@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauFixNormalizedIntersectionOfNegatedClass)
+LUAU_FASTFLAG(LuauNormalizeNegationFix)
 using namespace Luau;
 
 namespace
@@ -1027,6 +1028,26 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
 
     TypeId ty = normalizer.typeFromNormal(*norm);
     CHECK("{ x: number }" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true}, // Only because it affects the stringification of free types
+        {FFlag::LuauNormalizeNegationFix, true},
+    };
+
+    TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
+    TypeId notTruthy = arena.addType(NegationType{builtinTypes->truthyType}); // ~~(false?)
+
+    TypeId intersectionTy = arena.addType(IntersectionType{{freeTy, notTruthy}}); // 'a & ~~(false?)
+
+    auto norm = normalizer.normalize(intersectionTy);
+    REQUIRE(norm);
+
+    TypeId result = normalizer.typeFromNormal(*norm);
+
+    CHECK("'a & (false?)" == toString(result));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")

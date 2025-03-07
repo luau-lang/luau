@@ -47,10 +47,12 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
 
+LUAU_FASTFLAGVARIABLE(LuauModuleHoldsAstRoot)
+
 LUAU_FASTFLAGVARIABLE(LuauBetterReverseDependencyTracking)
+LUAU_FASTFLAGVARIABLE(LuauFixMultithreadTypecheck)
 
 LUAU_FASTFLAG(StudioReportLuauAny2)
-LUAU_FASTFLAGVARIABLE(LuauStoreSolverTypeOnModule)
 
 LUAU_FASTFLAGVARIABLE(LuauSelectivelyRetainDFGArena)
 
@@ -80,6 +82,20 @@ struct BuildQueueItem
     std::exception_ptr exception;
     ModulePtr module;
     Frontend::Stats stats;
+};
+
+struct BuildQueueWorkState
+{
+    std::function<void(std::function<void()> task)> executeTask;
+
+    std::vector<BuildQueueItem> buildQueueItems;
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<size_t> readyQueueItems;
+
+    size_t processing = 0;
+    size_t remaining = 0;
 };
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments)
@@ -481,6 +497,203 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     std::function<bool(size_t done, size_t total)> progress
 )
 {
+    if (!FFlag::LuauFixMultithreadTypecheck)
+    {
+        return checkQueuedModules_DEPRECATED(optionOverride, executeTask, progress);
+    }
+
+    FrontendOptions frontendOptions = optionOverride.value_or(options);
+    if (FFlag::LuauSolverV2)
+        frontendOptions.forAutocomplete = false;
+
+    // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
+    std::vector<ModuleName> currModuleQueue;
+    std::swap(currModuleQueue, moduleQueue);
+
+    DenseHashSet<Luau::ModuleName> seen{{}};
+
+    std::shared_ptr<BuildQueueWorkState> state = std::make_shared<BuildQueueWorkState>();
+
+    for (const ModuleName& name : currModuleQueue)
+    {
+        if (seen.contains(name))
+            continue;
+
+        if (!isDirty(name, frontendOptions.forAutocomplete))
+        {
+            seen.insert(name);
+            continue;
+        }
+
+        std::vector<ModuleName> queue;
+        bool cycleDetected = parseGraph(
+            queue,
+            name,
+            frontendOptions.forAutocomplete,
+            [&seen](const ModuleName& name)
+            {
+                return seen.contains(name);
+            }
+        );
+
+        addBuildQueueItems(state->buildQueueItems, queue, cycleDetected, seen, frontendOptions);
+    }
+
+    if (state->buildQueueItems.empty())
+        return {};
+
+    // We need a mapping from modules to build queue slots
+    std::unordered_map<ModuleName, size_t> moduleNameToQueue;
+
+    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
+    {
+        BuildQueueItem& item = state->buildQueueItems[i];
+        moduleNameToQueue[item.name] = i;
+    }
+
+    // Default task execution is single-threaded and immediate
+    if (!executeTask)
+    {
+        executeTask = [](std::function<void()> task)
+        {
+            task();
+        };
+    }
+
+    state->executeTask = executeTask;
+    state->remaining = state->buildQueueItems.size();
+
+    // Record dependencies between modules
+    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
+    {
+        BuildQueueItem& item = state->buildQueueItems[i];
+
+        for (const ModuleName& dep : item.sourceNode->requireSet)
+        {
+            if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
+            {
+                if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
+                {
+                    item.dirtyDependencies++;
+
+                    state->buildQueueItems[moduleNameToQueue[dep]].reverseDeps.push_back(i);
+                }
+            }
+        }
+    }
+
+    // In the first pass, check all modules with no pending dependencies
+    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
+    {
+        if (state->buildQueueItems[i].dirtyDependencies == 0)
+            sendQueueItemTask(state, i);
+    }
+
+    // If not a single item was found, a cycle in the graph was hit
+    if (state->processing == 0)
+        sendQueueCycleItemTask(state);
+
+    std::vector<size_t> nextItems;
+    std::optional<size_t> itemWithException;
+    bool cancelled = false;
+
+    while (state->remaining != 0)
+    {
+        {
+            std::unique_lock guard(state->mtx);
+
+            // If nothing is ready yet, wait
+            state->cv.wait(
+                guard,
+                [state]
+                {
+                    return !state->readyQueueItems.empty();
+                }
+            );
+
+            // Handle checked items
+            for (size_t i : state->readyQueueItems)
+            {
+                const BuildQueueItem& item = state->buildQueueItems[i];
+
+                // If exception was thrown, stop adding new items and wait for processing items to complete
+                if (item.exception)
+                    itemWithException = i;
+
+                if (item.module && item.module->cancelled)
+                    cancelled = true;
+
+                if (itemWithException || cancelled)
+                    break;
+
+                recordItemResult(item);
+
+                // Notify items that were waiting for this dependency
+                for (size_t reverseDep : item.reverseDeps)
+                {
+                    BuildQueueItem& reverseDepItem = state->buildQueueItems[reverseDep];
+
+                    LUAU_ASSERT(reverseDepItem.dirtyDependencies != 0);
+                    reverseDepItem.dirtyDependencies--;
+
+                    // In case of a module cycle earlier, check if unlocked an item that was already processed
+                    if (!reverseDepItem.processing && reverseDepItem.dirtyDependencies == 0)
+                        nextItems.push_back(reverseDep);
+                }
+            }
+
+            LUAU_ASSERT(state->processing >= state->readyQueueItems.size());
+            state->processing -= state->readyQueueItems.size();
+
+            LUAU_ASSERT(state->remaining >= state->readyQueueItems.size());
+            state->remaining -= state->readyQueueItems.size();
+            state->readyQueueItems.clear();
+        }
+
+        if (progress)
+        {
+            if (!progress(state->buildQueueItems.size() - state->remaining, state->buildQueueItems.size()))
+                cancelled = true;
+        }
+
+        // Items cannot be submitted while holding the lock
+        for (size_t i : nextItems)
+            sendQueueItemTask(state, i);
+        nextItems.clear();
+
+        if (state->processing == 0)
+        {
+            // Typechecking might have been cancelled by user, don't return partial results
+            if (cancelled)
+                return {};
+
+            // We might have stopped because of a pending exception
+            if (itemWithException)
+                recordItemResult(state->buildQueueItems[*itemWithException]);
+        }
+
+        // If we aren't done, but don't have anything processing, we hit a cycle
+        if (state->remaining != 0 && state->processing == 0)
+            sendQueueCycleItemTask(state);
+    }
+
+    std::vector<ModuleName> checkedModules;
+    checkedModules.reserve(state->buildQueueItems.size());
+
+    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
+        checkedModules.push_back(std::move(state->buildQueueItems[i].name));
+
+    return checkedModules;
+}
+
+std::vector<ModuleName> Frontend::checkQueuedModules_DEPRECATED(
+    std::optional<FrontendOptions> optionOverride,
+    std::function<void(std::function<void()> task)> executeTask,
+    std::function<bool(size_t done, size_t total)> progress
+)
+{
+    LUAU_ASSERT(!FFlag::LuauFixMultithreadTypecheck);
+
     FrontendOptions frontendOptions = optionOverride.value_or(options);
     if (FFlag::LuauSolverV2)
         frontendOptions.forAutocomplete = false;
@@ -1170,6 +1383,58 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
     stats.filesNonstrict += item.stats.filesNonstrict;
 }
 
+void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
+{
+    BuildQueueItem& item = state->buildQueueItems[itemPos];
+
+    try
+    {
+        checkBuildQueueItem(item);
+    }
+    catch (...)
+    {
+        item.exception = std::current_exception();
+    }
+
+    {
+        std::unique_lock guard(state->mtx);
+        state->readyQueueItems.push_back(itemPos);
+    }
+
+    state->cv.notify_one();
+}
+
+void Frontend::sendQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
+{
+    BuildQueueItem& item = state->buildQueueItems[itemPos];
+
+    LUAU_ASSERT(!item.processing);
+    item.processing = true;
+
+    state->processing++;
+
+    state->executeTask(
+        [this, state, itemPos]()
+        {
+            performQueueItemTask(state, itemPos);
+        }
+    );
+}
+
+void Frontend::sendQueueCycleItemTask(std::shared_ptr<BuildQueueWorkState> state)
+{
+    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
+    {
+        BuildQueueItem& item = state->buildQueueItems[i];
+
+        if (!item.processing)
+        {
+            sendQueueItemTask(state, i);
+            break;
+        }
+    }
+}
+
 ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete) const
 {
     ScopePtr result;
@@ -1422,8 +1687,7 @@ ModulePtr check(
     LUAU_TIMETRACE_ARGUMENT("name", sourceModule.humanReadableName.c_str());
 
     ModulePtr result = std::make_shared<Module>();
-    if (FFlag::LuauStoreSolverTypeOnModule)
-        result->checkedInNewSolver = true;
+    result->checkedInNewSolver = true;
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;
     result->mode = mode;
@@ -1431,6 +1695,8 @@ ModulePtr check(
     result->interfaceTypes.owningModule = result.get();
     result->allocator = sourceModule.allocator;
     result->names = sourceModule.names;
+    if (FFlag::LuauModuleHoldsAstRoot)
+        result->root = sourceModule.root;
 
     iceHandler->moduleName = sourceModule.name;
 

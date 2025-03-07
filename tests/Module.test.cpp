@@ -14,7 +14,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTINT(LuauTypeCloneIterationLimit);
-LUAU_FASTFLAG(LuauOldSolverCreatesChildScopePointers)
 TEST_SUITE_BEGIN("ModuleTests");
 
 TEST_CASE_FIXTURE(Fixture, "is_within_comment")
@@ -542,7 +541,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_typepack_to_a_persistent_typep
 
 TEST_CASE_FIXTURE(Fixture, "old_solver_correctly_populates_child_scopes")
 {
-    ScopedFastFlag sff{FFlag::LuauOldSolverCreatesChildScopePointers, true};
     check(R"(
 --!strict
 if true then

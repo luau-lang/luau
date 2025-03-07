@@ -26,6 +26,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAstTypeGroup2)
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAG(LuauInferLocalTypesInMultipleAssignments)
+LUAU_FASTFLAG(LuauUnifyMetatableWithAny)
 
 using namespace Luau;
 
@@ -1806,6 +1807,57 @@ TEST_CASE_FIXTURE(Fixture, "multiple_assignment")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_works_with_any")
+{
+    ScopedFastFlag _{FFlag::LuauUnifyMetatableWithAny, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        return {
+            new = function(name: string)
+                local self = newproxy(true) :: any
+
+                getmetatable(self).__tostring = function()
+                    return "Hello, I am " .. name
+                end
+
+                return self
+            end,
+        }
+    )"));
+
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_ret")
+{
+    ScopedFastFlag _{FFlag::LuauUnifyMetatableWithAny, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function spooky(x: any)
+            return getmetatable(x)
+        end
+    )"));
+
+    CHECK_EQ("(any) -> any", toString(requireType("spooky")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_param")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauUnifyMetatableWithAny, true},
+    };
+
+    auto result = check(R"(
+        local function check(x): any
+            return getmetatable(x)
+        end
+    )");
+
+    // CLI-144695: We're leaking the `MT` generic here, this happens regardless
+    // of if `LuauUnifyMetatableWithAny` is set.
+    CHECK_EQ("({ @metatable MT, {+  +} }) -> any", toString(requireType("check")));
 }
 
 TEST_SUITE_END();
