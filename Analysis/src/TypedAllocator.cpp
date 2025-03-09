@@ -26,6 +26,8 @@ const size_t kPageSize = sysconf(_SC_PAGESIZE);
 
 #include <stdlib.h>
 
+#include <cstdint>
+
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
 namespace Luau
