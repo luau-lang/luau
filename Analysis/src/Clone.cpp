@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Clone.h"
 
+#include "Luau/Common.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
@@ -12,6 +13,8 @@ LUAU_FASTFLAG(LuauFreezeIgnorePersistent)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
+LUAU_FASTFLAGVARIABLE(LuauClonedTableAndFunctionTypesMustHaveScopes)
+LUAU_FASTFLAGVARIABLE(LuauDoNotClonePersistentBindings)
 
 namespace Luau
 {
@@ -477,7 +480,7 @@ private:
 
 class FragmentAutocompleteTypeCloner final : public TypeCloner
 {
-    Scope* freeTypeReplacementScope = nullptr;
+    Scope* replacementForNullScope = nullptr;
 
 public:
     FragmentAutocompleteTypeCloner(
@@ -487,12 +490,12 @@ public:
         NotNull<SeenTypePacks> packs,
         TypeId forceTy,
         TypePackId forceTp,
-        Scope* freeTypeReplacementScope
+        Scope* replacementForNullScope
     )
         : TypeCloner(arena, builtinTypes, types, packs, forceTy, forceTp)
-        , freeTypeReplacementScope(freeTypeReplacementScope)
+        , replacementForNullScope(replacementForNullScope)
     {
-        LUAU_ASSERT(freeTypeReplacementScope);
+        LUAU_ASSERT(replacementForNullScope);
     }
 
     TypeId shallowClone(TypeId ty) override
@@ -512,12 +515,18 @@ public:
             generic->scope = nullptr;
         else if (auto free = getMutable<FreeType>(target))
         {
-            free->scope = freeTypeReplacementScope;
+            free->scope = replacementForNullScope;
+        }
+        else if (auto tt = getMutable<TableType>(target))
+        {
+            if (FFlag::LuauClonedTableAndFunctionTypesMustHaveScopes)
+                tt->scope = replacementForNullScope;
         }
         else if (auto fn = getMutable<FunctionType>(target))
-            fn->scope = nullptr;
-        else if (auto table = getMutable<TableType>(target))
-            table->scope = nullptr;
+        {
+            if (FFlag::LuauClonedTableAndFunctionTypesMustHaveScopes)
+                fn->scope = replacementForNullScope;
+        }
 
         (*types)[ty] = target;
         queue.emplace_back(target);
@@ -538,7 +547,7 @@ public:
         if (auto generic = getMutable<GenericTypePack>(target))
             generic->scope = nullptr;
         else if (auto free = getMutable<FreeTypePack>(target))
-            free->scope = freeTypeReplacementScope;
+            free->scope = replacementForNullScope;
 
         (*packs)[tp] = target;
         queue.emplace_back(target);
@@ -728,7 +737,7 @@ Binding cloneIncremental(const Binding& binding, TypeArena& dest, CloneState& cl
     b.deprecatedSuggestion = binding.deprecatedSuggestion;
     b.documentationSymbol = binding.documentationSymbol;
     b.location = binding.location;
-    b.typeId = cloner.clone(binding.typeId);
+    b.typeId = FFlag::LuauDoNotClonePersistentBindings && binding.typeId->persistent ? binding.typeId : cloner.clone(binding.typeId);
 
     return b;
 }

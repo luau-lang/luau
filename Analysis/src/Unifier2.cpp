@@ -19,6 +19,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(LuauUnifyMetatableWithAny)
+LUAU_FASTFLAG(LuauExtraFollows)
 
 namespace Luau
 {
@@ -282,7 +283,7 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     if (superArgTail)
         return doDefault();
 
-    const IntersectionType* upperBoundIntersection = get<IntersectionType>(subFree->upperBound);
+    const IntersectionType* upperBoundIntersection = get<IntersectionType>(FFlag::LuauExtraFollows ? upperBound : subFree->upperBound);
     if (!upperBoundIntersection)
         return doDefault();
 

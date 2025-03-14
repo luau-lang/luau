@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauPreventReentrantTypeFunctionReduction)
+LUAU_FASTFLAG(LuauDontForgetToReduceUnionFunc)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -555,6 +556,38 @@ TEST_CASE_FIXTURE(Fixture, "recursive_redefinition_reduces_rightfully")
 
         t = t
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontForgetToReduceUnionFunc, true}
+    };
+
+    CheckResult result = check(R"(
+        local function middle(a: number, b: number): number
+            return math.ceil((a + b) / 2 - 0.5)
+        end
+
+        local function find<T>(array: {T}, item: T): number?
+            local l, m, r = 1, middle(1, #array), #array
+            while l <= r do
+                if item <= array[m] then
+                    if item == array[m] then return m end
+                    m, r = middle(l, m-1), m-1
+                else
+                    l, m = middle(m+1, r), m+1
+                end
+            end
+        return nil
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    // There are three errors in the above snippet, but they should all be where
+    // clause needed errors.
+    for (const auto& e: result.errors)
+        CHECK(get<WhereClauseNeeded>(e));
 }
 
 TEST_CASE_FIXTURE(Fixture, "vector3_overflow")

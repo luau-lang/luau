@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Autocomplete.h"
+#include "Luau/AutocompleteTypes.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
@@ -16,6 +17,8 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+
+LUAU_FASTFLAG(LuauExposeRequireByStringAutocomplete)
 
 using namespace Luau;
 
@@ -3750,6 +3753,73 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
     );
 
     CHECK(isCorrect);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_by_string")
+{
+    ScopedFastFlag sff{FFlag::LuauExposeRequireByStringAutocomplete, true};
+
+    fileResolver.source["MainModule"] = R"(
+        local info = "MainModule serves as the root directory"
+    )";
+
+    fileResolver.source["MainModule/Folder"] = R"(
+        local info = "MainModule/Folder serves as a subdirectory"
+    )";
+
+    fileResolver.source["MainModule/Folder/Requirer"] = R"(
+        local res0 = require("@")
+
+        local res1 = require(".")
+        local res2 = require("./")
+        local res3 = require("./Sib")
+
+        local res4 = require("..")
+        local res5 = require("../")
+        local res6 = require("../Sib")
+    )";
+
+    fileResolver.source["MainModule/Folder/SiblingDependency"] = R"(
+        return {"result"}
+    )";
+
+    fileResolver.source["MainModule/ParentDependency"] = R"(
+        return {"result"}
+    )";
+
+    struct RequireCompletion
+    {
+        std::string label;
+        std::string insertText;
+    };
+
+    auto checkEntries = [](const AutocompleteEntryMap& entryMap, const std::vector<RequireCompletion>& completions)
+    {
+        CHECK(completions.size() == entryMap.size());
+        for (const auto& completion : completions)
+        {
+            CHECK(entryMap.count(completion.label));
+            CHECK(entryMap.at(completion.label).insertText == completion.insertText);
+        }
+    };
+
+    AutocompleteResult acResult;
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{1, 31});
+    checkEntries(acResult.entryMap, {{"@defaultalias", "@defaultalias"}, {"./", "./"}, {"../", "../"}});
+
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{3, 31});
+    checkEntries(acResult.entryMap, {{"@defaultalias", "@defaultalias"}, {"./", "./"}, {"../", "../"}});
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{4, 32});
+    checkEntries(acResult.entryMap, {{"..", "."}, {"Requirer", "./Requirer"}, {"SiblingDependency", "./SiblingDependency"}});
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{5, 35});
+    checkEntries(acResult.entryMap, {{"..", "."}, {"Requirer", "./Requirer"}, {"SiblingDependency", "./SiblingDependency"}});
+
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{7, 32});
+    checkEntries(acResult.entryMap, {{"@defaultalias", "@defaultalias"}, {"./", "./"}, {"../", "../"}});
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{8, 33});
+    checkEntries(acResult.entryMap, {{"..", "../.."}, {"Folder", "../Folder"}, {"ParentDependency", "../ParentDependency"}});
+    acResult = autocomplete("MainModule/Folder/Requirer", Position{9, 36});
+    checkEntries(acResult.entryMap, {{"..", "../.."}, {"Folder", "../Folder"}, {"ParentDependency", "../ParentDependency"}});
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.5))

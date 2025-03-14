@@ -37,10 +37,45 @@ namespace Luau
 
 struct TypeChecker;
 
+struct TestRequireNode : RequireNode
+{
+    TestRequireNode(ModuleName moduleName, std::unordered_map<ModuleName, std::string>* allSources)
+        : moduleName(std::move(moduleName))
+        , allSources(allSources)
+    {
+    }
+
+    std::string getLabel() const override;
+    std::string getPathComponent() const override;
+    std::unique_ptr<RequireNode> resolvePathToNode(const std::string& path) const override;
+    std::vector<std::unique_ptr<RequireNode>> getChildren() const override;
+    std::vector<RequireAlias> getAvailableAliases() const override;
+
+    ModuleName moduleName;
+    std::unordered_map<ModuleName, std::string>* allSources;
+};
+
+struct TestFileResolver;
+struct TestRequireSuggester : RequireSuggester
+{
+    TestRequireSuggester(TestFileResolver* resolver)
+        : resolver(resolver)
+    {
+    }
+
+    std::unique_ptr<RequireNode> getNode(const ModuleName& name) const override;
+    TestFileResolver* resolver;
+};
+
 struct TestFileResolver
     : FileResolver
     , ModuleResolver
 {
+    TestFileResolver()
+        : FileResolver(std::make_shared<TestRequireSuggester>(this))
+    {
+    }
+
     std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
 
     const ModulePtr getModule(const ModuleName& moduleName) const override;

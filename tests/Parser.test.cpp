@@ -18,11 +18,10 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
-LUAU_FASTFLAG(LuauErrorRecoveryForClassNames)
 LUAU_FASTFLAG(LuauFixFunctionNameStartPosition)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
-LUAU_FASTFLAG(LuauAstTypeGroup2)
+LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 
 namespace
@@ -372,7 +371,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_is_an_intersection_type_if_led_with_one_
 
     AstTypeIntersection* returnAnnotation = annotation->returnTypes.types.data[0]->as<AstTypeIntersection>();
     REQUIRE(returnAnnotation != nullptr);
-    if (FFlag::LuauAstTypeGroup2)
+    if (FFlag::LuauAstTypeGroup3)
         CHECK(returnAnnotation->types.data[0]->as<AstTypeGroup>());
     else
         CHECK(returnAnnotation->types.data[0]->as<AstTypeReference>());
@@ -2127,8 +2126,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
 
 TEST_CASE_FIXTURE(Fixture, "missing_declaration_prop")
 {
-    ScopedFastFlag luauErrorRecoveryForClassNames{FFlag::LuauErrorRecoveryForClassNames, true};
-
     matchParseError(
         R"(
         declare class Foo
@@ -2451,7 +2448,7 @@ TEST_CASE_FIXTURE(Fixture, "leading_union_intersection_with_single_type_preserve
 
 TEST_CASE_FIXTURE(Fixture, "parse_simple_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup2, true};
+    ScopedFastFlag _{FFlag::LuauAstTypeGroup3, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = (string)
@@ -2469,7 +2466,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_simple_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup2, true};
+    ScopedFastFlag _{FFlag::LuauAstTypeGroup3, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = ((string))
@@ -2490,7 +2487,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup2, true};
+    ScopedFastFlag _{FFlag::LuauAstTypeGroup3, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = () -> (string)
@@ -3813,7 +3810,7 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     auto unionTy = paramTy.type->as<AstTypeUnion>();
     LUAU_ASSERT(unionTy);
     CHECK_EQ(unionTy->types.size, 2);
-    if (FFlag::LuauAstTypeGroup2)
+    if (FFlag::LuauAstTypeGroup3)
     {
         auto groupTy = unionTy->types.data[0]->as<AstTypeGroup>(); // (() -> ())
         REQUIRE(groupTy);
@@ -3924,6 +3921,17 @@ TEST_CASE_FIXTURE(Fixture, "stat_end_includes_semicolon_position")
     LUAU_ASSERT(stat3);
     CHECK(stat3->hasSemicolon);
     CHECK_EQ(Position{3, 22}, stat3->location.end);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_type_suffix_for_return_type_with_variadic")
+{
+    ParseResult result = tryParse(R"(
+        function foo(): (string, ...number) | boolean
+        end
+    )");
+
+    // TODO(CLI-140667): this should produce a ParseError in future when we fix the invalid syntax
+    CHECK(result.errors.size() == 0);
 }
 
 

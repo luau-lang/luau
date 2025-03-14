@@ -1470,7 +1470,16 @@ lua_Destructor lua_getuserdatadtor(lua_State* L, int tag)
     return L->global->udatagc[tag];
 }
 
-void lua_setuserdatametatable(lua_State* L, int tag, int idx)
+void lua_setuserdatametatable(lua_State* L, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    api_check(L, !L->global->udatamt[tag]); // reassignment not supported
+    api_check(L, ttistable(L->top - 1));
+    L->global->udatamt[tag] = hvalue(L->top - 1);
+    L->top--;
+}
+
+void lua_setuserdatametatable_DEPRECATED(lua_State* L, int tag, int idx)
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     api_check(L, !L->global->udatamt[tag]); // reassignment not supported

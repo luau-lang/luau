@@ -20,7 +20,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(StudioReportLuauAny2)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauStoreCSTData)
-LUAU_FASTFLAG(LuauAstTypeGroup2)
+LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
 
@@ -76,7 +76,7 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
 
     LUAU_ASSERT(module->ats.typeInfo.size() == 1);
     LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
-    if (FFlag::LuauStoreCSTData && FFlag::LuauAstTypeGroup2)
+    if (FFlag::LuauStoreCSTData && FFlag::LuauAstTypeGroup3)
     {
         LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0& (<t0...>( true | any)->(''))");
     }
@@ -84,7 +84,7 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
     {
         LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0 &(<t0...>( true | any)->(''))");
     }
-    else if (FFlag::LuauAstTypeGroup2)
+    else if (FFlag::LuauAstTypeGroup3)
     {
         LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0& (<t0 ...>(true | any)->(''))");
     }
