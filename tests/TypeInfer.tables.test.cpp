@@ -27,6 +27,9 @@ LUAU_FASTFLAG(LuauFollowTableFreeze)
 LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
 LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
+LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauSearchForRefineableType)
+LUAU_FASTFLAG(LuauDoNotGeneralizeInTypeFunctions)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5337,5 +5340,32 @@ TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
     CHECK_EQ(result.errors[1].location, Location{{3, 28}, {6, 9}});
 
 }
+
+TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDoNotGeneralizeInTypeFunctions, true},
+        {FFlag::LuauSearchForRefineableType, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+    // NOTE: This probably should be revisited after CLI-143852: we end up
+    // cyclic types with *tons* of overlap.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(part, flag, params)
+            local humanoid = part.Parent:FindFirstChild("Humanoid") or part.Parent.Parent:FindFirstChild("Humanoid")
+            if humanoid.Parent:GetAttribute("Blocking") then
+                if flag then
+                    params.Found = { humanoid }
+                else
+                    humanoid:Think(1)
+                end
+            else
+                humanoid:Think(2)
+            end
+        end
+    )"));
+}
+
 
 TEST_SUITE_END();

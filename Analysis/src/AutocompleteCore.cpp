@@ -25,6 +25,8 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 
+LUAU_FASTFLAG(LuauExposeRequireByStringAutocomplete)
+
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteUsesModuleForTypeCompatibility)
@@ -1519,10 +1521,14 @@ static std::optional<AutocompleteEntryMap> convertRequireSuggestionsToAutocomple
         return std::nullopt;
 
     AutocompleteEntryMap result;
-    for (const RequireSuggestion& suggestion : *suggestions)
+    for (RequireSuggestion& suggestion : *suggestions)
     {
         AutocompleteEntry entry = {AutocompleteEntryKind::RequirePath};
         entry.insertText = std::move(suggestion.fullPath);
+        if (FFlag::LuauExposeRequireByStringAutocomplete)
+        {
+            entry.tags = std::move(suggestion.tags);
+        }
         result[std::move(suggestion.label)] = std::move(entry);
     }
     return result;

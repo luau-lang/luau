@@ -30,13 +30,15 @@ LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteBugfixes)
 LUAU_FASTFLAGVARIABLE(LuauMixedModeDefFinderTraversesTypeOf)
-LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
 LUAU_FASTFLAGVARIABLE(LogFragmentsFromAutocomplete)
 LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
+LUAU_FASTFLAGVARIABLE(LuauFragmentAcSupportsReporter)
 LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
 LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
+LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
+LUAU_FASTFLAGVARIABLE(LuauCloneReturnTypePack)
 
 namespace
 {
@@ -100,11 +102,19 @@ struct MixedModeIncrementalTCDefFinder : public AstVisitor
         return FFlag::LuauMixedModeDefFinderTraversesTypeOf;
     }
 
+    bool visit(AstStatTypeAlias* alias) override
+    {
+        if (FFlag::LuauCloneTypeAliasBindings)
+            declaredAliases.insert(std::string(alias->name.value));
+        return true;
+    }
+
     // ast defs is just a mapping from expr -> def in general
     // will get built up by the dfg builder
 
     // localDefs, we need to copy over
     std::vector<std::pair<AstLocal*, AstExpr*>> referencedLocalDefs;
+    DenseHashSet<Name> declaredAliases{""};
 };
 
 void cloneAndSquashScopes_DEPRECATED(
@@ -181,6 +191,10 @@ void cloneAndSquashScopes(
         scopes.emplace_back(current);
     }
 
+    MixedModeIncrementalTCDefFinder finder;
+
+    if (FFlag::LuauCloneTypeAliasBindings)
+        program->visit(&finder);
     // in reverse order (we need to clone the parents and override defs as we go down the list)
     for (auto it = scopes.rbegin(); it != scopes.rend(); ++it)
     {
@@ -191,6 +205,21 @@ void cloneAndSquashScopes(
         // Clone the rvalueRefinements
         for (const auto& [def, ty] : curr->rvalueRefinements)
             destScope->rvalueRefinements[def] = Luau::cloneIncremental(ty, *destArena, cloneState, destScope);
+
+        if (FFlag::LuauCloneTypeAliasBindings)
+        {
+            for (const auto& [n, tf] : curr->exportedTypeBindings)
+            {
+                if (!finder.declaredAliases.contains(n))
+                    destScope->exportedTypeBindings[n] = Luau::cloneIncremental(tf, *destArena, cloneState, destScope);
+            }
+
+            for (const auto& [n, tf] : curr->privateTypeBindings)
+            {
+                if (!finder.declaredAliases.contains(n))
+                    destScope->privateTypeBindings[n] = Luau::cloneIncremental(tf, *destArena, cloneState, destScope);
+            }
+        }
         for (const auto& [n, m] : curr->importedTypeBindings)
         {
             std::unordered_map<Name, TypeFun> importedBindingTypes;
@@ -206,10 +235,11 @@ void cloneAndSquashScopes(
         }
     }
 
+    if (!FFlag::LuauCloneTypeAliasBindings)
+        program->visit(&finder);
     // The above code associates defs with TypeId's in the scope
     // so that lookup to locals will succeed.
-    MixedModeIncrementalTCDefFinder finder;
-    program->visit(&finder);
+
     std::vector<std::pair<AstLocal*, AstExpr*>> locals = std::move(finder.referencedLocalDefs);
     for (auto [loc, expr] : locals)
     {
@@ -218,6 +248,10 @@ void cloneAndSquashScopes(
             destScope->lvalueTypes[dfg->getDef(expr)] = Luau::cloneIncremental(binding->typeId, *destArena, cloneState, destScope);
         }
     }
+
+    if (FFlag::LuauCloneReturnTypePack && destScope->returnType)
+        destScope->returnType = Luau::cloneIncremental(destScope->returnType, *destArena, cloneState, destScope);
+
     return;
 }
 
@@ -572,6 +606,22 @@ void mixedModeCompatibility(
     }
 }
 
+static void reportWaypoint(IFragmentAutocompleteReporter* reporter, FragmentAutocompleteWaypoint type)
+{
+    if (!FFlag::LuauFragmentAcSupportsReporter || !reporter)
+        return;
+
+    reporter->reportWaypoint(type);
+}
+
+static void reportFragmentString(IFragmentAutocompleteReporter* reporter, std::string_view fragment)
+{
+    if (!FFlag::LuauFragmentAcSupportsReporter || !reporter)
+        return;
+
+    reporter->reportFragmentString(fragment);
+}
+
 FragmentTypeCheckResult typecheckFragment_(
     Frontend& frontend,
     AstStatBlock* root,
@@ -579,13 +629,15 @@ FragmentTypeCheckResult typecheckFragment_(
     const ScopePtr& closestScope,
     const Position& cursorPos,
     std::unique_ptr<Allocator> astAllocator,
-    const FrontendOptions& opts
+    const FrontendOptions& opts,
+    IFragmentAutocompleteReporter* reporter
 )
 {
     LUAU_TIMETRACE_SCOPE("Luau::typecheckFragment_", "FragmentAutocomplete");
 
     freeze(stale->internalTypes);
     freeze(stale->interfaceTypes);
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneModuleStart);
     CloneState cloneState{frontend.builtinTypes};
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(closestScope);
     ModulePtr incrementalModule = nullptr;
@@ -596,6 +648,7 @@ FragmentTypeCheckResult typecheckFragment_(
     else
         incrementalModule = copyModule(stale, std::move(astAllocator));
 
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneModuleEnd);
     incrementalModule->checkedInNewSolver = true;
     unfreeze(incrementalModule->internalTypes);
     unfreeze(incrementalModule->interfaceTypes);
@@ -623,6 +676,7 @@ FragmentTypeCheckResult typecheckFragment_(
 
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
 
     SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
 
@@ -644,6 +698,7 @@ FragmentTypeCheckResult typecheckFragment_(
         {}
     };
 
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeStart);
     if (FFlag::LuauCloneIncrementalModule)
     {
         incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
@@ -657,6 +712,8 @@ FragmentTypeCheckResult typecheckFragment_(
             cloneAndSquashScopes_DEPRECATED(
                 cloneState, closestScope.get(), stale, NotNull{&incrementalModule->internalTypes}, NotNull{&dfg}, root, freshChildOfNearestScope.get()
             );
+
+        reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeEnd);
         cg.visitFragmentRoot(freshChildOfNearestScope, root);
 
         if (FFlag::LuauPersistConstraintGenerationScopes)
@@ -680,6 +737,7 @@ FragmentTypeCheckResult typecheckFragment_(
         LUAU_ASSERT(back == freshChildOfNearestScope.get());
         closestScope->children.pop_back();
     }
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverStart);
 
     if (FFlag::LuauAllFreeTypesHaveScopes)
     {
@@ -719,6 +777,8 @@ FragmentTypeCheckResult typecheckFragment_(
         stale->cancelled = true;
     }
 
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverEnd);
+
     // In frontend we would forbid internal types
     // because this is just for autocomplete, we don't actually care
     // We also don't even need to typecheck - just synthesize types as best as we can
@@ -735,17 +795,15 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     const Position& cursorPos,
     std::optional<FrontendOptions> opts,
     std::string_view src,
-    std::optional<Position> fragmentEndPosition
+    std::optional<Position> fragmentEndPosition,
+    IFragmentAutocompleteReporter* reporter
 )
 {
     LUAU_TIMETRACE_SCOPE("Luau::typecheckFragment", "FragmentAutocomplete");
     LUAU_TIMETRACE_ARGUMENT("name", moduleName.c_str());
 
-    if (FFlag::LuauBetterReverseDependencyTracking)
-    {
-        if (!frontend.allModuleDependenciesValid(moduleName, opts && opts->forAutocomplete))
-            return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
-    }
+    if (!frontend.allModuleDependenciesValid(moduleName, opts && opts->forAutocomplete))
+        return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
     ModulePtr module = resolver.getModule(moduleName);
@@ -778,6 +836,7 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
         }
 
         tryParse = parseFragment(sourceModule->root, sourceModule->names.get(), src, cursorPos, fragmentEndPosition);
+        reportWaypoint(reporter, FragmentAutocompleteWaypoint::ParseFragmentEnd);
     }
 
     if (!tryParse)
@@ -791,8 +850,9 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     FrontendOptions frontendOptions = opts.value_or(frontend.options);
     const ScopePtr& closestScope = findClosestScope(module, parseResult.nearestStatement);
     FragmentTypeCheckResult result =
-        typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions);
+        typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
     result.ancestry = std::move(parseResult.ancestry);
+    reportFragmentString(reporter, tryParse->fragmentToParse);
     return {FragmentTypeCheckStatus::Success, result};
 }
 
@@ -813,7 +873,14 @@ FragmentAutocompleteStatusResult tryFragmentAutocomplete(
     try
     {
         Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
-            frontend, context.newSrc, moduleName, cursorPosition, context.opts, std::move(stringCompletionCB), context.DEPRECATED_fragmentEndPosition
+            frontend,
+            context.newSrc,
+            moduleName,
+            cursorPosition,
+            context.opts,
+            std::move(stringCompletionCB),
+            context.DEPRECATED_fragmentEndPosition,
+            FFlag::LuauFragmentAcSupportsReporter ? context.reporter : nullptr
         );
         return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
     }
@@ -832,7 +899,8 @@ FragmentAutocompleteResult fragmentAutocomplete(
     Position cursorPosition,
     std::optional<FrontendOptions> opts,
     StringCompletionCallback callback,
-    std::optional<Position> fragmentEndPosition
+    std::optional<Position> fragmentEndPosition,
+    IFragmentAutocompleteReporter* reporter
 )
 {
     LUAU_ASSERT(FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
@@ -853,10 +921,11 @@ FragmentAutocompleteResult fragmentAutocomplete(
             return {};
     }
 
-    auto [tcStatus, tcResult] = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition);
+    auto [tcStatus, tcResult] = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition, reporter);
     if (tcStatus == FragmentTypeCheckStatus::SkipAutocomplete)
         return {};
 
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::TypecheckFragmentEnd);
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
     if (FFlag::LogFragmentsFromAutocomplete)
         logLuau(src);
@@ -873,6 +942,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
         callback
     );
 
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);
     return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(arenaForFragmentAutocomplete), std::move(result)};
 }
 

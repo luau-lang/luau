@@ -26,6 +26,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
+
 namespace Luau
 {
 
@@ -4269,20 +4271,40 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     }
 
     // computes type information for all functions based on type annotations
-    if (options.typeInfoLevel >= 1)
-        buildTypeMap(
-            compiler.functionTypes,
-            compiler.localTypes,
-            compiler.exprTypes,
-            root,
-            options.vectorType,
-            compiler.userdataTypes,
-            compiler.builtinTypes,
-            compiler.builtins,
-            compiler.globals,
-            options.libraryMemberTypeCb,
-            bytecode
-        );
+    if (FFlag::LuauSeparateCompilerTypeInfo)
+    {
+        if (options.typeInfoLevel >= 1 || options.optimizationLevel >= 2)
+            buildTypeMap(
+                compiler.functionTypes,
+                compiler.localTypes,
+                compiler.exprTypes,
+                root,
+                options.vectorType,
+                compiler.userdataTypes,
+                compiler.builtinTypes,
+                compiler.builtins,
+                compiler.globals,
+                options.libraryMemberTypeCb,
+                bytecode
+            );
+    }
+    else
+    {
+        if (options.typeInfoLevel >= 1)
+            buildTypeMap(
+                compiler.functionTypes,
+                compiler.localTypes,
+                compiler.exprTypes,
+                root,
+                options.vectorType,
+                compiler.userdataTypes,
+                compiler.builtinTypes,
+                compiler.builtins,
+                compiler.globals,
+                options.libraryMemberTypeCb,
+                bytecode
+            );
+    }
 
     for (AstExprFunction* expr : functions)
     {

@@ -31,13 +31,4 @@ struct OrderedMap
     }
 };
 
-struct QuantifierResult
-{
-    TypeId result;
-    OrderedMap<TypeId, TypeId> insertedGenerics;
-    OrderedMap<TypePackId, TypePackId> insertedGenericPacks;
-};
-
-std::optional<QuantifierResult> quantify(TypeArena* arena, TypeId ty, Scope* scope);
-
 } // namespace Luau
