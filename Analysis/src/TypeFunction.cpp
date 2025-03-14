@@ -53,6 +53,8 @@ LUAU_FASTFLAGVARIABLE(LuauDoNotGeneralizeInTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauPreventReentrantTypeFunctionReduction)
 LUAU_FASTFLAGVARIABLE(LuauIntersectNotNil)
 LUAU_FASTFLAGVARIABLE(LuauSkipNoRefineDuringRefinement)
+LUAU_FASTFLAGVARIABLE(LuauDontForgetToReduceUnionFunc)
+LUAU_FASTFLAGVARIABLE(LuauSearchForRefineableType)
 
 namespace Luau
 {
@@ -629,6 +631,9 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
             std::move(results),
             {},
         });
+
+        if (FFlag::LuauDontForgetToReduceUnionFunc && ctx->solver)
+            ctx->pushConstraint(ReduceConstraint{resultTy});
 
         return {{resultTy, Reduction::MaybeOk, {}, {}}};
     }
@@ -1934,6 +1939,33 @@ struct FindRefinementBlockers : TypeOnceVisitor
     }
 };
 
+struct ContainsRefinableType : TypeOnceVisitor
+{
+    bool found = false;
+    ContainsRefinableType() : TypeOnceVisitor(/* skipBoundTypes */ true) {}
+
+
+    bool visit(TypeId ty) override {
+        // Default case: if we find *some* type that's worth refining against,
+        // then we can claim that this type contains a refineable type.
+        found = true;
+        return false;
+    }
+
+    bool visit(TypeId Ty, const NoRefineType&) override {
+        // No refine types aren't interesting
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableType&) override { return !found; }
+    bool visit(TypeId ty, const MetatableType&) override { return !found; }
+    bool visit(TypeId ty, const FunctionType&) override { return !found; }
+    bool visit(TypeId ty, const UnionType&) override { return !found; }
+    bool visit(TypeId ty, const IntersectionType&) override { return !found; }
+    bool visit(TypeId ty, const NegationType&) override { return !found; }
+
+};
+
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -2007,13 +2039,27 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         }
         else
         {
-            if (FFlag::LuauSkipNoRefineDuringRefinement)
-                if (get<NoRefineType>(discriminant))
-                    return {target, {}};
-            if (auto nt = get<NegationType>(discriminant))
+            if (FFlag::LuauSearchForRefineableType)
             {
-                if (get<NoRefineType>(follow(nt->ty)))
+                // If the discriminant type is only:
+                // - The `*no-refine*` type or,
+                // - tables, metatables, unions, intersections, functions, or negations _containing_ `*no-refine*`.
+                // There's no point in refining against it.
+                ContainsRefinableType crt;
+                crt.traverse(discriminant);
+                if (!crt.found)
                     return {target, {}};
+            }
+            else
+            {
+                if (FFlag::LuauSkipNoRefineDuringRefinement)
+                    if (get<NoRefineType>(discriminant))
+                        return {target, {}};
+                if (auto nt = get<NegationType>(discriminant))
+                {
+                    if (get<NoRefineType>(follow(nt->ty)))
+                        return {target, {}};
+                }
             }
 
             // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the

@@ -15,6 +15,28 @@ namespace Luau
 {
 struct FrontendOptions;
 
+enum class FragmentAutocompleteWaypoint
+{
+    ParseFragmentEnd,
+    CloneModuleStart,
+    CloneModuleEnd,
+    DfgBuildEnd,
+    CloneAndSquashScopeStart,
+    CloneAndSquashScopeEnd,
+    ConstraintSolverStart,
+    ConstraintSolverEnd,
+    TypecheckFragmentEnd,
+    AutocompleteEnd,
+    COUNT,
+};
+
+class IFragmentAutocompleteReporter
+{
+public:
+    virtual void reportWaypoint(FragmentAutocompleteWaypoint) = 0;
+    virtual void reportFragmentString(std::string_view) = 0;
+};
+
 enum class FragmentTypeCheckStatus
 {
     SkipAutocomplete,
@@ -70,7 +92,8 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     const Position& cursorPos,
     std::optional<FrontendOptions> opts,
     std::string_view src,
-    std::optional<Position> fragmentEndPosition
+    std::optional<Position> fragmentEndPosition,
+    IFragmentAutocompleteReporter* reporter = nullptr
 );
 
 FragmentAutocompleteResult fragmentAutocomplete(
@@ -80,7 +103,8 @@ FragmentAutocompleteResult fragmentAutocomplete(
     Position cursorPosition,
     std::optional<FrontendOptions> opts,
     StringCompletionCallback callback,
-    std::optional<Position> fragmentEndPosition = std::nullopt
+    std::optional<Position> fragmentEndPosition = std::nullopt,
+    IFragmentAutocompleteReporter* reporter = nullptr
 );
 
 enum class FragmentAutocompleteStatus
@@ -102,6 +126,7 @@ struct FragmentContext
     const ParseResult& freshParse;
     std::optional<FrontendOptions> opts;
     std::optional<Position> DEPRECATED_fragmentEndPosition;
+    IFragmentAutocompleteReporter* reporter = nullptr;
 };
 
 /**

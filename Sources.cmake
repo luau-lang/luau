@@ -266,6 +266,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/EqSatSimplification.cpp
+    Analysis/src/FileResolver.cpp
     Analysis/src/FragmentAutocomplete.cpp
     Analysis/src/Frontend.cpp
     Analysis/src/Generalization.cpp

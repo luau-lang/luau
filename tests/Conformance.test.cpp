@@ -477,9 +477,8 @@ void setupUserdataHelpers(lua_State* L)
 {
     // create metatable with all the metamethods
     luaL_newmetatable(L, "vec2");
-    luaL_getmetatable(L, "vec2");
     lua_pushvalue(L, -1);
-    lua_setuserdatametatable(L, kTagVec2, -1);
+    lua_setuserdatametatable(L, kTagVec2);
 
     lua_pushcfunction(L, lua_vec2_index, nullptr);
     lua_setfield(L, -2, "__index");
@@ -2255,12 +2254,12 @@ TEST_CASE("UserdataApi")
 
     // tagged user data with fast metatable access
     luaL_newmetatable(L, "udata3");
-    luaL_getmetatable(L, "udata3");
-    lua_setuserdatametatable(L, 50, -1);
+    lua_pushvalue(L, -1);
+    lua_setuserdatametatable(L, 50);
 
     luaL_newmetatable(L, "udata4");
-    luaL_getmetatable(L, "udata4");
-    lua_setuserdatametatable(L, 51, -1);
+    lua_pushvalue(L, -1);
+    lua_setuserdatametatable(L, 51);
 
     void* ud7 = lua_newuserdatatagged(L, 16, 50);
     lua_getuserdatametatable(L, 50);

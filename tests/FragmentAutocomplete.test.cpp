@@ -9,6 +9,7 @@
 #include "Luau/Common.h"
 #include "Luau/Frontend.h"
 #include "Luau/AutocompleteTypes.h"
+#include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "ScopedFlags.h"
 
@@ -36,6 +37,12 @@ LUAU_FASTFLAG(LuauAutocompleteUsesModuleForTypeCompatibility)
 LUAU_FASTFLAG(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAG(LuauAllFreeTypesHaveScopes)
 LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAG(LuauClonedTableAndFunctionTypesMustHaveScopes)
+LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
+LUAU_FASTFLAG(LuauCloneTypeAliasBindings)
+LUAU_FASTFLAG(LuauDoNotClonePersistentBindings)
+LUAU_FASTFLAG(LuauCloneReturnTypePack)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -65,16 +72,17 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 {
     static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
 
-
-    ScopedFastFlag sffs[7] = {
-        {FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true},
-        {FFlag::LuauIncrementalAutocompleteBugfixes, true},
-        {FFlag::LuauBetterReverseDependencyTracking, true},
-        {FFlag::LuauFreeTypesMustHaveBounds, true},
-        {FFlag::LuauCloneIncrementalModule, true},
-        {FFlag::LuauAllFreeTypesHaveScopes, true},
-        {FFlag::LuauModuleHoldsAstRoot, true}
-    };
+    ScopedFastFlag luauAutocompleteRefactorsForIncrementalAutocomplete{FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete, true};
+    ScopedFastFlag luauIncrementalAutocompleteBugfixes{FFlag::LuauIncrementalAutocompleteBugfixes, true};
+    ScopedFastFlag luauFreeTypesMustHaveBounds{FFlag::LuauFreeTypesMustHaveBounds, true};
+    ScopedFastFlag luauCloneIncrementalModule{FFlag::LuauCloneIncrementalModule, true};
+    ScopedFastFlag luauAllFreeTypesHaveScopes{FFlag::LuauAllFreeTypesHaveScopes, true};
+    ScopedFastFlag luauModuleHoldsAstRoot{FFlag::LuauModuleHoldsAstRoot, true};
+    ScopedFastFlag luauClonedTableAndFunctionTypesMustHaveScopes{FFlag::LuauClonedTableAndFunctionTypesMustHaveScopes, true};
+    ScopedFastFlag luauDisableNewSolverAssertsInMixedMode{FFlag::LuauDisableNewSolverAssertsInMixedMode, true};
+    ScopedFastFlag luauCloneTypeAliasBindings{FFlag::LuauCloneTypeAliasBindings, true};
+    ScopedFastFlag luauDoNotClonePersistentBindings{FFlag::LuauDoNotClonePersistentBindings, true};
+    ScopedFastFlag luauCloneReturnTypePack{FFlag::LuauCloneReturnTypePack, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -2060,6 +2068,59 @@ return m
     autocompleteFragmentInBothSolvers(source, updated, Position{6, 2}, [](FragmentAutocompleteStatusResult& _) {});
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "duped_alias")
+{
+    const std::string source = R"(
+type a = typeof({})
+
+)";
+    const std::string dest = R"(
+type a = typeof({})
+l
+)";
+
+    // Re-parsing and typechecking a type alias in the fragment that was defined in the base module will assert in ConstraintGenerator::checkAliases
+    // unless we don't clone it This will let the incremental pass re-generate the type binding, and we will expect to see it in the type bindings
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{2, 2},
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            Scope* sc = frag.result->freshScope;
+            CHECK(1 == sc->privateTypeBindings.count("a"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "mutually_recursive_alias")
+{
+    const std::string source = R"(
+type U = {f : number, g : U}
+
+)";
+    const std::string dest = R"(
+type U = {f : number, g : V}
+type V = {h : number, i : U?}
+)";
+
+    // Re-parsing and typechecking a type alias in the fragment that was defined in the base module will assert in ConstraintGenerator::checkAliases
+    // unless we don't clone it This will let the incremental pass re-generate the type binding, and we will expect to see it in the type bindings
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{2, 30},
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result->freshScope);
+            Scope* scope = frag.result->freshScope;
+            CHECK(1 == scope->privateTypeBindings.count("U"));
+            CHECK(1 == scope->privateTypeBindings.count("V"));
+        }
+    );
+}
+
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "generalization_crash_when_old_solver_freetypes_have_no_bounds_set")
 {
     ScopedFastFlag sff{FFlag::LuauFreeTypesMustHaveBounds, true};
@@ -2222,6 +2283,62 @@ z:a
 )";
 
     autocompleteFragmentInBothSolvers(source, dest, Position{8, 3}, [](FragmentAutocompleteStatusResult& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "interior_free_types_assertion_caused_by_free_type_inheriting_null_scope_from_table")
+{
+    ScopedFastFlag sff{FFlag::LuauTrackInteriorFreeTypesOnScope, true};
+    const std::string source = R"(--!strict
+local foo
+local a = foo()
+
+local e = foo().x
+
+local f = foo().y
+
+
+)";
+
+    const std::string dest = R"(--!strict
+local foo
+local a = foo()
+
+local e = foo().x
+
+local f = foo().y
+
+z = a.P.E
+)";
+
+    autocompleteFragmentInBothSolvers(source, dest, Position{8, 9}, [](FragmentAutocompleteStatusResult& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "NotNull_nil_scope_assertion_caused_by_free_type_inheriting_null_scope_from_table")
+{
+    ScopedFastFlag sff{FFlag::LuauTrackInteriorFreeTypesOnScope, false};
+    const std::string source = R"(--!strict
+local foo
+local a = foo()
+
+local e = foo().x
+
+local f = foo().y
+
+
+)";
+
+    const std::string dest = R"(--!strict
+local foo
+local a = foo()
+
+local e = foo().x
+
+local f = foo().y
+
+z = a.P.E
+)";
+
+    autocompleteFragmentInBothSolvers(source, dest, Position{8, 9}, [](FragmentAutocompleteStatusResult& _) {});
 }
 
 TEST_SUITE_END();
