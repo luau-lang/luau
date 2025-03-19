@@ -210,17 +210,20 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     auto subTable = getMutable<TableType>(subTy);
     auto superTable = get<TableType>(superTy);
 
-    if (subAny && superAny)
+    if (subAny && superAny) 
         return true;
-    else if (subAny && superFn)
-        return unify(subAny, superFn);
-    else if (subFn && superAny)
-        return unify(subFn, superAny);
-    else if (subAny && superTable)
-        return unify(subAny, superTable);
-    else if (subTable && superAny)
-        return unify(subTable, superAny);
-
+    if (subAny) {
+        if (superFn)
+            return unify(subAny, superFn);
+        if (superTable)
+            return unify(subAny, superTable);
+    }
+    if (superAny) {
+        if (subFn)
+            return unify(subFn, superAny);
+        if (subTable)
+            return unify(subTable, superAny);
+    }
     if (subTable && superTable)
     {
         // `boundTo` works like a bound type, and therefore we'd replace it
@@ -235,17 +238,25 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
 
     auto subMetatable = get<MetatableType>(subTy);
     auto superMetatable = get<MetatableType>(superTy);
-    if (subMetatable && superMetatable)
-        return unify(subMetatable, superMetatable);
-    else if (FFlag::LuauUnifyMetatableWithAny && subMetatable && superAny)
-        return unify(subMetatable, superAny);
-    else if (FFlag::LuauUnifyMetatableWithAny && subAny && superMetatable)
-        return unify(subAny, superMetatable);
-    else if (subMetatable) // if we only have one metatable, unify with the inner table
-        return unify(subMetatable->table, superTy);
-    else if (superMetatable) // if we only have one metatable, unify with the inner table
-        return unify(subTy, superMetatable->table);
-
+   
+    // Cache the flag value to avoid multiple checks
+    const bool flagEnabled = FFlag::LuauUnifyMetatableWithAny;
+    
+    if (subMetatable) {
+        if (superMetatable)
+            return unify(subMetatable, superMetatable);
+        else if (flagEnabled && superAny)
+            return unify(subMetatable, superAny);
+        else
+            return unify(subMetatable->table, superTy); // if we only have one metatable, unify with the inner table
+    } 
+    else if (superMetatable) {
+        if (flagEnabled && subAny)
+            return unify(subAny, superMetatable);
+        else
+            return unify(subTy, superMetatable->table); // if we only have one metatable, unify with the inner table
+    }
+    
     auto [subNegation, superNegation] = get2<NegationType, NegationType>(subTy, superTy);
     if (subNegation && superNegation)
         return unify(subNegation->ty, superNegation->ty);
