@@ -17,6 +17,8 @@
 
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAG(LuauNonStrictVisitorImprovements)
+LUAU_FASTFLAG(LuauNonStrictFuncDefErrorFix)
+LUAU_FASTFLAG(LuauNormalizedBufferIsNotUnknown)
 
 using namespace Luau;
 
@@ -359,6 +361,23 @@ end
     NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
 }
 
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_sequencing_errors_2")
+{
+    ScopedFastFlag luauNonStrictFuncDefErrorFix{FFlag::LuauNonStrictFuncDefErrorFix, true};
+    ScopedFastFlag luauNonStrictVisitorImprovements{FFlag::LuauNonStrictVisitorImprovements, true};
+
+    CheckResult result = checkNonStrict(R"(
+local t = {function(x)
+    abs(x)
+    lower(x)
+end}
+)");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
+    CHECK(toString(result.errors[2]) == "Argument x with type 'unknown' is used in a way that will run time error");
+}
+
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "local_fn_produces_error")
 {
     CheckResult result = checkNonStrict(R"(
@@ -647,6 +666,19 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_not_unknown")
+{
+    ScopedFastFlag luauNormalizedBufferIsNotUnknown{FFlag::LuauNormalizedBufferIsNotUnknown, true};
+
+    CheckResult result = check(Mode::Nonstrict, R"(
+local function wrap(b: buffer, i: number, v: number)
+    buffer.writeu32(b, i * 4, v)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

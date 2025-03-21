@@ -5721,6 +5721,10 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         TypeId ty = checkExpr(scope, *typeOf->expr).type;
         return ty;
     }
+    else if (annotation.is<AstTypeOptional>())
+    {
+        return builtinTypes->nilType;
+    }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {
         if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)

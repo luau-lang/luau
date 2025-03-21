@@ -9,9 +9,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauPreventReentrantTypeFunctionReduction)
 LUAU_FASTFLAG(LuauDontForgetToReduceUnionFunc)
 
 TEST_SUITE_BEGIN("DefinitionTests");
@@ -545,8 +543,6 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
 
 TEST_CASE_FIXTURE(Fixture, "recursive_redefinition_reduces_rightfully")
 {
-    ScopedFastFlag _{FFlag::LuauClipNestedAndRecursiveUnion, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local t: {[string]: string} = {}
 
@@ -592,7 +588,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
 
 TEST_CASE_FIXTURE(Fixture, "vector3_overflow")
 {
-    ScopedFastFlag _{FFlag::LuauPreventReentrantTypeFunctionReduction, true};
     // We set this to zero to ensure that we either run to completion or stack overflow here.
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 

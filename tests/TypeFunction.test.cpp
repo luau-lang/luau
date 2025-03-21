@@ -13,8 +13,11 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauIndexTypeFunctionImprovements)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
+LUAU_FASTFLAG(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAG(LuauMetatableTypeFunctions)
+LUAU_FASTFLAG(LuauIndexAnyIsAny)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -904,6 +907,21 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_of_any_is_any")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIndexAnyIsAny, true};
+
+    CheckResult result = check(R"(
+        type T = index<any, "a">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "any");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
 {
     if (!FFlag::LuauSolverV2)
@@ -965,6 +983,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIndexTypeFunctionImprovements, true};
+
+    // t :: t1 where t1 = {metatable {__index: t1, __tostring: (t1) -> string}}
+    CheckResult result = check(R"(
+        local mt = {}
+        local t = setmetatable({}, mt)
+        mt.__index = t
+
+        function mt:__tostring()
+            return t.p
+        end
+
+        type IndexFromT = index<typeof(t), "p">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
+    CHECK_EQ("Property '\"p\"' does not exist on type 't'", toString(result.errors[1]));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_generic_types")
 {
     if (!FFlag::LuauSolverV2)
@@ -1001,6 +1044,61 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_bad_indexer")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Property '\"d\"' does not exist on type 'MyObject'");
     CHECK(toString(result.errors[1]) == "Property 'boolean' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metamethods")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff[]
+    {
+        {FFlag::LuauIndexTypeFunctionFunctionMetamethods, true},
+        {FFlag::LuauIndexTypeFunctionImprovements, true},
+    };
+
+    CheckResult result = check(R"(
+        type Foo = {x: string}
+        local t = {}
+        setmetatable(t, {
+            __index = function(x: string): Foo
+                return {x = x}
+            end
+        })
+
+        type Bar = index<typeof(t), "bar">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+
+    CHECK_EQ(toString(requireTypeAlias("Bar"), {true}), "{ x: string }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metamethods2")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff[]
+    {
+        {FFlag::LuauIndexTypeFunctionFunctionMetamethods, true},
+        {FFlag::LuauIndexTypeFunctionImprovements, true},
+    };
+
+    CheckResult result = check(R"(
+        type Foo = {x: string}
+        local t = {}
+        setmetatable(t, {
+            __index = function(x: string): Foo
+                return {x = x}
+            end
+        })
+
+        type Bar = index<typeof(t), number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_var_indexer")

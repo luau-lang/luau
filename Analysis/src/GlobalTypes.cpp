@@ -9,6 +9,7 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
     : builtinTypes(builtinTypes)
 {
     globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
+    globalTypeFunctionScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
 
     globalScope->addBuiltinTypeBinding("any", TypeFun{{}, builtinTypes->anyType});
     globalScope->addBuiltinTypeBinding("nil", TypeFun{{}, builtinTypes->nilType});

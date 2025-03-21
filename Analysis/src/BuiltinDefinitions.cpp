@@ -32,8 +32,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatErrorSuppression)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
-LUAU_FASTFLAGVARIABLE(LuauFreezeIgnorePersistent)
 LUAU_FASTFLAGVARIABLE(LuauFollowTableFreeze)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypecheck)
 
 namespace Luau
 {
@@ -288,6 +288,22 @@ void assignPropDocumentationSymbols(TableType::Props& props, const std::string& 
     }
 }
 
+static void finalizeGlobalBindings(ScopePtr scope)
+{
+    LUAU_ASSERT(FFlag::LuauUserTypeFunTypecheck);
+
+    for (const auto& pair : scope->bindings)
+    {
+        persist(pair.second.typeId);
+
+        if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
+        {
+            if (!ttv->name)
+                ttv->name = "typeof(" + toString(pair.first) + ")";
+        }
+    }
+}
+
 void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeCheckForAutocomplete)
 {
     LUAU_ASSERT(!globals.globalTypes.types.isFrozen());
@@ -399,14 +415,21 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         // clang-format on
     }
 
-    for (const auto& pair : globals.globalScope->bindings)
+    if (FFlag::LuauUserTypeFunTypecheck)
     {
-        persist(pair.second.typeId);
-
-        if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
+        finalizeGlobalBindings(globals.globalScope);
+    }
+    else
+    {
+        for (const auto& pair : globals.globalScope->bindings)
         {
-            if (!ttv->name)
-                ttv->name = "typeof(" + toString(pair.first) + ")";
+            persist(pair.second.typeId);
+
+            if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
+            {
+                if (!ttv->name)
+                    ttv->name = "typeof(" + toString(pair.first) + ")";
+            }
         }
     }
 
@@ -467,6 +490,59 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     TypeId requireTy = getGlobalBinding(globals, "require");
     attachTag(requireTy, kRequireTagName);
     attachMagicFunction(requireTy, std::make_shared<MagicRequire>());
+
+    if (FFlag::LuauUserTypeFunTypecheck)
+    {
+        // Global scope cannot be the parent of the type checking environment because it can be changed by the embedder
+        globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
+        globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
+
+        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
+        static const char* typeFunctionRuntimeBindings[] = {
+            // Libraries
+            "math",
+            "table",
+            "string",
+            "bit32",
+            "utf8",
+            "buffer",
+
+            // Globals
+            "assert",
+            "error",
+            "print",
+            "next",
+            "ipairs",
+            "pairs",
+            "select",
+            "unpack",
+            "getmetatable",
+            "setmetatable",
+            "rawget",
+            "rawset",
+            "rawlen",
+            "rawequal",
+            "tonumber",
+            "tostring",
+            "type",
+            "typeof",
+        };
+
+        for (auto& name : typeFunctionRuntimeBindings)
+        {
+            AstName astName = globals.globalNames.names->get(name);
+            LUAU_ASSERT(astName.value);
+
+            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
+        }
+
+        LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
+            globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(), "@luau", /* captureComments */ false, false
+        );
+        LUAU_ASSERT(typeFunctionLoadResult.success);
+
+        finalizeGlobalBindings(globals.globalTypeFunctionScope);
+    }
 }
 
 static std::vector<TypeId> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
@@ -1444,7 +1520,7 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
         return false;
 
     CloneState cloneState{context.solver->builtinTypes};
-    TypeId resultType = shallowClone(inputType, *arena, cloneState, /* ignorePersistent */ FFlag::LuauFreezeIgnorePersistent);
+    TypeId resultType = shallowClone(inputType, *arena, cloneState, /* ignorePersistent */ true);
 
     if (auto tableType = getMutable<TableType>(resultType))
     {
@@ -1481,7 +1557,7 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
     {
         // Clone the input type, this will become our final result type after we mutate it.
         CloneState cloneState{context.solver->builtinTypes};
-        TypeId resultType = shallowClone(inputType, *arena, cloneState, /* ignorePersistent */ FFlag::LuauFreezeIgnorePersistent);
+        TypeId resultType = shallowClone(inputType, *arena, cloneState, /* ignorePersistent */ true);
         auto tableTy = getMutable<TableType>(resultType);
         // `clone` should not break this.
         LUAU_ASSERT(tableTy);

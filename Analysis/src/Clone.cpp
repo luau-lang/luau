@@ -9,13 +9,12 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauFreezeIgnorePersistent)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
 LUAU_FASTFLAGVARIABLE(LuauClonedTableAndFunctionTypesMustHaveScopes)
 LUAU_FASTFLAGVARIABLE(LuauDoNotClonePersistentBindings)
-
+LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
 namespace Luau
 {
 
@@ -134,7 +133,7 @@ protected:
         ty = follow(ty, FollowOption::DisableLazyTypeThunks);
         if (auto it = types->find(ty); it != types->end())
             return it->second;
-        else if (ty->persistent && (!FFlag::LuauFreezeIgnorePersistent || ty != forceTy))
+        else if (ty->persistent && ty != forceTy)
             return ty;
         return std::nullopt;
     }
@@ -144,7 +143,7 @@ protected:
         tp = follow(tp);
         if (auto it = packs->find(tp); it != packs->end())
             return it->second;
-        else if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || tp != forceTp))
+        else if (tp->persistent && tp != forceTp)
             return tp;
         return std::nullopt;
     }
@@ -170,7 +169,7 @@ public:
 
         if (auto clone = find(ty))
             return *clone;
-        else if (ty->persistent && (!FFlag::LuauFreezeIgnorePersistent || ty != forceTy))
+        else if (ty->persistent && ty != forceTy)
             return ty;
 
         TypeId target = arena->addType(ty->ty);
@@ -196,7 +195,7 @@ public:
 
         if (auto clone = find(tp))
             return *clone;
-        else if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || tp != forceTp))
+        else if (tp->persistent && tp != forceTp)
             return tp;
 
         TypePackId target = arena->addTypePack(tp->ty);
@@ -398,7 +397,7 @@ private:
             ty = shallowClone(ty);
     }
 
-    void cloneChildren(LazyType* t)
+    virtual void cloneChildren(LazyType* t)
     {
         if (auto unwrapped = t->unwrapped.load())
             t->unwrapped.store(shallowClone(unwrapped));
@@ -505,7 +504,7 @@ public:
 
         if (auto clone = find(ty))
             return *clone;
-        else if (ty->persistent && (!FFlag::LuauFreezeIgnorePersistent || ty != forceTy))
+        else if (ty->persistent && ty != forceTy)
             return ty;
 
         TypeId target = arena->addType(ty->ty);
@@ -539,7 +538,7 @@ public:
 
         if (auto clone = find(tp))
             return *clone;
-        else if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || tp != forceTp))
+        else if (tp->persistent && tp != forceTp)
             return tp;
 
         TypePackId target = arena->addTypePack(tp->ty);
@@ -553,6 +552,16 @@ public:
         queue.emplace_back(target);
         return target;
     }
+
+    void cloneChildren(LazyType* t) override
+    {
+        // Do not clone lazy types
+        if (!FFlag::LuauIncrementalAutocompleteDemandBasedCloning)
+        {
+            if (auto unwrapped = t->unwrapped.load())
+                t->unwrapped.store(shallowClone(unwrapped));
+        }
+    }
 };
 
 
@@ -560,7 +569,7 @@ public:
 
 TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool ignorePersistent)
 {
-    if (tp->persistent && (!FFlag::LuauFreezeIgnorePersistent || !ignorePersistent))
+    if (tp->persistent && !ignorePersistent)
         return tp;
 
     TypeCloner cloner{
@@ -569,7 +578,7 @@ TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, 
         NotNull{&cloneState.seenTypes},
         NotNull{&cloneState.seenTypePacks},
         nullptr,
-        FFlag::LuauFreezeIgnorePersistent && ignorePersistent ? tp : nullptr
+        ignorePersistent ? tp : nullptr
     };
 
     return cloner.shallowClone(tp);
@@ -577,7 +586,7 @@ TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, 
 
 TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool ignorePersistent)
 {
-    if (typeId->persistent && (!FFlag::LuauFreezeIgnorePersistent || !ignorePersistent))
+    if (typeId->persistent && !ignorePersistent)
         return typeId;
 
     TypeCloner cloner{
@@ -585,7 +594,7 @@ TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool
         cloneState.builtinTypes,
         NotNull{&cloneState.seenTypes},
         NotNull{&cloneState.seenTypePacks},
-        FFlag::LuauFreezeIgnorePersistent && ignorePersistent ? typeId : nullptr,
+        ignorePersistent ? typeId : nullptr,
         nullptr
     };
 

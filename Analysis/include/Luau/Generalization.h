@@ -12,8 +12,9 @@ std::optional<TypeId> generalize(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
-    NotNull<DenseHashSet<TypeId>> bakedTypes,
+    NotNull<DenseHashSet<TypeId>> cachedTypes,
     TypeId ty,
     /* avoid sealing tables*/ bool avoidSealingTables = false
 );
+
 }

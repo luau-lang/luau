@@ -9,7 +9,8 @@ using std::nullopt;
 namespace Luau
 {
 
-ClassFixture::ClassFixture()
+ClassFixture::ClassFixture(bool prepareAutocomplete)
+    : BuiltinsFixture(prepareAutocomplete)
 {
     GlobalTypes& globals = frontend.globals;
     TypeArena& arena = globals.globalTypes;

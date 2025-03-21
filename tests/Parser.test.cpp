@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
+LUAU_FASTFLAG(LuauParseOptionalAsNode)
 
 namespace
 {
@@ -3818,7 +3819,10 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     }
     else
         CHECK(unionTy->types.data[0]->is<AstTypeFunction>()); // () -> ()
-    CHECK(unionTy->types.data[1]->is<AstTypeReference>());    // nil
+    if (FFlag::LuauParseOptionalAsNode)
+        CHECK(unionTy->types.data[1]->is<AstTypeOptional>()); // ?
+    else
+        CHECK(unionTy->types.data[1]->is<AstTypeReference>()); // nil
 }
 
 TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")

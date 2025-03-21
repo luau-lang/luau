@@ -6,7 +6,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -364,7 +365,16 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        const std::string expected = "Type\n\t"
+                                     "'{ [\"\\n\"]: number }'"
+                                     "\ncould not be converted into\n\t"
+                                     "'{ [\"<>\"]: number }'";
+        CHECK(expected == toString(result.errors[0]));
+    }
+    else if (FFlag::LuauSolverV2)
         CHECK(
             "Type\n"
             "    '{ [\"\\n\"]: number }'\n"
@@ -440,12 +450,23 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expectedError = R"(Type
+    if (FFlag::LuauImproveTypePathsInErrors)
+    {
+        const std::string expectedError = "Type\n\t"
+                                          "'{ result: string, success: boolean }'"
+                                          "\ncould not be converted into\n\t"
+                                          "'Err<number> | Ok<string>'";
+        CHECK(toString(result.errors[0]) == expectedError);
+    }
+    else
+    {
+        const std::string expectedError = R"(Type
     '{ result: string, success: boolean }'
 could not be converted into
     'Err<number> | Ok<string>')";
 
-    CHECK(toString(result.errors[0]) == expectedError);
+        CHECK(toString(result.errors[0]) == expectedError);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")

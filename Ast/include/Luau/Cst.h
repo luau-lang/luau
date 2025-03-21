@@ -105,6 +105,20 @@ public:
     Position closeBracketPosition;
 };
 
+class CstExprFunction : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstExprFunction)
+
+    CstExprFunction();
+
+    Position openGenericsPosition{0,0};
+    AstArray<Position> genericsCommaPositions;
+    Position closeGenericsPosition{0,0};
+    AstArray<Position> argsCommaPositions;
+    Position returnSpecifierPosition{0,0};
+};
+
 class CstExprTable : public CstNode
 {
 public:
@@ -311,6 +325,17 @@ public:
     Position equalsPosition;
 };
 
+class CstStatTypeFunction : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatTypeFunction)
+
+    CstStatTypeFunction(Position typeKeywordPosition, Position functionKeywordPosition);
+
+    Position typeKeywordPosition;
+    Position functionKeywordPosition;
+};
+
 class CstTypeReference : public CstNode
 {
 public:
@@ -359,6 +384,32 @@ public:
     bool isArray = false;
 };
 
+class CstTypeFunction : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypeFunction)
+
+    CstTypeFunction(
+        Position openGenericsPosition,
+        AstArray<Position> genericsCommaPositions,
+        Position closeGenericsPosition,
+        Position openArgsPosition,
+        AstArray<std::optional<Position>> argumentNameColonPositions,
+        AstArray<Position> argumentsCommaPositions,
+        Position closeArgsPosition,
+        Position returnArrowPosition
+    );
+
+    Position openGenericsPosition;
+    AstArray<Position> genericsCommaPositions;
+    Position closeGenericsPosition;
+    Position openArgsPosition;
+    AstArray<std::optional<Position>> argumentNameColonPositions;
+    AstArray<Position> argumentsCommaPositions;
+    Position closeArgsPosition;
+    Position returnArrowPosition;
+};
+
 class CstTypeTypeof : public CstNode
 {
 public:
@@ -380,6 +431,28 @@ public:
     AstArray<char> sourceString;
     CstExprConstantString::QuoteStyle quoteStyle;
     unsigned int blockDepth;
+};
+
+class CstTypePackExplicit : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypePackExplicit)
+
+    CstTypePackExplicit(Position openParenthesesPosition, Position closeParenthesesPosition, AstArray<Position> commaPositions);
+
+    Position openParenthesesPosition;
+    Position closeParenthesesPosition;
+    AstArray<Position> commaPositions;
+};
+
+class CstTypePackGeneric : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypePackGeneric)
+
+    explicit CstTypePackGeneric(Position ellipsisPosition);
+
+    Position ellipsisPosition;
 };
 
 } // namespace Luau

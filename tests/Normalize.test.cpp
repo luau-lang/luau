@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauFixNormalizedIntersectionOfNegatedClass)
 LUAU_FASTFLAG(LuauNormalizeNegationFix)
 using namespace Luau;
 
@@ -852,7 +851,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
-    ScopedFastFlag _{FFlag::LuauFixNormalizedIntersectionOfNegatedClass, true};
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));

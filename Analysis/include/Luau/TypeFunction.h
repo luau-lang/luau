@@ -48,6 +48,9 @@ struct TypeFunctionRuntime
     // Evaluation of type functions should only be performed in the absence of parse errors in the source module
     bool allowEvaluation = true;
 
+    // Root scope in which the type function operates in, set up by ConstraintGenerator
+    ScopePtr rootScope;
+
     // Output created by 'print' function
     std::vector<std::string> messages;
 
