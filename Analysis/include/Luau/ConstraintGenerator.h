@@ -117,12 +117,15 @@ struct ConstraintGenerator
 
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
+    DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes{nullptr};
+
     // Needed to resolve modules to make 'require' import types properly.
     NotNull<ModuleResolver> moduleResolver;
     // Occasionally constraint generation needs to produce an ICE.
     const NotNull<InternalErrorReporter> ice;
 
     ScopePtr globalScope;
+    ScopePtr typeFunctionScope;
 
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     std::vector<RequireCycle> requireCycles;
@@ -140,6 +143,7 @@ struct ConstraintGenerator
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<InternalErrorReporter> ice,
         const ScopePtr& globalScope,
+        const ScopePtr& typeFunctionScope,
         std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
         DcrLogger* logger,
         NotNull<DataFlowGraph> dfg,

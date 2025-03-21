@@ -4,6 +4,7 @@
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/ToString.h"
+#include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
 
@@ -17,19 +18,18 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
-LUAU_FASTFLAG(LuauDontInPlaceMutateTableType)
-LUAU_FASTFLAG(LuauAllowNonSharedTableTypesInLiteral)
 LUAU_FASTFLAG(LuauFollowTableFreeze)
 LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
 LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauSearchForRefineableType)
-LUAU_FASTFLAG(LuauDoNotGeneralizeInTypeFunctions)
+LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -922,7 +922,16 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK(
+            "Type pack '{number}' could not be converted into '{string}'; \n"
+            "this is because in the 1st entry in the type pack, the result of indexing is `number` in the former type and `string` in the latter "
+            "type, "
+            "and `number` is not exactly `string`" == toString(result.errors[0])
+        );
+    }
+    else if (FFlag::LuauSolverV2)
     {
         // CLI-114879 - Error path reporting is not great
         CHECK(
@@ -1805,7 +1814,16 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multi
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK_EQ(
+            "Type pack '{ x: number }' could not be converted into '{ x: number, y: number, z: number }'; \n"
+            "this is because the 1st entry in the type pack is `{ x: number }` in the former type and `{ x: number, y: number, z: number }` in the "
+            "latter type, and `{ x: number }` is not a subtype of `{ x: number, y: number, z: number }`",
+            toString(result.errors[0])
+        );
+    }
+    else if (FFlag::LuauSolverV2)
     {
         CHECK_EQ(
             "Type pack '{ x: number }' could not be converted into '{ x: number, y: number, z: number }';"
@@ -2435,7 +2453,15 @@ local b: B = a
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK(
+            "Type 'A' could not be converted into 'B'; \n"
+            "this is because accessing `y` results in `number` in the former type and `string` in the latter type, and `number` is not exactly "
+            "`string`" == toString(result.errors.at(0))
+        );
+    }
+    else if (FFlag::LuauSolverV2)
         CHECK(toString(result.errors.at(0)) == R"(Type 'A' could not be converted into 'B'; at [read "y"], number is not exactly string)");
     else
     {
@@ -2462,7 +2488,15 @@ local b: B = a
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK(
+            "Type 'A' could not be converted into 'B'; \n"
+            "this is because accessing `b.y` results in `number` in the former type and `string` in the latter type, and `number` is not exactly "
+            "`string`" == toString(result.errors.at(0))
+        );
+    }
+    else if (FFlag::LuauSolverV2)
         CHECK(toString(result.errors.at(0)) == R"(Type 'A' could not be converted into 'B'; at [read "b"][read "y"], number is not exactly string)");
     else
     {
@@ -2489,7 +2523,17 @@ local b2 = setmetatable({ x = 2, y = 4 }, { __call = function(s, t) end });
 local c2: typeof(a2) = b2
     )");
 
-    const std::string expected1 = R"(Type 'b1' could not be converted into 'a1'
+    const std::string expected1 = (FFlag::LuauImproveTypePathsInErrors) ?
+                                                                        R"(Type 'b1' could not be converted into 'a1'
+caused by:
+  Type
+	'{ x: number, y: string }'
+could not be converted into
+	'{ x: number, y: number }'
+caused by:
+  Property 'y' is not compatible.
+Type 'string' could not be converted into 'number' in an invariant context)"
+                                                                        : R"(Type 'b1' could not be converted into 'a1'
 caused by:
   Type
     '{ x: number, y: string }'
@@ -2498,7 +2542,20 @@ could not be converted into
 caused by:
   Property 'y' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)";
-    const std::string expected2 = R"(Type 'b2' could not be converted into 'a2'
+    const std::string expected2 = (FFlag::LuauImproveTypePathsInErrors) ?
+                                                                        R"(Type 'b2' could not be converted into 'a2'
+caused by:
+  Type
+	'{ __call: <a, b>(a, b) -> () }'
+could not be converted into
+	'{ __call: <a>(a) -> () }'
+caused by:
+  Property '__call' is not compatible.
+Type
+	'<a, b>(a, b) -> ()'
+could not be converted into
+	'<a>(a) -> ()'; different number of generic type parameters)"
+                                                                        : R"(Type 'b2' could not be converted into 'a2'
 caused by:
   Type
     '{ __call: <a, b>(a, b) -> () }'
@@ -2511,7 +2568,23 @@ Type
 could not be converted into
     '<a>(a) -> ()'; different number of generic type parameters)";
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        // The assignment of c2 to b2 is, surprisingly, allowed under the new
+        // solver for two reasons:
+        //
+        // First, both of the __call functions have hidden ...any arguments
+        // because their exact definition is available.
+        //
+        // Second, nil <: unknown, so we consider that parameter to be optional.
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(
+            "Type 'b1' could not be converted into 'a1'; \n"
+            "this is because in the table portion, accessing `y` results in `string` in the former type and `number` in the latter type, and "
+            "`string` is not exactly `number`" == toString(result.errors[0])
+        );
+    }
+    else if (FFlag::LuauSolverV2)
     {
         // The assignment of c2 to b2 is, surprisingly, allowed under the new
         // solver for two reasons:
@@ -2576,7 +2649,15 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK(
+            "Type 'A' could not be converted into 'B'; \n"
+            "this is because the index type is `number` in the former type and `string` in the latter type, and `number` is not exactly `string`" ==
+            toString(result.errors[0])
+        );
+    }
+    else if (FFlag::LuauSolverV2)
     {
         CHECK("Type 'A' could not be converted into 'B'; at indexer(), number is not exactly string" == toString(result.errors[0]));
     }
@@ -2602,7 +2683,15 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK(
+            "Type 'A' could not be converted into 'B'; \n"
+            "this is because the result of indexing is `number` in the former type and `string` in the latter type, and `number` is not exactly "
+            "`string`" == toString(result.errors[0])
+        );
+    }
+    else if (FFlag::LuauSolverV2)
     {
         CHECK("Type 'A' could not be converted into 'B'; at indexResult(), number is not exactly string" == toString(result.errors[0]));
     }
@@ -2651,7 +2740,13 @@ local y: number = tmp.p.y
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+        CHECK(
+            "Type 'tmp' could not be converted into 'HasSuper'; \n"
+            "this is because accessing `p` results in `{ x: number, y: number }` in the former type and `Super` in the latter type, and `{ x: "
+            "number, y: number }` is not exactly `Super`" == toString(result.errors[0])
+        );
+    else if (FFlag::LuauSolverV2)
         CHECK(
             "Type 'tmp' could not be converted into 'HasSuper'; at [read \"p\"], { x: number, y: number } is not exactly Super" ==
             toString(result.errors[0])
@@ -3615,7 +3710,14 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
         local t: { [string]: number } = { 5, 6, 7 }
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    {
+        std::string expected =
+            "Type '{number}' could not be converted into '{ [string]: number }'; \n"
+            "this is because the index type is `number` in the former type and `string` in the latter type, and `number` is not exactly `string`";
+        CHECK(toString(result.errors[0]) == expected);
+    }
+    else if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK(
@@ -3756,6 +3858,36 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
         REQUIRE(tm4);
         CHECK("typeof(string)" == toString(tm4->givenType));
         CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm4->wantedType));
+    }
+    else if (FFlag::LuauImproveTypePathsInErrors)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+        const std::string expected1 =
+            R"(Type 'string' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements.
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+        CHECK_EQ(expected1, toString(result.errors[0]));
+
+        const std::string expected2 =
+            R"(Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements.
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+        CHECK_EQ(expected2, toString(result.errors[1]));
+
+        const std::string expected3 = R"(Type
+	'"bar" | "baz"'
+could not be converted into
+	't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  Not all union options are compatible.
+Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements.
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+        CHECK_EQ(expected3, toString(result.errors[2]));
     }
     else
     {
@@ -4338,11 +4470,25 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    std::string expected =
-        "Type '{ a: string, b: boolean, c: number }' could not be converted into 'T'; at [read \"a\"], string is not exactly number"
-        "\n\tat [read \"b\"], boolean is not exactly string"
-        "\n\tat [read \"c\"], number is not exactly boolean";
-    CHECK(toString(result.errors[0]) == expected);
+
+    if (FFlag::LuauImproveTypePathsInErrors)
+    {
+        std::string expected =
+            "Type '{ a: string, b: boolean, c: number }' could not be converted into 'T'; \n"
+            "this is because \n\t"
+            " * accessing `a` results in `string` in the former type and `number` in the latter type, and `string` is not exactly `number`\n\t"
+            " * accessing `b` results in `boolean` in the former type and `string` in the latter type, and `boolean` is not exactly `string`\n\t"
+            " * accessing `c` results in `number` in the former type and `boolean` in the latter type, and `number` is not exactly `boolean`";
+        CHECK(toString(result.errors[0]) == expected);
+    }
+    else
+    {
+        std::string expected =
+            "Type '{ a: string, b: boolean, c: number }' could not be converted into 'T'; at [read \"a\"], string is not exactly number"
+            "\n\tat [read \"b\"], boolean is not exactly string"
+            "\n\tat [read \"c\"], number is not exactly boolean";
+        CHECK(toString(result.errors[0]) == expected);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
@@ -4968,12 +5114,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        "Type pack '{ @metatable {  }, {  } & {  } }' could not be converted into 'Class'; at [0].metatable(), {  } is not a subtype of nil\n"
-        "\ttype { @metatable {  }, {  } & {  } }[0].table()[0] ({  }) is not a subtype of Class[0].table() (nil)\n"
-        "\ttype { @metatable {  }, {  } & {  } }[0].table()[1] ({  }) is not a subtype of Class[0].table() (nil)",
-        toString(result.errors[0])
-    );
+
+    if (FFlag::LuauImproveTypePathsInErrors)
+    {
+        CHECK_EQ(
+            "Type pack '{ @metatable {  }, {  } & {  } }' could not be converted into 'Class'; \n"
+            "this is because \n\t"
+            " * in the 1st entry in the type pack, the metatable portion is `{  }` in the former type and `nil` in the latter type, and `{  }` "
+            "is not a subtype of `nil`\n\t"
+            " * in the 1st entry in the type pack, the table portion has the 1st component of the intersection as `{  }` and in the 1st entry "
+            "in the type pack, the table portion is `nil`, and `{  }` is not a subtype of `nil`\n\t"
+            " * in the 1st entry in the type pack, the table portion has the 2nd component of the intersection as `{  }` and in the 1st entry "
+            "in the type pack, the table portion is `nil`, and `{  }` is not a subtype of `nil`",
+            toString(result.errors[0])
+        );
+    }
+    else
+    {
+        CHECK_EQ(
+            "Type pack '{ @metatable {  }, {  } & {  } }' could not be converted into 'Class'; at [0].metatable(), {  } is not a subtype of nil\n"
+            "\ttype { @metatable {  }, {  } & {  } }[0].table()[0] ({  }) is not a subtype of Class[0].table() (nil)\n"
+            "\ttype { @metatable {  }, {  } & {  } }[0].table()[1] ({  }) is not a subtype of Class[0].table() (nil)",
+            toString(result.errors[0])
+        );
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
@@ -5071,7 +5235,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_in_literal")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontInPlaceMutateTableType, true},
     };
 
     auto result = check(R"(
@@ -5098,11 +5261,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_in_literal")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_from_fuzzer")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontInPlaceMutateTableType, true},
-        {FFlag::LuauAllowNonSharedTableTypesInLiteral, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // This would trigger an assert previously, so we really only care that
     // there are errors (and there will be: lots of syntax errors).
@@ -5113,11 +5272,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_fields_from_fuzzer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "write_only_table_field_duplicate")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDontInPlaceMutateTableType, true},
-        {FFlag::LuauAllowNonSharedTableTypesInLiteral, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     auto result = check(R"(
         type WriteOnlyTable = { write x: number }
@@ -5345,7 +5500,6 @@ TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDoNotGeneralizeInTypeFunctions, true},
         {FFlag::LuauSearchForRefineableType, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
@@ -5365,6 +5519,57 @@ TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bigger_nested_table_causes_big_type_error")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauImproveTypePathsInErrors, true},
+    };
+
+    auto result = check(R"(
+        type File = {
+            type: "file",
+            name: string,
+            content: string?,
+        }
+
+        type Dir = {
+            type: "dir",
+            name: string,
+            children: { File | Dir }?,
+        }
+
+
+        type DirectoryChildren = { File | Dir }
+
+        local newtree: DirectoryChildren = {
+            {
+                type = "dir",
+                name = "src",
+                children = {
+                    {
+                        type = "file",
+                        path = "main.luau", -- I accidentally assign "path" instead of "name", causing a huge scary TypeError
+                    }
+                }
+            }
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    std::string expected = "Type\n\t"
+                           "'{Dir | File | { children: ({Dir | File | { content: string?, path: string, type: \"file\" }} | {Dir | File})?, name: "
+                           "string, type: \"dir\" }}'"
+                           "\ncould not be converted into\n\t"
+                           "'DirectoryChildren'; \n"
+                           "this is because in the result of indexing has the 3rd component of the union as `{ children: ({Dir | File | { content: "
+                           "string?, path: string, type: \"file\" }} | {Dir | File})?, name: string, type: \"dir\" }` and the result of indexing is "
+                           "`Dir | File`, and `{ children: ({Dir | File | { content: string?, path: string, type: \"file\" }} | {Dir | File})?, "
+                           "name: string, type: \"dir\" }` is not exactly `Dir | File`";
+
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 

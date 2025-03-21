@@ -8,6 +8,7 @@
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
+#include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunction.h"
 
 #include <optional>
@@ -17,6 +18,7 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
+LUAU_FASTFLAG(LuauNonStrictFuncDefErrorFix)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -116,7 +118,10 @@ struct ErrorConverter
             size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
             if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
                 return "Type " + given + " could not be converted into " + wanted;
-            return "Type\n    " + given + "\ncould not be converted into\n    " + wanted;
+            if (FFlag::LuauImproveTypePathsInErrors)
+                return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
+            else
+                return "Type\n    " + given + "\ncould not be converted into\n    " + wanted;
         };
 
         if (givenTypeName == wantedTypeName)
@@ -751,8 +756,15 @@ struct ErrorConverter
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
     {
-        return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
-               "' is used in a way that will run time error";
+        if (FFlag::LuauNonStrictFuncDefErrorFix && e.functionName.empty())
+        {
+            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
+        }
+        else
+        {
+            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
+                   "' is used in a way that will run time error";
+        }
     }
 
     std::string operator()(const PropertyAccessViolation& e) const

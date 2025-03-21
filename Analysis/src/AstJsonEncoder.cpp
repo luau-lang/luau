@@ -1065,6 +1065,11 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
+    void write(class AstTypeOptional* node)
+    {
+        writeNode(node, "AstTypeOptional", [&]() {});
+    }
+
     void write(class AstTypeUnion* node)
     {
         writeNode(

@@ -26,10 +26,13 @@
 #include "Luau/VisitType.h"
 
 #include <algorithm>
+#include <sstream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
+LUAU_FASTFLAGVARIABLE(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 
 namespace Luau
 {
@@ -1201,7 +1204,8 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 
 void TypeChecker2::visit(AstStatTypeFunction* stat)
 {
-    // TODO: add type checking for user-defined type functions
+    if (FFlag::LuauUserTypeFunTypecheck)
+        visit(stat->body);
 }
 
 void TypeChecker2::visit(AstTypeList types)
@@ -2701,20 +2705,61 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         if (!subLeafTy && !superLeafTy && !subLeafTp && !superLeafTp)
             ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
 
-        std::string relation = "a subtype of";
-        if (reasoning.variance == SubtypingVariance::Invariant)
-            relation = "exactly";
-        else if (reasoning.variance == SubtypingVariance::Contravariant)
-            relation = "a supertype of";
+        if (FFlag::LuauImproveTypePathsInErrors)
+        {
+            std::string relation = "a subtype of";
+            if (reasoning.variance == SubtypingVariance::Invariant)
+                relation = "exactly";
+            else if (reasoning.variance == SubtypingVariance::Contravariant)
+                relation = "a supertype of";
 
-        std::string reason;
-        if (reasoning.subPath == reasoning.superPath)
-            reason = "at " + toString(reasoning.subPath) + ", " + toString(subLeaf) + " is not " + relation + " " + toString(superLeaf);
+            std::string subLeafAsString = toString(subLeaf);
+            // if the string is empty, it must be an empty type pack
+            if (subLeafAsString.empty())
+                subLeafAsString = "()";
+
+            std::string superLeafAsString = toString(superLeaf);
+            // if the string is empty, it must be an empty type pack
+            if (superLeafAsString.empty())
+                superLeafAsString = "()";
+
+            std::stringstream baseReasonBuilder;
+            baseReasonBuilder << "`" << subLeafAsString << "` is not " << relation << " `" << superLeafAsString << "`";
+            std::string baseReason = baseReasonBuilder.str();
+
+            std::stringstream reason;
+
+            if (reasoning.subPath == reasoning.superPath)
+                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
+                       << "` in the latter type, and " << baseReason;
+            else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())
+                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` and " << toStringHuman(reasoning.superPath) << "`"
+                       << superLeafAsString << "`, and " << baseReason;
+            else if (!reasoning.subPath.empty())
+                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "`, which is not " << relation << " `" << superLeafAsString
+                       << "`";
+            else
+                reason << toStringHuman(reasoning.superPath) << "`" << superLeafAsString << "`, and " << baseReason;
+
+            reasons.push_back(reason.str());
+        }
         else
-            reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(subLeaf) + ") is not " +
-                     relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(superLeaf) + ")";
+        {
+            std::string relation = "a subtype of";
+            if (reasoning.variance == SubtypingVariance::Invariant)
+                relation = "exactly";
+            else if (reasoning.variance == SubtypingVariance::Contravariant)
+                relation = "a supertype of";
 
-        reasons.push_back(reason);
+            std::string reason;
+            if (reasoning.subPath == reasoning.superPath)
+                reason = "at " + toString(reasoning.subPath) + ", " + toString(subLeaf) + " is not " + relation + " " + toString(superLeaf);
+            else
+                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(subLeaf) + ") is not " +
+                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(superLeaf) + ")";
+
+            reasons.push_back(reason);
+        }
 
         // if we haven't already proved this isn't suppressing, we have to keep checking.
         if (suppressed)

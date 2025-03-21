@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauStoreCSTData)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
+LUAU_FASTFLAG(LuauParseOptionalAsNode)
 
 namespace
 {
@@ -269,6 +270,43 @@ private:
     bool first;
     Writer& writer;
     const Position* commaPosition;
+};
+
+class ArgNameInserter
+{
+public:
+    ArgNameInserter(Writer& w, AstArray<std::optional<AstArgumentName>> names, AstArray<std::optional<Position>> colonPositions)
+        : writer(w)
+        , names(names)
+        , colonPositions(colonPositions)
+    {
+    }
+
+    void operator()()
+    {
+        if (idx < names.size)
+        {
+            const auto name = names.data[idx];
+            if (name.has_value())
+            {
+                writer.advance(name->second.begin);
+                writer.identifier(name->first.value);
+                if (idx < colonPositions.size)
+                {
+                    LUAU_ASSERT(colonPositions.data[idx].has_value());
+                    writer.advance(*colonPositions.data[idx]);
+                }
+                writer.symbol(":");
+            }
+        }
+        idx++;
+    }
+
+private:
+    Writer& writer;
+    AstArray<std::optional<AstArgumentName>> names;
+    AstArray<std::optional<Position>> colonPositions;
+    size_t idx = 0;
 };
 
 struct Printer_DEPRECATED
@@ -1216,6 +1254,15 @@ struct Printer_DEPRECATED
 
             for (size_t i = 0; i < a->types.size; ++i)
             {
+                if (FFlag::LuauParseOptionalAsNode)
+                {
+                    if (a->types.data[i]->is<AstTypeOptional>())
+                    {
+                        writer.symbol("?");
+                        continue;
+                    }
+                }
+
                 if (i > 0)
                 {
                     writer.maybeSpace(a->types.data[i]->location.begin, 2);
@@ -1312,7 +1359,7 @@ struct Printer
         }
     }
 
-    void visualizeTypePackAnnotation(const AstTypePack& annotation, bool forVarArg)
+    void visualizeTypePackAnnotation(AstTypePack& annotation, bool forVarArg)
     {
         advance(annotation.location.begin);
         if (const AstTypePackVariadic* variadicTp = annotation.as<AstTypePackVariadic>())
@@ -1322,15 +1369,22 @@ struct Printer
 
             visualizeTypeAnnotation(*variadicTp->variadicType);
         }
-        else if (const AstTypePackGeneric* genericTp = annotation.as<AstTypePackGeneric>())
+        else if (AstTypePackGeneric* genericTp = annotation.as<AstTypePackGeneric>())
         {
             writer.symbol(genericTp->genericName.value);
+            if (const auto cstNode = lookupCstNode<CstTypePackGeneric>(genericTp))
+                advance(cstNode->ellipsisPosition);
             writer.symbol("...");
         }
-        else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
+        else if (AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
         {
             LUAU_ASSERT(!forVarArg);
-            visualizeTypeList(explicitTp->typeList, true);
+            if (const auto cstNode = lookupCstNode<CstTypePackExplicit>(explicitTp))
+                visualizeTypeList(
+                    explicitTp->typeList, true, cstNode->openParenthesesPosition, cstNode->closeParenthesesPosition, cstNode->commaPositions
+                );
+            else
+                visualizeTypeList(explicitTp->typeList, true);
         }
         else
         {
@@ -1338,19 +1392,37 @@ struct Printer
         }
     }
 
-    void visualizeTypeList(const AstTypeList& list, bool unconditionallyParenthesize)
+    void visualizeNamedTypeList(
+        const AstTypeList& list,
+        bool unconditionallyParenthesize,
+        std::optional<Position> openParenthesesPosition,
+        std::optional<Position> closeParenthesesPosition,
+        AstArray<Position> commaPositions,
+        AstArray<std::optional<AstArgumentName>> argNames,
+        AstArray<std::optional<Position>> argNamesColonPositions
+    )
     {
         size_t typeCount = list.types.size + (list.tailType != nullptr ? 1 : 0);
         if (typeCount == 0)
         {
+            if (openParenthesesPosition)
+                advance(*openParenthesesPosition);
             writer.symbol("(");
+            if (closeParenthesesPosition)
+                advance(*closeParenthesesPosition);
             writer.symbol(")");
         }
         else if (typeCount == 1)
         {
             bool shouldParenthesize = unconditionallyParenthesize && (list.types.size == 0 || !list.types.data[0]->is<AstTypeGroup>());
             if (FFlag::LuauAstTypeGroup3 ? shouldParenthesize : unconditionallyParenthesize)
+            {
+                if (openParenthesesPosition)
+                    advance(*openParenthesesPosition);
                 writer.symbol("(");
+            }
+
+            ArgNameInserter(writer, argNames, argNamesColonPositions)();
 
             // Only variadic tail
             if (list.types.size == 0)
@@ -1363,31 +1435,48 @@ struct Printer
             }
 
             if (FFlag::LuauAstTypeGroup3 ? shouldParenthesize : unconditionallyParenthesize)
+            {
+                if (closeParenthesesPosition)
+                    advance(*closeParenthesesPosition);
                 writer.symbol(")");
+            }
         }
         else
         {
+            if (openParenthesesPosition)
+                advance(*openParenthesesPosition);
             writer.symbol("(");
 
-            bool first = true;
+            CommaSeparatorInserter comma(writer, commaPositions.size > 0 ? commaPositions.begin() : nullptr);
+            ArgNameInserter argName(writer, argNames, argNamesColonPositions);
             for (const auto& el : list.types)
             {
-                if (first)
-                    first = false;
-                else
-                    writer.symbol(",");
-
+                comma();
+                argName();
                 visualizeTypeAnnotation(*el);
             }
 
             if (list.tailType)
             {
-                writer.symbol(",");
+                comma();
                 visualizeTypePackAnnotation(*list.tailType, false);
             }
 
+            if (closeParenthesesPosition)
+                advance(*closeParenthesesPosition);
             writer.symbol(")");
         }
+    }
+
+    void visualizeTypeList(
+        const AstTypeList& list,
+        bool unconditionallyParenthesize,
+        std::optional<Position> openParenthesesPosition = std::nullopt,
+        std::optional<Position> closeParenthesesPosition = std::nullopt,
+        AstArray<Position> commaPositions = {}
+    )
+    {
+        visualizeNamedTypeList(list, unconditionallyParenthesize, openParenthesesPosition, closeParenthesesPosition, commaPositions, {}, {});
     }
 
     bool isIntegerish(double d)
@@ -1406,7 +1495,7 @@ struct Printer
         {
             writer.symbol("(");
             visualize(*a->expr);
-            advance(Position{a->location.end.line, a->location.end.column - 1});
+            advanceBefore(a->location.end, 1);
             writer.symbol(")");
         }
         else if (expr.is<AstExprConstantNil>())
@@ -1775,6 +1864,14 @@ struct Printer
         writer.advance(newPos);
     }
 
+    void advanceBefore(const Position& newPos, unsigned int tokenLength)
+    {
+        if (newPos.column >= tokenLength)
+            advance(Position{newPos.line, newPos.column - tokenLength});
+        else
+            advance(newPos);
+    }
+
     void visualize(AstStat& program)
     {
         advance(program.location.begin);
@@ -1817,8 +1914,8 @@ struct Printer
             visualizeBlock(*a->body);
             if (const auto cstNode = lookupCstNode<CstStatRepeat>(a))
                 writer.advance(cstNode->untilPosition);
-            else if (a->condition->location.begin.column > 5)
-                writer.advance(Position{a->condition->location.begin.line, a->condition->location.begin.column - 6});
+            else
+                advanceBefore(a->condition->location.begin, 6);
             writer.keyword("until");
             visualize(*a->condition);
         }
@@ -2121,7 +2218,20 @@ struct Printer
         {
             if (writeTypes)
             {
-                writer.keyword("type function");
+                const auto cstNode = lookupCstNode<CstStatTypeFunction>(t);
+                if (t->exported)
+                    writer.keyword("export");
+                if (cstNode)
+                    advance(cstNode->typeKeywordPosition);
+                else
+                    writer.space();
+                writer.keyword("type");
+                if (cstNode)
+                    advance(cstNode->functionKeywordPosition);
+                else
+                    writer.space();
+                writer.keyword("function");
+                advance(t->nameLocation.begin);
                 writer.identifier(t->name.value);
                 visualizeFunctionBody(*t->body);
             }
@@ -2152,16 +2262,22 @@ struct Printer
         if (program.hasSemicolon)
         {
             if (FFlag::LuauStoreCSTData)
-                advance(Position{program.location.end.line, program.location.end.column - 1});
+                advanceBefore(program.location.end, 1);
             writer.symbol(";");
         }
     }
 
     void visualizeFunctionBody(AstExprFunction& func)
     {
+        const auto cstNode = lookupCstNode<CstExprFunction>(&func);
+
+        // TODO(CLI-139347): need to handle attributes, argument types, and return type (incl. parentheses of return type)
+
         if (func.generics.size > 0 || func.genericPacks.size > 0)
         {
-            CommaSeparatorInserter comma(writer);
+            CommaSeparatorInserter comma(writer, cstNode ? cstNode->genericsCommaPositions.begin() : nullptr);
+            if (cstNode)
+                advance(cstNode->openGenericsPosition);
             writer.symbol("<");
             for (const auto& o : func.generics)
             {
@@ -2176,13 +2292,19 @@ struct Printer
 
                 writer.advance(o->location.begin);
                 writer.identifier(o->name.value);
+                if (const auto* genericTypePackCstNode = lookupCstNode<CstGenericTypePack>(o))
+                    advance(genericTypePackCstNode->ellipsisPosition);
                 writer.symbol("...");
             }
+            if (cstNode)
+                advance(cstNode->closeGenericsPosition);
             writer.symbol(">");
         }
 
+        if (func.argLocation)
+            advance(func.argLocation->begin);
         writer.symbol("(");
-        CommaSeparatorInserter comma(writer);
+        CommaSeparatorInserter comma(writer, cstNode ? cstNode->argsCommaPositions.begin() : nullptr);
 
         for (size_t i = 0; i < func.args.size; ++i)
         {
@@ -2212,10 +2334,14 @@ struct Printer
             }
         }
 
+        if (func.argLocation)
+            advanceBefore(func.argLocation->end, 1);
         writer.symbol(")");
 
         if (writeTypes && func.returnAnnotation)
         {
+            if (cstNode)
+                advance(cstNode->returnSpecifierPosition);
             writer.symbol(":");
             writer.space();
 
@@ -2340,9 +2466,13 @@ struct Printer
         }
         else if (const auto& a = typeAnnotation.as<AstTypeFunction>())
         {
+            const auto cstNode = lookupCstNode<CstTypeFunction>(a);
+
             if (a->generics.size > 0 || a->genericPacks.size > 0)
             {
-                CommaSeparatorInserter comma(writer);
+                CommaSeparatorInserter comma(writer, cstNode ? cstNode->genericsCommaPositions.begin() : nullptr);
+                if (cstNode)
+                    advance(cstNode->openGenericsPosition);
                 writer.symbol("<");
                 for (const auto& o : a->generics)
                 {
@@ -2357,15 +2487,29 @@ struct Printer
 
                     writer.advance(o->location.begin);
                     writer.identifier(o->name.value);
+                    if (const auto* genericTypePackCstNode = lookupCstNode<CstGenericTypePack>(o))
+                        advance(genericTypePackCstNode->ellipsisPosition);
                     writer.symbol("...");
                 }
+                if (cstNode)
+                    advance(cstNode->closeGenericsPosition);
                 writer.symbol(">");
             }
 
             {
-                visualizeTypeList(a->argTypes, true);
+                visualizeNamedTypeList(
+                    a->argTypes,
+                    true,
+                    cstNode ? std::make_optional(cstNode->openArgsPosition) : std::nullopt,
+                    cstNode ? std::make_optional(cstNode->closeArgsPosition) : std::nullopt,
+                    cstNode ? cstNode->argumentsCommaPositions : Luau::AstArray<Position>{},
+                    a->argNames,
+                    cstNode ? cstNode->argumentNameColonPositions : Luau::AstArray<std::optional<Position>>{}
+                );
             }
 
+            if (cstNode)
+                advance(cstNode->returnArrowPosition);
             writer.symbol("->");
             visualizeTypeList(a->returnTypes, true);
         }
@@ -2557,6 +2701,15 @@ struct Printer
 
             for (size_t i = 0; i < a->types.size; ++i)
             {
+                if (FFlag::LuauParseOptionalAsNode)
+                {
+                    if (a->types.data[i]->is<AstTypeOptional>())
+                    {
+                        writer.symbol("?");
+                        continue;
+                    }
+                }
+
                 if (i > 0)
                 {
                     writer.maybeSpace(a->types.data[i]->location.begin, 2);
@@ -2599,7 +2752,7 @@ struct Printer
         {
             writer.symbol("(");
             visualizeTypeAnnotation(*a->type);
-            advance(Position{a->location.end.line, a->location.end.column - 1});
+            advanceBefore(a->location.end, 1);
             writer.symbol(")");
         }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonBool>())

@@ -79,4 +79,5 @@ end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
 TEST_SUITE_END();

@@ -622,7 +622,6 @@ struct UserDefinedFunctionData
     AstStatTypeFunction* definition = nullptr;
 
     DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environment{""};
-    DenseHashMap<Name, AstStatTypeFunction*> environment_DEPRECATED{""};
 };
 
 /**
