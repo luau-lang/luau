@@ -22,6 +22,7 @@
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAGVARIABLE(LuauNonStrictVisitorImprovements)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictWarnOnUnknownGlobals)
+LUAU_FASTFLAGVARIABLE(LuauNonStrictFuncDefErrorFix)
 
 namespace Luau
 {
@@ -763,7 +764,17 @@ struct NonStrictTypeChecker
         for (AstLocal* local : exprFn->args)
         {
             if (std::optional<TypeId> ty = willRunTimeErrorFunctionDefinition(local, remainder))
-                reportError(NonStrictFunctionDefinitionError{exprFn->debugname.value, local->name.value, *ty}, local->location);
+            {
+                if (FFlag::LuauNonStrictFuncDefErrorFix)
+                {
+                    const char* debugname = exprFn->debugname.value;
+                    reportError(NonStrictFunctionDefinitionError{debugname ? debugname : "", local->name.value, *ty}, local->location);
+                }
+                else
+                {
+                    reportError(NonStrictFunctionDefinitionError{exprFn->debugname.value, local->name.value, *ty}, local->location);
+                }
+            }
             remainder.remove(dfg->getDef(local));
         }
         return remainder;

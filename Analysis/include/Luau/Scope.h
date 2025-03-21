@@ -35,7 +35,7 @@ struct Scope
     explicit Scope(TypePackId returnType);                    // root scope
     explicit Scope(const ScopePtr& parent, int subLevel = 0); // child scope.  Parent must not be nullptr.
 
-    const ScopePtr parent; // null for the root
+    ScopePtr parent; // null for the root
 
     // All the children of this scope.
     std::vector<NotNull<Scope>> children;
@@ -59,6 +59,8 @@ struct Scope
 
     std::optional<TypeId> lookup(Symbol sym) const;
     std::optional<TypeId> lookupUnrefinedType(DefId def) const;
+
+    std::optional<TypeId> lookupRValueRefinementType(DefId def) const;
     std::optional<TypeId> lookup(DefId def) const;
     std::optional<std::pair<TypeId, Scope*>> lookupEx(DefId def);
     std::optional<std::pair<Binding*, Scope*>> lookupEx(Symbol sym);
@@ -71,6 +73,7 @@ struct Scope
 
     // WARNING: This function linearly scans for a string key of equal value!  It is thus O(n**2)
     std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true) const;
+    std::optional<std::pair<Symbol, Binding>> linearSearchForBindingPair(const std::string& name, bool traverseScopeChain) const;
 
     RefinementMap refinements;
 

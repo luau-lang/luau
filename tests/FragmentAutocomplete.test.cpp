@@ -43,6 +43,8 @@ LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 LUAU_FASTFLAG(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAG(LuauDoNotClonePersistentBindings)
 LUAU_FASTFLAG(LuauCloneReturnTypePack)
+LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
+LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -83,6 +85,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauCloneTypeAliasBindings{FFlag::LuauCloneTypeAliasBindings, true};
     ScopedFastFlag luauDoNotClonePersistentBindings{FFlag::LuauDoNotClonePersistentBindings, true};
     ScopedFastFlag luauCloneReturnTypePack{FFlag::LuauCloneReturnTypePack, true};
+    ScopedFastFlag luauIncrementalAutocompleteDemandBasedCloning{FFlag::LuauIncrementalAutocompleteDemandBasedCloning, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -157,12 +160,14 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         this->check(document, getOptions());
 
         FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
 
         ScopedFastFlag _{FFlag::LuauSolverV2, false};
         this->check(document, getOptions());
 
         result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
     }
 
@@ -2339,6 +2344,42 @@ z = a.P.E
 )";
 
     autocompleteFragmentInBothSolvers(source, dest, Position{8, 9}, [](FragmentAutocompleteStatusResult& _) {});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "user_defined_type_function_local")
+{
+    ScopedFastFlag luauUserTypeFunTypecheck{FFlag::LuauUserTypeFunTypecheck, true};
+
+    const std::string source = R"(--!strict
+type function foo(x: type): type
+    if x.tag == "singleton" then
+        local t = x:value()
+
+        return types.unionof(types.singleton(t), types.singleton(nil))
+    end
+
+    return types.number
+end
+)";
+
+    const std::string dest = R"(--!strict
+type function foo(x: type): type
+    if x.tag == "singleton" then
+        local t = x:value()
+        x
+        return types.unionof(types.singleton(t), types.singleton(nil))
+    end
+
+    return types.number
+end
+)";
+
+    // Only checking in new solver as old solver doesn't handle type functions and constraint solver will ICE
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    this->check(source, getOptions());
+
+    FragmentAutocompleteStatusResult result = autocompleteFragment(dest, Position{4, 9}, std::nullopt);
+    CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
 }
 
 TEST_SUITE_END();

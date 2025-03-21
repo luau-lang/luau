@@ -13,8 +13,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauDontInPlaceMutateTableType)
-LUAU_FASTFLAGVARIABLE(LuauAllowNonSharedTableTypesInLiteral)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceUpcast)
 
 namespace Luau
@@ -277,19 +275,11 @@ TypeId matchLiteralType(
 
                 Property& prop = it->second;
 
-                if (FFlag::LuauAllowNonSharedTableTypesInLiteral)
-                {
-                    // If we encounter a duplcate property, we may have already
-                    // set it to be read-only. If that's the case, the only thing
-                    // that will definitely crash is trying to access a write
-                    // only property.
-                    LUAU_ASSERT(!prop.isWriteOnly());
-                }
-                else
-                {
-                    // Table literals always initially result in shared read-write types
-                    LUAU_ASSERT(prop.isShared());
-                }
+                // If we encounter a duplcate property, we may have already
+                // set it to be read-only. If that's the case, the only thing
+                // that will definitely crash is trying to access a write
+                // only property.
+                LUAU_ASSERT(!prop.isWriteOnly());
                 TypeId propTy = *prop.readTy;
 
                 auto it2 = expectedTableTy->props.find(keyStr);
@@ -322,10 +312,7 @@ TypeId matchLiteralType(
                         else
                             tableTy->indexer = TableIndexer{expectedTableTy->indexer->indexType, matchedType};
 
-                        if (FFlag::LuauDontInPlaceMutateTableType)
-                            keysToDelete.insert(item.key->as<AstExprConstantString>());
-                        else
-                            tableTy->props.erase(keyStr);
+                        keysToDelete.insert(item.key->as<AstExprConstantString>());
 
                     }
 
@@ -434,14 +421,11 @@ TypeId matchLiteralType(
                 LUAU_ASSERT(!"Unexpected");
         }
 
-        if (FFlag::LuauDontInPlaceMutateTableType)
+        for (const auto& key : keysToDelete)
         {
-            for (const auto& key : keysToDelete)
-            {
-                const AstArray<char>& s = key->value;
-                std::string keyStr{s.data, s.data + s.size};
-                tableTy->props.erase(keyStr);
-            }
+            const AstArray<char>& s = key->value;
+            std::string keyStr{s.data, s.data + s.size};
+            tableTy->props.erase(keyStr);
         }
 
         // Keys that the expectedType says we should have, but that aren't

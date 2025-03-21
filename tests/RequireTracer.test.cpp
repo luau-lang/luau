@@ -6,8 +6,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauExtendedSimpleRequire)
-
 using namespace Luau;
 
 namespace
@@ -182,8 +180,6 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_string_indexexpr")
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "follow_group")
 {
-    ScopedFastFlag luauExtendedSimpleRequire{FFlag::LuauExtendedSimpleRequire, true};
-
     AstStatBlock* block = parse(R"(
         local R = (((game).Test))
         require(R)
@@ -200,8 +196,6 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_group")
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "follow_type_annotation")
 {
-    ScopedFastFlag luauExtendedSimpleRequire{FFlag::LuauExtendedSimpleRequire, true};
-
     AstStatBlock* block = parse(R"(
         local R = game.Test :: (typeof(game.Redirect))
         require(R)
@@ -218,8 +212,6 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_type_annotation")
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "follow_type_annotation_2")
 {
-    ScopedFastFlag luauExtendedSimpleRequire{FFlag::LuauExtendedSimpleRequire, true};
-
     AstStatBlock* block = parse(R"(
         local R = game.Test :: (typeof(game.Redirect))
         local N = R.Nested

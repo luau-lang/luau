@@ -8,7 +8,7 @@ namespace Luau
 
 struct ClassFixture : BuiltinsFixture
 {
-    ClassFixture();
+    explicit ClassFixture(bool prepareAutocomplete = false);
 
     TypeId vector2Type;
     TypeId vector2InstanceType;

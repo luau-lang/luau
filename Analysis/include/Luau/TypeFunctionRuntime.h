@@ -223,8 +223,6 @@ struct TypeFunctionClassType
     std::optional<TypeFunctionTypeId> writeParent;
 
     TypeId classTy;
-
-    std::string name_DEPRECATED;
 };
 
 struct TypeFunctionGenericType

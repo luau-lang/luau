@@ -19,7 +19,6 @@
 // used to control the recursion limit of any operations done by user-defined type functions
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
-LUAU_FASTFLAG(LuauTypeFunFixHydratedClasses)
 LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
 
 namespace Luau
@@ -209,19 +208,11 @@ private:
         }
         else if (auto c = get<ClassType>(ty))
         {
-            if (FFlag::LuauTypeFunFixHydratedClasses)
-            {
-                // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the
-                // original class
-                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty});
-            }
-            else
-            {
-                state->classesSerialized_DEPRECATED[c->name] = ty;
-                target = typeFunctionRuntime->typeArena.allocate(
-                    TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, /* classTy */ nullptr, c->name}
-                );
-            }
+            // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the original
+            // class
+            target = typeFunctionRuntime->typeArena.allocate(
+                TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty}
+            );
         }
         else if (auto g = get<GenericType>(ty))
         {
@@ -713,17 +704,7 @@ private:
         }
         else if (auto c = get<TypeFunctionClassType>(ty))
         {
-            if (FFlag::LuauTypeFunFixHydratedClasses)
-            {
-                target = c->classTy;
-            }
-            else
-            {
-                if (auto result = state->classesSerialized_DEPRECATED.find(c->name_DEPRECATED))
-                    target = *result;
-                else
-                    state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious class type is being deserialized");
-            }
+            target = c->classTy;
         }
         else if (auto g = get<TypeFunctionGenericType>(ty))
         {

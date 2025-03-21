@@ -14,7 +14,8 @@
 #include <type_traits>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauDisableNewSolverAssertsInMixedMode);
+LUAU_FASTFLAGVARIABLE(LuauDisableNewSolverAssertsInMixedMode)
+
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
 // logic.
@@ -634,6 +635,247 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
 
     for (const TypePath::Component& component : path.components)
         Luau::visit(strComponent, component);
+
+    return result.str();
+}
+
+std::string toStringHuman(const TypePath::Path& path)
+{
+    LUAU_ASSERT(FFlag::LuauSolverV2);
+
+    enum class State
+    {
+        Initial,
+        Normal,
+        Property,
+        PendingIs,
+        PendingAs,
+        PendingWhich,
+    };
+
+    std::stringstream result;
+    State state = State::Initial;
+    bool last = false;
+
+    auto strComponent = [&](auto&& c)
+    {
+        using T = std::decay_t<decltype(c)>;
+        if constexpr (std::is_same_v<T, TypePath::Property>)
+        {
+            if (state == State::PendingIs)
+                result << ", ";
+
+            switch (state)
+            {
+            case State::Initial:
+            case State::PendingIs:
+                if (c.isRead)
+                    result << "accessing `";
+                else
+                    result << "writing to `";
+                break;
+            case State::Property:
+                // if the previous state was a property, then we're doing a sequence of indexing
+                result << '.';
+                break;
+            default:
+                break;
+            }
+
+            result << c.name;
+
+            state = State::Property;
+        }
+        else if constexpr (std::is_same_v<T, TypePath::Index>)
+        {
+            size_t humanIndex = c.index + 1;
+
+            if (state == State::Initial && !last)
+                result << "in" << ' ';
+            else if (state == State::PendingIs)
+                result << ' ' << "has" << ' ';
+            else if (state == State::Property)
+                result << '`' << ' ' << "has" << ' ';
+
+            result << "the " << humanIndex;
+            switch (humanIndex)
+            {
+            case 1:
+                result << "st";
+                break;
+            case 2:
+                result << "nd";
+                break;
+            case 3:
+                result << "rd";
+                break;
+            default:
+                result << "th";
+            }
+
+            switch (c.variant)
+            {
+            case TypePath::Index::Variant::Pack:
+                result << ' ' << "entry in the type pack";
+                break;
+            case TypePath::Index::Variant::Union:
+                result << ' ' << "component of the union";
+                break;
+            case TypePath::Index::Variant::Intersection:
+                result << ' ' << "component of the intersection";
+                break;
+            }
+
+            if (state == State::PendingWhich)
+                result << ' ' << "which";
+
+            if (state == State::PendingIs || state == State::Property)
+                state = State::PendingAs;
+            else
+                state = State::PendingIs;
+        }
+        else if constexpr (std::is_same_v<T, TypePath::TypeField>)
+        {
+            if (state == State::Initial && !last)
+                result << "in" << ' ';
+            else if (state == State::PendingIs)
+                result << ", ";
+            else if (state == State::Property)
+                result << '`' << ' ' << "has" << ' ';
+
+            switch (c)
+            {
+            case TypePath::TypeField::Table:
+                result << "the table portion";
+                if (state == State::Property)
+                    state = State::PendingAs;
+                else
+                    state = State::PendingIs;
+                break;
+            case TypePath::TypeField::Metatable:
+                result << "the metatable portion";
+                if (state == State::Property)
+                    state = State::PendingAs;
+                else
+                    state = State::PendingIs;
+                break;
+            case TypePath::TypeField::LowerBound:
+                result << "the lower bound of" << ' ';
+                state = State::Normal;
+                break;
+            case TypePath::TypeField::UpperBound:
+                result << "the upper bound of" << ' ';
+                state = State::Normal;
+                break;
+            case TypePath::TypeField::IndexLookup:
+                result << "the index type";
+                if (state == State::Property)
+                    state = State::PendingAs;
+                else
+                    state = State::PendingIs;
+                break;
+            case TypePath::TypeField::IndexResult:
+                result << "the result of indexing";
+                if (state == State::Property)
+                    state = State::PendingAs;
+                else
+                    state = State::PendingIs;
+                break;
+            case TypePath::TypeField::Negated:
+                result << "the negation" << ' ';
+                state = State::Normal;
+                break;
+            case TypePath::TypeField::Variadic:
+                result << "the variadic" << ' ';
+                state = State::Normal;
+                break;
+            }
+        }
+        else if constexpr (std::is_same_v<T, TypePath::PackField>)
+        {
+            if (state == State::PendingIs)
+                result << ", ";
+            else if (state == State::Property)
+                result << "`, ";
+
+            switch (c)
+            {
+            case TypePath::PackField::Arguments:
+                if (state == State::Initial)
+                    result << "it" << ' ';
+                else if (state == State::PendingIs)
+                    result << "the function" << ' ';
+
+                result << "takes";
+                break;
+            case TypePath::PackField::Returns:
+                if (state == State::Initial)
+                    result << "it" << ' ';
+                else if (state == State::PendingIs)
+                    result << "the function" << ' ';
+
+                result << "returns";
+                break;
+            case TypePath::PackField::Tail:
+                if (state == State::Initial)
+                    result << "it has" << ' ';
+                result << "a tail of";
+                break;
+            }
+
+            if (state == State::PendingIs)
+            {
+                result << ' ';
+                state = State::PendingWhich;
+            }
+            else
+            {
+                result << ' ';
+                state = State::Normal;
+            }
+        }
+        else if constexpr (std::is_same_v<T, TypePath::Reduction>)
+        {
+            if (state == State::Initial)
+                result << "it" << ' ';
+            result << "reduces to" << ' ';
+            state = State::Normal;
+        }
+        else
+        {
+            static_assert(always_false_v<T>, "Unhandled Component variant");
+        }
+    };
+
+    size_t count = 0;
+
+    for (const TypePath::Component& component : path.components)
+    {
+        count++;
+        if (count == path.components.size())
+            last = true;
+
+        Luau::visit(strComponent, component);
+    }
+
+    switch (state)
+    {
+    case State::Property:
+        result << "` results in ";
+        break;
+    case State::PendingWhich:
+        // pending `which` becomes `is` if it's at the end
+        result << "is" << ' ';
+        break;
+    case State::PendingIs:
+        result << ' ' << "is" << ' ';
+        break;
+    case State::PendingAs:
+        result << ' ' << "as" << ' ';
+        break;
+    default:
+        break;
+    }
 
     return result.str();
 }

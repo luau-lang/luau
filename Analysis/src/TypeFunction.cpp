@@ -18,6 +18,7 @@
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
+#include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunctionReductionGuesser.h"
 #include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
@@ -49,12 +50,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauClipNestedAndRecursiveUnion)
-LUAU_FASTFLAGVARIABLE(LuauDoNotGeneralizeInTypeFunctions)
-LUAU_FASTFLAGVARIABLE(LuauPreventReentrantTypeFunctionReduction)
+LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionImprovements)
+LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAGVARIABLE(LuauIntersectNotNil)
 LUAU_FASTFLAGVARIABLE(LuauSkipNoRefineDuringRefinement)
 LUAU_FASTFLAGVARIABLE(LuauDontForgetToReduceUnionFunc)
 LUAU_FASTFLAGVARIABLE(LuauSearchForRefineableType)
+LUAU_FASTFLAGVARIABLE(LuauIndexAnyIsAny)
 
 namespace Luau
 {
@@ -451,48 +453,29 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     TypeFunctionReducer reducer{std::move(queuedTys), std::move(queuedTps), std::move(shouldGuess), std::move(cyclics), location, ctx, force};
     int iterationCount = 0;
 
-    if (FFlag::LuauPreventReentrantTypeFunctionReduction)
+    // If we are reducing a type function while reducing a type function,
+    // we're probably doing something clowny. One known place this can
+    // occur is type function reduction => overload selection => subtyping
+    // => back to type function reduction. At worst, if there's a reduction
+    // that _doesn't_ loop forever and _needs_ reentrancy, we'll fail to
+    // handle that and potentially emit an error when we didn't need to.
+    if (ctx.normalizer->sharedState->reentrantTypeReduction)
+        return {};
+
+    TypeReductionRentrancyGuard _{ctx.normalizer->sharedState};
+    while (!reducer.done())
     {
-        // If we are reducing a type function while reducing a type function,
-        // we're probably doing something clowny. One known place this can
-        // occur is type function reduction => overload selection => subtyping
-        // => back to type function reduction. At worst, if there's a reduction
-        // that _doesn't_ loop forever and _needs_ reentrancy, we'll fail to
-        // handle that and potentially emit an error when we didn't need to.
-        if (ctx.normalizer->sharedState->reentrantTypeReduction)
-            return {};
+        reducer.step();
 
-        TypeReductionRentrancyGuard _{ctx.normalizer->sharedState};
-        while (!reducer.done())
+        ++iterationCount;
+        if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
         {
-            reducer.step();
-
-            ++iterationCount;
-            if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
-            {
-                reducer.result.errors.emplace_back(location, CodeTooComplex{});
-                break;
-            }
+            reducer.result.errors.emplace_back(location, CodeTooComplex{});
+            break;
         }
-
-        return std::move(reducer.result);
     }
-    else
-    {
-        while (!reducer.done())
-        {
-            reducer.step();
 
-            ++iterationCount;
-            if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
-            {
-                reducer.result.errors.emplace_back(location, CodeTooComplex{});
-                break;
-            }
-        }
-
-        return std::move(reducer.result);
-    }
+    return std::move(reducer.result);
 }
 
 FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, TypeFunctionContext ctx, bool force)
@@ -861,15 +844,6 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
 
-    // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, operandTy, /* avoidSealingTables */ true);
-        if (!maybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
-        operandTy = *maybeGeneralized;
-    }
-
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
     NormalizationResult inhabited = ctx->normalizer->isInhabited(normTy.get());
 
@@ -952,15 +926,6 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     // check to see if the operand type is resolved enough, and wait to reduce if not
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
-
-    // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, operandTy);
-        if (!maybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
-        operandTy = *maybeGeneralized;
-    }
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
 
@@ -1196,21 +1161,6 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
-        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
-
-        if (!lhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (!rhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-        lhsTy = *lhsMaybeGeneralized;
-        rhsTy = *rhsMaybeGeneralized;
-    }
-
     // TODO: Normalization needs to remove cyclic type functions from a `NormalizedType`.
     std::shared_ptr<const NormalizedType> normLhsTy = ctx->normalizer->normalize(lhsTy);
     std::shared_ptr<const NormalizedType> normRhsTy = ctx->normalizer->normalize(rhsTy);
@@ -1433,21 +1383,6 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
-        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
-
-        if (!lhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (!rhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-        lhsTy = *lhsMaybeGeneralized;
-        rhsTy = *rhsMaybeGeneralized;
-    }
-
     std::shared_ptr<const NormalizedType> normLhsTy = ctx->normalizer->normalize(lhsTy);
     std::shared_ptr<const NormalizedType> normRhsTy = ctx->normalizer->normalize(rhsTy);
 
@@ -1548,21 +1483,6 @@ TypeFunctionReductionResult<TypeId> andTypeFunction(
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
-        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
-
-        if (!lhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (!rhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-        lhsTy = *lhsMaybeGeneralized;
-        rhsTy = *rhsMaybeGeneralized;
-    }
-
     // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is truthy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->falsyType);
     SimplifyResult overallResult = simplifyUnion(ctx->builtins, ctx->arena, rhsTy, filteredLhs.result);
@@ -1602,21 +1522,6 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
         return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
-        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
-
-        if (!lhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (!rhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-        lhsTy = *lhsMaybeGeneralized;
-        rhsTy = *rhsMaybeGeneralized;
-    }
 
     // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
@@ -1688,21 +1593,6 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     // The above might have caused the operand types to be rebound, we need to follow them again
     lhsTy = follow(lhsTy);
     rhsTy = follow(rhsTy);
-
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
-        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
-
-        if (!lhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (!rhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-        lhsTy = *lhsMaybeGeneralized;
-        rhsTy = *rhsMaybeGeneralized;
-    }
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
 
@@ -1826,21 +1716,6 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
         return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
-        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
-
-        if (!lhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (!rhsMaybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-
-        lhsTy = *lhsMaybeGeneralized;
-        rhsTy = *rhsMaybeGeneralized;
-    }
 
     std::shared_ptr<const NormalizedType> normLhsTy = ctx->normalizer->normalize(lhsTy);
     std::shared_ptr<const NormalizedType> normRhsTy = ctx->normalizer->normalize(rhsTy);
@@ -2000,20 +1875,6 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     auto stepRefine = [&ctx](TypeId target, TypeId discriminant) -> std::pair<TypeId, std::vector<TypeId>>
     {
         std::vector<TypeId> toBlock;
-        if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-        {
-            std::optional<TypeId> targetMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, target);
-            std::optional<TypeId> discriminantMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, discriminant);
-
-            if (!targetMaybeGeneralized)
-                return std::pair<TypeId, std::vector<TypeId>>{nullptr, {target}};
-            else if (!discriminantMaybeGeneralized)
-                return std::pair<TypeId, std::vector<TypeId>>{nullptr, {discriminant}};
-
-            target = *targetMaybeGeneralized;
-            discriminant = *discriminantMaybeGeneralized;
-        }
-
         // we need a more complex check for blocking on the discriminant in particular
         FindRefinementBlockers frb;
         frb.traverse(discriminant);
@@ -2131,15 +1992,6 @@ TypeFunctionReductionResult<TypeId> singletonTypeFunction(
     if (isPending(type, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {type}, {}};
 
-    // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
-    if (ctx->solver && !FFlag::LuauDoNotGeneralizeInTypeFunctions)
-    {
-        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, type);
-        if (!maybeGeneralized)
-            return {std::nullopt, Reduction::MaybeOk, {type}, {}};
-        type = *maybeGeneralized;
-    }
-
     TypeId followed = type;
     // we want to follow through a negation here as well.
     if (auto negation = get<NegationType>(followed))
@@ -2207,73 +2059,24 @@ TypeFunctionReductionResult<TypeId> unionTypeFunction(
     if (typeParams.size() == 1)
         return {follow(typeParams[0]), Reduction::MaybeOk, {}, {}};
 
-    if (FFlag::LuauClipNestedAndRecursiveUnion)
+
+    CollectUnionTypeOptions collector{ctx};
+    collector.traverse(instance);
+
+    if (!collector.blockingTypes.empty())
     {
-
-        CollectUnionTypeOptions collector{ctx};
-        collector.traverse(instance);
-
-        if (!collector.blockingTypes.empty())
-        {
-            std::vector<TypeId> blockingTypes{collector.blockingTypes.begin(), collector.blockingTypes.end()};
-            return {std::nullopt, Reduction::MaybeOk, std::move(blockingTypes), {}};
-        }
-
-        TypeId resultTy = ctx->builtins->neverType;
-        for (auto ty : collector.options)
-        {
-            SimplifyResult result = simplifyUnion(ctx->builtins, ctx->arena, resultTy, ty);
-            // This condition might fire if one of the arguments to this type
-            // function is a free type somewhere deep in a nested union or
-            // intersection type, even though we ran a pass above to capture
-            // some blocked types.
-            if (!result.blockedTypes.empty())
-                return {std::nullopt, Reduction::MaybeOk, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
-
-            resultTy = result.result;
-        }
-
-        return {resultTy, Reduction::MaybeOk, {}, {}};
+        std::vector<TypeId> blockingTypes{collector.blockingTypes.begin(), collector.blockingTypes.end()};
+        return {std::nullopt, Reduction::MaybeOk, std::move(blockingTypes), {}};
     }
 
-    // we need to follow all of the type parameters.
-    std::vector<TypeId> types;
-    types.reserve(typeParams.size());
-    for (auto ty : typeParams)
-        types.emplace_back(follow(ty));
-
-    // unfortunately, we need this short-circuit: if all but one type is `never`, we will return that one type.
-    // this also will early return if _everything_ is `never`, since we already have to check that.
-    std::optional<TypeId> lastType = std::nullopt;
-    for (auto ty : types)
-    {
-        // if we have a previous type and it's not `never` and the current type isn't `never`...
-        if (lastType && !get<NeverType>(lastType) && !get<NeverType>(ty))
-        {
-            // we know we are not taking the short-circuited path.
-            lastType = std::nullopt;
-            break;
-        }
-
-        if (get<NeverType>(ty))
-            continue;
-        lastType = ty;
-    }
-
-    // if we still have a `lastType` at the end, we're taking the short-circuit and reducing early.
-    if (lastType)
-        return {lastType, Reduction::MaybeOk, {}, {}};
-
-    // check to see if the operand types are resolved enough, and wait to reduce if not
-    for (auto ty : types)
-        if (isPending(ty, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {ty}, {}};
-
-    // fold over the types with `simplifyUnion`
     TypeId resultTy = ctx->builtins->neverType;
-    for (auto ty : types)
+    for (auto ty : collector.options)
     {
         SimplifyResult result = simplifyUnion(ctx->builtins, ctx->arena, resultTy, ty);
+        // This condition might fire if one of the arguments to this type
+        // function is a free type somewhere deep in a nested union or
+        // intersection type, even though we ran a pass above to capture
+        // some blocked types.
         if (!result.blockedTypes.empty())
             return {std::nullopt, Reduction::MaybeOk, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
 
@@ -2281,6 +2084,7 @@ TypeFunctionReductionResult<TypeId> unionTypeFunction(
     }
 
     return {resultTy, Reduction::MaybeOk, {}, {}};
+
 }
 
 
@@ -2621,7 +2425,12 @@ bool searchPropsAndIndexer(
             if (auto propUnionTy = get<UnionType>(propTy))
             {
                 for (TypeId option : propUnionTy->options)
-                    result.insert(option);
+                {
+                    if (FFlag::LuauIndexTypeFunctionImprovements)
+                        result.insert(follow(option));
+                    else
+                        result.insert(option);
+                }
             }
             else // property is a singular type or intersection type -> we can simply append
                 result.insert(propTy);
@@ -2641,7 +2450,12 @@ bool searchPropsAndIndexer(
             if (auto idxResUnionTy = get<UnionType>(idxResultTy))
             {
                 for (TypeId option : idxResUnionTy->options)
-                    result.insert(option);
+                {
+                    if (FFlag::LuauIndexTypeFunctionImprovements)
+                        result.insert(follow(option));
+                    else
+                        result.insert(option);
+                }
             }
             else // indexResultType is a singular type or intersection type -> we can simply append
                 result.insert(idxResultTy);
@@ -2656,7 +2470,7 @@ bool searchPropsAndIndexer(
 /* Handles recursion / metamethods of tables/classes
    `isRaw` parameter indicates whether or not we should follow __index metamethods
    returns false if property of `ty` could not be found */
-bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, NotNull<TypeFunctionContext> ctx, bool isRaw)
+bool tblIndexInto_DEPRECATED(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, NotNull<TypeFunctionContext> ctx, bool isRaw)
 {
     indexer = follow(indexer);
     indexee = follow(indexee);
@@ -2686,11 +2500,111 @@ bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, 
             ErrorVec dummy;
             std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, indexee, "__index", Location{});
             if (mmType)
-                return tblIndexInto(indexer, *mmType, result, ctx, isRaw);
+                return tblIndexInto_DEPRECATED(indexer, *mmType, result, ctx, isRaw);
         }
     }
 
     return false;
+}
+
+bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, DenseHashSet<TypeId>& seenSet, NotNull<TypeFunctionContext> ctx, bool isRaw)
+{
+    indexer = follow(indexer);
+    indexee = follow(indexee);
+
+    if (seenSet.contains(indexee))
+        return false;
+    seenSet.insert(indexee);
+
+    if (FFlag::LuauIndexTypeFunctionFunctionMetamethods)
+    {
+        if (auto unionTy =  get<UnionType>(indexee))
+        {
+            bool res = true;
+            for (auto component : unionTy)
+            {
+                // if the component is in the seen set and isn't the indexee itself,
+                // we can skip it cause it means we encountered it in an earlier component in the union.
+                if (seenSet.contains(component) && component != indexee)
+                    continue;
+
+                res = res && tblIndexInto(indexer, component, result, seenSet, ctx, isRaw);
+            }
+            return res;
+        }
+
+        if (get<FunctionType>(indexee))
+        {
+            TypePackId argPack = ctx->arena->addTypePack({indexer});
+            SolveResult solveResult = solveFunctionCall(
+                ctx->arena,
+                ctx->builtins,
+                ctx->simplifier,
+                ctx->normalizer,
+                ctx->typeFunctionRuntime,
+                ctx->ice,
+                ctx->limits,
+                ctx->scope,
+                ctx->scope->location,
+                indexee,
+                argPack
+            );
+
+            if (!solveResult.typePackId.has_value())
+                return false;
+
+            TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
+            if (extracted.head.empty())
+                return false;
+
+            result.insert(follow(extracted.head.front()));
+            return true;
+        }
+    }
+
+    // we have a table type to try indexing
+    if (auto tableTy = get<TableType>(indexee))
+    {
+        return searchPropsAndIndexer(indexer, tableTy->props, tableTy->indexer, result, ctx);
+    }
+
+    // we have a metatable type to try indexing
+    if (auto metatableTy = get<MetatableType>(indexee))
+    {
+        if (auto tableTy = get<TableType>(follow(metatableTy->table)))
+        {
+
+            // try finding all properties within the current scope of the table
+            if (searchPropsAndIndexer(indexer, tableTy->props, tableTy->indexer, result, ctx))
+                return true;
+        }
+
+        // if the code reached here, it means we weren't able to find all properties -> look into __index metamethod
+        if (!isRaw)
+        {
+            // findMetatableEntry demands the ability to emit errors, so we must give it
+            // the necessary state to do that, even if we intend to just eat the errors.
+            ErrorVec dummy;
+            std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, indexee, "__index", Location{});
+            if (mmType)
+                return tblIndexInto(indexer, *mmType, result, seenSet, ctx, isRaw);
+        }
+    }
+
+    return false;
+}
+
+bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, NotNull<TypeFunctionContext> ctx, bool isRaw)
+{
+    if (FFlag::LuauIndexTypeFunctionImprovements)
+    {
+        DenseHashSet<TypeId> seenSet{{}};
+        return tblIndexInto(indexer, indexee, result, seenSet, ctx, isRaw);
+    }
+    else
+    {
+        return tblIndexInto_DEPRECATED(indexer, indexee, result, ctx, isRaw);
+    }
 }
 
 /* Vocabulary note: indexee refers to the type that contains the properties,
@@ -2709,6 +2623,13 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
     // if the indexee failed to normalize, we can't reduce, but know nothing about inhabitance.
     if (!indexeeNormTy)
         return {std::nullopt, Reduction::MaybeOk, {}, {}};
+
+    if (FFlag::LuauIndexAnyIsAny)
+    {
+        // if the indexee is `any`, then indexing also gives us `any`.
+        if (indexeeNormTy->shouldSuppressErrors())
+            return {ctx->builtins->anyType, Reduction::MaybeOk, {}, {}};
+    }
 
     // if we don't have either just tables or just classes, we've got nothing to index into
     if (indexeeNormTy->hasTables() == indexeeNormTy->hasClasses())
@@ -2809,17 +2730,19 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
         }
     }
 
-    // Call `follow()` on each element to resolve all Bound types before returning
-    std::transform(
-        properties.begin(),
-        properties.end(),
-        properties.begin(),
-        [](TypeId ty)
-        {
-            return follow(ty);
-        }
+    if (!FFlag::LuauIndexTypeFunctionImprovements)
+    {
+        // Call `follow()` on each element to resolve all Bound types before returning
+        std::transform(
+            properties.begin(),
+            properties.end(),
+            properties.begin(),
+            [](TypeId ty)
+            {
+                return follow(ty);
+            }
     );
-
+}
     // If the type being reduced to is a single type, no need to union
     if (properties.size() == 1)
         return {*properties.begin(), Reduction::MaybeOk, {}, {}};

@@ -1127,6 +1127,16 @@ public:
     AstExpr* expr;
 };
 
+class AstTypeOptional : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeOptional)
+
+    AstTypeOptional(const Location& location);
+
+    void visit(AstVisitor* visitor) override;
+};
+
 class AstTypeUnion : public AstType
 {
 public:
@@ -1485,6 +1495,10 @@ public:
         return visit(static_cast<AstType*>(node));
     }
     virtual bool visit(class AstTypeTypeof* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeOptional* node)
     {
         return visit(static_cast<AstType*>(node));
     }

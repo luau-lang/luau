@@ -1168,6 +1168,8 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(f);
     else if (auto tyof = t->as<AstTypeTypeof>())
         return visitType(tyof);
+    else if (auto o = t->as<AstTypeOptional>())
+        return;
     else if (auto u = t->as<AstTypeUnion>())
         return visitType(u);
     else if (auto i = t->as<AstTypeIntersection>())

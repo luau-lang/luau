@@ -323,6 +323,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
                     NotNull{&moduleResolver},
                     NotNull{&fileResolver},
                     frontend.globals.globalScope,
+                    frontend.globals.globalTypeFunctionScope,
                     /*prepareModuleScope*/ nullptr,
                     frontend.options,
                     {},
