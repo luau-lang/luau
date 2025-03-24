@@ -33,6 +33,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+LUAU_FASTFLAGVARIABLE(LuauPropagateExpectedTypesForCalls)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
@@ -2148,13 +2149,23 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
         {
-            auto [ty, refinement] = check(scope, arg, /*expectedType*/ std::nullopt, /*forceSingleton*/ false, /*generalize*/ false);
+            std::optional<TypeId> expectedType = std::nullopt;
+            if (FFlag::LuauPropagateExpectedTypesForCalls && i < expectedTypesForCall.size())
+            {
+                expectedType = expectedTypesForCall[i];
+            }
+            auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
             args.push_back(ty);
             argumentRefinements.push_back(refinement);
         }
         else
         {
-            auto [tp, refis] = checkPack(scope, arg, {});
+            std::vector<std::optional<Luau::TypeId>> expectedTypes = {};
+            if (FFlag::LuauPropagateExpectedTypesForCalls && i < expectedTypesForCall.size()) 
+            {
+                expectedTypes.insert(expectedTypes.end(), expectedTypesForCall.begin() + i, expectedTypesForCall.end());
+            }
+            auto [tp, refis] = checkPack(scope, arg, expectedTypes);
             argTail = tp;
             argumentRefinements.insert(argumentRefinements.end(), refis.begin(), refis.end());
         }
