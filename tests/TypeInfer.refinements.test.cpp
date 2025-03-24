@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauDoNotLeakNilInRefinement)
+LUAU_FASTFLAG(LuauRefineJustTheReadProperty)
 
 using namespace Luau;
 
@@ -2538,7 +2539,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_are_not_nillable")
             return nil
         end
     )"));
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1528_method_calls_are_not_nillable")
@@ -2560,6 +2560,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1528_method_calls_are_not_nillable")
             error("Oh no! The service isn't running!")
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "refine_just_the_read_property")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineJustTheReadProperty, true},
+    };
+
+    CheckResult result = check(R"(
+        type Foo = { p: boolean }
+
+        function f(x: Foo)
+            if x.p == true then return end
+
+            x.p = true
+            x.p = false
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // The first check is corrrect because it reflects the state of the program by that point.
+    // The second check is not. It fails to account for transitive typestate change from the
+    // previous statement.
+    CHECK_EQ("Foo & { read p: ~true }", toString(requireTypeAtPosition({6, 12})));
+    CHECK_EQ("Foo & { read p: ~true }", toString(requireTypeAtPosition({7, 12})));
 }
 
 TEST_SUITE_END();

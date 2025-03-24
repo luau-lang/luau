@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauInferLocalTypesInMultipleAssignments)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakNilInRefinement)
 LUAU_FASTFLAGVARIABLE(LuauExtraFollows)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
+LUAU_FASTFLAGVARIABLE(LuauRefineJustTheReadProperty)
 
 namespace Luau
 {
@@ -529,11 +530,18 @@ void ConstraintGenerator::computeRefinement(
 
             TypeId nextDiscriminantTy = arena->addType(TableType{});
             NotNull<TableType> table{getMutable<TableType>(nextDiscriminantTy)};
-            // When we fully support read-write properties (i.e. when we allow properties with
-            // completely disparate read and write types), then the following property can be
-            // set to read-only since refinements only tell us about what we read. This cannot
-            // be allowed yet though because it causes read and write types to diverge.
-            table->props[*key->propName] = Property::rw(discriminantTy);
+            if (FFlag::LuauRefineJustTheReadProperty)
+            {
+                table->props[*key->propName] = Property::readonly(discriminantTy);
+            }
+            else
+            {
+                // When we fully support read-write properties (i.e. when we allow properties with
+                // completely disparate read and write types), then the following property can be
+                // set to read-only since refinements only tell us about what we read. This cannot
+                // be allowed yet though because it causes read and write types to diverge.
+                table->props[*key->propName] = Property::rw(discriminantTy);
+            }
             table->scope = scope.get();
             table->state = TableState::Sealed;
 
@@ -547,7 +555,7 @@ void ConstraintGenerator::computeRefinement(
             refis->get(proposition->key->def)->shouldAppendNilType =
                 (sense || !eq) && containsSubscriptedDefinition(proposition->key->def) && !proposition->implicitFromCall;
         }
-        else 
+        else
         {
             refis->get(proposition->key->def)->shouldAppendNilType = (sense || !eq) && containsSubscriptedDefinition(proposition->key->def);
         }
