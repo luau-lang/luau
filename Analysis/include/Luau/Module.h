@@ -93,6 +93,7 @@ struct Module
     // Scopes and AST types refer to parse data, so we need to keep that alive
     std::shared_ptr<Allocator> allocator;
     std::shared_ptr<AstNameTable> names;
+    AstStatBlock* root = nullptr;
 
     std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
 

@@ -20,12 +20,16 @@ LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTINT(LuauCheckRecursionLimit)
+LUAU_FASTFLAG(LuauGlobalSelfAssignmentCycle)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAstTypeGroup2)
+LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAG(LuauInferLocalTypesInMultipleAssignments)
+LUAU_FASTFLAG(LuauUnifyMetatableWithAny)
+LUAU_FASTFLAG(LuauExtraFollows)
+LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 using namespace Luau;
 
@@ -1131,7 +1135,29 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         end
     )");
 
-    if (FFlag::LuauInstantiateInSubtyping)
+    if (FFlag::LuauInstantiateInSubtyping && FFlag::LuauImproveTypePathsInErrors)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        const std::string expected =
+            "Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'"
+            "\ncaused by:\n"
+            "  Property 'getStoreFieldName' is not compatible.\n"
+            "Type\n\t"
+            "'(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)'"
+            "\ncould not be converted into\n\t"
+            "'(Policies, FieldSpecifier) -> string'"
+            "\ncaused by:\n"
+            "  Argument #2 type is not compatible.\n"
+            "Type\n\t"
+            "'FieldSpecifier'"
+            "\ncould not be converted into\n\t"
+            "'FieldSpecifier & {| from: number? |}'"
+            "\ncaused by:\n"
+            "  Not all intersection parts are compatible.\n"
+            "Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName'";
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
+    else if (FFlag::LuauInstantiateInSubtyping)
     {
         // though this didn't error before the flag, it seems as though it should error since fields of a table are invariant.
         // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be
@@ -1201,12 +1227,12 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     if (FFlag::LuauSolverV2)
     {
         CHECK(3 == result.errors.size());
-        if (FFlag::LuauAstTypeGroup2)
+        if (FFlag::LuauAstTypeGroup3)
             CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
         else
             CHECK(Location{{2, 22}, {2, 41}} == result.errors[0].location);
         CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-        if (FFlag::LuauAstTypeGroup2)
+        if (FFlag::LuauAstTypeGroup3)
             CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
         else
             CHECK(Location{{3, 23}, {3, 40}} == result.errors[2].location);
@@ -1806,6 +1832,119 @@ TEST_CASE_FIXTURE(Fixture, "multiple_assignment")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_global_self_assignment")
+{
+    ScopedFastFlag luauGlobalSelfAssignmentCycle{FFlag::LuauGlobalSelfAssignmentCycle, true};
+
+    // Shouldn't assert or crash
+    check(R"(
+        _ = _
+    )");
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_works_with_any")
+{
+    ScopedFastFlag _{FFlag::LuauUnifyMetatableWithAny, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        return {
+            new = function(name: string)
+                local self = newproxy(true) :: any
+
+                getmetatable(self).__tostring = function()
+                    return "Hello, I am " .. name
+                end
+
+                return self
+            end,
+        }
+    )"));
+
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_ret")
+{
+    ScopedFastFlag _{FFlag::LuauUnifyMetatableWithAny, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function spooky(x: any)
+            return getmetatable(x)
+        end
+    )"));
+
+    CHECK_EQ("(any) -> any", toString(requireType("spooky")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_param")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauUnifyMetatableWithAny, true},
+    };
+
+    auto result = check(R"(
+        local function check(x): any
+            return getmetatable(x)
+        end
+    )");
+
+    // CLI-144695: We're leaking the `MT` generic here, this happens regardless
+    // of if `LuauUnifyMetatableWithAny` is set.
+    CHECK_EQ("({ @metatable MT, {+  +} }) -> any", toString(requireType("check")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_pack_check_missing_follow")
+{
+    ScopedFastFlag luauExtraFollows{FFlag::LuauExtraFollows, true};
+
+    // Shouldn't assert or crash
+    check(R"(
+_ = n255
+function _()
+setmetatable(_)[_[xpcall(_,setmetatable(_,_()))]] /= xpcall(_,_)
+_.n16(_,_)[_[_]] *= _
+end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_unify_with_free_missing_follow")
+{
+    ScopedFastFlag luauExtraFollows{FFlag::LuauExtraFollows, true};
+
+    // Shouldn't assert or crash
+    check(R"(
+for _ in ... do
+repeat
+local function l0(l0)
+end
+_ = l0["aaaa"]
+repeat
+_ = true,_("")
+_ = _[_]
+until _
+until _
+repeat
+_ = if _ then _,_()
+_ = _[_]
+until _
+end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(n : number): string return "" end
+        local function bar(n: number, m: string) end
+        local function concat_stuff(x, y)
+            local z = foo(x)
+            bar(y, z)
+        end
+    )"));
 }
 
 TEST_SUITE_END();

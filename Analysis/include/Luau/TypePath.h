@@ -42,8 +42,18 @@ struct Property
 /// element.
 struct Index
 {
+    enum class Variant
+    {
+        Pack,
+        Union,
+        Intersection
+    };
+
     /// The 0-based index to use for the lookup.
     size_t index;
+
+    /// The sort of thing we're indexing from, this is used in stringifying the type path for errors.
+    Variant variant;
 
     bool operator==(const Index& other) const;
 };
@@ -204,6 +214,9 @@ using Path = TypePath::Path;
 /// Converts a Path to a string for debugging purposes. This output may not be
 /// terribly clear to end users of the Luau type system.
 std::string toString(const TypePath::Path& path, bool prefixDot = false);
+
+/// Converts a Path to a human readable string for error reporting.
+std::string toStringHuman(const TypePath::Path& path);
 
 std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);

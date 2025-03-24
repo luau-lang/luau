@@ -359,7 +359,7 @@ struct FreeTypeSearcher : TypeVisitor
     DenseHashSet<const void*> seenPositive{nullptr};
     DenseHashSet<const void*> seenNegative{nullptr};
 
-    bool seenWithPolarity(const void* ty)
+    bool seenWithCurrentPolarity(const void* ty)
     {
         switch (polarity)
         {
@@ -401,7 +401,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty) override
     {
-        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
             return false;
 
         LUAU_ASSERT(ty);
@@ -410,7 +410,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
             return false;
 
         if (!subsumes(scope, ft.scope))
@@ -435,7 +435,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
-        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
             return false;
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
@@ -481,7 +481,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FunctionType& ft) override
     {
-        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
             return false;
 
         flip();
@@ -500,7 +500,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypePackId tp, const FreeTypePack& ftp) override
     {
-        if (seenWithPolarity(tp))
+        if (seenWithCurrentPolarity(tp))
             return false;
 
         if (!subsumes(scope, ftp.scope))
@@ -547,7 +547,7 @@ struct TypeCacher : TypeOnceVisitor
     {
     }
 
-    void cache(TypeId ty)
+    void cache(TypeId ty) const
     {
         cachedTypes->insert(ty);
     }

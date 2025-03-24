@@ -18,6 +18,8 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAGVARIABLE(LuauUnifyMetatableWithAny)
+LUAU_FASTFLAG(LuauExtraFollows)
 
 namespace Luau
 {
@@ -235,6 +237,10 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     auto superMetatable = get<MetatableType>(superTy);
     if (subMetatable && superMetatable)
         return unify(subMetatable, superMetatable);
+    else if (FFlag::LuauUnifyMetatableWithAny && subMetatable && superAny)
+        return unify(subMetatable, superAny);
+    else if (FFlag::LuauUnifyMetatableWithAny && subAny && superMetatable)
+        return unify(subAny, superMetatable);
     else if (subMetatable) // if we only have one metatable, unify with the inner table
         return unify(subMetatable->table, superTy);
     else if (superMetatable) // if we only have one metatable, unify with the inner table
@@ -277,7 +283,7 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     if (superArgTail)
         return doDefault();
 
-    const IntersectionType* upperBoundIntersection = get<IntersectionType>(subFree->upperBound);
+    const IntersectionType* upperBoundIntersection = get<IntersectionType>(FFlag::LuauExtraFollows ? upperBound : subFree->upperBound);
     if (!upperBoundIntersection)
         return doDefault();
 
@@ -524,6 +530,16 @@ bool Unifier2::unify(const TableType* subTable, const AnyType* superAny)
     return true;
 }
 
+bool Unifier2::unify(const MetatableType* subMetatable, const AnyType*)
+{
+    return unify(subMetatable->metatable, builtinTypes->anyType) && unify(subMetatable->table, builtinTypes->anyType);
+}
+
+bool Unifier2::unify(const AnyType*, const MetatableType* superMetatable)
+{
+    return unify(builtinTypes->anyType, superMetatable->metatable) && unify(builtinTypes->anyType, superMetatable->table);
+}
+
 // FIXME?  This should probably return an ErrorVec or an optional<TypeError>
 // rather than a boolean to signal an occurs check failure.
 bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
@@ -661,7 +677,7 @@ struct FreeTypeSearcher : TypeVisitor
     DenseHashSet<const void*> seenPositive{nullptr};
     DenseHashSet<const void*> seenNegative{nullptr};
 
-    bool seenWithPolarity(const void* ty)
+    bool seenWithCurrentPolarity(const void* ty)
     {
         switch (polarity)
         {
@@ -703,7 +719,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty) override
     {
-        if (seenWithPolarity(ty))
+        if (seenWithCurrentPolarity(ty))
             return false;
 
         LUAU_ASSERT(ty);
@@ -712,7 +728,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (seenWithPolarity(ty))
+        if (seenWithCurrentPolarity(ty))
             return false;
 
         if (!subsumes(scope, ft.scope))
@@ -737,7 +753,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
-        if (seenWithPolarity(ty))
+        if (seenWithCurrentPolarity(ty))
             return false;
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
@@ -783,7 +799,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FunctionType& ft) override
     {
-        if (seenWithPolarity(ty))
+        if (seenWithCurrentPolarity(ty))
             return false;
 
         flip();
@@ -802,7 +818,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypePackId tp, const FreeTypePack& ftp) override
     {
-        if (seenWithPolarity(tp))
+        if (seenWithCurrentPolarity(tp))
             return false;
 
         if (!subsumes(scope, ftp.scope))

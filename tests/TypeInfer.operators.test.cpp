@@ -17,7 +17,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauDoNotGeneralizeInTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -815,8 +814,6 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
 {
-    ScopedFastFlag _{FFlag::LuauDoNotGeneralizeInTypeFunctions, true};
-
     // `t` will be inferred to be of type `{ { test: unknown } }` which is
     // reasonable, in that it's empty with no bounds on its members.  Optimally
     // we might emit an error here that the `print(...)` expression is

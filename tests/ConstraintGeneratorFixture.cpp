@@ -34,6 +34,7 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
         builtinTypes,
         NotNull(&ice),
         frontend.globals.globalScope,
+        frontend.globals.globalTypeFunctionScope,
         /*prepareModuleScope*/ nullptr,
         &logger,
         NotNull{dfg.get()},

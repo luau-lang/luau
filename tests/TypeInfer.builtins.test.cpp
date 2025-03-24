@@ -12,7 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauStringFormatErrorSuppression)
-LUAU_FASTFLAG(LuauFreezeIgnorePersistent)
+LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -146,7 +146,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type
+    const std::string expected = (FFlag::LuauImproveTypePathsInErrors) ? "Type\n\t"
+                                                                         "'(number, number) -> boolean'"
+                                                                         "\ncould not be converted into\n\t"
+                                                                         "'((string, string) -> boolean)?'"
+                                                                         "\ncaused by:\n"
+                                                                         "  None of the union options are compatible. For example:\n"
+                                                                         "Type\n\t"
+                                                                         "'(number, number) -> boolean'"
+                                                                         "\ncould not be converted into\n\t"
+                                                                         "'(string, string) -> boolean'"
+                                                                         "\ncaused by:\n"
+                                                                         "  Argument #1 type is not compatible.\n"
+                                                                         "Type 'string' could not be converted into 'number'"
+                                                                       : R"(Type
     '(number, number) -> boolean'
 could not be converted into
     '((string, string) -> boolean)?'
@@ -985,7 +998,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+
+    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+        CHECK_EQ(
+            "Type 'number?' could not be converted into 'number'; \n"
+            "this is because the 2nd component of the union is `nil`, which is not a subtype of `number`",
+            toString(result.errors[0])
+        );
+    else if (FFlag::LuauSolverV2)
         CHECK_EQ(
             "Type 'number?' could not be converted into 'number'; type number?[1] (nil) is not a subtype of number (number)",
             toString(result.errors[0])
@@ -1256,8 +1276,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_non_tables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_persistent_skip")
 {
-    ScopedFastFlag luauFreezeIgnorePersistent{FFlag::LuauFreezeIgnorePersistent, true};
-
     CheckResult result = check(R"(
         table.freeze(table)
     )");
@@ -1267,8 +1285,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_persistent_skip")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_persistent_skip")
 {
-    ScopedFastFlag luauFreezeIgnorePersistent{FFlag::LuauFreezeIgnorePersistent, true};
-
     CheckResult result = check(R"(
         table.clone(table)
     )");

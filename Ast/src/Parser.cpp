@@ -20,14 +20,14 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
-LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForClassNames)
 LUAU_FASTFLAGVARIABLE(LuauFixFunctionNameStartPosition)
 LUAU_FASTFLAGVARIABLE(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAGVARIABLE(LuauStoreCSTData)
 LUAU_FASTFLAGVARIABLE(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
-LUAU_FASTFLAGVARIABLE(LuauAstTypeGroup2)
+LUAU_FASTFLAGVARIABLE(LuauAstTypeGroup3)
 LUAU_FASTFLAGVARIABLE(ParserNoErrorLimit)
 LUAU_FASTFLAGVARIABLE(LuauFixDoBlockEndLocation)
+LUAU_FASTFLAGVARIABLE(LuauParseOptionalAsNode)
 
 namespace Luau
 {
@@ -648,16 +648,16 @@ AstStat* Parser::parseFor()
     else
     {
         TempVector<Binding> names(scratchBinding);
-        TempVector<Position> varsCommaPosition(scratchPosition);
+        AstArray<Position> varsCommaPosition;
         names.push_back(varname);
 
         if (lexer.current().type == ',')
         {
             if (FFlag::LuauStoreCSTData && options.storeCstData)
             {
-                varsCommaPosition.push_back(lexer.current().location.begin);
+                Position initialCommaPosition = lexer.current().location.begin;
                 nextLexeme();
-                parseBindingList(names, false, &varsCommaPosition);
+                parseBindingList(names, false, &varsCommaPosition, initialCommaPosition);
             }
             else
             {
@@ -702,7 +702,7 @@ AstStat* Parser::parseFor()
             AstStatForIn* node =
                 allocator.alloc<AstStatForIn>(Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location);
             if (options.storeCstData)
-                cstNodeMap[node] = allocator.alloc<CstStatForIn>(copy(varsCommaPosition), copy(valuesCommaPositions));
+                cstNodeMap[node] = allocator.alloc<CstStatForIn>(varsCommaPosition, copy(valuesCommaPositions));
             return node;
         }
         else
@@ -958,7 +958,7 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
         matchRecoveryStopOnToken['=']++;
 
         TempVector<Binding> names(scratchBinding);
-        TempVector<Position> varsCommaPositions(scratchPosition);
+        AstArray<Position> varsCommaPositions;
         if (FFlag::LuauStoreCSTData && options.storeCstData)
             parseBindingList(names, false, &varsCommaPositions);
         else
@@ -991,7 +991,7 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
         {
             AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation);
             if (options.storeCstData)
-                cstNodeMap[node] = allocator.alloc<CstStatLocal>(copy(varsCommaPositions), copy(valuesCommaPositions));
+                cstNodeMap[node] = allocator.alloc<CstStatLocal>(varsCommaPositions, copy(valuesCommaPositions));
             return node;
         }
         else
@@ -1034,7 +1034,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported, Position t
 {
     // parsing a type function
     if (lexer.current().type == Lexeme::ReservedFunction)
-        return parseTypeFunction(start, exported);
+        return parseTypeFunction(start, exported, typeKeywordPosition);
 
     // parsing a type alias
 
@@ -1047,7 +1047,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported, Position t
         name = Name(nameError, lexer.current().location);
 
     Position genericsOpenPosition{0, 0};
-    TempVector<Position> genericsCommaPositions(scratchPosition);
+    AstArray<Position> genericsCommaPositions;
     Position genericsClosePosition{0, 0};
     auto [generics, genericPacks] = FFlag::LuauStoreCSTData && options.storeCstData
                                         ? parseGenericTypeList(
@@ -1066,7 +1066,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported, Position t
             allocator.alloc<AstStatTypeAlias>(Location(start, type->location), name->name, name->location, generics, genericPacks, type, exported);
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstStatTypeAlias>(
-                typeKeywordPosition, genericsOpenPosition, copy(genericsCommaPositions), genericsClosePosition, equalsPosition
+                typeKeywordPosition, genericsOpenPosition, genericsCommaPositions, genericsClosePosition, equalsPosition
             );
         return node;
     }
@@ -1077,7 +1077,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported, Position t
 }
 
 // type function Name `(' arglist `)' `=' funcbody `end'
-AstStat* Parser::parseTypeFunction(const Location& start, bool exported)
+AstStat* Parser::parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition)
 {
     Lexeme matchFn = lexer.current();
     nextLexeme();
@@ -1098,7 +1098,18 @@ AstStat* Parser::parseTypeFunction(const Location& start, bool exported)
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 
-    return allocator.alloc<AstStatTypeFunction>(Location(start, body->location), fnName->name, fnName->location, body, exported);
+    if (FFlag::LuauStoreCSTData)
+    {
+        AstStatTypeFunction* node =
+            allocator.alloc<AstStatTypeFunction>(Location(start, body->location), fnName->name, fnName->location, body, exported);
+        if (options.storeCstData)
+            cstNodeMap[node] = allocator.alloc<CstStatTypeFunction>(typeKeywordPosition, matchFn.location.begin);
+        return node;
+    }
+    else
+    {
+        return allocator.alloc<AstStatTypeFunction>(Location(start, body->location), fnName->name, fnName->location, body, exported);
+    }
 }
 
 AstDeclaredClassProp Parser::parseDeclaredClassMethod()
@@ -1307,30 +1318,17 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             }
             else
             {
-                if (FFlag::LuauErrorRecoveryForClassNames)
-                {
-                    Location propStart = lexer.current().location;
-                    std::optional<Name> propName = parseNameOpt("property name");
+                Location propStart = lexer.current().location;
+                std::optional<Name> propName = parseNameOpt("property name");
 
-                    if (!propName)
-                        break;
+                if (!propName)
+                    break;
 
-                    expectAndConsume(':', "property type annotation");
-                    AstType* propType = parseType();
-                    props.push_back(
-                        AstDeclaredClassProp{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
-                    );
-                }
-                else
-                {
-                    Location propStart = lexer.current().location;
-                    Name propName = parseName("property name");
-                    expectAndConsume(':', "property type annotation");
-                    AstType* propType = parseType();
-                    props.push_back(
-                        AstDeclaredClassProp{propName.name, propName.location, propType, false, Location(propStart, lexer.previousLocation())}
-                    );
-                }
+                expectAndConsume(':', "property type annotation");
+                AstType* propType = parseType();
+                props.push_back(
+                    AstDeclaredClassProp{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
+                );
             }
         }
 
@@ -1453,7 +1451,15 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 {
     Location start = matchFunction.location;
 
-    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
+    auto* cstNode = FFlag::LuauStoreCSTData && options.storeCstData ? allocator.alloc<CstExprFunction>() : nullptr;
+
+    auto [generics, genericPacks] = FFlag::LuauStoreCSTData && cstNode ? parseGenericTypeList(
+                                                                                          /* withDefaultValues= */ false,
+                                                                                          &cstNode->openGenericsPosition,
+                                                                                          &cstNode->genericsCommaPositions,
+                                                                                          &cstNode->closeGenericsPosition
+                                                                                      )
+                                                                                    : parseGenericTypeList(/* withDefaultValues= */ false);
 
     MatchLexeme matchParen = lexer.current();
     expectAndConsume('(', "function");
@@ -1478,7 +1484,8 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     AstTypePack* varargAnnotation = nullptr;
 
     if (lexer.current().type != ')')
-        std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
+        std::tie(vararg, varargLocation, varargAnnotation) =
+            parseBindingList(args, /* allowDot3= */ true, cstNode ? &cstNode->argsCommaPositions : nullptr);
 
     std::optional<Location> argLocation;
 
@@ -1490,7 +1497,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     if (FFlag::LuauErrorRecoveryForTableTypes)
         matchRecoveryStopOnToken[')']--;
 
-    std::optional<AstTypeList> typelist = parseOptionalReturnType();
+    std::optional<AstTypeList> typelist = parseOptionalReturnType(cstNode ? &cstNode->returnSpecifierPosition : nullptr);
 
     AstLocal* funLocal = nullptr;
 
@@ -1517,8 +1524,9 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchFunction);
     body->hasEnd = hasEnd;
 
-    return {
-        allocator.alloc<AstExprFunction>(
+    if (FFlag::LuauStoreCSTData)
+    {
+        AstExprFunction* node = allocator.alloc<AstExprFunction>(
             Location(start, end),
             attributes,
             generics,
@@ -1533,9 +1541,34 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
             typelist,
             varargAnnotation,
             argLocation
-        ),
-        funLocal
-    };
+        );
+        if (options.storeCstData)
+            cstNodeMap[node] = cstNode;
+
+        return {node, funLocal};
+    }
+    else
+    {
+        return {
+            allocator.alloc<AstExprFunction>(
+                Location(start, end),
+                attributes,
+                generics,
+                genericPacks,
+                self,
+                vars,
+                vararg,
+                varargLocation,
+                body,
+                functionStack.size(),
+                debugname,
+                typelist,
+                varargAnnotation,
+                argLocation
+            ),
+            funLocal
+        };
+    }
 }
 
 // explist ::= {exp `,'} exp
@@ -1573,8 +1606,13 @@ Parser::Binding Parser::parseBinding()
 }
 
 // bindinglist ::= (binding | `...') [`,' bindinglist]
-std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Binding>& result, bool allowDot3, TempVector<Position>* commaPositions)
+std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Binding>& result, bool allowDot3, AstArray<Position>* commaPositions, std::optional<Position> initialCommaPosition)
 {
+    TempVector<Position> localCommaPositions(scratchPosition);
+
+    if (FFlag::LuauStoreCSTData && commaPositions && initialCommaPosition)
+        localCommaPositions.push_back(*initialCommaPosition);
+
     while (true)
     {
         if (lexer.current().type == Lexeme::Dot3 && allowDot3)
@@ -1589,6 +1627,9 @@ std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Bin
                 tailAnnotation = parseVariadicArgumentTypePack();
             }
 
+            if (FFlag::LuauStoreCSTData && commaPositions)
+                *commaPositions = copy(localCommaPositions);
+
             return {true, varargLocation, tailAnnotation};
         }
 
@@ -1597,9 +1638,12 @@ std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Bin
         if (lexer.current().type != ',')
             break;
         if (FFlag::LuauStoreCSTData && commaPositions)
-            commaPositions->push_back(lexer.current().location.begin);
+            localCommaPositions.push_back(lexer.current().location.begin);
         nextLexeme();
     }
+
+    if (FFlag::LuauStoreCSTData && commaPositions)
+        *commaPositions = copy(localCommaPositions);
 
     return {false, Location(), nullptr};
 }
@@ -1616,7 +1660,12 @@ AstType* Parser::parseOptionalType()
 }
 
 // TypeList ::= Type [`,' TypeList] | ...Type
-AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std::optional<AstArgumentName>>& resultNames)
+AstTypePack* Parser::parseTypeList(
+    TempVector<AstType*>& result,
+    TempVector<std::optional<AstArgumentName>>& resultNames,
+    TempVector<Position>* commaPositions,
+    TempVector<std::optional<Position>>* nameColonPositions
+)
 {
     while (true)
     {
@@ -1628,22 +1677,33 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
             // Fill in previous argument names with empty slots
             while (resultNames.size() < result.size())
                 resultNames.push_back({});
+            if (FFlag::LuauStoreCSTData && nameColonPositions)
+            {
+                while (nameColonPositions->size() < result.size())
+                    nameColonPositions->push_back({});
+            }
 
             resultNames.push_back(AstArgumentName{AstName(lexer.current().name), lexer.current().location});
             nextLexeme();
 
+            if (FFlag::LuauStoreCSTData && nameColonPositions)
+                nameColonPositions->push_back(lexer.current().location.begin);
             expectAndConsume(':');
         }
         else if (!resultNames.empty())
         {
             // If we have a type with named arguments, provide elements for all types
             resultNames.push_back({});
+            if (FFlag::LuauStoreCSTData && nameColonPositions)
+                nameColonPositions->push_back({});
         }
 
         result.push_back(parseType());
         if (lexer.current().type != ',')
             break;
 
+        if (FFlag::LuauStoreCSTData && commaPositions)
+            commaPositions->push_back(lexer.current().location.begin);
         nextLexeme();
 
         if (lexer.current().type == ')')
@@ -1656,13 +1716,15 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
     return nullptr;
 }
 
-std::optional<AstTypeList> Parser::parseOptionalReturnType()
+std::optional<AstTypeList> Parser::parseOptionalReturnType(Position* returnSpecifierPosition)
 {
     if (lexer.current().type == ':' || lexer.current().type == Lexeme::SkinnyArrow)
     {
         if (lexer.current().type == Lexeme::SkinnyArrow)
             report(lexer.current().location, "Function return type annotations are written after ':' instead of '->'");
 
+        if (FFlag::LuauStoreCSTData && returnSpecifierPosition)
+            *returnSpecifierPosition = lexer.current().location.begin;
         nextLexeme();
 
         unsigned int oldRecursionCount = recursionCounter;
@@ -1732,11 +1794,13 @@ std::pair<Location, AstTypeList> Parser::parseReturnType()
     if (lexer.current().type != Lexeme::SkinnyArrow && resultNames.empty())
     {
         // If it turns out that it's just '(A)', it's possible that there are unions/intersections to follow, so fold over it.
-        if (FFlag::LuauAstTypeGroup2)
+        if (FFlag::LuauAstTypeGroup3)
         {
-            if (result.size() == 1 && varargAnnotation == nullptr)
+            if (result.size() == 1)
             {
-                AstType* returnType = parseTypeSuffix(allocator.alloc<AstTypeGroup>(location, result[0]), begin.location);
+                // TODO(CLI-140667): stop parsing type suffix when varargAnnotation != nullptr - this should be a parse error
+                AstType* inner = varargAnnotation == nullptr ? allocator.alloc<AstTypeGroup>(location, result[0]) : result[0];
+                AstType* returnType = parseTypeSuffix(inner, begin.location);
 
                 // If parseType parses nothing, then returnType->location.end only points at the last non-type-pack
                 // type to successfully parse.  We need the span of the whole annotation.
@@ -2028,7 +2092,14 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
 
     Lexeme begin = lexer.current();
 
-    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
+    Position genericsOpenPosition{0, 0};
+    AstArray<Position> genericsCommaPositions;
+    Position genericsClosePosition{0, 0};
+    auto [generics, genericPacks] = FFlag::LuauStoreCSTData && options.storeCstData
+                                        ? parseGenericTypeList(
+                                              /* withDefaultValues= */ false, &genericsOpenPosition, &genericsCommaPositions, &genericsClosePosition
+                                          )
+                                        : parseGenericTypeList(/* withDefaultValues= */ false);
 
     Lexeme parameterStart = lexer.current();
 
@@ -2038,10 +2109,17 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
 
     TempVector<AstType*> params(scratchType);
     TempVector<std::optional<AstArgumentName>> names(scratchOptArgName);
+    TempVector<std::optional<Position>> nameColonPositions(scratchOptPosition);
+    TempVector<Position> argCommaPositions(scratchPosition);
     AstTypePack* varargAnnotation = nullptr;
 
     if (lexer.current().type != ')')
-        varargAnnotation = parseTypeList(params, names);
+    {
+        if (FFlag::LuauStoreCSTData && options.storeCstData)
+            varargAnnotation = parseTypeList(params, names, &argCommaPositions, &nameColonPositions);
+        else
+            varargAnnotation = parseTypeList(params, names);
+    }
 
     Location closeArgsLocation = lexer.current().location;
     expectMatchAndConsume(')', parameterStart, true);
@@ -2059,10 +2137,23 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
     if (params.size() == 1 && !varargAnnotation && !forceFunctionType && !returnTypeIntroducer)
     {
         if (allowPack)
-            return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr})};
+        {
+            if (FFlag::LuauStoreCSTData)
+            {
+                AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr});
+                if (options.storeCstData)
+                    cstNodeMap[node] =
+                        allocator.alloc<CstTypePackExplicit>(parameterStart.location.begin, closeArgsLocation.begin, copy(argCommaPositions));
+                return {{}, node};
+            }
+            else
+            {
+                return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr})};
+            }
+        }
         else
         {
-            if (FFlag::LuauAstTypeGroup2)
+            if (FFlag::LuauAstTypeGroup3)
                 return {allocator.alloc<AstTypeGroup>(Location(parameterStart.location, closeArgsLocation), params[0]), {}};
             else
                 return {params[0], {}};
@@ -2070,11 +2161,46 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack, const AstArray<AstAttr*>
     }
 
     if (!forceFunctionType && !returnTypeIntroducer && allowPack)
-        return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation})};
+    {
+        if (FFlag::LuauStoreCSTData)
+        {
+            AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation});
+            if (options.storeCstData)
+                cstNodeMap[node] =
+                    allocator.alloc<CstTypePackExplicit>(parameterStart.location.begin, closeArgsLocation.begin, copy(argCommaPositions));
+            return {{}, node};
+        }
+        else
+        {
+            return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation})};
+        }
+    }
 
     AstArray<std::optional<AstArgumentName>> paramNames = copy(names);
 
-    return {parseFunctionTypeTail(begin, attributes, generics, genericPacks, paramTypes, paramNames, varargAnnotation), {}};
+    if (FFlag::LuauStoreCSTData)
+    {
+        Position returnArrowPosition = lexer.current().location.begin;
+        AstType* node = parseFunctionTypeTail(begin, attributes, generics, genericPacks, paramTypes, paramNames, varargAnnotation);
+        if (options.storeCstData && node->is<AstTypeFunction>())
+        {
+            cstNodeMap[node] = allocator.alloc<CstTypeFunction>(
+                genericsOpenPosition,
+                genericsCommaPositions,
+                genericsClosePosition,
+                parameterStart.location.begin,
+                copy(nameColonPositions),
+                copy(argCommaPositions),
+                closeArgsLocation.begin,
+                returnArrowPosition
+            );
+        }
+        return {node, {}};
+    }
+    else
+    {
+        return {parseFunctionTypeTail(begin, attributes, generics, genericPacks, paramTypes, paramNames, varargAnnotation), {}};
+    }
 }
 
 AstType* Parser::parseFunctionTypeTail(
@@ -2136,7 +2262,9 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 
     bool isUnion = false;
     bool isIntersection = false;
-    bool hasOptional = false;
+    // Clip with FFlag::LuauParseOptionalAsNode
+    bool hasOptional_DEPRECATED = false;
+    unsigned int optionalCount = 0;
 
     Location location = begin;
 
@@ -2160,11 +2288,19 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
             Location loc = lexer.current().location;
             nextLexeme();
 
-            if (!hasOptional)
-                parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil, std::nullopt, loc));
+            if (FFlag::LuauParseOptionalAsNode)
+            {
+                parts.push_back(allocator.alloc<AstTypeOptional>(Location(loc)));
+                optionalCount++;
+            }
+            else
+            {
+                if (!hasOptional_DEPRECATED)
+                    parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil, std::nullopt, loc));
+            }
 
             isUnion = true;
-            hasOptional = true;
+            hasOptional_DEPRECATED = true;
         }
         else if (c == '&')
         {
@@ -2184,8 +2320,16 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
         else
             break;
 
-        if (parts.size() > unsigned(FInt::LuauTypeLengthLimit) + hasOptional)
-            ParseError::raise(parts.back()->location, "Exceeded allowed type length; simplify your type annotation to make the code compile");
+        if (FFlag::LuauParseOptionalAsNode)
+        {
+            if (parts.size() > unsigned(FInt::LuauTypeLengthLimit) + optionalCount)
+                ParseError::raise(parts.back()->location, "Exceeded allowed type length; simplify your type annotation to make the code compile");
+        }
+        else
+        {
+            if (parts.size() > unsigned(FInt::LuauTypeLengthLimit) + hasOptional_DEPRECATED)
+                ParseError::raise(parts.back()->location, "Exceeded allowed type length; simplify your type annotation to make the code compile");
+        }
     }
 
     if (FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
@@ -2477,7 +2621,17 @@ AstTypePack* Parser::parseVariadicArgumentTypePack()
 
         // This will not fail because of the lookahead guard.
         expectAndConsume(Lexeme::Dot3, "generic type pack annotation");
-        return allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
+        if (FFlag::LuauStoreCSTData)
+        {
+            AstTypePackGeneric* node = allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
+            if (options.storeCstData)
+                cstNodeMap[node] = allocator.alloc<CstTypePackGeneric>(end.begin);
+            return node;
+        }
+        else
+        {
+            return allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
+        }
     }
     // Variadic: T
     else
@@ -2505,7 +2659,17 @@ AstTypePack* Parser::parseTypePack()
 
         // This will not fail because of the lookahead guard.
         expectAndConsume(Lexeme::Dot3, "generic type pack annotation");
-        return allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
+        if (FFlag::LuauStoreCSTData)
+        {
+            AstTypePackGeneric* node = allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
+            if (options.storeCstData)
+                cstNodeMap[node] = allocator.alloc<CstTypePackGeneric>(end.begin);
+            return node;
+        }
+        else
+        {
+            return allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
+        }
     }
 
     // TODO: shouldParseTypePack can be removed and parseTypePack can be called unconditionally instead
@@ -3360,12 +3524,13 @@ Parser::Name Parser::parseIndexName(const char* context, const Position& previou
 std::pair<AstArray<AstGenericType*>, AstArray<AstGenericTypePack*>> Parser::parseGenericTypeList(
     bool withDefaultValues,
     Position* openPosition,
-    TempVector<Position>* commaPositions,
+    AstArray<Position>* commaPositions,
     Position* closePosition
 )
 {
     TempVector<AstGenericType*> names{scratchGenericTypes};
     TempVector<AstGenericTypePack*> namePacks{scratchGenericTypePacks};
+    TempVector<Position> localCommaPositions{scratchPosition};
 
     if (lexer.current().type == '<')
     {
@@ -3495,7 +3660,7 @@ std::pair<AstArray<AstGenericType*>, AstArray<AstGenericTypePack*>> Parser::pars
             if (lexer.current().type == ',')
             {
                 if (FFlag::LuauStoreCSTData && commaPositions)
-                    commaPositions->push_back(lexer.current().location.begin);
+                    localCommaPositions.push_back(lexer.current().location.begin);
                 nextLexeme();
 
                 if (lexer.current().type == '>')
@@ -3512,6 +3677,9 @@ std::pair<AstArray<AstGenericType*>, AstArray<AstGenericTypePack*>> Parser::pars
             *closePosition = lexer.current().location.begin;
         expectMatchAndConsume('>', begin);
     }
+
+    if (FFlag::LuauStoreCSTData && commaPositions)
+        *commaPositions = copy(localCommaPositions);
 
     AstArray<AstGenericType*> generics = copy(names);
     AstArray<AstGenericTypePack*> genericPacks = copy(namePacks);
@@ -3572,7 +3740,7 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams(Position* openingPosition, TempV
                             // the next lexeme is one that follows a type
                             // (&, |, ?), then assume that this was actually a
                             // parenthesized type.
-                            if (FFlag::LuauAstTypeGroup2)
+                            if (FFlag::LuauAstTypeGroup3)
                             {
                                 auto parenthesizedType = explicitTypePack->typeList.types.data[0];
                                 parameters.push_back(

@@ -23,10 +23,14 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
+
+LUAU_FASTFLAG(LuauExposeRequireByStringAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteUsesModuleForTypeCompatibility)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteUnionCopyPreviousSeen)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -480,6 +484,21 @@ static void autocompleteProps(
         {
             AutocompleteEntryMap inner;
             std::unordered_set<TypeId> innerSeen;
+
+            // If we don't do this, and we have the misfortune of receiving a
+            // recursive union like:
+            //
+            //  t1 where t1 = t1 | Class
+            //
+            // Then we are on a one way journey to a stack overflow.
+            if (FFlag::LuauAutocompleteUnionCopyPreviousSeen)
+            {
+                for (auto ty: seen)
+                {
+                    if (is<UnionType, IntersectionType>(ty))
+                        innerSeen.insert(ty);
+                }
+            }
 
             if (isNil(*iter))
             {
@@ -1343,6 +1362,15 @@ static AutocompleteContext autocompleteExpression(
 
     AstNode* node = ancestry.rbegin()[0];
 
+    if (FFlag::DebugLuauMagicVariableNames)
+    {
+        InternalErrorReporter ice;
+        if (auto local = node->as<AstExprLocal>(); local && local->local->name == "_luau_autocomplete_ice")
+            ice.ice("_luau_autocomplete_ice encountered", local->location);
+        if (auto global = node->as<AstExprGlobal>(); global && global->name == "_luau_autocomplete_ice")
+            ice.ice("_luau_autocomplete_ice encountered", global->location);
+    }
+
     if (node->is<AstExprIndexName>())
     {
         if (auto it = module.astTypes.find(node->asExpr()))
@@ -1509,10 +1537,14 @@ static std::optional<AutocompleteEntryMap> convertRequireSuggestionsToAutocomple
         return std::nullopt;
 
     AutocompleteEntryMap result;
-    for (const RequireSuggestion& suggestion : *suggestions)
+    for (RequireSuggestion& suggestion : *suggestions)
     {
         AutocompleteEntry entry = {AutocompleteEntryKind::RequirePath};
         entry.insertText = std::move(suggestion.fullPath);
+        if (FFlag::LuauExposeRequireByStringAutocomplete)
+        {
+            entry.tags = std::move(suggestion.tags);
+        }
         result[std::move(suggestion.label)] = std::move(entry);
     }
     return result;

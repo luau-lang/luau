@@ -22,7 +22,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingFixTailPack)
 
 namespace Luau
 {
@@ -754,7 +753,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     // Match head types pairwise
 
     for (size_t i = 0; i < headSize; ++i)
-        results.push_back(isCovariantWith(env, subHead[i], superHead[i], scope).withBothComponent(TypePath::Index{i}));
+        results.push_back(isCovariantWith(env, subHead[i], superHead[i], scope).withBothComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
+        );
 
     // Handle mismatched head sizes
 
@@ -767,7 +767,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                 for (size_t i = headSize; i < superHead.size(); ++i)
                     results.push_back(isCovariantWith(env, vt->ty, superHead[i], scope)
                                           .withSubPath(TypePath::PathBuilder().tail().variadic().build())
-                                          .withSuperComponent(TypePath::Index{i}));
+                                          .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
             }
             else if (auto gt = get<GenericTypePack>(*subTail))
             {
@@ -821,7 +821,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             {
                 for (size_t i = headSize; i < subHead.size(); ++i)
                     results.push_back(isCovariantWith(env, subHead[i], vt->ty, scope)
-                                          .withSubComponent(TypePath::Index{i})
+                                          .withSubComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
                                           .withSuperPath(TypePath::PathBuilder().tail().variadic().build()));
             }
             else if (auto gt = get<GenericTypePack>(*superTail))
@@ -859,7 +859,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             else
                 return SubtypingResult{false}
                     .withSuperComponent(TypePath::PackField::Tail)
-                    .withError({scope->location, UnexpectedTypePackInSubtyping{FFlag::LuauSubtypingFixTailPack ? *superTail : *subTail}});
+                    .withError({scope->location, UnexpectedTypePackInSubtyping{*superTail}});
         }
         else
             return {false};
@@ -1100,7 +1100,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Unio
     std::vector<SubtypingResult> subtypings;
     size_t i = 0;
     for (TypeId ty : subUnion)
-        subtypings.push_back(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++}));
+        subtypings.push_back(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Union}));
     return SubtypingResult::all(subtypings);
 }
 
@@ -1110,7 +1110,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     std::vector<SubtypingResult> subtypings;
     size_t i = 0;
     for (TypeId ty : superIntersection)
-        subtypings.push_back(isCovariantWith(env, subTy, ty, scope).withSuperComponent(TypePath::Index{i++}));
+        subtypings.push_back(isCovariantWith(env, subTy, ty, scope).withSuperComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
     return SubtypingResult::all(subtypings);
 }
 
@@ -1120,7 +1120,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Inte
     std::vector<SubtypingResult> subtypings;
     size_t i = 0;
     for (TypeId ty : subIntersection)
-        subtypings.push_back(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++}));
+        subtypings.push_back(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
     return SubtypingResult::any(subtypings);
 }
 

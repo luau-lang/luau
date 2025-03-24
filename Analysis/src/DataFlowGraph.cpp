@@ -911,8 +911,17 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
     for (AstExpr* arg : c->args)
         visitExpr(arg);
 
-    // calls should be treated as subscripted.
-    return {defArena->freshCell(/* subscripted */ true), nullptr};
+    // We treat function calls as "subscripted" as they could potentially
+    // return a subscripted value, consider:
+    //
+    //  local function foo(tbl: {[string]: woof)
+    //      return tbl["foobarbaz"]
+    //  end
+    //
+    //  local v = foo({})
+    //
+    // We want to consider `v` to be subscripted here.
+    return {defArena->freshCell(/*subscripted=*/true)};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIndexName* i)
@@ -1159,6 +1168,8 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(f);
     else if (auto tyof = t->as<AstTypeTypeof>())
         return visitType(tyof);
+    else if (auto o = t->as<AstTypeOptional>())
+        return;
     else if (auto u = t->as<AstTypeUnion>())
         return visitType(u);
     else if (auto i = t->as<AstTypeIntersection>())

@@ -14,8 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauStoreCSTData)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
-LUAU_FASTFLAG(LuauAstTypeGroup2);
-LUAU_FASTFLAG(LexerFixInterpStringStart)
+LUAU_FASTFLAG(LuauAstTypeGroup3);
 
 TEST_SUITE_BEGIN("TranspilerTests");
 
@@ -302,6 +301,95 @@ TEST_CASE("function")
 
     const std::string two = R"( function p(o, m, g,...)  return 77 end )";
     CHECK_EQ(two, transpile(two).code);
+}
+
+TEST_CASE("function_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    const std::string two = R"( function     p(o, m, ...) end )";
+    CHECK_EQ(two, transpile(two).code);
+
+    const std::string three = R"( function p(   o, m, ...) end )";
+    CHECK_EQ(three, transpile(three).code);
+
+    const std::string four = R"( function p(o   , m, ...) end )";
+    CHECK_EQ(four, transpile(four).code);
+
+    const std::string five = R"( function p(o,   m, ...) end )";
+    CHECK_EQ(five, transpile(five).code);
+
+    const std::string six = R"( function p(o, m   , ...) end )";
+    CHECK_EQ(six, transpile(six).code);
+
+    const std::string seven = R"( function p(o, m,   ...) end )";
+    CHECK_EQ(seven, transpile(seven).code);
+
+    const std::string eight = R"( function p(o, m, ...   ) end )";
+    CHECK_EQ(eight, transpile(eight).code);
+
+    const std::string nine = R"( function p(o, m, ...)   end )";
+    CHECK_EQ(nine, transpile(nine).code);
+}
+
+TEST_CASE("function_with_types_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p   <X, Y, Z...>(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X   , Y, Z...>(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X,   Y, Z...>(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y,   Z...>(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z  ...>(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...  >(o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>  (o: string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+//  TODO(CLI-139347): re-enable test once colon positions are supported
+//    code = R"( function p<X, Y, Z...>(o  : string, m: number, ...: any): string end )";
+//    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o:   string, m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o: string  , m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o: string,   m: number, ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o: string, m: number,   ...: any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+//  TODO(CLI-139347): re-enable test once colon positions are supported
+//    code = R"( function p<X, Y, Z...>(o: string, m: number, ...  : any): string end )";
+//    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o: string, m: number, ...:   any): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any  ): string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+//  TODO(CLI-139347): re-enable test once return type positions are supported
+//    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any)   :string end )";
+//    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any):    string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_CASE("returns_spaces_around_tokens")
@@ -968,7 +1056,17 @@ TEST_CASE_FIXTURE(Fixture, "type_lists_should_be_emitted_correctly")
         end
     )";
 
-    std::string expected = R"(
+    std::string expected = FFlag::LuauStoreCSTData ? R"(
+        local a:(a:string,b:number,...string)->(string,...number)=function(a:string,b:number,...:string): (string,...number)
+        end
+
+        local b:(...string)->(...number)=function(...:string): ...number
+        end
+
+        local c:()->()=function(): ()
+        end
+    )"
+                                                   : R"(
         local a:(string,number,...string)->(string,...number)=function(a:string,b:number,...:string): (string,...number)
         end
 
@@ -1157,6 +1255,49 @@ local b: Packed<(number, string)>
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_packs_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type _ = Packed<  T...> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<T  ...> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<   ...T> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<...   T> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<  ()> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<  (string, number)> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<(  string, number)> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<(string  , number)> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<(string,   number)> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<(string, number  )> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<(string, number)  > )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<(  )> )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type _ = Packed<()  > )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested")
 {
     std::string code = "local a: ((number)->(string))|((string)->(string))";
@@ -1175,7 +1316,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested_3")
 {
     std::string code = "local a: nil | (string & number)";
 
-    if (FFlag::LuauAstTypeGroup2)
+    if (FFlag::LuauAstTypeGroup3)
         CHECK_EQ("local a:       (string & number)?", transpile(code, {}, true).code);
     else
         CHECK_EQ("local a: (      string & number)?", transpile(code, {}, true).code);
@@ -1488,7 +1629,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
 {
     ScopedFastFlag fflags[] = {
         {FFlag::LuauStoreCSTData, true},
-        {FFlag::LexerFixInterpStringStart, true},
     };
     std::string code = R"( local _ = `hello {name}` )";
 
@@ -1499,7 +1639,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_multiline")
 {
     ScopedFastFlag fflags[] = {
         {FFlag::LuauStoreCSTData, true},
-        {FFlag::LexerFixInterpStringStart, true},
     };
     std::string code = R"( local _ = `hello {
         name
@@ -1512,7 +1651,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_on_new_line")
 {
     ScopedFastFlag fflags[] = {
         {FFlag::LuauStoreCSTData, true},
-        {FFlag::LexerFixInterpStringStart, true},
     };
     std::string code = R"(
         error(
@@ -1536,7 +1674,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
 {
     ScopedFastFlag fflags[] = {
         {FFlag::LuauStoreCSTData, true},
-        {FFlag::LexerFixInterpStringStart, true},
     };
     std::string code = R"( local _ = ` bracket = \{, backtick = \` = {'ok'} ` )";
 
@@ -1547,6 +1684,22 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_functions")
 {
     std::string code = R"( type function foo(arg1, arg2) if arg1 == arg2 then return arg1 end return arg2 end )";
 
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_type_functions_spaces_around_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type   function foo() end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type function   foo() end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type function foo  () end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( export   type function foo() end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
@@ -1736,7 +1889,7 @@ TEST_CASE("transpile_types_preserve_parentheses_style")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData, true},
-        {FFlag::LuauAstTypeGroup2, true},
+        {FFlag::LuauAstTypeGroup3, true},
     };
 
     std::string code = R"( type Foo = number )";
@@ -1750,6 +1903,124 @@ TEST_CASE("transpile_types_preserve_parentheses_style")
 
     code = R"( type Foo = (  (number)  ) )";
     CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("fuzzer_transpile_with_zero_location")
+{
+    const std::string example = R"(
+if _ then
+elseif _ then
+elseif l0 then
+else
+local function l0<t0>(...):(t0<t0...>,(any)|(<t0>((any)|(<t0>(""[[[[[[[[[[[[[[[[[[[[[[[[!*t")->()))->()))
+end
+end
+)";
+
+    Luau::ParseOptions parseOptions;
+    parseOptions.captureComments = true;
+
+    auto allocator = std::make_unique<Luau::Allocator>();
+    auto names = std::make_unique<Luau::AstNameTable>(*allocator);
+    ParseResult parseResult = Parser::parse(example.data(), example.size(), *names, *allocator, parseOptions);
+
+    transpileWithTypes(*parseResult.root);
+}
+
+TEST_CASE("transpile_type_function_unnamed_arguments")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type Foo = () -> () )";
+    CHECK_EQ(R"( type Foo = () ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo =   () -> () )";
+    CHECK_EQ(R"( type Foo =   () ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string) -> () )";
+    CHECK_EQ(R"( type Foo = (string) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string, number) -> () )";
+    CHECK_EQ(R"( type Foo = (string, number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (  string, number) -> () )";
+    CHECK_EQ(R"( type Foo = (  string, number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string  , number) -> () )";
+    CHECK_EQ(R"( type Foo = (string  , number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string,   number) -> () )";
+    CHECK_EQ(R"( type Foo = (string,   number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string, number  ) -> () )";
+    CHECK_EQ(R"( type Foo = (string, number  ) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string, number)   -> () )";
+    CHECK_EQ(R"( type Foo = (string, number)   ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (string, number) ->   ()  )";
+    CHECK_EQ(R"( type Foo = (string, number) ->()     )", transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_type_function_named_arguments")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type Foo = (x: string) -> () )";
+    CHECK_EQ(R"( type Foo = (x: string) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (x: string, y: number) -> ()  )";
+    CHECK_EQ(R"( type Foo = (x: string, y: number) ->()   )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (  x: string, y: number) -> () )";
+    CHECK_EQ(R"( type Foo = (  x: string, y: number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (x  : string, y: number) -> () )";
+    CHECK_EQ(R"( type Foo = (x  : string, y: number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (x:   string, y: number) -> () )";
+    CHECK_EQ(R"( type Foo = (x:   string, y: number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (x: string,   y: number) -> () )";
+    CHECK_EQ(R"( type Foo = (x: string,   y: number) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (number, info: string) -> () )";
+    CHECK_EQ(R"( type Foo = (number, info: string) ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = (first: string, second: string, ...string) -> () )";
+    CHECK_EQ(R"( type Foo = (first: string, second: string, ...string) ->()  )", transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_type_function_generics")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    std::string code = R"( type Foo = <X, Y, Z...>() -> () )";
+    CHECK_EQ(R"( type Foo = <X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo =   <X, Y, Z...>() -> () )";
+    CHECK_EQ(R"( type Foo =   <X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <  X, Y, Z...>() -> () )";
+    CHECK_EQ(R"( type Foo = <  X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X  , Y, Z...>() -> () )";
+    CHECK_EQ(R"( type Foo = <X  , Y, Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X,   Y, Z...>() -> () )";
+    CHECK_EQ(R"( type Foo = <X,   Y, Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X, Y  , Z...>() -> () )";
+    CHECK_EQ(R"( type Foo = <X, Y  , Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X, Y,   Z...>() -> () )";
+    CHECK_EQ(R"( type Foo = <X, Y,   Z...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X, Y, Z  ...>() -> () )";
+    CHECK_EQ(R"( type Foo = <X, Y, Z  ...>() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X, Y, Z...  >() -> () )";
+    CHECK_EQ(R"( type Foo = <X, Y, Z...  >() ->()  )", transpile(code, {}, true).code);
+
+    code = R"( type Foo = <X, Y, Z...>  () -> () )";
+    CHECK_EQ(R"( type Foo = <X, Y, Z...>  () ->()  )", transpile(code, {}, true).code);
 }
 
 TEST_SUITE_END();

@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTablesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauPrecalculateMutatedFreeTypes2)
 LUAU_FASTFLAGVARIABLE(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauSearchForRefineableType)
 
 namespace Luau
 {
@@ -635,6 +636,7 @@ struct TypeSearcher : TypeVisitor
     TypeId needle;
     Polarity current = Polarity::Positive;
 
+    size_t count = 0;
     Polarity result = Polarity::None;
 
     explicit TypeSearcher(TypeId needle)
@@ -649,7 +651,10 @@ struct TypeSearcher : TypeVisitor
     bool visit(TypeId ty) override
     {
         if (ty == needle)
-            result = Polarity(int(result) | int(current));
+        {
+            ++count;
+            result = Polarity(size_t(result) | size_t(current));
+        }
 
         return true;
     }
@@ -749,7 +754,7 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
 
             case TypeSearcher::Polarity::Negative:
             case TypeSearcher::Polarity::Mixed:
-                if (get<UnknownType>(upperBound))
+                if (get<UnknownType>(upperBound) && ts.count > 1)
                 {
                     asMutable(ty)->reassign(Type{GenericType{tyScope}});
                     function->generics.emplace_back(ty);
@@ -759,7 +764,7 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
                 break;
 
             case TypeSearcher::Polarity::Positive:
-            if (get<UnknownType>(lowerBound))
+            if (get<UnknownType>(lowerBound) && ts.count > 1)
             {
                 asMutable(ty)->reassign(Type{GenericType{tyScope}});
                 function->generics.emplace_back(ty);
@@ -903,26 +908,16 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     else if (get<PendingExpansionType>(generalizedType))
         return block(generalizedType, constraint);
 
-    std::optional<QuantifierResult> generalized;
-
     std::optional<TypeId> generalizedTy = generalize(NotNull{arena}, builtinTypes, constraint->scope, generalizedTypes, c.sourceType);
-    if (generalizedTy)
-        generalized = QuantifierResult{*generalizedTy}; // FIXME insertedGenerics and insertedGenericPacks
-    else
+    if (!generalizedTy)
         reportError(CodeTooComplex{}, constraint->location);
 
-    if (generalized)
+    if (generalizedTy)
     {
         if (get<BlockedType>(generalizedType))
-            bind(constraint, generalizedType, generalized->result);
+            bind(constraint, generalizedType, *generalizedTy);
         else
-            unify(constraint, generalizedType, generalized->result);
-
-        for (auto [free, gen] : generalized->insertedGenerics.pairings)
-            unify(constraint, free, gen);
-
-        for (auto [free, gen] : generalized->insertedGenericPacks.pairings)
-            unify(constraint, free, gen);
+            unify(constraint, generalizedType, *generalizedTy);
     }
     else
     {
@@ -1352,15 +1347,29 @@ void ConstraintSolver::fillInDiscriminantTypes(NotNull<const Constraint> constra
         if (!ty)
             continue;
 
-        // If the discriminant type has been transmuted, we need to unblock them.
-        if (!isBlocked(*ty))
+        if (FFlag::LuauSearchForRefineableType)
         {
+            if (isBlocked(*ty))
+                // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+                emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
+            
+            // We also need to unconditionally unblock these types, otherwise
+            // you end up with funky looking "Blocked on *no-refine*."
             unblock(*ty, constraint->location);
-            continue;
         }
+        else
+        {
 
-        // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
-        emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
+            // If the discriminant type has been transmuted, we need to unblock them.
+            if (!isBlocked(*ty))
+            {
+                unblock(*ty, constraint->location);
+                continue;
+            }
+
+            // We bind any unused discriminants to the `*no-refine*` type indicating that it can be safely ignored.
+            emplaceType<BoundType>(asMutable(follow(*ty)), builtinTypes->noRefineType);
+        }
     }
 }
 
@@ -1370,9 +1379,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     TypePackId argsPack = follow(c.argsPack);
     TypePackId result = follow(c.result);
 
-    if (isBlocked(fn) || hasUnresolvedConstraints(fn))
+    if (FFlag::DebugLuauGreedyGeneralization)
     {
-        return block(c.fn, constraint);
+        if (isBlocked(fn))
+            return block(c.fn, constraint);
+    }
+    else
+    {
+        if (isBlocked(fn) || hasUnresolvedConstraints(fn))
+        {
+            return block(c.fn, constraint);
+        }
     }
 
     if (get<AnyType>(fn))
@@ -1658,8 +1675,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
         else if (expr->is<AstExprTable>())
         {
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+            Subtyping sp{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
             std::vector<TypeId> toBlock;
-            (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, expectedArgTy, actualArgTy, expr, toBlock);
+            (void)matchLiteralType(
+                c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&sp}, expectedArgTy, actualArgTy, expr, toBlock
+            );
             LUAU_ASSERT(toBlock.empty());
         }
     }
@@ -1683,8 +1703,9 @@ bool ConstraintSolver::tryDispatch(const TableCheckConstraint& c, NotNull<const 
         return false;
 
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+    Subtyping sp{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
     std::vector<TypeId> toBlock;
-    (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, c.expectedType, c.exprType, c.table, toBlock);
+    (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&sp}, c.expectedType, c.exprType, c.table, toBlock);
     LUAU_ASSERT(toBlock.empty());
     return true;
 }

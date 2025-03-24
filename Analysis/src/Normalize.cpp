@@ -20,8 +20,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeNegationFix)
 LUAU_FASTFLAGVARIABLE(LuauFixInfiniteRecursionInNormalization)
-LUAU_FASTFLAGVARIABLE(LuauFixNormalizedIntersectionOfNegatedClass)
+LUAU_FASTFLAGVARIABLE(LuauNormalizedBufferIsNotUnknown)
 
 namespace Luau
 {
@@ -303,7 +304,9 @@ bool NormalizedType::isUnknown() const
 
     // Otherwise, we can still be unknown!
     bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
-                            strings.isString() && isPrim(threads, PrimitiveType::Thread) && isThread(threads);
+                            strings.isString() &&
+                            (FFlag::LuauNormalizedBufferIsNotUnknown ? isThread(threads) && isBuffer(buffers)
+                                                                     : isPrim(threads, PrimitiveType::Thread) && isThread(threads));
 
     // Check is class
     bool isTopClass = false;
@@ -2288,7 +2291,7 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
 
             for (auto nIt = negations.begin(); nIt != negations.end();)
             {
-                if (FFlag::LuauFixNormalizedIntersectionOfNegatedClass && isSubclass(there, *nIt))
+                if (isSubclass(there, *nIt))
                 {
                     // Hitting this block means that the incoming class is a
                     // subclass of this type, _and_ one of its negations is a
@@ -3305,7 +3308,12 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             return NormalizationResult::True;
         }
         else if (auto nt = get<NegationType>(t))
+        {
+            if (FFlag::LuauNormalizeNegationFix)
+                here.tyvars = std::move(tyvars);
+
             return intersectNormalWithTy(here, nt->ty, seenTablePropPairs, seenSetTypes);
+        }
         else
         {
             // TODO negated unions, intersections, table, and function.

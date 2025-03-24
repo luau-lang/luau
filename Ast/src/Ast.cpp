@@ -1069,6 +1069,16 @@ void AstTypeTypeof::visit(AstVisitor* visitor)
         expr->visit(visitor);
 }
 
+AstTypeOptional::AstTypeOptional(const Location& location)
+    : AstType(ClassIndex(), location)
+{
+}
+
+void AstTypeOptional::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
 AstTypeUnion::AstTypeUnion(const Location& location, const AstArray<AstType*>& types)
     : AstType(ClassIndex(), location)
     , types(types)
