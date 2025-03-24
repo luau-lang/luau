@@ -2582,7 +2582,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_just_the_read_property")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // The first check is corrrect because it reflects the state of the program by that point.
+    // The first check is correct because it reflects the state of the program by that point.
     // The second check is not. It fails to account for transitive typestate change from the
     // previous statement.
     CHECK_EQ("Foo & { read p: ~true }", toString(requireTypeAtPosition({6, 12})));
