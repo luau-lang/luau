@@ -3938,5 +3938,9 @@ TEST_CASE_FIXTURE(Fixture, "parsing_type_suffix_for_return_type_with_variadic")
     CHECK(result.errors.size() == 0);
 }
 
+TEST_CASE_FIXTURE(Fixture, "parsing_string_union_indexers")
+{
+    parse(R"(type foo = { ["bar" | "baz"]: number })");
+}
 
 TEST_SUITE_END();

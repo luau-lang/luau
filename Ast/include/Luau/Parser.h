@@ -228,9 +228,9 @@ private:
         Position colonPosition;
     };
 
-    TableIndexerResult parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation);
+    TableIndexerResult parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
     // Remove with FFlagLuauStoreCSTData
-    AstTableIndexer* parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation);
+    AstTableIndexer* parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
 
     AstTypeOrPack parseFunctionType(bool allowPack, const AstArray<AstAttr*>& attributes);
     AstType* parseFunctionTypeTail(
