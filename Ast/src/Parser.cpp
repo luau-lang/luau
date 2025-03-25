@@ -1395,7 +1395,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                             // the last param in the parseTableIndexer is ignored since FFlagLuauParseStringIndexer is false here
                             indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, lexer.current()).node;
                         else
-                            // the last param in the parseTableIndexer is ignored
+                            // the last param in the parseTableIndexer is ignored since FFlagLuauParseStringIndexer is false here
                             indexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, lexer.current());
                     }
                 }
