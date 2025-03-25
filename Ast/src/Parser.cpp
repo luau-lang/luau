@@ -28,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauAstTypeGroup3)
 LUAU_FASTFLAGVARIABLE(ParserNoErrorLimit)
 LUAU_FASTFLAGVARIABLE(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAGVARIABLE(LuauParseOptionalAsNode)
+LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
 
 namespace Luau
 {
@@ -1260,30 +1261,106 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
         while (lexer.current().type != Lexeme::ReservedEnd)
         {
-            // There are two possibilities: Either it's a property or a function.
-            if (lexer.current().type == Lexeme::ReservedFunction)
+            if (FFlag::LuauParseStringIndexer)
             {
-                props.push_back(parseDeclaredClassMethod());
-            }
-            else if (lexer.current().type == '[')
-            {
-                const Lexeme begin = lexer.current();
-                nextLexeme(); // [
-
-                if ((lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString) && lexer.lookahead().type == ']')
+                // There are two possibilities: Either it's a property or a function.
+                if (lexer.current().type == Lexeme::ReservedFunction)
                 {
+                    props.push_back(parseDeclaredClassMethod());
+                }
+                else if (lexer.current().type == '[')
+                {
+                    const Lexeme begin = lexer.current();
+                    nextLexeme(); // [
+
+                    if ((lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString) && lexer.lookahead().type == ']')
+                    {
+                        const Location nameBegin = lexer.current().location;
+                        std::optional<AstArray<char>> chars = parseCharArray();
+        
+                        const Location nameEnd = lexer.previousLocation();
+        
+                        expectMatchAndConsume(']', begin);
+                        expectAndConsume(':', "property type annotation");
+                        AstType* type = parseType();
+        
+                        // since AstName contains a char*, it can't contain null
+                        bool containsNull = chars && (memchr(chars->data, 0, chars->size) != nullptr);
+        
+                        if (chars && !containsNull)
+                        {
+                            props.push_back(AstDeclaredClassProp{
+                                AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
+                            });
+                        }
+                        else
+                        {
+                            report(begin.location, "String literal contains malformed escape sequence or \\0");
+                        }
+                    }
+                    else
+                    {
+                        if (indexer)
+                        {
+                            // maybe we don't need to parse the entire badIndexer...
+                            // however, we either have { or [ to lint, not the entire table type or the bad indexer.
+                            AstTableIndexer* badIndexer;
+                            if (FFlag::LuauStoreCSTData)
+                                badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
+                            else
+                                badIndexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, begin);
+        
+                            // we lose all additional indexer expressions from the AST after error recovery here
+                            report(badIndexer->location, "Cannot have more than one class indexer");
+                        }
+                        else
+                        {
+                            if (FFlag::LuauStoreCSTData)
+                                indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
+                            else
+                                indexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, begin);
+                        }
+                    }
+                }
+                else
+                {
+                    Location propStart = lexer.current().location;
+                    std::optional<Name> propName = parseNameOpt("property name");
+
+                    if (!propName)
+                        break;
+
+                    expectAndConsume(':', "property type annotation");
+                    AstType* propType = parseType();
+                    props.push_back(
+                        AstDeclaredClassProp{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
+                    );
+                }
+            }
+            else
+            {
+                // There are two possibilities: Either it's a property or a function.
+                if (lexer.current().type == Lexeme::ReservedFunction)
+                {
+                    props.push_back(parseDeclaredClassMethod());
+                }
+                else if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
+                {
+                    const Lexeme begin = lexer.current();
+                    nextLexeme(); // [
+
                     const Location nameBegin = lexer.current().location;
                     std::optional<AstArray<char>> chars = parseCharArray();
-    
+
                     const Location nameEnd = lexer.previousLocation();
-    
+
                     expectMatchAndConsume(']', begin);
                     expectAndConsume(':', "property type annotation");
                     AstType* type = parseType();
-    
+
                     // since AstName contains a char*, it can't contain null
                     bool containsNull = chars && (memchr(chars->data, 0, chars->size) != nullptr);
-    
+
                     if (chars && !containsNull)
                     {
                         props.push_back(AstDeclaredClassProp{
@@ -1295,7 +1372,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                         report(begin.location, "String literal contains malformed escape sequence or \\0");
                     }
                 }
-                else
+                else if (lexer.current().type == '[')
                 {
                     if (indexer)
                     {
@@ -1303,35 +1380,39 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                         // however, we either have { or [ to lint, not the entire table type or the bad indexer.
                         AstTableIndexer* badIndexer;
                         if (FFlag::LuauStoreCSTData)
-                            badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
+                            // the last param in the parseTableIndexer is ignored
+                            badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, lexer.current()).node;
                         else
-                            badIndexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, begin);
-    
+                            // the last param in the parseTableIndexer is ignored
+                            badIndexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, lexer.current());
+
                         // we lose all additional indexer expressions from the AST after error recovery here
                         report(badIndexer->location, "Cannot have more than one class indexer");
                     }
                     else
                     {
                         if (FFlag::LuauStoreCSTData)
-                            indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
+                            // the last param in the parseTableIndexer is ignored
+                            indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, lexer.current()).node;
                         else
-                            indexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, begin);
+                            // the last param in the parseTableIndexer is ignored
+                            indexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, lexer.current());
                     }
                 }
-            }
-            else
-            {
-                Location propStart = lexer.current().location;
-                std::optional<Name> propName = parseNameOpt("property name");
+                else
+                {
+                    Location propStart = lexer.current().location;
+                    std::optional<Name> propName = parseNameOpt("property name");
 
-                if (!propName)
-                    break;
+                    if (!propName)
+                        break;
 
-                expectAndConsume(':', "property type annotation");
-                AstType* propType = parseType();
-                props.push_back(
-                    AstDeclaredClassProp{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
-                );
+                    expectAndConsume(':', "property type annotation");
+                    AstType* propType = parseType();
+                    props.push_back(
+                        AstDeclaredClassProp{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
+                    );
+                }
             }
         }
 
@@ -1866,6 +1947,12 @@ std::pair<CstExprConstantString::QuoteStyle, unsigned int> Parser::extractString
 // TableIndexer ::= `[' Type `]' `:' Type
 Parser::TableIndexerResult Parser::parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin)
 {
+    if (!FFlag::LuauParseStringIndexer)
+    {
+        begin = lexer.current();
+        nextLexeme(); // [
+    }
+
     AstType* index = parseType();
 
     Position indexerClosePosition = lexer.current().location.begin;
@@ -1887,6 +1974,12 @@ Parser::TableIndexerResult Parser::parseTableIndexer(AstTableAccess access, std:
 // Remove with FFlagLuauStoreCSTData
 AstTableIndexer* Parser::parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin)
 {
+    if (!FFlag::LuauParseStringIndexer)
+    {
+        begin = lexer.current();
+        nextLexeme(); // [
+    }
+
     AstType* index = parseType();
 
     expectMatchAndConsume(']', begin);
@@ -1938,29 +2031,148 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             }
         }
 
-        if (lexer.current().type == '[') {
-            const Lexeme begin = lexer.current();
-            nextLexeme(); // [
+        if (FFlag::LuauParseStringIndexer)
+        {
+            if (lexer.current().type == '[')
+            {
+                const Lexeme begin = lexer.current();
+                nextLexeme(); // [
+    
+                if ((lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString) && lexer.lookahead().type == ']')
+                {
+                    CstExprConstantString::QuoteStyle style;
+                    unsigned int blockDepth = 0;
+                    if (FFlag::LuauStoreCSTData && options.storeCstData)
+                        std::tie(style, blockDepth) = extractStringDetails();
+        
+                    AstArray<char> sourceString;
+                    std::optional<AstArray<char>> chars = parseCharArray(options.storeCstData ? &sourceString : nullptr);
+        
+                    Position indexerClosePosition = lexer.current().location.begin;
+                    expectMatchAndConsume(']', begin);
+                    Position colonPosition = lexer.current().location.begin;
+                    expectAndConsume(':', "table field");
+        
+                    AstType* type = parseType();
+        
+                    // since AstName contains a char*, it can't contain null
+                    bool containsNull = chars && (memchr(chars->data, 0, chars->size) != nullptr);
+        
+                    if (chars && !containsNull)
+                    {
+                        props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
+                        if (FFlag::LuauStoreCSTData && options.storeCstData)
+                            cstItems.push_back(CstTypeTable::Item{
+                                CstTypeTable::Item::Kind::StringProperty,
+                                begin.location.begin,
+                                indexerClosePosition,
+                                colonPosition,
+                                tableSeparator(),
+                                lexer.current().location.begin,
+                                allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth)
+                            });
+                    }
+                    else
+                        report(begin.location, "String literal contains malformed escape sequence or \\0");
+                }
+                else
+                {
+                    if (indexer)
+                    {
+                        // maybe we don't need to parse the entire badIndexer...
+                        // however, we either have { or [ to lint, not the entire table type or the bad indexer.
+                        AstTableIndexer* badIndexer;
+                        if (FFlag::LuauStoreCSTData)
+                            badIndexer = parseTableIndexer(access, accessLocation, begin).node;
+                        else
+                            badIndexer = parseTableIndexer_DEPRECATED(access, accessLocation, begin);
+        
+                        // we lose all additional indexer expressions from the AST after error recovery here
+                        report(badIndexer->location, "Cannot have more than one table indexer");
+                    }
+                    else
+                    {
+                        if (FFlag::LuauStoreCSTData)
+                        {
+                            auto tableIndexerResult = parseTableIndexer(access, accessLocation, begin);
+                            indexer = tableIndexerResult.node;
+                            if (options.storeCstData)
+                                cstItems.push_back(CstTypeTable::Item{
+                                    CstTypeTable::Item::Kind::Indexer,
+                                    tableIndexerResult.indexerOpenPosition,
+                                    tableIndexerResult.indexerClosePosition,
+                                    tableIndexerResult.colonPosition,
+                                    tableSeparator(),
+                                    lexer.current().location.begin,
+                                });
+                        }
+                        else
+                        {
+                            indexer = parseTableIndexer_DEPRECATED(access, accessLocation, begin);
+                        }
+                    }
+                }
+            }
+            else if (props.empty() && !indexer && !(lexer.current().type == Lexeme::Name && lexer.lookahead().type == ':'))
+            {
+                AstType* type = parseType();
 
-            if ((lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString) && lexer.lookahead().type == ']') {
+                // array-like table type: {T} desugars into {[number]: T}
+                isArray = true;
+                AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
+                indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
+
+                break;
+            }
+            else
+            {
+                std::optional<Name> name = parseNameOpt("table field");
+
+                if (!name)
+                    break;
+
+                Position colonPosition = lexer.current().location.begin;
+                expectAndConsume(':', "table field");
+
+                AstType* type = parseType(inDeclarationContext);
+
+                props.push_back(AstTableProp{name->name, name->location, type, access, accessLocation});
+                if (FFlag::LuauStoreCSTData && options.storeCstData)
+                    cstItems.push_back(CstTypeTable::Item{
+                        CstTypeTable::Item::Kind::Property,
+                        Position{0, 0},
+                        Position{0, 0},
+                        colonPosition,
+                        tableSeparator(),
+                        lexer.current().location.begin
+                    });
+            }
+        }
+        else
+        {
+            if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
+            {
+                const Lexeme begin = lexer.current();
+                nextLexeme(); // [
+
                 CstExprConstantString::QuoteStyle style;
                 unsigned int blockDepth = 0;
                 if (FFlag::LuauStoreCSTData && options.storeCstData)
                     std::tie(style, blockDepth) = extractStringDetails();
-    
+
                 AstArray<char> sourceString;
                 std::optional<AstArray<char>> chars = parseCharArray(options.storeCstData ? &sourceString : nullptr);
-    
+
                 Position indexerClosePosition = lexer.current().location.begin;
                 expectMatchAndConsume(']', begin);
                 Position colonPosition = lexer.current().location.begin;
                 expectAndConsume(':', "table field");
-    
+
                 AstType* type = parseType();
-    
+
                 // since AstName contains a char*, it can't contain null
                 bool containsNull = chars && (memchr(chars->data, 0, chars->size) != nullptr);
-    
+
                 if (chars && !containsNull)
                 {
                     props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
@@ -1978,7 +2190,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                 else
                     report(begin.location, "String literal contains malformed escape sequence or \\0");
             }
-            else
+            else if (lexer.current().type == '[')
             {
                 if (indexer)
                 {
@@ -1986,10 +2198,12 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                     // however, we either have { or [ to lint, not the entire table type or the bad indexer.
                     AstTableIndexer* badIndexer;
                     if (FFlag::LuauStoreCSTData)
-                        badIndexer = parseTableIndexer(access, accessLocation, begin).node;
+                        // the last param in the parseTableIndexer is ignored
+                        badIndexer = parseTableIndexer(access, accessLocation, lexer.current()).node;
                     else
-                        badIndexer = parseTableIndexer_DEPRECATED(access, accessLocation, begin);
-    
+                        // the last param in the parseTableIndexer is ignored
+                        badIndexer = parseTableIndexer_DEPRECATED(access, accessLocation, lexer.current());
+
                     // we lose all additional indexer expressions from the AST after error recovery here
                     report(badIndexer->location, "Cannot have more than one table indexer");
                 }
@@ -1997,7 +2211,8 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                 {
                     if (FFlag::LuauStoreCSTData)
                     {
-                        auto tableIndexerResult = parseTableIndexer(access, accessLocation, begin);
+                        // the last param in the parseTableIndexer is ignored
+                        auto tableIndexerResult = parseTableIndexer(access, accessLocation, lexer.current());
                         indexer = tableIndexerResult.node;
                         if (options.storeCstData)
                             cstItems.push_back(CstTypeTable::Item{
@@ -2011,44 +2226,45 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                     }
                     else
                     {
-                        indexer = parseTableIndexer_DEPRECATED(access, accessLocation, begin);
+                        // the last param in the parseTableIndexer is ignored
+                        indexer = parseTableIndexer_DEPRECATED(access, accessLocation, lexer.current());
                     }
                 }
             }
-        }
-        else if (props.empty() && !indexer && !(lexer.current().type == Lexeme::Name && lexer.lookahead().type == ':'))
-        {
-            AstType* type = parseType();
+            else if (props.empty() && !indexer && !(lexer.current().type == Lexeme::Name && lexer.lookahead().type == ':'))
+            {
+                AstType* type = parseType();
 
-            // array-like table type: {T} desugars into {[number]: T}
-            isArray = true;
-            AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
-            indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
+                // array-like table type: {T} desugars into {[number]: T}
+                isArray = true;
+                AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
+                indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
 
-            break;
-        }
-        else
-        {
-            std::optional<Name> name = parseNameOpt("table field");
-
-            if (!name)
                 break;
+            }
+            else
+            {
+                std::optional<Name> name = parseNameOpt("table field");
 
-            Position colonPosition = lexer.current().location.begin;
-            expectAndConsume(':', "table field");
+                if (!name)
+                    break;
 
-            AstType* type = parseType(inDeclarationContext);
+                Position colonPosition = lexer.current().location.begin;
+                expectAndConsume(':', "table field");
 
-            props.push_back(AstTableProp{name->name, name->location, type, access, accessLocation});
-            if (FFlag::LuauStoreCSTData && options.storeCstData)
-                cstItems.push_back(CstTypeTable::Item{
-                    CstTypeTable::Item::Kind::Property,
-                    Position{0, 0},
-                    Position{0, 0},
-                    colonPosition,
-                    tableSeparator(),
-                    lexer.current().location.begin
-                });
+                AstType* type = parseType(inDeclarationContext);
+
+                props.push_back(AstTableProp{name->name, name->location, type, access, accessLocation});
+                if (FFlag::LuauStoreCSTData && options.storeCstData)
+                    cstItems.push_back(CstTypeTable::Item{
+                        CstTypeTable::Item::Kind::Property,
+                        Position{0, 0},
+                        Position{0, 0},
+                        colonPosition,
+                        tableSeparator(),
+                        lexer.current().location.begin
+                    });
+            }
         }
 
         if (lexer.current().type == ',' || lexer.current().type == ';')
