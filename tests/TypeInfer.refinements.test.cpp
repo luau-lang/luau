@@ -2589,4 +2589,22 @@ TEST_CASE_FIXTURE(Fixture, "refine_just_the_read_property")
     CHECK_EQ("Foo & { read p: ~true }", toString(requireTypeAtPosition({7, 12})));
 }
 
+TEST_CASE_FIXTURE(Fixture, "refine_just_the_read_property_typestate")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineJustTheReadProperty, true},
+    };
+
+    CheckResult result = check(R"(
+        type Foo = { p: {}? }
+
+        function f(x: Foo)
+            if not x.p then x.p = {} end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
