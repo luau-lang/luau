@@ -1380,7 +1380,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                         // however, we either have { or [ to lint, not the entire table type or the bad indexer.
                         AstTableIndexer* badIndexer;
                         if (FFlag::LuauStoreCSTData)
-                            // the last param in the parseTableIndexer is ignored
+                            // the last param in the parseTableIndexer is ignored since FFlagLuauParseStringIndexer is false here
                             badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, lexer.current()).node;
                         else
                             // the last param in the parseTableIndexer is ignored
