@@ -1392,7 +1392,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                     else
                     {
                         if (FFlag::LuauStoreCSTData)
-                            // the last param in the parseTableIndexer is ignored
+                            // the last param in the parseTableIndexer is ignored since FFlagLuauParseStringIndexer is false here
                             indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, lexer.current()).node;
                         else
                             // the last param in the parseTableIndexer is ignored
