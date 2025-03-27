@@ -26,7 +26,7 @@
 #define LUAU_DEBUGBREAK() __builtin_trap()
 #ifdef __APPLE__
 #define LUAU_ASSUME(x)  (void)sizeof(!!(x))
-#elif
+#else
 #define LUAU_ASSUME(x) __attribute__((assume(x)));
 #endif
 #endif
