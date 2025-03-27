@@ -236,6 +236,7 @@ reentry:
     VM_START(); // starts the interpreter "loop"
 
     while (true) {
+    dispatch:
         // Note: this code doesn't always execute! on some platforms we use computed goto which bypasses all of this unless we run in single-step mode
         // Therefore only ever put assertions here.
         LUAU_ASSERT(base == L->base && L->base == L->ci->base);

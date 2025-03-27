@@ -1,5 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
+#ifdef __clang__
+#if __has_warning("-Wassume")
+#pragma clang diagnostic ignored "-Wassume"
+#endif
+#endif
 
 // Compiler codegen control macros
 #ifdef _MSC_VER
@@ -19,7 +24,11 @@
 #define LUAU_UNLIKELY(x) __builtin_expect(x, 0)
 #define LUAU_UNREACHABLE() __builtin_unreachable()
 #define LUAU_DEBUGBREAK() __builtin_trap()
+#ifdef __APPLE__
+#define LUAU_ASSUME(x)  (void)sizeof(!!(x))
+#elif
 #define LUAU_ASSUME(x) __attribute__((assume(x)));
+#endif
 #endif
 
 // LUAU_FALLTHROUGH is a C++11-compatible alternative to [[fallthrough]] for use in the VM library
