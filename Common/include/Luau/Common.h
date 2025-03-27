@@ -24,11 +24,7 @@
 #define LUAU_UNLIKELY(x) __builtin_expect(x, 0)
 #define LUAU_UNREACHABLE() __builtin_unreachable()
 #define LUAU_DEBUGBREAK() __builtin_trap()
-#ifdef __APPLE__
 #define LUAU_ASSUME(x)  (void)sizeof(!!(x))
-#else
-#define LUAU_ASSUME(x) __attribute__((assume(x)));
-#endif
 #endif
 
 // LUAU_FALLTHROUGH is a C++11-compatible alternative to [[fallthrough]] for use in the VM library
