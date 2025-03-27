@@ -10,6 +10,7 @@
 #define LUAU_UNLIKELY(x) x
 #define LUAU_UNREACHABLE() __assume(false)
 #define LUAU_DEBUGBREAK() __debugbreak()
+#define LUAU_ASSUME(x) __assume(x)
 #else
 #define LUAU_NORETURN __attribute__((__noreturn__))
 #define LUAU_NOINLINE __attribute__((noinline))
@@ -18,6 +19,7 @@
 #define LUAU_UNLIKELY(x) __builtin_expect(x, 0)
 #define LUAU_UNREACHABLE() __builtin_unreachable()
 #define LUAU_DEBUGBREAK() __builtin_trap()
+#define LUAU_ASSUME(x) __attribute__((assume(x)));
 #endif
 
 // LUAU_FALLTHROUGH is a C++11-compatible alternative to [[fallthrough]] for use in the VM library
@@ -65,7 +67,7 @@ LUAU_NOINLINE inline int assertCallHandler(const char* expression, const char* f
 #define LUAU_ASSERT(expr) ((void)(!!(expr) || (Luau::assertCallHandler(#expr, __FILE__, __LINE__, __FUNCTION__) && (LUAU_DEBUGBREAK(), 0))))
 #define LUAU_ASSERTENABLED
 #else
-#define LUAU_ASSERT(expr) (void)sizeof(!!(expr))
+#define LUAU_ASSERT(expr) LUAU_ASSUME(expr)
 #endif
 
 namespace Luau
