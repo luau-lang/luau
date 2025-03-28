@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAGVARIABLE(LuauDebugInfoDefn)
-
 namespace Luau
 {
 
@@ -215,15 +213,6 @@ declare debug: {
 
 )BUILTIN_SRC";
 
-static const std::string kBuiltinDefinitionDebugSrc_DEPRECATED = R"BUILTIN_SRC(
-
-declare debug: {
-    info: (<R...>(thread: thread, level: number, options: string) -> R...) & (<R...>(level: number, options: string) -> R...) & (<A..., R1..., R2...>(func: (A...) -> R1..., options: string) -> R2...),
-    traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
-}
-
-)BUILTIN_SRC";
-
 static const std::string kBuiltinDefinitionUtf8Src = R"BUILTIN_SRC(
 
 declare utf8: {
@@ -309,7 +298,7 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
     result += kBuiltinDefinitionTableSrc;
-    result += FFlag::LuauDebugInfoDefn ? kBuiltinDefinitionDebugSrc : kBuiltinDefinitionDebugSrc_DEPRECATED;
+    result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     result += kBuiltinDefinitionBufferSrc;
     result += kBuiltinDefinitionVectorSrc;

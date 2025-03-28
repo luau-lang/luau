@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauPropagateExpectedTypesForCalls)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -150,6 +151,26 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters")
+{
+    ScopedFastFlag sff{FFlag::LuauPropagateExpectedTypesForCalls, true};
+
+    CheckResult result = check(R"(
+        type A = ("A") -> string
+        type B = ("B") -> number
+
+        local function foo(f: A & B)
+            return f("A"), f("B")
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId t = requireType("foo");
+    const FunctionType* fooType = get<FunctionType>(requireType("foo"));
+    REQUIRE(fooType != nullptr);
+
+    CHECK(toString(t) == "(((\"A\") -> string) & ((\"B\") -> number)) -> (string, number)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")

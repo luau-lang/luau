@@ -10,9 +10,15 @@
 #include "Luau/Normalize.h"
 #include "Luau/BuiltinDefinitions.h"
 
+LUAU_FASTFLAG(LuauNormalizeNegatedErrorToAnError)
+LUAU_FASTFLAG(LuauNormalizeIntersectErrorToAnError)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauNormalizeNegationFix)
+LUAU_FASTINT(LuauNormalizeIntersectionLimit)
+LUAU_FASTINT(LuauNormalizeUnionLimit)
+LUAU_FASTFLAG(LuauNormalizeLimitFunctionSet)
+LUAU_FASTFLAG(LuauSubtypingStopAtNormFail)
+
 using namespace Luau;
 
 namespace
@@ -593,6 +599,25 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersect_truthy_expressed_as_intersection"
     )")));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_error")
+{
+    ScopedFastFlag luauNormalizeIntersectErrorToAnError{FFlag::LuauNormalizeIntersectErrorToAnError, true};
+
+    std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(string & AAA)", 1);
+    REQUIRE(norm);
+    CHECK("*error-type*" == toString(normalizer.typeFromNormal(*norm)));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_not_error")
+{
+    ScopedFastFlag luauNormalizeIntersectErrorToAnError{FFlag::LuauNormalizeIntersectErrorToAnError, true};
+    ScopedFastFlag luauNormalizeNegatedErrorToAnError{FFlag::LuauNormalizeNegatedErrorToAnError, true};
+
+    std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(string & Not<)", 1);
+    REQUIRE(norm);
+    CHECK("*error-type*" == toString(normalizer.typeFromNormal(*norm)));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "union_of_union")
 {
     CHECK(R"("alpha" | "beta" | "gamma")" == toString(normal(R"(
@@ -1032,7 +1057,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true}, // Only because it affects the stringification of free types
-        {FFlag::LuauNormalizeNegationFix, true},
     };
 
     TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
@@ -1151,6 +1175,40 @@ return function<T, U>(
 	return array
 end
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity")
+{
+    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
+    ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
+    ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
+    ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
+
+    CheckResult result = check(R"(
+function _(_).readu32(l0)
+return ({[_(_(_))]=_,[_(if _ then _)]=_,n0=_,})[_],nil
+end
+_(_)[_(n32)] %= _(_(_))
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
+{
+    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
+    ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
+    ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
+    ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
+
+    CheckResult result = check(R"(
+function _(_,"").readu32(l0)
+return ({[_(_(_))]=_,[_(if _ then _,_())]=_,[""]=_,})[_],nil
+end
+_().readu32 %= _(_(_(_),_))
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

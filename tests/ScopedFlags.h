@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 
-#include <string.h>
+#include <vector>
 
 template<typename T>
 struct [[nodiscard]] ScopedFValue

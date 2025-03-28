@@ -33,6 +33,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+LUAU_FASTFLAGVARIABLE(LuauPropagateExpectedTypesForCalls)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTypesOnScope)
@@ -45,6 +46,8 @@ LUAU_FASTFLAGVARIABLE(LuauInferLocalTypesInMultipleAssignments)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakNilInRefinement)
 LUAU_FASTFLAGVARIABLE(LuauExtraFollows)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
+
+LUAU_FASTFLAG(LuauDeprecatedAttribute)
 
 namespace Luau
 {
@@ -547,7 +550,7 @@ void ConstraintGenerator::computeRefinement(
             refis->get(proposition->key->def)->shouldAppendNilType =
                 (sense || !eq) && containsSubscriptedDefinition(proposition->key->def) && !proposition->implicitFromCall;
         }
-        else 
+        else
         {
             refis->get(proposition->key->def)->shouldAppendNilType = (sense || !eq) && containsSubscriptedDefinition(proposition->key->def);
         }
@@ -1357,6 +1360,23 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatRepeat* rep
     return ControlFlow::None;
 }
 
+static void propagateDeprecatedAttributeToConstraint(ConstraintV& c, const AstExprFunction* func)
+{
+    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
+    if (GeneralizationConstraint* genConstraint = c.get_if<GeneralizationConstraint>())
+    {
+        genConstraint->hasDeprecatedAttribute = func->hasAttribute(AstAttr::Type::Deprecated);
+    }
+}
+
+static void propagateDeprecatedAttributeToType(TypeId signature, const AstExprFunction* func)
+{
+    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
+    FunctionType* fty = getMutable<FunctionType>(signature);
+    LUAU_ASSERT(fty);
+    fty->isDeprecatedFunction = func->hasAttribute(AstAttr::Type::Deprecated);
+}
+
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFunction* function)
 {
     // Local
@@ -1394,6 +1414,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
         std::unique_ptr<Constraint> c =
             std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
+        if (FFlag::LuauDeprecatedAttribute)
+            propagateDeprecatedAttributeToConstraint(c->c, function->func);
+
         Constraint* previous = nullptr;
         forEachConstraint(
             start,
@@ -1417,7 +1440,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
         module->astTypes[function->func] = functionType;
     }
     else
+    {
         module->astTypes[function->func] = sig.signature;
+        if (FFlag::LuauDeprecatedAttribute)
+            propagateDeprecatedAttributeToType(sig.signature, function->func);
+    }
 
     return ControlFlow::None;
 }
@@ -1458,13 +1485,20 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
 
     TypeId generalizedType = arena->addType(BlockedType{});
     if (sigFullyDefined)
+    {
         emplaceType<BoundType>(asMutable(generalizedType), sig.signature);
+        if (FFlag::LuauDeprecatedAttribute)
+            propagateDeprecatedAttributeToType(sig.signature, function->func);
+    }
     else
     {
         const ScopePtr& constraintScope = sig.signatureScope ? sig.signatureScope : sig.bodyScope;
 
         NotNull<Constraint> c = addConstraint(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
         getMutable<BlockedType>(generalizedType)->setOwner(c);
+
+        if (FFlag::LuauDeprecatedAttribute)
+            propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
         Constraint* previous = nullptr;
         forEachConstraint(
@@ -1981,6 +2015,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
     TypeId fnType = arena->addType(FunctionType{TypeLevel{}, funScope.get(), std::move(genericTys), std::move(genericTps), paramPack, retPack, defn});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
     ftv->isCheckedFunction = global->isCheckedFunction();
+    if (FFlag::LuauDeprecatedAttribute)
+        ftv->isDeprecatedFunction = global->hasAttribute(AstAttr::Type::Deprecated);
 
     ftv->argNames.reserve(global->paramNames.size);
     for (const auto& el : global->paramNames)
@@ -2148,13 +2184,23 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
         {
-            auto [ty, refinement] = check(scope, arg, /*expectedType*/ std::nullopt, /*forceSingleton*/ false, /*generalize*/ false);
+            std::optional<TypeId> expectedType = std::nullopt;
+            if (FFlag::LuauPropagateExpectedTypesForCalls && i < expectedTypesForCall.size())
+            {
+                expectedType = expectedTypesForCall[i];
+            }
+            auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
             args.push_back(ty);
             argumentRefinements.push_back(refinement);
         }
         else
         {
-            auto [tp, refis] = checkPack(scope, arg, {});
+            std::vector<std::optional<Luau::TypeId>> expectedTypes = {};
+            if (FFlag::LuauPropagateExpectedTypesForCalls && i < expectedTypesForCall.size())
+            {
+                expectedTypes.insert(expectedTypes.end(), expectedTypesForCall.begin() + int(i), expectedTypesForCall.end());
+            }
+            auto [tp, refis] = checkPack(scope, arg, expectedTypes);
             argTail = tp;
             argumentRefinements.insert(argumentRefinements.end(), refis.begin(), refis.end());
         }
@@ -2414,19 +2460,13 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprLocal* local)
 {
     const RefinementKey* key = dfg->getRefinementKey(local);
-    std::optional<DefId> rvalueDef = dfg->getRValueDefForCompoundAssign(local);
-    LUAU_ASSERT(key || rvalueDef);
+    LUAU_ASSERT(key);
 
     std::optional<TypeId> maybeTy;
 
     // if we have a refinement key, we can look up its type.
     if (key)
         maybeTy = lookup(scope, local->location, key->def);
-
-    // if the current def doesn't have a type, we might be doing a compound assignment
-    // and therefore might need to look at the rvalue def instead.
-    if (!maybeTy && rvalueDef)
-        maybeTy = lookup(scope, local->location, *rvalueDef);
 
     if (maybeTy)
     {
@@ -2443,11 +2483,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprLocal* local)
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* global)
 {
     const RefinementKey* key = dfg->getRefinementKey(global);
-    std::optional<DefId> rvalueDef = dfg->getRValueDefForCompoundAssign(global);
-    LUAU_ASSERT(key || rvalueDef);
+    LUAU_ASSERT(key);
 
-    // we'll use whichever of the two definitions we have here.
-    DefId def = key ? key->def : *rvalueDef;
+    DefId def = key->def;
 
     /* prepopulateGlobalScope() has already added all global functions to the environment by this point, so any
      * global that is not already in-scope is definitely an unknown symbol.
@@ -3572,6 +3610,8 @@ TypeId ConstraintGenerator::resolveFunctionType(
     // how to quantify/instantiate it.
     FunctionType ftv{TypeLevel{}, scope.get(), {}, {}, argTypes, returnTypes};
     ftv.isCheckedFunction = fn->isCheckedFunction();
+    if (FFlag::LuauDeprecatedAttribute)
+        ftv.isDeprecatedFunction = fn->hasAttribute(AstAttr::Type::Deprecated);
 
     // This replicates the behavior of the appropriate FunctionType
     // constructors.

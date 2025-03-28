@@ -19,7 +19,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
@@ -37,6 +36,15 @@ struct TypeFunction;
 struct Constraint;
 struct Subtyping;
 struct TypeChecker2;
+
+enum struct Polarity : uint8_t
+{
+    None = 0b000,
+    Positive = 0b001,
+    Negative = 0b010,
+    Mixed = 0b011,
+    Unknown = 0b100,
+};
 
 /**
  * There are three kinds of type variables:
@@ -396,6 +404,7 @@ struct FunctionType
     // this flag is used as an optimization to exit early from procedures that manipulate free or generic types.
     bool hasNoFreeOrGenericTypes = false;
     bool isCheckedFunction = false;
+    bool isDeprecatedFunction = false;
 };
 
 enum class TableState

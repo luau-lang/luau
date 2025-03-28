@@ -3,8 +3,23 @@
 
 #include "Luau/Common.h"
 
+LUAU_FASTFLAG(LuauDeprecatedAttribute);
+
 namespace Luau
 {
+
+static bool hasAttributeInArray(const AstArray<AstAttr*> attributes, AstAttr::Type attributeType)
+{
+    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
+
+    for (const auto attribute : attributes)
+    {
+        if (attribute->type == attributeType)
+            return true;
+    }
+
+    return false;
+}
 
 static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
 {
@@ -275,6 +290,13 @@ bool AstExprFunction::hasNativeAttribute() const
             return true;
     }
     return false;
+}
+
+bool AstExprFunction::hasAttribute(const AstAttr::Type attributeType) const
+{
+    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
+
+    return hasAttributeInArray(attributes, attributeType);
 }
 
 AstExprTable::AstExprTable(const Location& location, const AstArray<Item>& items)
@@ -791,13 +813,15 @@ AstStatTypeFunction::AstStatTypeFunction(
     const AstName& name,
     const Location& nameLocation,
     AstExprFunction* body,
-    bool exported
+    bool exported,
+    bool hasErrors
 )
     : AstStat(ClassIndex(), location)
     , name(name)
     , nameLocation(nameLocation)
     , body(body)
     , exported(exported)
+    , hasErrors(hasErrors)
 {
 }
 
@@ -892,6 +916,13 @@ bool AstStatDeclareFunction::isCheckedFunction() const
     }
 
     return false;
+}
+
+bool AstStatDeclareFunction::hasAttribute(AstAttr::Type attributeType) const
+{
+    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
+
+    return hasAttributeInArray(attributes, attributeType);
 }
 
 AstStatDeclareClass::AstStatDeclareClass(
@@ -1055,6 +1086,13 @@ bool AstTypeFunction::isCheckedFunction() const
     }
 
     return false;
+}
+
+bool AstTypeFunction::hasAttribute(AstAttr::Type attributeType) const
+{
+    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
+
+    return hasAttributeInArray(attributes, attributeType);
 }
 
 AstTypeTypeof::AstTypeTypeof(const Location& location, AstExpr* expr)

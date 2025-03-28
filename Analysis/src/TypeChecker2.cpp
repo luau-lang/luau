@@ -33,6 +33,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAGVARIABLE(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerAcceptNumberConcats)
 
 namespace Luau
 {
@@ -2229,10 +2230,21 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
         return builtinTypes->numberType;
     case AstExprBinary::Op::Concat:
-        testIsSubtype(leftType, builtinTypes->stringType, expr->left->location);
-        testIsSubtype(rightType, builtinTypes->stringType, expr->right->location);
+    {
+        if (FFlag::LuauTypeCheckerAcceptNumberConcats)
+        {
+            const TypeId numberOrString = module->internalTypes.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
+            testIsSubtype(leftType, numberOrString, expr->left->location);
+            testIsSubtype(rightType, numberOrString, expr->right->location);
+        }
+        else
+        {
+            testIsSubtype(leftType, builtinTypes->stringType, expr->left->location);
+            testIsSubtype(rightType, builtinTypes->stringType, expr->right->location);
+        }
 
         return builtinTypes->stringType;
+    }
     case AstExprBinary::Op::CompareGe:
     case AstExprBinary::Op::CompareGt:
     case AstExprBinary::Op::CompareLe:

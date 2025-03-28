@@ -134,6 +134,7 @@ int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool for
     getMutable<TableType>(vector3MetaType)->props = {
         {"__add", {makeFunction(arena, nullopt, {vector3InstanceType, vector3InstanceType}, {vector3InstanceType})}},
     };
+    getMutable<TableType>(vector3MetaType)->state = TableState::Sealed;
 
     globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
 

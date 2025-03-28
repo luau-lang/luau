@@ -17,12 +17,15 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
+LUAU_FASTFLAGVARIABLE(LuauNormalizeNegatedErrorToAnError)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeIntersectErrorToAnError)
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
+LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauNormalizeNegationFix)
 LUAU_FASTFLAGVARIABLE(LuauFixInfiniteRecursionInNormalization)
 LUAU_FASTFLAGVARIABLE(LuauNormalizedBufferIsNotUnknown)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeLimitFunctionSet)
 
 namespace Luau
 {
@@ -581,7 +584,7 @@ NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId righ
 {
     left = follow(left);
     right = follow(right);
-    // We're asking if intersection is inahbited between left and right but we've already seen them ....
+    // We're asking if intersection is inhabited between left and right but we've already seen them ....
 
     if (cacheInhabitance)
     {
@@ -1687,6 +1690,13 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
             return res;
     }
 
+    if (FFlag::LuauNormalizeLimitFunctionSet)
+    {
+        // Limit based on worst-case expansion of the function unions
+        if (here.functions.parts.size() * there.functions.parts.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+            return NormalizationResult::HitLimits;
+    }
+
     here.booleans = unionOfBools(here.booleans, there.booleans);
     unionClasses(here.classes, there.classes);
 
@@ -1698,6 +1708,7 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
     here.buffers = (get<NeverType>(there.buffers) ? here.buffers : there.buffers);
     unionFunctions(here.functions, there.functions);
     unionTables(here.tables, there.tables);
+
     return NormalizationResult::True;
 }
 
@@ -1737,7 +1748,7 @@ NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, N
     return NormalizationResult::True;
 }
 
-// See above for an explaination of `ignoreSmallerTyvars`.
+// See above for an explanation of `ignoreSmallerTyvars`.
 NormalizationResult Normalizer::unionNormalWithTy(
     NormalizedType& here,
     TypeId there,
@@ -3052,7 +3063,7 @@ NormalizationResult Normalizer::intersectTyvarsWithTy(
     return NormalizationResult::True;
 }
 
-// See above for an explaination of `ignoreSmallerTyvars`.
+// See above for an explanation of `ignoreSmallerTyvars`.
 NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
@@ -3070,10 +3081,16 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
         return unionNormals(here, there, ignoreSmallerTyvars);
     }
 
-    // Limit based on worst-case expansion of the table intersection
+    // Limit based on worst-case expansion of the table/function intersections
     // This restriction can be relaxed when table intersection simplification is improved
     if (here.tables.size() * there.tables.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
         return NormalizationResult::HitLimits;
+
+    if (FFlag::LuauNormalizeLimitFunctionSet)
+    {
+        if (here.functions.parts.size() * there.functions.parts.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
+            return NormalizationResult::HitLimits;
+    }
 
     here.booleans = intersectionOfBools(here.booleans, there.booleans);
 
@@ -3210,7 +3227,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     {
         TypeId errors = here.errors;
         clearNormal(here);
-        here.errors = errors;
+        here.errors = FFlag::LuauNormalizeIntersectErrorToAnError && get<ErrorType>(errors) ? errors : there;
     }
     else if (const PrimitiveType* ptv = get<PrimitiveType>(there))
     {
@@ -3307,11 +3324,16 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             clearNormal(here);
             return NormalizationResult::True;
         }
+        else if (FFlag::LuauNormalizeNegatedErrorToAnError && get<ErrorType>(t))
+        {
+            // ~error is still an error, so intersecting with the negation is the same as intersecting with a type
+            TypeId errors = here.errors;
+            clearNormal(here);
+            here.errors = FFlag::LuauNormalizeIntersectErrorToAnError && get<ErrorType>(errors) ? errors : t;
+        }
         else if (auto nt = get<NegationType>(t))
         {
-            if (FFlag::LuauNormalizeNegationFix)
-                here.tyvars = std::move(tyvars);
-
+            here.tyvars = std::move(tyvars);
             return intersectNormalWithTy(here, nt->ty, seenTablePropPairs, seenSetTypes);
         }
         else

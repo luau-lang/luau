@@ -82,12 +82,6 @@ std::optional<DefId> DataFlowGraph::getDefOptional(const AstExpr* expr) const
     return NotNull{*def};
 }
 
-std::optional<DefId> DataFlowGraph::getRValueDefForCompoundAssign(const AstExpr* expr) const
-{
-    auto def = compoundAssignDefs.find(expr);
-    return def ? std::optional<DefId>(*def) : std::nullopt;
-}
-
 DefId DataFlowGraph::getDef(const AstLocal* local) const
 {
     auto def = localDefs.find(local);
