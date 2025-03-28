@@ -125,7 +125,7 @@ private:
     AstStat* parseFor();
 
     // funcname ::= Name {`.' Name} [`:' Name]
-    AstExpr* parseFunctionName(Location start_DEPRECATED, bool& hasself, AstName& debugname);
+    AstExpr* parseFunctionName(bool& hasself, AstName& debugname);
 
     // function funcname funcbody
     LUAU_FORCEINLINE AstStat* parseFunctionStat(const AstArray<AstAttr*>& attributes = {nullptr, 0});
@@ -157,7 +157,9 @@ private:
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstDeclaredClassProp parseDeclaredClassMethod();
+    AstDeclaredClassProp parseDeclaredClassMethod(const AstArray<AstAttr*>& attributes);
+    AstDeclaredClassProp parseDeclaredClassMethod_DEPRECATED();
+
 
     // `declare global' Name: Type |
     // `declare function' Name`(' [parlist] `)' [`:` Type]
@@ -229,7 +231,7 @@ private:
     };
 
     TableIndexerResult parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
-    // Remove with FFlagLuauStoreCSTData
+    // Remove with FFlagLuauStoreCSTData2
     AstTableIndexer* parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
 
     AstTypeOrPack parseFunctionType(bool allowPack, const AstArray<AstAttr*>& attributes);

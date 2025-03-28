@@ -14,7 +14,6 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunPrintFix)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunReadWriteParents)
 
 namespace Luau
@@ -1656,10 +1655,7 @@ static int print(lua_State* L)
         const char* s = luaL_tolstring(L, i, &l); // convert to string using __tostring et al
         if (i > 1)
         {
-            if (FFlag::LuauTypeFunPrintFix)
-                result.append(1, '\t');
-            else
-                result.append('\t', 1);
+            result.append(1, '\t');
         }
         result.append(s, l);
         lua_pop(L, 1);

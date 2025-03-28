@@ -50,6 +50,7 @@ struct GeneralizationConstraint
     TypeId sourceType;
 
     std::vector<TypeId> interiorTypes;
+    bool hasDeprecatedAttribute = false;
 };
 
 // variables ~ iterate iterator

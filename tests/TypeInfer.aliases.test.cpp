@@ -12,6 +12,10 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFixInfiniteRecursionInNormalization)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
+LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
+LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
+LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -253,8 +257,12 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
-    // CLI-116108
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceUpcast, true},
+        {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
+    };
 
     CheckResult result = check(R"(
         --!strict

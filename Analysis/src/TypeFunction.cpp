@@ -48,22 +48,28 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
+LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
 LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionImprovements)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAGVARIABLE(LuauIntersectNotNil)
 LUAU_FASTFLAGVARIABLE(LuauSkipNoRefineDuringRefinement)
+LUAU_FASTFLAGVARIABLE(LuauMetatablesHaveLength)
 LUAU_FASTFLAGVARIABLE(LuauDontForgetToReduceUnionFunc)
 LUAU_FASTFLAGVARIABLE(LuauSearchForRefineableType)
 LUAU_FASTFLAGVARIABLE(LuauIndexAnyIsAny)
+LUAU_FASTFLAGVARIABLE(LuauSimplyRefineNotNil)
+LUAU_FASTFLAGVARIABLE(LuauIndexDeferPendingIndexee)
+LUAU_FASTFLAGVARIABLE(LuauNewTypeFunReductionChecks2)
+LUAU_FASTFLAGVARIABLE(LuauReduceUnionFollowUnionType)
 
 namespace Luau
 {
 
 using TypeOrTypePackIdSet = DenseHashSet<const void*>;
 
-struct InstanceCollector : TypeOnceVisitor
+struct InstanceCollector_DEPRECATED : TypeOnceVisitor
 {
     VecDeque<TypeId> tys;
     VecDeque<TypePackId> tps;
@@ -115,6 +121,153 @@ struct InstanceCollector : TypeOnceVisitor
         tps.push_front(tp);
 
         return true;
+    }
+};
+
+struct InstanceCollector : TypeOnceVisitor
+{
+    DenseHashSet<TypeId> recordedTys{nullptr};
+    VecDeque<TypeId> tys;
+    DenseHashSet<TypePackId> recordedTps{nullptr};
+    VecDeque<TypePackId> tps;
+    TypeOrTypePackIdSet shouldGuess{nullptr};
+    std::vector<const void*> typeFunctionInstanceStack;
+    std::vector<TypeId> cyclicInstance;
+
+    bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
+    {
+        // TypeVisitor performs a depth-first traversal in the absence of
+        // cycles. This means that by pushing to the front of the queue, we will
+        // try to reduce deeper instances first if we start with the first thing
+        // in the queue. Consider Add<Add<Add<number, number>, number>, number>:
+        // we want to reduce the innermost Add<number, number> instantiation
+        // first.
+
+        typeFunctionInstanceStack.push_back(ty);
+
+        if (DFInt::LuauTypeFamilyUseGuesserDepth >= 0 && int(typeFunctionInstanceStack.size()) > DFInt::LuauTypeFamilyUseGuesserDepth)
+            shouldGuess.insert(ty);
+
+        if (!recordedTys.contains(ty))
+        {
+            recordedTys.insert(ty);
+            tys.push_front(ty);
+        }
+
+        for (TypeId p : tfit.typeArguments)
+            traverse(p);
+
+        for (TypePackId p : tfit.packArguments)
+            traverse(p);
+
+        typeFunctionInstanceStack.pop_back();
+
+        return false;
+    }
+
+    void cycle(TypeId ty) override
+    {
+        TypeId t = follow(ty);
+
+        if (get<TypeFunctionInstanceType>(t))
+        {
+            // If we see a type a second time and it's in the type function stack, it's a real cycle
+            if (std::find(typeFunctionInstanceStack.begin(), typeFunctionInstanceStack.end(), t) != typeFunctionInstanceStack.end())
+                cyclicInstance.push_back(t);
+        }
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypePackId tp, const TypeFunctionInstanceTypePack& tfitp) override
+    {
+        // TypeVisitor performs a depth-first traversal in the absence of
+        // cycles. This means that by pushing to the front of the queue, we will
+        // try to reduce deeper instances first if we start with the first thing
+        // in the queue. Consider Add<Add<Add<number, number>, number>, number>:
+        // we want to reduce the innermost Add<number, number> instantiation
+        // first.
+
+        typeFunctionInstanceStack.push_back(tp);
+
+        if (DFInt::LuauTypeFamilyUseGuesserDepth >= 0 && int(typeFunctionInstanceStack.size()) > DFInt::LuauTypeFamilyUseGuesserDepth)
+            shouldGuess.insert(tp);
+
+        if (!recordedTps.contains(tp))
+        {
+            recordedTps.insert(tp);
+            tps.push_front(tp);
+        }
+
+        for (TypeId p : tfitp.typeArguments)
+            traverse(p);
+
+        for (TypePackId p : tfitp.packArguments)
+            traverse(p);
+
+        typeFunctionInstanceStack.pop_back();
+
+        return false;
+    }
+};
+
+struct UnscopedGenericFinder : TypeOnceVisitor
+{
+    std::vector<TypeId> scopeGenTys;
+    std::vector<TypePackId> scopeGenTps;
+    bool foundUnscoped = false;
+
+    bool visit(TypeId ty) override
+    {
+        // Once we have found an unscoped generic, we will stop the traversal
+        return !foundUnscoped;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        // Once we have found an unscoped generic, we will stop the traversal
+        return !foundUnscoped;
+    }
+
+    bool visit(TypeId ty, const GenericType&) override
+    {
+        if (std::find(scopeGenTys.begin(), scopeGenTys.end(), ty) == scopeGenTys.end())
+            foundUnscoped = true;
+
+        return false;
+    }
+
+    bool visit(TypePackId tp, const GenericTypePack&) override
+    {
+        if (std::find(scopeGenTps.begin(), scopeGenTps.end(), tp) == scopeGenTps.end())
+            foundUnscoped = true;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const FunctionType& ftv) override
+    {
+        size_t startTyCount = scopeGenTys.size();
+        size_t startTpCount = scopeGenTps.size();
+
+        scopeGenTys.insert(scopeGenTys.end(), ftv.generics.begin(), ftv.generics.end());
+        scopeGenTps.insert(scopeGenTps.end(), ftv.genericPacks.begin(), ftv.genericPacks.end());
+
+        traverse(ftv.argTypes);
+        traverse(ftv.retTypes);
+
+        scopeGenTys.resize(startTyCount);
+        scopeGenTps.resize(startTpCount);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
     }
 };
 
@@ -358,7 +511,6 @@ struct TypeFunctionReducer
         return false;
     }
 
-
     void stepType()
     {
         TypeId subject = follow(queuedTys.front());
@@ -372,6 +524,26 @@ struct TypeFunctionReducer
 
         if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(subject))
         {
+            if (FFlag::LuauNewTypeFunReductionChecks2 && tfit->function->name == "user")
+            {
+                UnscopedGenericFinder finder;
+                finder.traverse(subject);
+
+                if (finder.foundUnscoped)
+                {
+                    // Do not step into this type again
+                    irreducible.insert(subject);
+
+                    // Let the caller know this type will not become reducible
+                    result.irreducibleTypes.insert(subject);
+
+                    if (FFlag::DebugLuauLogTypeFamilies)
+                        printf("Irreducible due to an unscoped generic type\n");
+
+                    return;
+                }
+            }
+
             SkipTestResult testCyclic = testForSkippability(subject);
 
             if (!testParameters(subject, tfit) && testCyclic != SkipTestResult::CyclicTypeFunction)
@@ -480,56 +652,114 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
 
 FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, TypeFunctionContext ctx, bool force)
 {
-    InstanceCollector collector;
-
-    try
+    if (FFlag::LuauNewTypeFunReductionChecks2)
     {
-        collector.traverse(entrypoint);
+        InstanceCollector collector;
+
+        try
+        {
+            collector.traverse(entrypoint);
+        }
+        catch (RecursionLimitException&)
+        {
+            return FunctionGraphReductionResult{};
+        }
+
+        if (collector.tys.empty() && collector.tps.empty())
+            return {};
+
+        return reduceFunctionsInternal(
+            std::move(collector.tys),
+            std::move(collector.tps),
+            std::move(collector.shouldGuess),
+            std::move(collector.cyclicInstance),
+            location,
+            ctx,
+            force
+        );
     }
-    catch (RecursionLimitException&)
+    else
     {
-        return FunctionGraphReductionResult{};
+        InstanceCollector_DEPRECATED collector;
+
+        try
+        {
+            collector.traverse(entrypoint);
+        }
+        catch (RecursionLimitException&)
+        {
+            return FunctionGraphReductionResult{};
+        }
+
+        if (collector.tys.empty() && collector.tps.empty())
+            return {};
+
+        return reduceFunctionsInternal(
+            std::move(collector.tys),
+            std::move(collector.tps),
+            std::move(collector.shouldGuess),
+            std::move(collector.cyclicInstance),
+            location,
+            ctx,
+            force
+        );
     }
-
-    if (collector.tys.empty() && collector.tps.empty())
-        return {};
-
-    return reduceFunctionsInternal(
-        std::move(collector.tys),
-        std::move(collector.tps),
-        std::move(collector.shouldGuess),
-        std::move(collector.cyclicInstance),
-        location,
-        ctx,
-        force
-    );
 }
 
 FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, TypeFunctionContext ctx, bool force)
 {
-    InstanceCollector collector;
-
-    try
+    if (FFlag::LuauNewTypeFunReductionChecks2)
     {
-        collector.traverse(entrypoint);
+        InstanceCollector collector;
+
+        try
+        {
+            collector.traverse(entrypoint);
+        }
+        catch (RecursionLimitException&)
+        {
+            return FunctionGraphReductionResult{};
+        }
+
+        if (collector.tys.empty() && collector.tps.empty())
+            return {};
+
+        return reduceFunctionsInternal(
+            std::move(collector.tys),
+            std::move(collector.tps),
+            std::move(collector.shouldGuess),
+            std::move(collector.cyclicInstance),
+            location,
+            ctx,
+            force
+        );
     }
-    catch (RecursionLimitException&)
+    else
     {
-        return FunctionGraphReductionResult{};
+        InstanceCollector_DEPRECATED collector;
+
+        try
+        {
+            collector.traverse(entrypoint);
+        }
+        catch (RecursionLimitException&)
+        {
+            return FunctionGraphReductionResult{};
+        }
+
+        if (collector.tys.empty() && collector.tps.empty())
+            return {};
+
+        return reduceFunctionsInternal(
+            std::move(collector.tys),
+            std::move(collector.tps),
+            std::move(collector.shouldGuess),
+            std::move(collector.cyclicInstance),
+            location,
+            ctx,
+            force
+        );
     }
-
-    if (collector.tys.empty() && collector.tps.empty())
-        return {};
-
-    return reduceFunctionsInternal(
-        std::move(collector.tys),
-        std::move(collector.tps),
-        std::move(collector.shouldGuess),
-        std::move(collector.cyclicInstance),
-        location,
-        ctx,
-        force
-    );
 }
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
@@ -624,6 +854,42 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
     return std::nullopt;
 }
 
+struct FindUserTypeFunctionBlockers : TypeOnceVisitor
+{
+    NotNull<TypeFunctionContext> ctx;
+    DenseHashSet<TypeId> blockingTypeMap{nullptr};
+    std::vector<TypeId> blockingTypes;
+
+    explicit FindUserTypeFunctionBlockers(NotNull<TypeFunctionContext> ctx)
+        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        , ctx(ctx)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        if (isPending(ty, ctx->solver))
+        {
+            if (!blockingTypeMap.contains(ty))
+            {
+                blockingTypeMap.insert(ty);
+                blockingTypes.push_back(ty);
+            }
+        }
+        return true;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
+    }
+};
+
 TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -646,21 +912,38 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     }
 
     // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
-    if (!ctx->typeFunctionRuntime->allowEvaluation)
+    if (!ctx->typeFunctionRuntime->allowEvaluation || (FFlag::LuauTypeFunResultInAutocomplete && typeFunction->userFuncData.definition->hasErrors))
         return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
 
-    for (auto typeParam : typeParams)
+    if (FFlag::LuauNewTypeFunReductionChecks2)
     {
-        TypeId ty = follow(typeParam);
+        FindUserTypeFunctionBlockers check{ctx};
 
-        // block if we need to
-        if (isPending(ty, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {ty}, {}};
+        for (auto typeParam : typeParams)
+            check.traverse(follow(typeParam));
+
+        if (!check.blockingTypes.empty())
+            return {std::nullopt, Reduction::MaybeOk, check.blockingTypes, {}};
+    }
+    else
+    {
+        for (auto typeParam : typeParams)
+        {
+            TypeId ty = follow(typeParam);
+
+            // block if we need to
+            if (isPending(ty, ctx->solver))
+                return {std::nullopt, Reduction::MaybeOk, {ty}, {}};
+        }
     }
 
     // Ensure that whole type function environment is registered
     for (auto& [name, definition] : typeFunction->userFuncData.environment)
     {
+        // Cannot evaluate if a potential dependency couldn't be parsed
+        if (FFlag::LuauTypeFunResultInAutocomplete && definition.first->hasErrors)
+            return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+
         if (std::optional<std::string> error = ctx->typeFunctionRuntime->registerFunction(definition.first))
         {
             // Failure to register at this point means that original definition had to error out and should not have been present in the
@@ -874,7 +1157,16 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
 
     std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, operandTy, "__len", Location{});
     if (!mmType)
+    {
+        if (FFlag::LuauMetatablesHaveLength)
+        {
+            // If we have a metatable type with no __len, this means we still have a table with default length function
+            if (get<MetatableType>(normalizedOperand))
+                return {ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
+        }
+
         return {std::nullopt, Reduction::Erroneous, {}, {}};
+    }
 
     mmType = follow(*mmType);
     if (isPending(*mmType, ctx->solver))
@@ -1004,6 +1296,10 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
     if (!allowEvaluation)
         return std::nullopt;
 
+    // Do not evaluate type functions with parse errors inside
+    if (FFlag::LuauTypeFunResultInAutocomplete && function->hasErrors)
+        return std::nullopt;
+
     prepareState();
 
     lua_State* global = state.get();
@@ -1045,7 +1341,6 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
     }
 
     std::string bytecode = builder.getBytecode();
-
 
     // Separate sandboxed thread for individual execution and private globals
     lua_State* L = lua_newthread(global);
@@ -1923,6 +2218,18 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
                 }
             }
 
+            if (FFlag::LuauSimplyRefineNotNil)
+            {
+                if (auto negation = get<NegationType>(discriminant))
+                {
+                    if (auto primitive = get<PrimitiveType>(follow(negation->ty)); primitive && primitive->type == PrimitiveType::NilType)
+                    {
+                        SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+                        return {result.result, {}};
+                    }
+                }
+            }
+
             // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
             // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
             if (get<TableType>(target))
@@ -2028,6 +2335,29 @@ struct CollectUnionTypeOptions : TypeOnceVisitor
     bool visit(TypePackId tp) override
     {
         return false;
+    }
+
+    bool visit(TypeId ty, const UnionType& ut) override
+    {
+        if (FFlag::LuauReduceUnionFollowUnionType)
+        {
+            // If we have something like:
+            //
+            //  union<A | B, C | D>
+            //
+            // We probably just want to consider this to be the same as
+            //
+            //   union<A, B, C, D>
+            return true;
+        }
+        else
+        {
+            // Copy of the default visit method.
+            options.insert(ty);
+            if (isPending(ty, ctx->solver))
+                blockingTypes.insert(ty);
+            return false;
+        }
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -2618,6 +2948,10 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
 )
 {
     TypeId indexeeTy = follow(typeParams.at(0));
+
+    if (FFlag::LuauIndexDeferPendingIndexee && isPending(indexeeTy, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {indexeeTy}, {}};
+
     std::shared_ptr<const NormalizedType> indexeeNormTy = ctx->normalizer->normalize(indexeeTy);
 
     // if the indexee failed to normalize, we can't reduce, but know nothing about inhabitance.

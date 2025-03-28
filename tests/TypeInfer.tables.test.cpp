@@ -30,6 +30,8 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauSearchForRefineableType)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
+LUAU_FASTFLAG(LuauBidirectionalFailsafe)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5168,34 +5170,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
 
 TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
 {
-    // NOTE: All of these examples should have no errors, but
-    // bidirectional inference is known to be broken.
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
 
-    auto result = check(R"(
+    CheckResult result = check(R"(
         local function doTheThing(_: { [string]: unknown }) end
         doTheThing({
             ['foo'] = 5,
             ['bar'] = 'heyo',
         })
     )");
-    LUAU_CHECK_ERROR_COUNT(1, result);
-    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
 
-    LUAU_CHECK_ERROR_COUNT(1, check(R"(
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    result = check(R"(
         type Input = { [string]: unknown }
 
         local i : Input = {
             [('%s'):format('3.14')]=5,
             ['stringField']='Heyo'
         }
-    )"));
+    )");
 
-    // This example previously asserted due to eagerly mutating the underlying
-    // table type.
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+
     result = check(R"(
         type Input = { [string]: unknown }
 
@@ -5206,8 +5209,45 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
             ['stringField']='Heyo'
         })
     )");
-    LUAU_CHECK_ERROR_COUNT(1, result);
-    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "magic_functions_bidirectionally_inferred")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
+    };
+
+    CheckResult result = check(R"(
+        local function getStuff(): (string, number, string)
+            return "hello", 42, "world"
+        end
+        local t: { [string]: number } = {
+            [select(1, getStuff())] = select(2, getStuff()),
+            [select(3, getStuff())] = select(2, getStuff())
+        }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    result = check(R"(
+        local function getStuff(): (string, number, string)
+            return "hello", 42, "world"
+        end
+        local t: { [string]: number } = {
+            [select(1, getStuff())] = select(2, getStuff()),
+            [select(3, getStuff())] = select(3, getStuff())
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("{ [string]: number | string }", toString(err->givenType));
+    CHECK_EQ("{ [string]: number }", toString(err->wantedType));
 }
 
 
@@ -5471,6 +5511,8 @@ TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
         {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceUpcast, true},
+        {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
 
     auto result = check(R"(
@@ -5478,7 +5520,8 @@ TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
         local b: Book = { title = "The Odyssey" }
         local t: { Book } = {
             { title = "The Illiad", author = "Homer" },
-            { author = "Virgil" }
+            { title = "Inferno", author = "Virgil" },
+            { author = "Virgil" },
         }
     )");
 
@@ -5490,10 +5533,47 @@ TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
     CHECK_EQ(result.errors[0].location, Location{{2, 24}, {2, 49}});
     err = get<TypeMismatch>(result.errors[1]);
     REQUIRE(err);
-    CHECK_EQ(toString(err->givenType), "{{ author: string } | { author: string, title: string }}");
+    // CLI-144203: This could be better.
+    CHECK_EQ(toString(err->givenType), "{{ author: string }}");
     CHECK_EQ(toString(err->wantedType), "{Book}");
-    CHECK_EQ(result.errors[1].location, Location{{3, 28}, {6, 9}});
+    CHECK_EQ(result.errors[1].location, Location{{3, 28}, {7, 9}});
 
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_index_syntax_bidirectional_infer_with_tables")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
+        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
+        {FFlag::LuauBidirectionalInferenceUpcast, true},
+        {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
+    };
+
+    auto result = check((R"(
+        local function getStatus(): string
+            return "Yeah can you look in returned books?"
+        end
+        local function getPratchettStatus()
+            return { isLate = true }
+        end
+        type Status = { isLate: boolean, daysLate: number? }
+        local key1 = "Great Expecations"
+        local key2 = "The Outsiders"
+        local key3 = "Guards! Guards!"
+        local books: { [string]: Status } = {
+            [key1] = { isLate = true, daysLate = "coconut" },
+            [key2] = getStatus(),
+            [key3] = getPratchettStatus()
+        }
+    )"));
+
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    // NOTE: This is because the inferred keys of `books` are all primitive types.
+    CHECK_EQ(toString(err->givenType), "{ [string | string | string]: string | { daysLate: string, isLate: boolean } | { isLate: boolean } }");
+    CHECK_EQ(toString(err->wantedType), "{ [string]: Status }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
@@ -5570,6 +5650,44 @@ TEST_CASE_FIXTURE(Fixture, "bigger_nested_table_causes_big_type_error")
                            "name: string, type: \"dir\" }` is not exactly `Dir | File`";
 
     CHECK_EQ(expected, toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unsafe_bidirectional_mutation")
+{
+    ScopedFastFlag _{FFlag::LuauBidirectionalFailsafe, true};
+    // It's kind of suspect that we allow multiple definitions of keys in
+    // a single table.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type F = {
+            _G: () -> ()
+        }
+        function _()
+            return
+        end
+        local function h(f: F) end
+        h({
+            _G = {},
+            _G = _,
+        })
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_in_indexer_with_compound_assign")
+{
+    ScopedFastFlag _{FFlag::LuauBidirectionalFailsafe, true};
+    // This has a bunch of errors, we really just need it to not crash / assert.
+    std::ignore = check(R"(
+        --!strict
+        local _ = 7143424
+        _[
+            setfenv(
+                ...,
+                {
+                    n0 = _,
+                }
+            )
+        ] *= _
+    )");
 }
 
 

@@ -23,6 +23,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauExposeRequireByStringAutocomplete)
 LUAU_FASTFLAG(LuauAutocompleteUnionCopyPreviousSeen)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
+LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
 
 using namespace Luau;
 
@@ -4494,6 +4495,29 @@ this@2
     CHECK_EQ(ac.entryMap.count("thisShouldNotBeThere"), 1);
     CHECK_EQ(ac.entryMap.count("thisAlsoShouldNotBeThere"), 1);
     CHECK_EQ(ac.entryMap.count("thisShouldBeThere"), 0);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_eval_in_autocomplete")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauTypeFunResultInAutocomplete{FFlag::LuauTypeFunResultInAutocomplete, true};
+
+    check(R"(
+type function foo(x)
+    local tbl = types.newtable(nil, nil, nil)
+    tbl:setproperty(types.singleton("boolean"), x)
+    tbl:setproperty(types.singleton("number"), types.number)
+    return tbl
+end
+
+local function test(a: foo<string>)
+    return a.@1
+end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("boolean"), 1);
+    CHECK_EQ(ac.entryMap.count("number"), 1);
 }
 
 TEST_SUITE_END();

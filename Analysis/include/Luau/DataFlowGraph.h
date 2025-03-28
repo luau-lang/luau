@@ -38,8 +38,6 @@ struct DataFlowGraph
     DefId getDef(const AstExpr* expr) const;
     // Look up the definition optionally, knowing it may not be present.
     std::optional<DefId> getDefOptional(const AstExpr* expr) const;
-    // Look up for the rvalue def for a compound assignment.
-    std::optional<DefId> getRValueDefForCompoundAssign(const AstExpr* expr) const;
 
     DefId getDef(const AstLocal* local) const;
 
@@ -65,10 +63,6 @@ private:
     // There's no AstStatDeclaration, and it feels useless to introduce it just to enforce an invariant in one place.
     // All keys in this maps are really only statements that ambiently declares a symbol.
     DenseHashMap<const AstStat*, const Def*> declaredDefs{nullptr};
-
-    // Compound assignments are in a weird situation where the local being assigned to is also being used at its
-    // previous type implicitly in an rvalue position. This map provides the previous binding.
-    DenseHashMap<const AstExpr*, const Def*> compoundAssignDefs{nullptr};
 
     DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys{nullptr};
     friend struct DataFlowGraphBuilder;

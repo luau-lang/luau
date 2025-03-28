@@ -177,6 +177,7 @@ struct FunctionGraphReductionResult
     DenseHashSet<TypePackId> blockedPacks{nullptr};
     DenseHashSet<TypeId> reducedTypes{nullptr};
     DenseHashSet<TypePackId> reducedPacks{nullptr};
+    DenseHashSet<TypeId> irreducibleTypes{nullptr};
 };
 
 /**

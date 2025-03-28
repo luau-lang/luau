@@ -12,9 +12,11 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauStoreCSTData)
+LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauAstTypeGroup3);
+LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
+LUAU_FASTFLAG(LuauParseOptionalAsNode2)
 
 TEST_SUITE_BEGIN("TranspilerTests");
 
@@ -48,7 +50,7 @@ TEST_CASE("string_literals_containing_utf8")
 
 TEST_CASE("if_stmt_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( if     This then Once() end)";
     CHECK_EQ(one, transpile(one).code);
 
@@ -97,7 +99,7 @@ TEST_CASE("elseif_chains_indent_sensibly")
 TEST_CASE("strips_type_annotations")
 {
     const std::string code = R"( local s: string= 'hello there' )";
-    if (FFlag::LuauStoreCSTData)
+    if (FFlag::LuauStoreCSTData2)
     {
         const std::string expected = R"( local s        = 'hello there' )";
         CHECK_EQ(expected, transpile(code).code);
@@ -112,7 +114,7 @@ TEST_CASE("strips_type_annotations")
 TEST_CASE("strips_type_assertion_expressions")
 {
     const std::string code = R"( local s= some_function() :: any+ something_else() :: number )";
-    if (FFlag::LuauStoreCSTData)
+    if (FFlag::LuauStoreCSTData2)
     {
         const std::string expected = R"( local s= some_function()       + something_else()           )";
         CHECK_EQ(expected, transpile(code).code);
@@ -148,7 +150,7 @@ TEST_CASE("for_loop")
 
 TEST_CASE("for_loop_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( for index = 1, 10 do call(index) end )";
     CHECK_EQ(one, transpile(one).code);
 
@@ -173,7 +175,7 @@ TEST_CASE("for_in_loop")
 
 TEST_CASE("for_in_loop_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( for k, v in ipairs(x)   do end )";
     CHECK_EQ(one, transpile(one).code);
 
@@ -198,7 +200,7 @@ TEST_CASE("while_loop")
 
 TEST_CASE("while_loop_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( while     f(x) do print() end )";
     CHECK_EQ(one, transpile(one).code);
 
@@ -220,7 +222,7 @@ TEST_CASE("repeat_until_loop")
 
 TEST_CASE("repeat_until_loop_condition_on_new_line")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
     repeat
         print()
@@ -252,7 +254,7 @@ TEST_CASE("local_assignment")
 
 TEST_CASE("local_assignment_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( local    x = 1 )";
     CHECK_EQ(one, transpile(one).code);
 
@@ -286,7 +288,7 @@ TEST_CASE("local_function")
 
 TEST_CASE("local_function_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( local     function p(o, m, ...) end )";
     CHECK_EQ(one, transpile(one).code);
 
@@ -305,7 +307,7 @@ TEST_CASE("function")
 
 TEST_CASE("function_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string two = R"( function     p(o, m, ...) end )";
     CHECK_EQ(two, transpile(two).code);
 
@@ -333,7 +335,7 @@ TEST_CASE("function_spaces_around_tokens")
 
 TEST_CASE("function_with_types_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -394,7 +396,7 @@ TEST_CASE("function_with_types_spaces_around_tokens")
 
 TEST_CASE("returns_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string one = R"( return    1 )";
     CHECK_EQ(one, transpile(one).code);
 
@@ -407,7 +409,7 @@ TEST_CASE("returns_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type Foo = string )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -456,7 +458,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_with_defaults_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type Foo<X = string, Z... = ...any> = string )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -517,7 +519,7 @@ TEST_CASE("table_literal_closing_brace_at_correct_position")
 
 TEST_CASE("table_literal_with_semicolon_separators")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
         local t = { x = 1; y = 2 }
     )";
@@ -527,7 +529,7 @@ TEST_CASE("table_literal_with_semicolon_separators")
 
 TEST_CASE("table_literal_with_trailing_separators")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
         local t = { x = 1, y = 2, }
     )";
@@ -537,7 +539,7 @@ TEST_CASE("table_literal_with_trailing_separators")
 
 TEST_CASE("table_literal_with_spaces_around_separator")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
         local t = { x = 1  , y = 2 }
     )";
@@ -547,7 +549,7 @@ TEST_CASE("table_literal_with_spaces_around_separator")
 
 TEST_CASE("table_literal_with_spaces_around_equals")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
         local t = { x    =   1  }
     )";
@@ -557,7 +559,7 @@ TEST_CASE("table_literal_with_spaces_around_equals")
 
 TEST_CASE("table_literal_multiline_with_indexers")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
         local t = {
             ["my first value"] = "x";
@@ -585,7 +587,7 @@ TEST_CASE("spaces_between_keywords_even_if_it_pushes_the_line_estimation_off")
     // Luau::Parser doesn't exactly preserve the string representation of numbers in Lua, so we can find ourselves
     // falling out of sync with the original code.  We need to push keywords out so that there's at least one space between them.
     const std::string code = R"( if math.abs(raySlope) < .01 then return 0 end )";
-    if (FFlag::LuauStoreCSTData)
+    if (FFlag::LuauStoreCSTData2)
     {
         CHECK_EQ(code, transpile(code).code);
     }
@@ -605,7 +607,7 @@ TEST_CASE("numbers")
 TEST_CASE("infinity")
 {
     const std::string code = R"( local a = 1e500    local b = 1e400 )";
-    if (FFlag::LuauStoreCSTData)
+    if (FFlag::LuauStoreCSTData2)
     {
         CHECK_EQ(code, transpile(code).code);
     }
@@ -618,21 +620,21 @@ TEST_CASE("infinity")
 
 TEST_CASE("numbers_with_separators")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = 123_456_789 )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("hexadecimal_numbers")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = 0xFFFF )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("binary_numbers")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = 0b0101 )";
     CHECK_EQ(code, transpile(code).code);
 }
@@ -645,28 +647,28 @@ TEST_CASE("single_quoted_strings")
 
 TEST_CASE("double_quoted_strings")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = "hello world" )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("simple_interp_string")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = `hello world` )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("raw_strings")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = [[ hello world ]] )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("raw_strings_with_blocks")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local a = [==[ hello world ]==] )";
     CHECK_EQ(code, transpile(code).code);
 }
@@ -685,7 +687,7 @@ TEST_CASE("escaped_strings_2")
 
 TEST_CASE("escaped_strings_newline")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
     print("foo \
         bar")
@@ -695,14 +697,14 @@ TEST_CASE("escaped_strings_newline")
 
 TEST_CASE("escaped_strings_raw")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( local x = [=[\v<((do|load)file|require)\s*\(?['"]\zs[^'"]+\ze['"]]=] )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("position_correctly_updated_when_writing_multiline_string")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
     call([[
         testing
@@ -748,56 +750,56 @@ TEST_CASE("function_call_parentheses_multiple_args_no_space")
 
 TEST_CASE("function_call_parentheses_multiple_args_space_before_commas")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call(arg1 ,arg3 ,arg3) )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_spaces_before_parentheses")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call () )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_spaces_within_parentheses")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call(  ) )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_string_double_quotes")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call "string" )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_string_single_quotes")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call 'string' )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_string_no_space")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call'string' )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_table_literal")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call { x = 1 } )";
     CHECK_EQ(code, transpile(code).code);
 }
 
 TEST_CASE("function_call_table_literal_no_space")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( call{x=1} )";
     CHECK_EQ(code, transpile(code).code);
 }
@@ -842,7 +844,7 @@ TEST_CASE("emit_a_do_block_in_cases_of_potentially_ambiguous_syntax")
 
 TEST_CASE_FIXTURE(Fixture, "parentheses_multiline")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
 local test = (
     x
@@ -855,7 +857,7 @@ local test = (
 TEST_CASE_FIXTURE(Fixture, "stmt_semicolon")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"( local test = 1; )";
@@ -878,7 +880,7 @@ TEST_CASE_FIXTURE(Fixture, "do_block_ending_with_semicolon")
 TEST_CASE_FIXTURE(Fixture, "if_stmt_semicolon")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
@@ -892,7 +894,7 @@ TEST_CASE_FIXTURE(Fixture, "if_stmt_semicolon")
 TEST_CASE_FIXTURE(Fixture, "if_stmt_semicolon_2")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
@@ -904,7 +906,7 @@ TEST_CASE_FIXTURE(Fixture, "if_stmt_semicolon_2")
 TEST_CASE_FIXTURE(Fixture, "for_loop_stmt_semicolon")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
@@ -917,7 +919,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_stmt_semicolon")
 TEST_CASE_FIXTURE(Fixture, "while_do_semicolon")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
@@ -930,7 +932,7 @@ TEST_CASE_FIXTURE(Fixture, "while_do_semicolon")
 TEST_CASE_FIXTURE(Fixture, "function_definition_semicolon")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
@@ -1011,7 +1013,7 @@ TEST_CASE("always_emit_a_space_after_local_keyword")
 {
     std::string code = "do local aZZZZ = Workspace.P1.Shape local bZZZZ = Enum.PartType.Cylinder end";
 
-    if (FFlag::LuauStoreCSTData)
+    if (FFlag::LuauStoreCSTData2)
     {
         CHECK_EQ(code, transpile(code).code);
     }
@@ -1056,7 +1058,7 @@ TEST_CASE_FIXTURE(Fixture, "type_lists_should_be_emitted_correctly")
         end
     )";
 
-    std::string expected = FFlag::LuauStoreCSTData ? R"(
+    std::string expected = FFlag::LuauStoreCSTData2 ? R"(
         local a:(a:string,b:number,...string)->(string,...number)=function(a:string,b:number,...:string): (string,...number)
         end
 
@@ -1112,7 +1114,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_assertion")
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = "local a = 5   :: number";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1129,7 +1131,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else_multiple_conditions")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = "local a = if 1 then 2 elseif 3 then 4 else 5";
 
     CHECK_EQ(code, transpile(code).code);
@@ -1137,7 +1139,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else_multiple_conditions")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else_multiple_conditions_2")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
         local x = if yes
             then nil
@@ -1153,7 +1155,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else_multiple_conditions_2")
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = "local a = if   1 then 2 else 3";
     CHECK_EQ(code, transpile(code).code);
 
@@ -1190,7 +1192,7 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_spaces_between_else_if")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
     return
         if a then "was a" else
@@ -1218,7 +1220,7 @@ local a: Import.Type
 
 TEST_CASE_FIXTURE(Fixture, "transpile_type_reference_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( local _: Foo.Type )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1257,7 +1259,7 @@ local b: Packed<(number, string)>
 
 TEST_CASE_FIXTURE(Fixture, "type_packs_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type _ = Packed<  T...> )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1316,7 +1318,9 @@ TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested_3")
 {
     std::string code = "local a: nil | (string & number)";
 
-    if (FFlag::LuauAstTypeGroup3)
+    if (FFlag::LuauStoreCSTData2)
+        CHECK_EQ(code, transpile(code, {}, true).code);
+    else if (FFlag::LuauAstTypeGroup3)
         CHECK_EQ("local a:       (string & number)?", transpile(code, {}, true).code);
     else
         CHECK_EQ("local a: (      string & number)?", transpile(code, {}, true).code);
@@ -1336,6 +1340,117 @@ TEST_CASE_FIXTURE(Fixture, "transpile_intersection_type_nested_2")
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "transpile_leading_union_pipe")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
+        {FFlag::LuauParseOptionalAsNode2, true},
+    };
+    std::string code = "local a: | string | number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: | string";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_union_spaces_around_tokens")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
+        {FFlag::LuauParseOptionalAsNode2, true},
+    };
+    std::string code = "local a: string   | number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string |   number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_leading_intersection_ampersand")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
+    };
+    std::string code = "local a: & string & number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: & string";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_intersection_spaces_around_tokens")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
+    };
+    std::string code = "local a: string   & number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string &   number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_mixed_union_intersection")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauAstTypeGroup3, true},
+        {FFlag::LuauParseOptionalAsNode2, true},
+    };
+    std::string code = "local a: string | (Foo & Bar)";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string |   (Foo & Bar)";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string | (  Foo & Bar)";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string | (Foo & Bar  )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string &   (Foo | Bar)";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string & (  Foo | Bar)";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string & (Foo | Bar  )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_preserve_union_optional_style")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauParseOptionalAsNode2, true},
+    };
+    std::string code = "local a: string | nil";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string?";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string???";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string? | nil";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string | nil | number";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string | nil | number?";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "local a: string? | number?";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_CASE_FIXTURE(Fixture, "transpile_varargs")
 {
     std::string code = "local function f(...) return ... end";
@@ -1345,7 +1460,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_varargs")
 
 TEST_CASE_FIXTURE(Fixture, "index_name_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string one = "local _ = a.name";
     CHECK_EQ(one, transpile(one, {}, true).code);
 
@@ -1358,7 +1473,7 @@ TEST_CASE_FIXTURE(Fixture, "index_name_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "index_name_ends_with_digit")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = "sparkles.Color = Color3.new()";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
@@ -1372,7 +1487,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_index_expr")
 
 TEST_CASE_FIXTURE(Fixture, "index_expr_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string one = "local _ = a[2]";
     CHECK_EQ(one, transpile(one, {}, true).code);
 
@@ -1416,7 +1531,7 @@ local _ = #  e
 
 TEST_CASE_FIXTURE(Fixture, "binary_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
 local _ =    1+1
 local _ = 1   +1
@@ -1458,7 +1573,7 @@ a ..= ' - result'
 
 TEST_CASE_FIXTURE(Fixture, "compound_assignment_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string one = R"( a   += 1 )";
     CHECK_EQ(one, transpile(one, {}, true).code);
 
@@ -1475,7 +1590,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_assign_multiple")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_assign_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string one = "a = 1";
     CHECK_EQ(one, transpile(one).code);
 
@@ -1512,7 +1627,10 @@ TEST_CASE_FIXTURE(Fixture, "transpile_union_reverse")
 {
     std::string code = "local a: nil | number";
 
-    CHECK_EQ("local a:       number?", transpile(code, {}, true).code);
+    if (FFlag::LuauStoreCSTData2)
+        CHECK_EQ(code, transpile(code, {}, true).code);
+    else
+        CHECK_EQ("local a:       number?", transpile(code, {}, true).code);
 }
 
 TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple")
@@ -1628,7 +1746,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple_types")
 TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
 {
     ScopedFastFlag fflags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
     };
     std::string code = R"( local _ = `hello {name}` )";
 
@@ -1638,7 +1756,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
 TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_multiline")
 {
     ScopedFastFlag fflags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
     };
     std::string code = R"( local _ = `hello {
         name
@@ -1650,7 +1768,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_multiline")
 TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_on_new_line")
 {
     ScopedFastFlag fflags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
     };
     std::string code = R"(
         error(
@@ -1663,7 +1781,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_on_new_line")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_multiline_escape")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( local _ = `hello \
         world!` )";
 
@@ -1673,7 +1791,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp_multiline_escape")
 TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
 {
     ScopedFastFlag fflags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
     };
     std::string code = R"( local _ = ` bracket = \{, backtick = \` = {'ok'} ` )";
 
@@ -1689,7 +1807,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_functions")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_type_functions_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type   function foo() end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1705,7 +1823,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_functions_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_typeof_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type X = typeof(x) )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1730,14 +1848,14 @@ TEST_CASE("transpile_single_quoted_string_types")
 
 TEST_CASE("transpile_double_quoted_string_types")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( type a = "hello world" )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_CASE("transpile_raw_string_types")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type a = [[ hello world ]] )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1747,14 +1865,14 @@ TEST_CASE("transpile_raw_string_types")
 
 TEST_CASE("transpile_escaped_string_types")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"( type a = "\\b\\t\\n\\\\" )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_CASE("transpile_type_table_semicolon_separators")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     const std::string code = R"(
         type Foo = {
             bar: number;
@@ -1766,7 +1884,7 @@ TEST_CASE("transpile_type_table_semicolon_separators")
 
 TEST_CASE("transpile_type_table_access_modifiers")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
         type Foo = {
             read  bar: number,
@@ -1787,7 +1905,7 @@ TEST_CASE("transpile_type_table_access_modifiers")
 
 TEST_CASE("transpile_type_table_spaces_between_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type Foo = { bar: number, } )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1830,7 +1948,7 @@ TEST_CASE("transpile_type_table_spaces_between_tokens")
 
 TEST_CASE("transpile_type_table_preserve_original_indexer_style")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
         type Foo = {
             [number]: string
@@ -1846,7 +1964,7 @@ TEST_CASE("transpile_type_table_preserve_original_indexer_style")
 
 TEST_CASE("transpile_type_table_preserve_indexer_location")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
         type Foo = {
             [number]: string,
@@ -1875,7 +1993,7 @@ TEST_CASE("transpile_type_table_preserve_indexer_location")
 
 TEST_CASE("transpile_type_table_preserve_property_definition_style")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
         type Foo = {
             ["$$typeof1"]: string,
@@ -1888,7 +2006,7 @@ TEST_CASE("transpile_type_table_preserve_property_definition_style")
 TEST_CASE("transpile_types_preserve_parentheses_style")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauStoreCSTData, true},
+        {FFlag::LuauStoreCSTData2, true},
         {FFlag::LuauAstTypeGroup3, true},
     };
 
@@ -1929,7 +2047,7 @@ end
 
 TEST_CASE("transpile_type_function_unnamed_arguments")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type Foo = () -> () )";
     CHECK_EQ(R"( type Foo = () ->()  )", transpile(code, {}, true).code);
 
@@ -1963,7 +2081,7 @@ TEST_CASE("transpile_type_function_unnamed_arguments")
 
 TEST_CASE("transpile_type_function_named_arguments")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type Foo = (x: string) -> () )";
     CHECK_EQ(R"( type Foo = (x: string) ->()  )", transpile(code, {}, true).code);
 
@@ -1991,7 +2109,7 @@ TEST_CASE("transpile_type_function_named_arguments")
 
 TEST_CASE("transpile_type_function_generics")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData, true};
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
     std::string code = R"( type Foo = <X, Y, Z...>() -> () )";
     CHECK_EQ(R"( type Foo = <X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
 
@@ -2021,6 +2139,57 @@ TEST_CASE("transpile_type_function_generics")
 
     code = R"( type Foo = <X, Y, Z...>  () -> () )";
     CHECK_EQ(R"( type Foo = <X, Y, Z...>  () ->()  )", transpile(code, {}, true).code);
+}
+
+TEST_CASE("fuzzer_nil_optional")
+{
+    ScopedFastFlag _{FFlag::LuauParseOptionalAsNode2, true};
+
+    const std::string code = R"( local x: nil? )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_function_attributes")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    std::string code = R"(
+        @native
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"(
+        @native
+        local function foo()
+        end
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"(
+        @checked local function foo()
+        end
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"(
+        local foo = @native function() end
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"(
+        @native
+        function foo:bar()
+        end
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"(
+        @native   @checked
+        function foo:bar()
+        end
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_SUITE_END();

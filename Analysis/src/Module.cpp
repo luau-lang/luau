@@ -20,7 +20,7 @@ LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteCommentDetection)
 namespace Luau
 {
 
-static void defaultLogLuau(std::string_view input)
+static void defaultLogLuau(std::string_view context, std::string_view input)
 {
     // The default is to do nothing because we don't want to mess with
     // the xml parsing done by the dcr script.
