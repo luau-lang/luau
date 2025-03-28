@@ -30,7 +30,6 @@ struct MutatingGeneralizer : TypeOnceVisitor
     std::vector<TypePackId> genericPacks;
 
     bool isWithinFunction = false;
-    bool avoidSealingTables = false;
 
     MutatingGeneralizer(
         NotNull<TypeArena> arena,
@@ -38,8 +37,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
         NotNull<Scope> scope,
         NotNull<DenseHashSet<TypeId>> cachedTypes,
         DenseHashMap<const void*, size_t> positiveTypes,
-        DenseHashMap<const void*, size_t> negativeTypes,
-        bool avoidSealingTables
+        DenseHashMap<const void*, size_t> negativeTypes
     )
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , arena(arena)
@@ -48,7 +46,6 @@ struct MutatingGeneralizer : TypeOnceVisitor
         , cachedTypes(cachedTypes)
         , positiveTypes(std::move(positiveTypes))
         , negativeTypes(std::move(negativeTypes))
-        , avoidSealingTables(avoidSealingTables)
     {
     }
 
@@ -145,7 +142,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 TypeId onlyType = it->parts[0];
                 LUAU_ASSERT(onlyType != needle);
                 emplaceType<BoundType>(asMutable(needle), onlyType);
-            } 
+            }
             else if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound2 && it->parts.empty())
             {
                 emplaceType<BoundType>(asMutable(needle), builtinTypes->unknownType);
@@ -292,8 +289,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
         TableType* tt = getMutable<TableType>(ty);
         LUAU_ASSERT(tt);
 
-        if (!avoidSealingTables)
-            tt->state = TableState::Sealed;
+        tt->state = TableState::Sealed;
 
         return true;
     }
@@ -332,26 +328,19 @@ struct FreeTypeSearcher : TypeVisitor
     {
     }
 
-    enum Polarity
-    {
-        Positive,
-        Negative,
-        Both,
-    };
-
-    Polarity polarity = Positive;
+    Polarity polarity = Polarity::Positive;
 
     void flip()
     {
         switch (polarity)
         {
-        case Positive:
-            polarity = Negative;
+        case Polarity::Positive:
+            polarity = Polarity::Negative;
             break;
-        case Negative:
-            polarity = Positive;
+        case Polarity::Negative:
+            polarity = Polarity::Positive;
             break;
-        case Both:
+        default:
             break;
         }
     }
@@ -363,7 +352,7 @@ struct FreeTypeSearcher : TypeVisitor
     {
         switch (polarity)
         {
-        case Positive:
+        case Polarity::Positive:
         {
             if (seenPositive.contains(ty))
                 return true;
@@ -371,7 +360,7 @@ struct FreeTypeSearcher : TypeVisitor
             seenPositive.insert(ty);
             return false;
         }
-        case Negative:
+        case Polarity::Negative:
         {
             if (seenNegative.contains(ty))
                 return true;
@@ -379,7 +368,7 @@ struct FreeTypeSearcher : TypeVisitor
             seenNegative.insert(ty);
             return false;
         }
-        case Both:
+        case Polarity::Mixed:
         {
             if (seenPositive.contains(ty) && seenNegative.contains(ty))
                 return true;
@@ -388,6 +377,8 @@ struct FreeTypeSearcher : TypeVisitor
             seenNegative.insert(ty);
             return false;
         }
+        default:
+            LUAU_ASSERT(!"Unreachable");
         }
 
         return false;
@@ -418,16 +409,18 @@ struct FreeTypeSearcher : TypeVisitor
 
         switch (polarity)
         {
-        case Positive:
+        case Polarity::Positive:
             positiveTypes[ty]++;
             break;
-        case Negative:
+        case Polarity::Negative:
             negativeTypes[ty]++;
             break;
-        case Both:
+        case Polarity::Mixed:
             positiveTypes[ty]++;
             negativeTypes[ty]++;
             break;
+        default:
+            LUAU_ASSERT(!"Unreachable");
         }
 
         return true;
@@ -442,16 +435,18 @@ struct FreeTypeSearcher : TypeVisitor
         {
             switch (polarity)
             {
-            case Positive:
+            case Polarity::Positive:
                 positiveTypes[ty]++;
                 break;
-            case Negative:
+            case Polarity::Negative:
                 negativeTypes[ty]++;
                 break;
-            case Both:
+            case Polarity::Mixed:
                 positiveTypes[ty]++;
                 negativeTypes[ty]++;
                 break;
+            default:
+                LUAU_ASSERT(!"Unreachable");
             }
         }
 
@@ -464,7 +459,7 @@ struct FreeTypeSearcher : TypeVisitor
                 LUAU_ASSERT(prop.isShared() || FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
 
                 Polarity p = polarity;
-                polarity = Both;
+                polarity = Polarity::Mixed;
                 traverse(prop.type());
                 polarity = p;
             }
@@ -508,16 +503,18 @@ struct FreeTypeSearcher : TypeVisitor
 
         switch (polarity)
         {
-        case Positive:
+        case Polarity::Positive:
             positiveTypes[tp]++;
             break;
-        case Negative:
+        case Polarity::Negative:
             negativeTypes[tp]++;
             break;
-        case Both:
+        case Polarity::Mixed:
             positiveTypes[tp]++;
             negativeTypes[tp]++;
             break;
+        default:
+            LUAU_ASSERT(!"Unreachable");
         }
 
         return true;
@@ -972,8 +969,7 @@ std::optional<TypeId> generalize(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
     NotNull<DenseHashSet<TypeId>> cachedTypes,
-    TypeId ty,
-    bool avoidSealingTables
+    TypeId ty
 )
 {
     ty = follow(ty);
@@ -984,7 +980,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    MutatingGeneralizer gen{arena, builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes), avoidSealingTables};
+    MutatingGeneralizer gen{arena, builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes)};
 
     gen.traverse(ty);
 

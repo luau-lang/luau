@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauDoNotLeakNilInRefinement)
+LUAU_FASTFLAG(LuauSimplyRefineNotNil)
 
 using namespace Luau;
 
@@ -756,14 +757,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
     {
         // CLI-115281 Types produced by refinements do not consistently get simplified
         CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({4, 24}))); // type(v) == "nil"
-        CHECK_EQ(
-            "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))
-        ); // type(v) ~= "nil"
+
+        if (FFlag::LuauSimplyRefineNotNil)
+            CHECK_EQ(
+                "string & ~nil", toString(requireTypeAtPosition({6, 24}))
+            ); // type(v) ~= "nil"
+        else
+            CHECK_EQ(
+                "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({6, 24}))
+            ); // type(v) ~= "nil"
 
         CHECK_EQ("(nil & string)?", toString(requireTypeAtPosition({10, 24}))); // equivalent to type(v) == "nil"
-        CHECK_EQ(
-            "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))
-        ); // equivalent to type(v) ~= "nil"
+
+        if (FFlag::LuauSimplyRefineNotNil)
+            CHECK_EQ("string & ~nil", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        else
+            CHECK_EQ(
+                "(boolean | buffer | class | function | number | string | table | thread) & string", toString(requireTypeAtPosition({12, 24}))
+            ); // equivalent to type(v) ~= "nil"
     }
     else
     {

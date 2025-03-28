@@ -365,7 +365,7 @@ public:
      * @returns a non-free type that generalizes the argument, or `std::nullopt` if one
      * does not exist
      */
-    std::optional<TypeId> generalizeFreeType(NotNull<Scope> scope, TypeId type, bool avoidSealingTables = false);
+    std::optional<TypeId> generalizeFreeType(NotNull<Scope> scope, TypeId type);
 
     /**
      * Checks the existing set of constraints to see if there exist any that contain

@@ -13,7 +13,7 @@
 
 #include <string>
 
-LUAU_FASTFLAG(LuauStoreCSTData)
+LUAU_FASTFLAG(LuauStoreCSTData2)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
@@ -308,7 +308,7 @@ public:
 
             if (el)
                 new (arg)
-                    std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), FFlag::LuauStoreCSTData ? Location() : el->location));
+                    std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), FFlag::LuauStoreCSTData2 ? Location() : el->location));
             else
                 new (arg) std::optional<AstArgumentName>();
         }

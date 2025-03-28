@@ -129,8 +129,15 @@ CstStatCompoundAssign::CstStatCompoundAssign(Position opPosition)
 {
 }
 
-CstStatLocalFunction::CstStatLocalFunction(Position functionKeywordPosition)
+CstStatFunction::CstStatFunction(Position functionKeywordPosition)
     : CstNode(CstClassIndex())
+    , functionKeywordPosition(functionKeywordPosition)
+{
+}
+
+CstStatLocalFunction::CstStatLocalFunction(Position localKeywordPosition, Position functionKeywordPosition)
+    : CstNode(CstClassIndex())
+    , localKeywordPosition(localKeywordPosition)
     , functionKeywordPosition(functionKeywordPosition)
 {
 }
@@ -218,6 +225,20 @@ CstTypeTypeof::CstTypeTypeof(Position openPosition, Position closePosition)
     : CstNode(CstClassIndex())
     , openPosition(openPosition)
     , closePosition(closePosition)
+{
+}
+
+CstTypeUnion::CstTypeUnion(std::optional<Position> leadingPosition, AstArray<Position> separatorPositions)
+    : CstNode(CstClassIndex())
+    , leadingPosition(leadingPosition)
+    , separatorPositions(separatorPositions)
+{
+}
+
+CstTypeIntersection::CstTypeIntersection(std::optional<Position> leadingPosition, AstArray<Position> separatorPositions)
+    : CstNode(CstClassIndex())
+    , leadingPosition(leadingPosition)
+    , separatorPositions(separatorPositions)
 {
 }
 

@@ -10,9 +10,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
-LUAU_FASTFLAG(LuauTypeFunPrintFix)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
+LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2030,7 +2030,7 @@ local _:test<number>
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_print_tab_char_fix")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypeFunPrintFix, true}};
+    ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type function test(t)
@@ -2101,6 +2101,107 @@ end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "outer_generics_irreducible")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauNewTypeFunReductionChecks2{FFlag::LuauNewTypeFunReductionChecks2, true};
+
+    CheckResult result = check(R"(
+type function func(t)
+    return t
+end
+
+type wrap<T> = { a: func<T?> }
+
+local x: wrap<string> = nil :: any
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: string? }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "inner_generics_reducible")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function func(t)
+    return t
+end
+
+type wrap<T> = { a: func<<T>(T) -> number>, b: T }
+
+local x: wrap<string> = nil :: any
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: <T>(T) -> number, b: string }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "blocking_nested_pending_expansions")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+type function func(t)
+    return t
+end
+
+type test<T> = { x: T, y: T? }
+type wrap<T> = { a: func<(string, keyof<test<T>>) -> number>, b: T }
+local x: wrap<string>
+local y: keyof<typeof(x)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == R"({ a: (string, "x" | "y") -> number, b: string })");
+    CHECK(toString(requireType("y"), ToStringOptions{true}) == R"("a" | "b")");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "blocking_nested_pending_expansions_2")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+type function foo(t)
+    return types.unionof(t, types.singleton(nil))
+end
+
+local x: foo<{a: foo<string>, b: foo<number>}> = nil
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: string?, b: number? }?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "irreducible_pending_expansions")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag luauNewTypeFunReductionChecks2{FFlag::LuauNewTypeFunReductionChecks2, true};
+
+    CheckResult result = check(R"(
+type function foo(t)
+    return types.unionof(t, types.singleton(nil))
+end
+
+type table<T> = { a: index<T, "a"> }
+type wrap<T> = foo<table<T>>
+
+local x: wrap<{a: number}> = { a = 2 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: number }?");
 }
 
 TEST_SUITE_END();

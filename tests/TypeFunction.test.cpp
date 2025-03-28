@@ -17,7 +17,9 @@ LUAU_FASTFLAG(LuauIndexTypeFunctionImprovements)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAG(LuauMetatableTypeFunctions)
+LUAU_FASTFLAG(LuauMetatablesHaveLength)
 LUAU_FASTFLAG(LuauIndexAnyIsAny)
+LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -145,19 +147,17 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag luauNewTypeFunReductionChecks2{FFlag::LuauNewTypeFunReductionChecks2, true};
+
     CheckResult result = check(R"(
         local impossible: <T>(Swap<T>) -> Swap<Swap<T>>
         local a = impossible(123)
         local b = impossible(true)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(6, result);
-    CHECK(toString(result.errors[0]) == "Type function instance Swap<Swap<T>> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type function instance Swap<T> is uninhabited");
-    CHECK(toString(result.errors[2]) == "Type function instance Swap<Swap<T>> is uninhabited");
-    CHECK(toString(result.errors[3]) == "Type function instance Swap<T> is uninhabited");
-    CHECK(toString(result.errors[4]) == "Type function instance Swap<Swap<T>> is uninhabited");
-    CHECK(toString(result.errors[5]) == "Type function instance Swap<T> is uninhabited");
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Type 'number' could not be converted into 'never'");
+    CHECK(toString(result.errors[1]) == "Type 'boolean' could not be converted into 'never'");
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
@@ -1550,6 +1550,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_respects_metatable_metamethod")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(toString(requireTypeAlias("Metatable")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_function_correct_cycle_check")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag luauNewTypeFunReductionChecks2{FFlag::LuauNewTypeFunReductionChecks2, true};
+
+    CheckResult result = check(R"(
+type foo<T> = { a: add<T, T>, b : add<T, T> }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "len_typefun_on_metatable")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauMetatablesHaveLength{FFlag::LuauMetatablesHaveLength, true};
+
+    CheckResult result = check(R"(
+local t = setmetatable({}, { __mode = "v" })
+
+local function f()
+    table.insert(t, {})
+    print(#t * 100)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

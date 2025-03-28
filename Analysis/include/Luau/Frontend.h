@@ -10,7 +10,6 @@
 #include "Luau/Set.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/Variant.h"
-#include "Luau/AnyTypeSummary.h"
 
 #include <mutex>
 #include <string>
@@ -34,7 +33,6 @@ struct HotComment;
 struct BuildQueueItem;
 struct BuildQueueWorkState;
 struct FrontendCancellationToken;
-struct AnyTypeSummary;
 
 struct LoadDefinitionFileResult
 {

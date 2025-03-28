@@ -24,6 +24,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauUngeneralizedTypesForRecursiveFunctions)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauReduceUnionFollowUnionType)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3189,6 +3190,32 @@ TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generali
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_unwind_mutually_recursive_union_type_func")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReduceUnionFollowUnionType, true}
+    };
+
+    // This block ends up minting a type like:
+    //
+    //  t2 where t1 = union<t2, t1> | union<t2, t1> | union<t2, t1> ; t2 = union<t2, t1>
+    //
+    CheckResult result = check(R"(
+        local _ = ...
+        function _()
+            _ = _
+        end
+        _[function(...) repeat until _(_[l100]) _ = _ end] += _
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto err0 = get<UnknownSymbol>(result.errors[0]);
+    CHECK(err0);
+    CHECK_EQ(err0->name, "l100");
+    auto err1 = get<NotATable>(result.errors[1]);
+    CHECK(err1);
 }
 
 TEST_SUITE_END();

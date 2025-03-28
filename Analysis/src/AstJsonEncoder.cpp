@@ -1151,6 +1151,8 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("checked");
         case AstAttr::Type::Native:
             return writeString("native");
+        case AstAttr::Type::Deprecated:
+            return writeString("deprecated");
         }
     }
 

@@ -112,6 +112,7 @@ public:
 
     CstExprFunction();
 
+    Position functionKeywordPosition{0, 0};
     Position openGenericsPosition{0,0};
     AstArray<Position> genericsCommaPositions;
     Position closeGenericsPosition{0,0};
@@ -274,13 +275,24 @@ public:
     Position opPosition;
 };
 
+class CstStatFunction : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatFunction)
+
+    explicit CstStatFunction(Position functionKeywordPosition);
+
+    Position functionKeywordPosition;
+};
+
 class CstStatLocalFunction : public CstNode
 {
 public:
     LUAU_CST_RTTI(CstStatLocalFunction)
 
-    explicit CstStatLocalFunction(Position functionKeywordPosition);
+    explicit CstStatLocalFunction(Position localKeywordPosition, Position functionKeywordPosition);
 
+    Position localKeywordPosition;
     Position functionKeywordPosition;
 };
 
@@ -419,6 +431,28 @@ public:
 
     Position openPosition;
     Position closePosition;
+};
+
+class CstTypeUnion : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypeUnion)
+
+    CstTypeUnion(std::optional<Position> leadingPosition, AstArray<Position> separatorPositions);
+
+    std::optional<Position> leadingPosition;
+    AstArray<Position> separatorPositions;
+};
+
+class CstTypeIntersection : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypeIntersection)
+
+    explicit CstTypeIntersection(std::optional<Position> leadingPosition, AstArray<Position> separatorPositions);
+
+    std::optional<Position> leadingPosition;
+    AstArray<Position> separatorPositions;
 };
 
 class CstTypeSingletonString : public CstNode

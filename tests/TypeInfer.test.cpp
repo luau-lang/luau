@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauInferLocalTypesInMultipleAssignments)
 LUAU_FASTFLAG(LuauUnifyMetatableWithAny)
 LUAU_FASTFLAG(LuauExtraFollows)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
 
 using namespace Luau;
 
@@ -1862,7 +1863,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_works_with_any")
             end,
         }
     )"));
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_ret")
@@ -1937,14 +1937,14 @@ end
 TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag fixNumberConcats{FFlag::LuauTypeCheckerAcceptNumberConcats, true};
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local function foo(n : number): string return "" end
-        local function bar(n: number, m: string) end
-        local function concat_stuff(x, y)
-            local z = foo(x)
-            bar(y, z)
+        local function concat_stuff(x: string, y : string | number)
+            return x .. y
         end
     )"));
 }
+
 
 TEST_SUITE_END();

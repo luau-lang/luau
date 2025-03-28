@@ -2,6 +2,7 @@
 #include "Luau/NonStrictTypeChecker.h"
 
 #include "Luau/Ast.h"
+#include "Luau/AstQuery.h"
 #include "Luau/Common.h"
 #include "Luau/Simplify.h"
 #include "Luau/Type.h"
