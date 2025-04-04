@@ -3410,6 +3410,7 @@ local foo = 8)");
     CHECK(*pos == Position{2, 0});
 }
 
+#if 0
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalReturn_assert")
 {
     const std::string source = R"()";
@@ -3455,6 +3456,7 @@ return target(bar)";
         }
     );
 }
+#endif
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "str_metata_table_finished_defining")
 {

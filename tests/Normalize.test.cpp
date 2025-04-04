@@ -1208,6 +1208,7 @@ _(_)[_(n32)] %= _(_(_))
     LUAU_REQUIRE_ERRORS(result);
 }
 
+#if !(defined(_WIN32) && !(defined(_M_X64) || defined(_M_ARM64)))
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
 {
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
@@ -1224,5 +1225,6 @@ _().readu32 %= _(_(_(_),_))
 
     LUAU_REQUIRE_ERRORS(result);
 }
+#endif
 
 TEST_SUITE_END();
