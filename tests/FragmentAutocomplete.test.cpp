@@ -3410,7 +3410,6 @@ local foo = 8)");
     CHECK(*pos == Position{2, 0});
 }
 
-#if 0
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalReturn_assert")
 {
     const std::string source = R"()";
@@ -3434,6 +3433,7 @@ return target(bar)";
     );
 }
 
+#if 0
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalRank_assert")
 {
     const std::string source = R"()";
