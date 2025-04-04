@@ -20,6 +20,8 @@ LUAU_FASTFLAG(LuauMetatableTypeFunctions)
 LUAU_FASTFLAG(LuauMetatablesHaveLength)
 LUAU_FASTFLAG(LuauIndexAnyIsAny)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
+LUAU_FASTFLAG(LuauHasPropProperBlock)
+LUAU_FASTFLAG(LuauFixCyclicIndexInIndexer)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -922,6 +924,76 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_of_any_is_any")
     CHECK(toString(requireTypeAlias("T")) == "any");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixCyclicIndexInIndexer, true};
+
+    CheckResult result = check(R"(
+        local PlayerData = {}
+
+        type Keys = index<typeof(PlayerData), true>
+
+        local function UpdateData(key: Keys)
+            PlayerData[key] = 4
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK(toString(requireTypeAlias("Keys")) == "index<PlayerData, true>");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff2")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixCyclicIndexInIndexer, true};
+
+    CheckResult result = check(R"(
+        local PlayerData = {}
+
+        type Keys = index<typeof(PlayerData), number>
+
+        local function UpdateData(key: Keys)
+            PlayerData[key] = 4
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("Keys")) == "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff3")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixCyclicIndexInIndexer, true};
+
+    CheckResult result = check(R"(
+        local PlayerData = {
+            Coins = 0,
+            Level = 1,
+            Exp = 0,
+            MapExp = 100,
+        }
+
+        type Keys = index<typeof(PlayerData), true>
+
+        local function UpdateData(key: Keys, value)
+            PlayerData[key] = value
+        end
+
+        UpdateData("Coins", 2)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("Keys")) == "unknown");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
 {
     if (!FFlag::LuauSolverV2)
@@ -1581,6 +1653,24 @@ end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "has_prop_on_irreducible_type_function")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauHasPropProperBlock{FFlag::LuauHasPropProperBlock, true};
+
+    CheckResult result = check(R"(
+local test = "a" + "b"
+print(test.a)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "Operator '+' could not be applied to operands of types string and string; there is no corresponding overload for __add" ==
+        toString(result.errors[0])
+    );
+    CHECK("Type 'add<string, string>' does not have key 'a'" == toString(result.errors[1]));
 }
 
 TEST_SUITE_END();

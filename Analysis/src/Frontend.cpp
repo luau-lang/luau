@@ -39,16 +39,13 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRethrowKnownExceptions, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
-
-LUAU_FASTFLAGVARIABLE(LuauModuleHoldsAstRoot)
-
-LUAU_FASTFLAGVARIABLE(LuauFixMultithreadTypecheck)
 
 LUAU_FASTFLAGVARIABLE(LuauSelectivelyRetainDFGArena)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
@@ -480,11 +477,6 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     std::function<bool(size_t done, size_t total)> progress
 )
 {
-    if (!FFlag::LuauFixMultithreadTypecheck)
-    {
-        return checkQueuedModules_DEPRECATED(optionOverride, executeTask, progress);
-    }
-
     FrontendOptions frontendOptions = optionOverride.value_or(options);
     if (FFlag::LuauSolverV2)
         frontendOptions.forAutocomplete = false;
@@ -665,247 +657,6 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
     for (size_t i = 0; i < state->buildQueueItems.size(); i++)
         checkedModules.push_back(std::move(state->buildQueueItems[i].name));
-
-    return checkedModules;
-}
-
-std::vector<ModuleName> Frontend::checkQueuedModules_DEPRECATED(
-    std::optional<FrontendOptions> optionOverride,
-    std::function<void(std::function<void()> task)> executeTask,
-    std::function<bool(size_t done, size_t total)> progress
-)
-{
-    LUAU_ASSERT(!FFlag::LuauFixMultithreadTypecheck);
-
-    FrontendOptions frontendOptions = optionOverride.value_or(options);
-    if (FFlag::LuauSolverV2)
-        frontendOptions.forAutocomplete = false;
-
-    // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
-    std::vector<ModuleName> currModuleQueue;
-    std::swap(currModuleQueue, moduleQueue);
-
-    DenseHashSet<Luau::ModuleName> seen{{}};
-    std::vector<BuildQueueItem> buildQueueItems;
-
-    for (const ModuleName& name : currModuleQueue)
-    {
-        if (seen.contains(name))
-            continue;
-
-        if (!isDirty(name, frontendOptions.forAutocomplete))
-        {
-            seen.insert(name);
-            continue;
-        }
-
-        std::vector<ModuleName> queue;
-        bool cycleDetected = parseGraph(
-            queue,
-            name,
-            frontendOptions.forAutocomplete,
-            [&seen](const ModuleName& name)
-            {
-                return seen.contains(name);
-            }
-        );
-
-        addBuildQueueItems(buildQueueItems, queue, cycleDetected, seen, frontendOptions);
-    }
-
-    if (buildQueueItems.empty())
-        return {};
-
-    // We need a mapping from modules to build queue slots
-    std::unordered_map<ModuleName, size_t> moduleNameToQueue;
-
-    for (size_t i = 0; i < buildQueueItems.size(); i++)
-    {
-        BuildQueueItem& item = buildQueueItems[i];
-        moduleNameToQueue[item.name] = i;
-    }
-
-    // Default task execution is single-threaded and immediate
-    if (!executeTask)
-    {
-        executeTask = [](std::function<void()> task)
-        {
-            task();
-        };
-    }
-
-    std::mutex mtx;
-    std::condition_variable cv;
-    std::vector<size_t> readyQueueItems;
-
-    size_t processing = 0;
-    size_t remaining = buildQueueItems.size();
-
-    auto itemTask = [&](size_t i)
-    {
-        BuildQueueItem& item = buildQueueItems[i];
-
-        try
-        {
-            checkBuildQueueItem(item);
-        }
-        catch (...)
-        {
-            item.exception = std::current_exception();
-        }
-
-        {
-            std::unique_lock guard(mtx);
-            readyQueueItems.push_back(i);
-        }
-
-        cv.notify_one();
-    };
-
-    auto sendItemTask = [&](size_t i)
-    {
-        BuildQueueItem& item = buildQueueItems[i];
-
-        item.processing = true;
-        processing++;
-
-        executeTask(
-            [&itemTask, i]()
-            {
-                itemTask(i);
-            }
-        );
-    };
-
-    auto sendCycleItemTask = [&]
-    {
-        for (size_t i = 0; i < buildQueueItems.size(); i++)
-        {
-            BuildQueueItem& item = buildQueueItems[i];
-
-            if (!item.processing)
-            {
-                sendItemTask(i);
-                break;
-            }
-        }
-    };
-
-    // In a first pass, check modules that have no dependencies and record info of those modules that wait
-    for (size_t i = 0; i < buildQueueItems.size(); i++)
-    {
-        BuildQueueItem& item = buildQueueItems[i];
-
-        for (const ModuleName& dep : item.sourceNode->requireSet)
-        {
-            if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
-            {
-                if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
-                {
-                    item.dirtyDependencies++;
-
-                    buildQueueItems[moduleNameToQueue[dep]].reverseDeps.push_back(i);
-                }
-            }
-        }
-
-        if (item.dirtyDependencies == 0)
-            sendItemTask(i);
-    }
-
-    // Not a single item was found, a cycle in the graph was hit
-    if (processing == 0)
-        sendCycleItemTask();
-
-    std::vector<size_t> nextItems;
-    std::optional<size_t> itemWithException;
-    bool cancelled = false;
-
-    while (remaining != 0)
-    {
-        {
-            std::unique_lock guard(mtx);
-
-            // If nothing is ready yet, wait
-            cv.wait(
-                guard,
-                [&readyQueueItems]
-                {
-                    return !readyQueueItems.empty();
-                }
-            );
-
-            // Handle checked items
-            for (size_t i : readyQueueItems)
-            {
-                const BuildQueueItem& item = buildQueueItems[i];
-
-                // If exception was thrown, stop adding new items and wait for processing items to complete
-                if (item.exception)
-                    itemWithException = i;
-
-                if (item.module && item.module->cancelled)
-                    cancelled = true;
-
-                if (itemWithException || cancelled)
-                    break;
-
-                recordItemResult(item);
-
-                // Notify items that were waiting for this dependency
-                for (size_t reverseDep : item.reverseDeps)
-                {
-                    BuildQueueItem& reverseDepItem = buildQueueItems[reverseDep];
-
-                    LUAU_ASSERT(reverseDepItem.dirtyDependencies != 0);
-                    reverseDepItem.dirtyDependencies--;
-
-                    // In case of a module cycle earlier, check if unlocked an item that was already processed
-                    if (!reverseDepItem.processing && reverseDepItem.dirtyDependencies == 0)
-                        nextItems.push_back(reverseDep);
-                }
-            }
-
-            LUAU_ASSERT(processing >= readyQueueItems.size());
-            processing -= readyQueueItems.size();
-
-            LUAU_ASSERT(remaining >= readyQueueItems.size());
-            remaining -= readyQueueItems.size();
-            readyQueueItems.clear();
-        }
-
-        if (progress)
-        {
-            if (!progress(buildQueueItems.size() - remaining, buildQueueItems.size()))
-                cancelled = true;
-        }
-
-        // Items cannot be submitted while holding the lock
-        for (size_t i : nextItems)
-            sendItemTask(i);
-        nextItems.clear();
-
-        if (processing == 0)
-        {
-            // Typechecking might have been cancelled by user, don't return partial results
-            if (cancelled)
-                return {};
-
-            // We might have stopped because of a pending exception
-            if (itemWithException)
-                recordItemResult(buildQueueItems[*itemWithException]);
-        }
-
-        // If we aren't done, but don't have anything processing, we hit a cycle
-        if (remaining != 0 && processing == 0)
-            sendCycleItemTask();
-    }
-
-    std::vector<ModuleName> checkedModules;
-    checkedModules.reserve(buildQueueItems.size());
-
-    for (size_t i = 0; i < buildQueueItems.size(); i++)
-        checkedModules.push_back(std::move(buildQueueItems[i].name));
 
     return checkedModules;
 }
@@ -1351,13 +1102,27 @@ void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, 
 {
     BuildQueueItem& item = state->buildQueueItems[itemPos];
 
-    try
+    if (DFFlag::LuauRethrowKnownExceptions)
     {
-        checkBuildQueueItem(item);
+        try
+        {
+            checkBuildQueueItem(item);
+        }
+        catch (const Luau::InternalCompilerError&)
+        {
+            item.exception = std::current_exception();
+        }
     }
-    catch (...)
+    else
     {
-        item.exception = std::current_exception();
+        try
+        {
+            checkBuildQueueItem(item);
+        }
+        catch (...)
+        {
+            item.exception = std::current_exception();
+        }
     }
 
     {
@@ -1616,8 +1381,7 @@ ModulePtr check(
     result->interfaceTypes.owningModule = result.get();
     result->allocator = sourceModule.allocator;
     result->names = sourceModule.names;
-    if (FFlag::LuauModuleHoldsAstRoot)
-        result->root = sourceModule.root;
+    result->root = sourceModule.root;
 
     iceHandler->moduleName = sourceModule.name;
 

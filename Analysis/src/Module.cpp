@@ -15,7 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteCommentDetection)
+LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 
 namespace Luau
 {
@@ -36,21 +36,6 @@ void setLogLuau(LogLuauProc ll)
 void resetLogLuauProc()
 {
     logLuau = &defaultLogLuau;
-}
-
-
-
-static bool contains_DEPRECATED(Position pos, Comment comment)
-{
-    if (comment.location.contains(pos))
-        return true;
-    else if (comment.type == Lexeme::BrokenComment && comment.location.begin <= pos) // Broken comments are broken specifically because they don't
-                                                                                     // have an end
-        return true;
-    else if (comment.type == Lexeme::Comment && comment.location.end == pos)
-        return true;
-    else
-        return false;
 }
 
 static bool contains(Position pos, Comment comment)
@@ -76,11 +61,8 @@ bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
         Comment{Lexeme::Comment, Location{pos, pos}},
         [](const Comment& a, const Comment& b)
         {
-            if (FFlag::LuauIncrementalAutocompleteCommentDetection)
-            {
-                if (a.type == Lexeme::Comment)
-                    return a.location.end.line < b.location.end.line;
-            }
+            if (a.type == Lexeme::Comment)
+                return a.location.end.line < b.location.end.line;
             return a.location.end < b.location.end;
         }
     );
@@ -88,7 +70,7 @@ bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
     if (iter == commentLocations.end())
         return false;
 
-    if (FFlag::LuauIncrementalAutocompleteCommentDetection ? contains(pos, *iter) : contains_DEPRECATED(pos, *iter))
+    if (contains(pos, *iter))
         return true;
 
     // Due to the nature of std::lower_bound, it is possible that iter points at a comment that ends
@@ -172,8 +154,6 @@ struct ClonePublicInterface : Substitution
             }
 
             ftv->level = TypeLevel{0, 0};
-            if (FFlag::LuauSolverV2)
-                ftv->scope = nullptr;
         }
         else if (TableType* ttv = getMutable<TableType>(result))
         {
@@ -285,7 +265,10 @@ struct ClonePublicInterface : Substitution
 
         TypeId type = cloneType(tf.type);
 
-        return TypeFun{typeParams, typePackParams, type};
+        if (FFlag::LuauRetainDefinitionAliasLocations)
+            return TypeFun{typeParams, typePackParams, type, tf.definitionLocation};
+        else
+            return TypeFun{typeParams, typePackParams, type};
     }
 };
 

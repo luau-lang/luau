@@ -22,6 +22,7 @@
 #include "Luau/Module.h"
 #include "Luau/Clone.h"
 #include "AutocompleteCore.h"
+#include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
@@ -35,13 +36,13 @@ LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcSupportsReporter)
 LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
-LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAGVARIABLE(LuauCloneReturnTypePack)
 LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteDemandBasedCloning)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauFragmentNoTypeFunEval)
 LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
+LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 
 namespace
 {
@@ -253,6 +254,85 @@ struct NearestStatementFinder : public AstVisitor
     AstStatBlock* parent = nullptr;
 };
 
+// This struct takes a block found in a updated AST and looks for the corresponding block in a different ast.
+// This is a best effort check - we are looking for the block that is as close in location, ideally the same
+// block as the one from the updated AST
+struct NearestLikelyBlockFinder : public AstVisitor
+{
+    explicit NearestLikelyBlockFinder(NotNull<AstStatBlock> stmtBlockRecentAst)
+        : stmtBlockRecentAst(stmtBlockRecentAst)
+    {
+    }
+
+    bool visit(AstStatBlock* block) override
+    {
+        if (block->location.begin <= stmtBlockRecentAst->location.begin)
+        {
+            if (found)
+            {
+                if (found.value()->location.begin < block->location.begin)
+                    found.emplace(block);
+            }
+            else
+            {
+                found.emplace(block);
+            }
+        }
+
+        return true;
+    }
+    NotNull<AstStatBlock> stmtBlockRecentAst;
+    std::optional<AstStatBlock*> found = std::nullopt;
+};
+
+// Diffs two ast stat blocks. Once at the first difference, consume between that range and the end of the nearest statement
+std::optional<Position> blockDiffStart(AstStatBlock* blockOld, AstStatBlock* blockNew, AstStat* nearestStatementNewAst)
+{
+    AstArray<AstStat*> _old = blockOld->body;
+    AstArray<AstStat*> _new = blockNew->body;
+    size_t oldSize = _old.size;
+    size_t stIndex = 0;
+
+    // We couldn't find a nearest statement
+    if (nearestStatementNewAst == blockNew)
+        return std::nullopt;
+    bool found = false;
+    for (auto st : _new)
+    {
+        if (st == nearestStatementNewAst)
+        {
+            found = true;
+            break;
+        }
+        stIndex++;
+    }
+
+    if (!found)
+        return std::nullopt;
+    // Take care of some easy cases!
+    if (oldSize == 0 && _new.size >= 0)
+        return {_new.data[0]->location.begin};
+
+    if (_new.size < oldSize)
+        return std::nullopt;
+
+    for (size_t i = 0; i < std::min(oldSize, stIndex + 1); i++)
+    {
+        AstStat* oldStat = _old.data[i];
+        AstStat* newStat = _new.data[i];
+
+        bool isSame = oldStat->classIndex == newStat->classIndex && oldStat->location == newStat->location;
+        if (!isSame)
+            return {oldStat->location.begin};
+    }
+
+    if (oldSize <= stIndex)
+        return {_new.data[oldSize]->location.begin};
+
+    return std::nullopt;
+}
+
+
 FragmentRegion getFragmentRegion(AstStatBlock* root, const Position& cursorPosition)
 {
     NearestStatementFinder nsf{cursorPosition};
@@ -263,12 +343,33 @@ FragmentRegion getFragmentRegion(AstStatBlock* root, const Position& cursorPosit
     return FragmentRegion{getFragmentLocation(nsf.nearest, cursorPosition), nsf.nearest, parent};
 };
 
+FragmentRegion getFragmentRegionWithBlockDiff(AstStatBlock* stale, AstStatBlock* fresh, const Position& cursorPos)
+{
+    // Visit the new ast
+    NearestStatementFinder nsf{cursorPos};
+    fresh->visit(&nsf);
+    // parent must always be non-null
+    NotNull<AstStatBlock> parent{nsf.parent ? nsf.parent : fresh};
+    NotNull<AstStat> nearest{nsf.nearest ? nsf.nearest : fresh};
+    // Grab the same start block in the stale ast
+    NearestLikelyBlockFinder lsf{parent};
+    stale->visit(&lsf);
+
+    if (auto sameBlock = lsf.found)
+    {
+        if (std::optional<Position> fd = blockDiffStart(*sameBlock, parent, nearest))
+            return FragmentRegion{Location{*fd, cursorPos}, nearest, parent};
+    }
+    return FragmentRegion{getFragmentLocation(nsf.nearest, cursorPos), nearest, parent};
+}
+
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* stale, const Position& cursorPos, AstStatBlock* lastGoodParse)
 {
     // the freshest ast can sometimes be null if the parse was bad.
     if (lastGoodParse == nullptr)
         return {};
-    FragmentRegion region = getFragmentRegion(lastGoodParse, cursorPos);
+    FragmentRegion region = FFlag::LuauBlockDiffFragmentSelection ? getFragmentRegionWithBlockDiff(stale, lastGoodParse, cursorPos)
+                                                                  : getFragmentRegion(lastGoodParse, cursorPos);
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(stale, cursorPos);
     LUAU_ASSERT(ancestry.size() >= 1);
     // We should only pick up locals that are before the region
@@ -516,7 +617,7 @@ void cloneTypesFromFragment(
             destScope->lvalueTypes[d] = Luau::cloneIncremental(pair->second.typeId, *destArena, cloneState, destScope);
             destScope->bindings[pair->first] = Luau::cloneIncremental(pair->second, *destArena, cloneState, destScope);
         }
-        else if (FFlag::LuauBetterScopeSelection)
+        else if (FFlag::LuauBetterScopeSelection && !FFlag::LuauBlockDiffFragmentSelection)
         {
             destScope->lvalueTypes[d] = builtins->unknownType;
             Binding b;
@@ -916,17 +1017,32 @@ ScopePtr findClosestScope_DEPRECATED(const ModulePtr& module, const AstStat* nea
 ScopePtr findClosestScope(const ModulePtr& module, const Position& scopePos)
 {
     LUAU_ASSERT(module->hasModuleScope());
-
-    ScopePtr closest = module->getModuleScope();
-
-    // find the scope the nearest statement belonged to.
-    for (const auto& [loc, sc] : module->scopes)
+    if (FFlag::LuauBlockDiffFragmentSelection)
     {
-        if (sc->location.contains(scopePos) && closest->location.begin < sc->location.begin)
-            closest = sc;
+        ScopePtr closest = module->getModuleScope();
+        // find the scope the nearest statement belonged to.
+        for (const auto& [loc, sc] : module->scopes)
+        {
+            // We bias towards the later scopes because those correspond to inner scopes.
+            // in the case of if statements, we create two scopes at the same location for the body of the then
+            // and else branches, so we need to bias later. This is why the closest update condition has a <=
+            // instead of a <
+            if (sc->location.contains(scopePos) && closest->location.begin <= sc->location.begin)
+                closest = sc;
+        }
+        return closest;
     }
-
-    return closest;
+    else
+    {
+        ScopePtr closest = module->getModuleScope();
+        // find the scope the nearest statement belonged to.
+        for (const auto& [loc, sc] : module->scopes)
+        {
+            if (sc->location.contains(scopePos) && closest->location.begin < sc->location.begin)
+                closest = sc;
+        }
+        return closest;
+    }
 }
 
 std::optional<FragmentParseResult> parseFragment_DEPRECATED(
@@ -1455,29 +1571,9 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     }
 
     std::optional<FragmentParseResult> tryParse;
-    if (FFlag::LuauModuleHoldsAstRoot)
-    {
-        tryParse = FFlag::LuauBetterScopeSelection
-                       ? parseFragment(module->root, recentParse, module->names.get(), src, cursorPos, fragmentEndPosition)
-                       : parseFragment_DEPRECATED(module->root, module->names.get(), src, cursorPos, fragmentEndPosition);
-    }
-    else
-    {
-        const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
-        if (!sourceModule)
-        {
-            LUAU_ASSERT(!"Expected Source Module for fragment typecheck");
-            return {};
-        }
+    tryParse = FFlag::LuauBetterScopeSelection ? parseFragment(module->root, recentParse, module->names.get(), src, cursorPos, fragmentEndPosition)
+                                               : parseFragment_DEPRECATED(module->root, module->names.get(), src, cursorPos, fragmentEndPosition);
 
-        if (sourceModule->allocator.get() != module->allocator.get())
-        {
-            return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
-        }
-
-        tryParse = parseFragment_DEPRECATED(sourceModule->root, sourceModule->names.get(), src, cursorPos, fragmentEndPosition);
-        reportWaypoint(reporter, FragmentAutocompleteWaypoint::ParseFragmentEnd);
-    }
 
     if (!tryParse)
         return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
@@ -1553,20 +1649,6 @@ FragmentAutocompleteResult fragmentAutocomplete(
     LUAU_ASSERT(FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
     LUAU_TIMETRACE_SCOPE("Luau::fragmentAutocomplete", "FragmentAutocomplete");
     LUAU_TIMETRACE_ARGUMENT("name", moduleName.c_str());
-
-    if (!FFlag::LuauModuleHoldsAstRoot)
-    {
-        const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
-        if (!sourceModule)
-        {
-            LUAU_ASSERT(!"Expected Source Module for fragment typecheck");
-            return {};
-        }
-
-        // If the cursor is within a comment in the stale source module we should avoid providing a recommendation
-        if (isWithinComment(*sourceModule, fragmentEndPosition.value_or(cursorPosition)))
-            return {};
-    }
 
     auto [tcStatus, tcResult] = typecheckFragment(frontend, moduleName, cursorPosition, opts, src, fragmentEndPosition, recentParse, reporter);
     if (tcStatus == FragmentTypeCheckStatus::SkipAutocomplete)

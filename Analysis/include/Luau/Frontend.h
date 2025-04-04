@@ -215,11 +215,6 @@ struct Frontend
         std::function<void(std::function<void()> task)> executeTask = {},
         std::function<bool(size_t done, size_t total)> progress = {}
     );
-    std::vector<ModuleName> checkQueuedModules_DEPRECATED(
-        std::optional<FrontendOptions> optionOverride = {},
-        std::function<void(std::function<void()> task)> executeTask = {},
-        std::function<bool(size_t done, size_t total)> progress = {}
-    );
 
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
     std::vector<ModuleName> getRequiredScripts(const ModuleName& name);

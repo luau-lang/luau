@@ -12,10 +12,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFixInfiniteRecursionInNormalization)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
-LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
-LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
+LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -258,8 +257,6 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceUpcast, true},
         {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
@@ -1224,6 +1221,42 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalizatio
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "exported_alias_location_is_accessible_on_module")
+{
+    ScopedFastFlag sff{FFlag::LuauRetainDefinitionAliasLocations, true};
+
+    CheckResult result = check(R"(
+        export type Value = string
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto module = getMainModule();
+    auto tfun = module->exportedTypeBindings.find("Value");
+    REQUIRE(tfun != module->exportedTypeBindings.end());
+    CHECK_EQ(tfun->second.definitionLocation, Location{{1, 8}, {1, 34}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_module")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRetainDefinitionAliasLocations, true},
+    };
+
+    CheckResult result = check(R"(
+        export type function Apply()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto module = getMainModule();
+    auto tfun = module->exportedTypeBindings.find("Apply");
+    REQUIRE(tfun != module->exportedTypeBindings.end());
+    CHECK_EQ(tfun->second.definitionLocation, Location{{1, 8}, {2, 11}});
 }
 
 TEST_SUITE_END();

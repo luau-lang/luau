@@ -61,7 +61,7 @@ TypeId Instantiation::clean(TypeId ty)
     const FunctionType* ftv = log->getMutable<FunctionType>(ty);
     LUAU_ASSERT(ftv);
 
-    FunctionType clone = FunctionType{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+    FunctionType clone = FunctionType{level, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
     clone.magic = ftv->magic;
     clone.tags = ftv->tags;
     clone.argNames = ftv->argNames;

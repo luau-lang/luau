@@ -86,6 +86,7 @@ struct FragmentRegion
     AstStatBlock* parentBlock = nullptr; // used for scope detection
 };
 
+std::optional<Position> blockDiffStart(AstStatBlock* blockOld, AstStatBlock* blockNew, AstStat* nearestStatementNewAst);
 FragmentRegion getFragmentRegion(AstStatBlock* root, const Position& cursorPosition);
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* stale, const Position& cursorPos, AstStatBlock* lastGoodParse);
 FragmentAutocompleteAncestryResult findAncestryForFragmentParse_DEPRECATED(AstStatBlock* root, const Position& cursorPos);
