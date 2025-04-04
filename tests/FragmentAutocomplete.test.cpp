@@ -25,7 +25,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
-LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauCloneIncrementalModule)
 
@@ -36,7 +35,6 @@ LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauAutocompleteUsesModuleForTypeCompatibility)
 LUAU_FASTFLAG(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAG(LuauAllFreeTypesHaveScopes)
-LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauClonedTableAndFunctionTypesMustHaveScopes)
 LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
@@ -46,6 +44,7 @@ LUAU_FASTFLAG(LuauCloneReturnTypePack)
 LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauBetterScopeSelection)
+LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -79,7 +78,6 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauFreeTypesMustHaveBounds{FFlag::LuauFreeTypesMustHaveBounds, true};
     ScopedFastFlag luauCloneIncrementalModule{FFlag::LuauCloneIncrementalModule, true};
     ScopedFastFlag luauAllFreeTypesHaveScopes{FFlag::LuauAllFreeTypesHaveScopes, true};
-    ScopedFastFlag luauModuleHoldsAstRoot{FFlag::LuauModuleHoldsAstRoot, true};
     ScopedFastFlag luauClonedTableAndFunctionTypesMustHaveScopes{FFlag::LuauClonedTableAndFunctionTypesMustHaveScopes, true};
     ScopedFastFlag luauDisableNewSolverAssertsInMixedMode{FFlag::LuauDisableNewSolverAssertsInMixedMode, true};
     ScopedFastFlag luauCloneTypeAliasBindings{FFlag::LuauCloneTypeAliasBindings, true};
@@ -87,6 +85,8 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauCloneReturnTypePack{FFlag::LuauCloneReturnTypePack, true};
     ScopedFastFlag luauIncrementalAutocompleteDemandBasedCloning{FFlag::LuauIncrementalAutocompleteDemandBasedCloning, true};
     ScopedFastFlag luauBetterScopeSelection{FFlag::LuauBetterScopeSelection, true};
+    ScopedFastFlag luauBlockDiffFragmentSelection{FFlag::LuauBlockDiffFragmentSelection, true};
+    ScopedFastFlag luauAutocompleteUsesModuleForTypeCompatibility{FFlag::LuauAutocompleteUsesModuleForTypeCompatibility, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -98,13 +98,18 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         return this->check(source, getOptions());
     }
 
-    ParseResult parseHelper(std::string document)
+    ParseResult parseHelper_(SourceModule& source, std::string document)
     {
-        SourceModule& source = getSource();
         ParseOptions parseOptions;
         parseOptions.captureComments = true;
         ParseResult parseResult = Parser::parse(document.c_str(), document.length(), *source.names, *source.allocator, parseOptions);
         return parseResult;
+    }
+
+    ParseResult parseHelper(std::string document)
+    {
+        SourceModule& source = getSource();
+        return parseHelper_(source, document);
     }
 
     FragmentAutocompleteAncestryResult runAutocompleteVisitor(const std::string& source, const Position& cursorPos)
@@ -1332,7 +1337,7 @@ t
 }
 
 TEST_SUITE_END();
-// NOLINTEND(bugprone-unchecked-optional-access)
+
 
 TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
 
@@ -1466,27 +1471,6 @@ tbl.
     CHECK_EQ(1, fragment.result->acResults.entryMap.size());
     CHECK(fragment.result->acResults.entryMap.count("abc"));
     CHECK_EQ(AutocompleteContext::Property, fragment.result->acResults.context);
-}
-
-TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "typecheck_fragment_handles_stale_module")
-{
-    ScopedFastFlag sff(FFlag::LuauModuleHoldsAstRoot, false);
-    const std::string sourceName = "MainModule";
-    fileResolver.source[sourceName] = "local x = 5";
-
-    CheckResult checkResult = frontend.check(sourceName, getOptions());
-    LUAU_REQUIRE_NO_ERRORS(checkResult);
-
-    auto [result, _] = typecheckFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
-    CHECK_EQ(result, FragmentTypeCheckStatus::Success);
-
-    frontend.markDirty(sourceName);
-    frontend.parse(sourceName);
-
-    CHECK_NE(frontend.getSourceModule(sourceName), nullptr);
-
-    auto [result2, __] = typecheckFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
-    CHECK_EQ(result2, FragmentTypeCheckStatus::SkipAutocomplete);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "typecheck_fragment_handles_unusable_module")
@@ -2553,7 +2537,7 @@ l
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "do_not_recommend_results_in_multiline_comment")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauIncrementalAutocompleteCommentDetection, true}, {FFlag::LuauBetterCursorInCommentDetection, true}};
+    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     std::string source = R"(--[[
 )";
     std::string dest = R"(--[[
@@ -2574,7 +2558,7 @@ a
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_simple")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauIncrementalAutocompleteCommentDetection, true}, {FFlag::LuauBetterCursorInCommentDetection, true}};
+    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     const std::string source = R"(
 -- sel
 -- retur
@@ -2655,7 +2639,7 @@ baz
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauIncrementalAutocompleteCommentDetection, true}, {FFlag::LuauBetterCursorInCommentDetection, true}};
+    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     const std::string source = R"(
 -- sel
 -- retur
@@ -2735,7 +2719,7 @@ if x == 5
 local x = 5
 if x == 5 then -- a comment
 )";
-    ScopedFastFlag sff[] = {{FFlag::LuauIncrementalAutocompleteCommentDetection, true}, {FFlag::LuauBetterCursorInCommentDetection, true}};
+    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     autocompleteFragmentInBothSolvers(
         source,
         updated,
@@ -2768,22 +2752,6 @@ type A = <>random non code text here
             CHECK(frag.result->acResults.entryMap.empty());
         }
     );
-}
-
-TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_handles_stale_module")
-{
-    ScopedFastFlag sff{FFlag::LuauModuleHoldsAstRoot, false};
-    const std::string sourceName = "MainModule";
-    fileResolver.source[sourceName] = "local x = 5";
-
-    frontend.check(sourceName, getOptions());
-    frontend.markDirty(sourceName);
-    frontend.parse(sourceName);
-
-    FragmentAutocompleteStatusResult frag = autocompleteFragmentForModule(sourceName, fileResolver.source[sourceName], Luau::Position(0, 0));
-    REQUIRE(frag.result);
-    CHECK(frag.result->acResults.entryMap.empty());
-    CHECK_EQ(frag.result->incrementalModule, nullptr);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "require_tracing")
@@ -3085,7 +3053,6 @@ z = a.P.E
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "NotNull_nil_scope_assertion_caused_by_free_type_inheriting_null_scope_from_table")
 {
-    ScopedFastFlag sff{FFlag::LuauTrackInteriorFreeTypesOnScope, false};
     const std::string source = R"(--!strict
 local foo
 local a = foo()
@@ -3269,5 +3236,365 @@ end)
     );
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "differ_1")
+{
+    const std::string source = R"()";
+    const std::string dest = R"(local tbl = { foo = 1, bar = 2 };
+tbl.b)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{1, 5},
+        [](FragmentAutocompleteStatusResult& status)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == status.status);
+            REQUIRE(status.result);
+            CHECK(!status.result->acResults.entryMap.empty());
+            CHECK(status.result->acResults.entryMap.count("foo"));
+            CHECK(status.result->acResults.entryMap.count("bar"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_test_both_empty")
+{
+    SourceModule stale;
+    SourceModule fresh;
+    ParseResult o = parseHelper_(stale, R"()");
+    ParseResult n = parseHelper_(stale, R"()");
+    auto pos = Luau::blockDiffStart(o.root, n.root, nullptr);
+    CHECK(pos == std::nullopt);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_test_both_empty_e2e")
+{
+    const std::string source = R"()";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{0, 0},
+        [](FragmentAutocompleteStatusResult& result)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == result.status);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_1")
+{
+    SourceModule stale;
+    SourceModule fresh;
+    ParseResult o = parseHelper_(stale, R"()");
+    ParseResult n = parseHelper_(fresh, R"(local x = 4
+local y = 3
+local z = 3)");
+    auto pos = Luau::blockDiffStart(o.root, n.root, n.root->body.data[2]);
+    REQUIRE(pos);
+    CHECK(*pos == Position{0, 0});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_1_e2e")
+{
+    const std::string source = R"()";
+    const std::string dest = R"(local f1 = 4
+local f2 = "a"
+local f3 = f
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{2, 12},
+        [](FragmentAutocompleteStatusResult& result)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == result.status);
+            REQUIRE(result.result);
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("f1"));
+            CHECK(result.result->acResults.entryMap.count("f2"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_1_e2e_in_the_middle")
+{
+    const std::string source = R"()";
+    const std::string dest = R"(local f1 = 4
+local f2 = f
+local f3 = f
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{1, 12},
+        [](FragmentAutocompleteStatusResult& result)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == result.status);
+            REQUIRE(result.result);
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("f1"));
+            CHECK(!result.result->acResults.entryMap.count("f3"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_2")
+{
+    SourceModule stale;
+    SourceModule fresh;
+    ParseResult o = parseHelper_(stale, R"(local x = 4)");
+    ParseResult n = parseHelper_(fresh, R"(local x = 4
+local y = 3
+local z = 3)");
+    auto pos = Luau::blockDiffStart(o.root, n.root, n.root->body.data[1]);
+    REQUIRE(pos);
+    CHECK(*pos == Position{1, 0});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_3")
+{
+    SourceModule stale;
+    SourceModule fresh;
+    ParseResult o = parseHelper_(stale, R"(local x = 4
+local y = 2 + 1)");
+    ParseResult n = parseHelper_(fresh, R"(local x = 4
+local y = 3
+local z = 3
+local foo = 8)");
+    auto pos = Luau::blockDiffStart(o.root, n.root, n.root->body.data[3]);
+    REQUIRE(pos);
+    CHECK(*pos == Position{1, 0});
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_3")
+{
+    const std::string source = R"(local f1 = 4
+local f2 = 2 + 1)";
+    const std::string dest = R"(local f1 = 4
+local f2 = 3
+local f3 = 3
+local foo = 8 + )";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{3, 16},
+        [](FragmentAutocompleteStatusResult& result)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == result.status);
+            REQUIRE(result.result);
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("f1"));
+            CHECK(result.result->acResults.entryMap.count("f2"));
+            CHECK(result.result->acResults.entryMap.count("f3"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_fake_similarity")
+{
+    // Captures the bad behaviour of block based diffs
+    SourceModule stale;
+    SourceModule fresh;
+    ParseResult o = parseHelper_(stale, R"(local x = 4
+local y = true
+local z = 2 + 1)");
+    ParseResult n = parseHelper_(fresh, R"(local x = 4
+local y = "tr"
+local z = 3
+local foo = 8)");
+    auto pos = Luau::blockDiffStart(o.root, n.root, n.root->body.data[2]);
+    REQUIRE(pos);
+    CHECK(*pos == Position{2, 0});
+}
+
+#if 0
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalReturn_assert")
+{
+    const std::string source = R"()";
+    const std::string dest = R"(local function target(a: number, b: string) return a + #b end
+local function bar1(a: string) reutrn a .. 'x' end
+local function bar2(a: number) return -a end
+return target(bar)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{3, 17},
+        [](FragmentAutocompleteStatusResult& status)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == status.status);
+            REQUIRE(status.result);
+            CHECK(!status.result->acResults.entryMap.empty());
+            CHECK(status.result->acResults.entryMap.count("bar1"));
+            CHECK(status.result->acResults.entryMap.count("bar2"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalRank_assert")
+{
+    const std::string source = R"()";
+    const std::string dest = R"(local function target(a: number, b: string) return a + #b end
+local bar1 = 'hello'
+local bar2 = 4
+return target(bar)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{3, 17},
+        [](FragmentAutocompleteStatusResult& status)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == status.status);
+            REQUIRE(status.result);
+            CHECK(!status.result->acResults.entryMap.empty());
+            CHECK(status.result->acResults.entryMap.count("bar1"));
+            CHECK(status.result->acResults.entryMap.count("bar2"));
+        }
+    );
+}
+#endif
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "str_metata_table_finished_defining")
+{
+    const std::string source = R"(local function foobar(): string return "" end
+local foo = f)";
+    const std::string dest = R"(local function foobar(): string return "" end
+local foo = foobar()
+foo:)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{2, 4},
+        [](FragmentAutocompleteStatusResult& res)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == res.status);
+            REQUIRE(res.result);
+            CHECK(!res.result->acResults.entryMap.empty());
+            CHECK(res.result->acResults.entryMap.count("len"));
+            CHECK(res.result->acResults.entryMap.count("gsub"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "str_metata_table_redef")
+{
+    const std::string source = R"(local x = 42)";
+    const std::string dest = R"(local x = 42
+local x = ""
+x:)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{2, 2},
+        [](FragmentAutocompleteStatusResult& res)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == res.status);
+            REQUIRE(res.result);
+            CHECK(!res.result->acResults.entryMap.empty());
+            CHECK(res.result->acResults.entryMap.count("len"));
+            CHECK(res.result->acResults.entryMap.count("gsub"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "diff_multiple_blocks_on_same_line")
+{
+    const std::string source = R"(
+do local function foo() end; local x = ""; end do local function bar() end)";
+    const std::string dest = R"(
+do local function foo() end; local x = ""; end do local function bar() end local x = {a : number}; b end )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{1, 101},
+        [](FragmentAutocompleteStatusResult& res)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == res.status);
+            REQUIRE(res.result);
+            CHECK(!res.result->acResults.entryMap.empty());
+            CHECK(res.result->acResults.entryMap.count("bar"));
+            CHECK(!res.result->acResults.entryMap.count("foo"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "nested_blocks_else_simple")
+{
+    const std::string source = R"(
+local function foo(t : {foo : string})
+    local x = t.foo
+    do
+        if t then
+        end
+    end
+end
+)";
+    const std::string dest = R"(
+local function foo(t : {foo : string})
+    local x = t.foo
+    do
+        if t then
+            x:
+        end
+    end
+end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{5, 14},
+        [](FragmentAutocompleteStatusResult& res)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == res.status);
+            REQUIRE(res.result);
+            CHECK(!res.result->acResults.entryMap.empty());
+            CHECK(res.result->acResults.entryMap.count("gsub"));
+            CHECK(res.result->acResults.entryMap.count("len"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "nested_blocks_else_difficult_2")
+{
+    const std::string source = R"(
+local function foo(t : {foo : number})
+    do
+        if t then
+        end
+    end
+end
+)";
+    const std::string dest = R"(
+local function foo(t : {foo : number})
+    do
+        if t then
+        else
+            local x = 4
+            return x + t.
+        end
+    end
+end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{6, 24},
+        [](FragmentAutocompleteStatusResult& res)
+        {
+            CHECK(FragmentAutocompleteStatus::Success == res.status);
+            REQUIRE(res.result);
+            CHECK(!res.result->acResults.entryMap.empty());
+            CHECK(res.result->acResults.entryMap.count("foo"));
+        }
+    );
+}
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 TEST_SUITE_END();

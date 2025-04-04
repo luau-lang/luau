@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixInfiniteRecursionInNormalization)
 LUAU_FASTFLAGVARIABLE(LuauNormalizedBufferIsNotUnknown)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeLimitFunctionSet)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationCatchMetatableCycles)
 
 namespace Luau
 {
@@ -3363,7 +3364,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     return NormalizationResult::True;
 }
 
-void makeTableShared(TypeId ty)
+void makeTableShared_DEPRECATED(TypeId ty)
 {
     ty = follow(ty);
     if (auto tableTy = getMutable<TableType>(ty))
@@ -3373,9 +3374,33 @@ void makeTableShared(TypeId ty)
     }
     else if (auto metatableTy = get<MetatableType>(ty))
     {
-        makeTableShared(metatableTy->metatable);
-        makeTableShared(metatableTy->table);
+        makeTableShared_DEPRECATED(metatableTy->metatable);
+        makeTableShared_DEPRECATED(metatableTy->table);
     }
+}
+
+void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    ty = follow(ty);
+    if (seen.contains(ty))
+        return;
+    seen.insert(ty);
+    if (auto tableTy = getMutable<TableType>(ty))
+    {
+        for (auto& [_, prop] : tableTy->props)
+            prop.makeShared();
+    }
+    else if (auto metatableTy = get<MetatableType>(ty))
+    {
+        makeTableShared(metatableTy->metatable, seen);
+        makeTableShared(metatableTy->table, seen);
+    }
+}
+
+void makeTableShared(TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    makeTableShared(ty, seen);
 }
 
 // -------- Convert back from a normalized type to a type
@@ -3477,7 +3502,10 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
         {
-            makeTableShared(table);
+            if (FFlag::LuauNormalizationCatchMetatableCycles)
+                makeTableShared(table);
+            else
+                makeTableShared_DEPRECATED(table);
             result.push_back(table);
         }
     }

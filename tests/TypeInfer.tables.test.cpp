@@ -24,14 +24,13 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
 LUAU_FASTFLAG(LuauFollowTableFreeze)
-LUAU_FASTFLAG(LuauPrecalculateMutatedFreeTypes2)
-LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauSearchForRefineableType)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAG(LuauBidirectionalFailsafe)
+LUAU_FASTFLAG(LuauBidirectionalInferenceElideAssert)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5172,8 +5171,6 @@ TEST_CASE_FIXTURE(Fixture, "function_check_constraint_too_eager")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
 
@@ -5217,8 +5214,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "magic_functions_bidirectionally_inferred")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
 
@@ -5345,8 +5340,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_musnt_assert")
 
 TEST_CASE_FIXTURE(Fixture, "optional_property_with_call")
 {
-    ScopedFastFlag _{FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true};
-
     LUAU_CHECK_NO_ERRORS(check(R"(
         type t = {
             key: boolean?,
@@ -5400,7 +5393,6 @@ TEST_CASE_FIXTURE(Fixture, "inference_in_constructor")
 TEST_CASE_FIXTURE(Fixture, "returning_optional_in_table")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceUpcast, true},
     };
 
@@ -5416,7 +5408,6 @@ TEST_CASE_FIXTURE(Fixture, "returning_mismatched_optional_in_table")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
     };
 
     auto result = check(R"(
@@ -5438,7 +5429,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_function_in_table")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceUpcast, true},
     };
 
@@ -5464,7 +5454,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_function_in_table")
 TEST_CASE_FIXTURE(Fixture, "oss_1596_expression_in_table")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceUpcast, true},
     };
 
@@ -5477,10 +5466,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_1596_expression_in_table")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1615_parametrized_type_alias")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
-    };
-
     LUAU_CHECK_NO_ERRORS(check(R"(
         type Pair<Node> = { sep: {}? }
         local a: Pair<{}> = {
@@ -5491,11 +5476,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_1615_parametrized_type_alias")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1543_optional_generic_param")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
-    };
-
     LUAU_CHECK_NO_ERRORS(check(R"(
         type foo<T> = { bar: T? }
 
@@ -5509,8 +5489,6 @@ TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceUpcast, true},
         {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
@@ -5544,8 +5522,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_index_syntax_bidirectional_infer_with_tables
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPrecalculateMutatedFreeTypes2, true},
-        {FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true},
         {FFlag::LuauBidirectionalInferenceUpcast, true},
         {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
     };
@@ -5688,6 +5664,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_in_indexer_with_compound_assig
             )
         ] *= _
     )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_match_literal_type_crash_again")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true},
+        {FFlag::LuauBidirectionalInferenceElideAssert, true},
+    };
+    CheckResult result = check(R"(
+        function f(_: { [string]: {unknown}} ) end
+        f(
+            {
+                _ = { 42 },
+                _ = { x = "foo" },
+            }
+        )
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 

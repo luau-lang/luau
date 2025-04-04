@@ -631,23 +631,6 @@ FunctionType::FunctionType(TypeLevel level, TypePackId argTypes, TypePackId retT
 }
 
 FunctionType::FunctionType(
-    TypeLevel level,
-    Scope* scope,
-    TypePackId argTypes,
-    TypePackId retTypes,
-    std::optional<FunctionDefinition> defn,
-    bool hasSelf
-)
-    : definition(std::move(defn))
-    , level(level)
-    , scope(scope)
-    , argTypes(argTypes)
-    , retTypes(retTypes)
-    , hasSelf(hasSelf)
-{
-}
-
-FunctionType::FunctionType(
     std::vector<TypeId> generics,
     std::vector<TypePackId> genericPacks,
     TypePackId argTypes,
@@ -677,27 +660,6 @@ FunctionType::FunctionType(
     , generics(generics)
     , genericPacks(genericPacks)
     , level(level)
-    , argTypes(argTypes)
-    , retTypes(retTypes)
-    , hasSelf(hasSelf)
-{
-}
-
-FunctionType::FunctionType(
-    TypeLevel level,
-    Scope* scope,
-    std::vector<TypeId> generics,
-    std::vector<TypePackId> genericPacks,
-    TypePackId argTypes,
-    TypePackId retTypes,
-    std::optional<FunctionDefinition> defn,
-    bool hasSelf
-)
-    : definition(std::move(defn))
-    , generics(generics)
-    , genericPacks(genericPacks)
-    , level(level)
-    , scope(scope)
     , argTypes(argTypes)
     , retTypes(retTypes)
     , hasSelf(hasSelf)

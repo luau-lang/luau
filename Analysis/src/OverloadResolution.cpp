@@ -454,7 +454,7 @@ SolveResult solveFunctionCall(
 
     TypePackId resultPack = arena->freshTypePack(scope);
 
-    TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, scope.get(), argsPack, resultPack});
+    TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, resultPack});
     Unifier2 u2{NotNull{arena}, builtinTypes, scope, iceReporter};
 
     const bool occursCheckPassed = u2.unify(*overloadToUse, inferredTy);
