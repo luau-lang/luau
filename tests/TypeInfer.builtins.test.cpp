@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(LuauStringFormatErrorSuppression)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -1672,10 +1671,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any")
         print(string.format("Hello, %s!", x))
     )");
 
-    if (FFlag::LuauStringFormatErrorSuppression)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

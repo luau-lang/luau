@@ -15,8 +15,6 @@
 #include <unordered_map>
 #include <optional>
 
-LUAU_FASTFLAG(LuauIncrementalAutocompleteCommentDetection)
-
 namespace Luau
 {
 

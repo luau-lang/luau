@@ -433,9 +433,6 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
         superTypePackParamsIter++;
     }
 
-    if (subTable->selfTy && superTable->selfTy)
-        result &= unify(*subTable->selfTy, *superTable->selfTy);
-
     if (subTable->indexer && superTable->indexer)
     {
         result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);

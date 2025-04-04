@@ -15,6 +15,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
+LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -248,6 +251,44 @@ function foo()
   end
 end
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForbidInternalTypes, true},
+        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
+        {FFlag::LuauTrackInferredFunctionTypeFromCall, true}
+    };
+
+    // This test case should just not assert
+    CheckResult result = check(R"(
+        function foo()
+
+            local productButtonPairs = {}
+            local func
+            local dir = -1
+
+            local function updateSearch()
+                for product, button in pairs(productButtonPairs) do
+                    -- This line may have a floating free type pack.
+                    button.LayoutOrder = func(product) * dir
+                end
+            end
+
+            function(mode)
+                if mode == 'New'then
+                    func = function(p)
+                        return p.id
+                    end
+                elseif mode == 'Price'then
+                    func = function(p)
+                        return p.price
+                    end
+                end
+            end
+        end
+    )");
 }
 
 TEST_SUITE_END();

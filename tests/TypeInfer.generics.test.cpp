@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauDeferBidirectionalInferenceForTableAssignment)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 using namespace Luau;
@@ -856,8 +855,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
-    ScopedFastFlag _{FFlag::LuauDeferBidirectionalInferenceForTableAssignment, true};
-
     CheckResult result = check(R"(
 --!strict
 -- At one point this produced a UAF

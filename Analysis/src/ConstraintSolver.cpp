@@ -35,12 +35,13 @@ LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauTrackInteriorFreeTablesOnScope)
-LUAU_FASTFLAGVARIABLE(LuauPrecalculateMutatedFreeTypes2)
+LUAU_FASTFLAGVARIABLE(LuauHasPropProperBlock)
 LUAU_FASTFLAGVARIABLE(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauSearchForRefineableType)
 LUAU_FASTFLAG(LuauDeprecatedAttribute)
 LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
+LUAU_FASTFLAGVARIABLE(LuauTrackInferredFunctionTypeFromCall)
 
 namespace Luau
 {
@@ -360,32 +361,19 @@ ConstraintSolver::ConstraintSolver(
     {
         unsolvedConstraints.emplace_back(c);
 
-        if (FFlag::LuauPrecalculateMutatedFreeTypes2)
+        auto maybeMutatedTypesPerConstraint = c->getMaybeMutatedFreeTypes();
+        for (auto ty : maybeMutatedTypesPerConstraint)
         {
-            auto maybeMutatedTypesPerConstraint = c->getMaybeMutatedFreeTypes();
-            for (auto ty : maybeMutatedTypesPerConstraint)
-            {
-                auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
-                refCount += 1;
+            auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
+            refCount += 1;
 
-                if (FFlag::DebugLuauGreedyGeneralization)
-                {
-                    auto [it, fresh] = mutatedFreeTypeToConstraint.try_emplace(ty, DenseHashSet<const Constraint*>{nullptr});
-                    it->second.insert(c.get());
-                }
-            }
-            maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
-        }
-        else
-        {
-            // initialize the reference counts for the free types in this constraint.
-            for (auto ty : c->getMaybeMutatedFreeTypes())
+            if (FFlag::DebugLuauGreedyGeneralization)
             {
-                // increment the reference count for `ty`
-                auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
-                refCount += 1;
+                auto [it, fresh] = mutatedFreeTypeToConstraint.try_emplace(ty, DenseHashSet<const Constraint*>{nullptr});
+                it->second.insert(c.get());
             }
         }
+        maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
 
 
         for (NotNull<const Constraint> dep : c->dependencies)
@@ -476,48 +464,24 @@ void ConstraintSolver::run()
                 unblock(c);
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
 
-                if (FFlag::LuauPrecalculateMutatedFreeTypes2)
+                const auto maybeMutated = maybeMutatedFreeTypes.find(c);
+                if (maybeMutated != maybeMutatedFreeTypes.end())
                 {
-                    const auto maybeMutated = maybeMutatedFreeTypes.find(c);
-                    if (maybeMutated != maybeMutatedFreeTypes.end())
+                    DenseHashSet<TypeId> seen{nullptr};
+                    for (auto ty : maybeMutated->second)
                     {
-                        DenseHashSet<TypeId> seen{nullptr};
-                        for (auto ty : maybeMutated->second)
+                        // There is a high chance that this type has been rebound
+                        // across blocked types, rebound free types, pending
+                        // expansion types, etc, so we need to follow it.
+                        ty = follow(ty);
+
+                        if (FFlag::DebugLuauGreedyGeneralization)
                         {
-                            // There is a high chance that this type has been rebound
-                            // across blocked types, rebound free types, pending
-                            // expansion types, etc, so we need to follow it.
-                            ty = follow(ty);
-
-                            if (FFlag::DebugLuauGreedyGeneralization)
-                            {
-                                if (seen.contains(ty))
-                                    continue;
-                                seen.insert(ty);
-                            }
-
-                            size_t& refCount = unresolvedConstraints[ty];
-                            if (refCount > 0)
-                                refCount -= 1;
-
-                            // We have two constraints that are designed to wait for the
-                            // refCount on a free type to be equal to 1: the
-                            // PrimitiveTypeConstraint and ReduceConstraint. We
-                            // therefore wake any constraint waiting for a free type's
-                            // refcount to be 1 or 0.
-                            if (refCount <= 1)
-                                unblock(ty, Location{});
-
-                            if (FFlag::DebugLuauGreedyGeneralization && refCount == 0)
-                                generalizeOneType(ty);
+                            if (seen.contains(ty))
+                                continue;
+                            seen.insert(ty);
                         }
-                    }
-                }
-                else
-                {
-                    // decrement the referenced free types for this constraint if we dispatched successfully!
-                    for (auto ty : c->getMaybeMutatedFreeTypes())
-                    {
+
                         size_t& refCount = unresolvedConstraints[ty];
                         if (refCount > 0)
                             refCount -= 1;
@@ -529,6 +493,9 @@ void ConstraintSolver::run()
                         // refcount to be 1 or 0.
                         if (refCount <= 1)
                             unblock(ty, Location{});
+
+                        if (FFlag::DebugLuauGreedyGeneralization && refCount == 0)
+                            generalizeOneType(ty);
                     }
                 }
 
@@ -1516,7 +1483,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     if (status == OverloadResolver::Analysis::Ok)
         overloadToUse = overload;
 
-    TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
+    TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, c.result});
     Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
     const bool occursCheckPassed = u2.unify(overloadToUse, inferredTy);
@@ -1550,6 +1517,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
     queuer.traverse(overloadToUse);
     queuer.traverse(inferredTy);
+
+    // This can potentially contain free types if the return type of
+    // `inferredTy` is never unified elsewhere.
+    if (FFlag::LuauTrackInteriorFreeTypesOnScope && FFlag::LuauTrackInferredFunctionTypeFromCall)
+        trackInteriorFreeType(constraint->scope, inferredTy);
 
     unblock(c.result, constraint->location);
 
@@ -1812,8 +1784,16 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     LUAU_ASSERT(get<BlockedType>(resultType));
     LUAU_ASSERT(canMutate(resultType, constraint));
 
-    if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType) || get<TypeFunctionInstanceType>(subjectType))
-        return block(subjectType, constraint);
+    if (FFlag::LuauHasPropProperBlock)
+    {
+        if (isBlocked(subjectType))
+            return block(subjectType, constraint);
+    }
+    else
+    {
+        if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType) || get<TypeFunctionInstanceType>(subjectType))
+            return block(subjectType, constraint);
+    }
 
     if (const TableType* subjectTable = getTableType(subjectType))
     {

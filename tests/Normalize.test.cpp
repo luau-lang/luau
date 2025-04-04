@@ -18,6 +18,7 @@ LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(LuauNormalizeLimitFunctionSet)
 LUAU_FASTFLAG(LuauSubtypingStopAtNormFail)
+LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
 
 using namespace Luau;
 
@@ -1072,6 +1073,19 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
     CHECK("'a & (false?)" == toString(result));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_recursive_metatable")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNormalizationCatchMetatableCycles, true}};
+
+    TypeId root = arena.addType(BlockedType{});
+    TypeId emptyTable = arena.addType(TableType(TableState::Sealed, {}));
+    TypeId metatable = arena.addType(MetatableType{emptyTable, root});
+    emplaceType<BoundType>(asMutable(root), metatable);
+    auto normalized = normalizer.normalize(root);
+    REQUIRE(normalized);
+    CHECK_EQ("t1 where t1 = { @metatable t1, {  } }", toString(normalizer.typeFromNormal(*normalized)));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
 {
     if (!FFlag::LuauSolverV2)
@@ -1194,6 +1208,7 @@ _(_)[_(n32)] %= _(_(_))
     LUAU_REQUIRE_ERRORS(result);
 }
 
+#if !(defined(_WIN32) && !(defined(_M_X64) || defined(_M_ARM64)))
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
 {
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
@@ -1210,5 +1225,6 @@ _().readu32 %= _(_(_(_),_))
 
     LUAU_REQUIRE_ERRORS(result);
 }
+#endif
 
 TEST_SUITE_END();

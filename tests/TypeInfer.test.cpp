@@ -31,6 +31,8 @@ LUAU_FASTFLAG(LuauUnifyMetatableWithAny)
 LUAU_FASTFLAG(LuauExtraFollows)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
+LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
+LUAU_FASTFLAG(LuauCacheInferencePerAstExpr)
 
 using namespace Luau;
 
@@ -1943,6 +1945,59 @@ TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
         local function concat_stuff(x: string, y : string | number)
             return x .. y
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_local_before_declaration_ice")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPreprocessTypestatedArgument, true},
+    };
+
+    CheckResult result = check(R"(
+        local _
+        table.freeze(_, _)
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto err0 = get<TypeMismatch>(result.errors[0]);
+    CHECK(err0);
+    CHECK_EQ("nil", toString(err0->givenType));
+    CHECK_EQ("table", toString(err0->wantedType));
+    auto err1 = get<CountMismatch>(result.errors[1]);
+    CHECK(err1);
+    CHECK_EQ(1, err1->expected);
+    CHECK_EQ(2, err1->actual);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_dont_double_solve_compound_assignment" * doctest::timeout(1.0))
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauCacheInferencePerAstExpr, true}
+    };
+
+    CheckResult result = check(R"(
+        local _ = {}
+        _[function<t0...>(...)
+            _[function(...)
+                _[_] %= _
+                _ = {}
+                _ = (- _)()
+            end] %= _
+            _[_] %= _
+        end] %= true
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_NO_ERROR(result, ConstraintSolvingIncompleteError);
+}
+
+TEST_CASE_FIXTURE(Fixture, "assert_allows_singleton_union_or_intersection")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = 42 :: | number
+        local y = 42 :: & number
     )"));
 }
 

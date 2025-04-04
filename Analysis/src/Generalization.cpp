@@ -12,7 +12,6 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
-LUAU_FASTFLAGVARIABLE(LuauGeneralizationRemoveRecursiveUpperBound2)
 
 namespace Luau
 {
@@ -96,7 +95,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 LUAU_ASSERT(onlyType != haystack);
                 emplaceType<BoundType>(asMutable(haystack), onlyType);
             }
-            else if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound2 && ut->options.empty())
+            else if (ut->options.empty())
             {
                 emplaceType<BoundType>(asMutable(haystack), builtinTypes->neverType);
             }
@@ -143,7 +142,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 LUAU_ASSERT(onlyType != needle);
                 emplaceType<BoundType>(asMutable(needle), onlyType);
             }
-            else if (FFlag::LuauGeneralizationRemoveRecursiveUpperBound2 && it->parts.empty())
+            else if (it->parts.empty())
             {
                 emplaceType<BoundType>(asMutable(needle), builtinTypes->unknownType);
             }

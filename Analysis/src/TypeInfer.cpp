@@ -34,8 +34,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
-
-LUAU_FASTFLAG(LuauModuleHoldsAstRoot)
+LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 
 namespace Luau
 {
@@ -256,8 +255,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
     currentModule->names = module.names;
-    if (FFlag::LuauModuleHoldsAstRoot)
-        currentModule->root = module.root;
+    currentModule->root = module.root;
 
     iceHandler->moduleName = module.name;
     normalizer.arena = &currentModule->internalTypes;
@@ -1658,7 +1656,10 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
             FreeType* ftv = getMutable<FreeType>(ty);
             LUAU_ASSERT(ftv);
             ftv->forwardedTypeAlias = true;
-            bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
+            if (FFlag::LuauRetainDefinitionAliasLocations)
+                bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty, typealias.location};
+            else
+                bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
 
             scope->typeAliasLocations[name] = typealias.location;
             scope->typeAliasNameLocations[name] = typealias.nameLocation;
@@ -1703,7 +1704,10 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
     TypeId metaTy = addType(TableType{TableState::Sealed, scope->level});
 
     ctv->metatable = metaTy;
-    scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+    if (FFlag::LuauRetainDefinitionAliasLocations)
+        scope->exportedTypeBindings[className] = TypeFun{{}, classTy, declaredClass.location};
+    else
+        scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
 }
 
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)

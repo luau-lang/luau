@@ -96,7 +96,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             return dest.addType(a);
         else if constexpr (std::is_same_v<T, FunctionType>)
         {
-            FunctionType clone = FunctionType{a.level, a.scope, a.argTypes, a.retTypes, a.definition, a.hasSelf};
+            FunctionType clone = FunctionType{a.level, a.argTypes, a.retTypes, a.definition, a.hasSelf};
             clone.generics = a.generics;
             clone.genericPacks = a.genericPacks;
             clone.magic = a.magic;
