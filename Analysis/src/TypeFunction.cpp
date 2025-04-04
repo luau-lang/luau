@@ -50,7 +50,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
 LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
-LUAU_FASTFLAGVARIABLE(LuauClipNestedAndRecursiveUnion)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionImprovements)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAGVARIABLE(LuauIntersectNotNil)
@@ -59,6 +58,7 @@ LUAU_FASTFLAGVARIABLE(LuauMetatablesHaveLength)
 LUAU_FASTFLAGVARIABLE(LuauDontForgetToReduceUnionFunc)
 LUAU_FASTFLAGVARIABLE(LuauSearchForRefineableType)
 LUAU_FASTFLAGVARIABLE(LuauIndexAnyIsAny)
+LUAU_FASTFLAGVARIABLE(LuauFixCyclicIndexInIndexer)
 LUAU_FASTFLAGVARIABLE(LuauSimplyRefineNotNil)
 LUAU_FASTFLAGVARIABLE(LuauIndexDeferPendingIndexee)
 LUAU_FASTFLAGVARIABLE(LuauNewTypeFunReductionChecks2)
@@ -2772,7 +2772,19 @@ bool searchPropsAndIndexer(
     // index into tbl's indexer
     if (tblIndexer)
     {
-        if (isSubtype(ty, tblIndexer->indexType, ctx->scope, ctx->builtins, ctx->simplifier, *ctx->ice))
+        TypeId indexType = FFlag::LuauFixCyclicIndexInIndexer ? follow(tblIndexer->indexType) : tblIndexer->indexType;
+
+        if (FFlag::LuauFixCyclicIndexInIndexer)
+        {
+            if (auto tfit = get<TypeFunctionInstanceType>(indexType))
+            {
+                // if we have an index function here, it means we're in a cycle, so let's see if it's well-founded if we tie the knot
+                if (tfit->function.get() == &builtinTypeFunctions().indexFunc)
+                    indexType = follow(tblIndexer->indexResultType);
+            }
+        }
+
+        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, ctx->simplifier, *ctx->ice))
         {
             TypeId idxResultTy = follow(tblIndexer->indexResultType);
 

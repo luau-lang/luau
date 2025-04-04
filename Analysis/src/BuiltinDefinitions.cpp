@@ -29,7 +29,6 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauStringFormatErrorSuppression)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauFollowTableFreeze)
@@ -712,10 +711,8 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
         if (!result.isSubtype)
         {
-            if (FFlag::LuauStringFormatErrorSuppression)
+            switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
             {
-                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
-                {
                 case ErrorSuppression::Suppress:
                     break;
                 case ErrorSuppression::NormalizationFailed:
@@ -725,12 +722,6 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
                     if (!reasonings.suppressed)
                         context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
-                }
-            }
-            else
-            {
-                Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
-                context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
             }
         }
     }

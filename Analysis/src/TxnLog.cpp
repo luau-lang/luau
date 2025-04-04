@@ -407,41 +407,6 @@ PendingTypePack* TxnLog::changeLevel(TypePackId tp, TypeLevel newLevel)
     return newTp;
 }
 
-PendingType* TxnLog::changeScope(TypeId ty, NotNull<Scope> newScope)
-{
-    LUAU_ASSERT(get<FreeType>(ty) || get<TableType>(ty) || get<FunctionType>(ty));
-
-    PendingType* newTy = queue(ty);
-    if (FreeType* ftv = Luau::getMutable<FreeType>(newTy))
-    {
-        ftv->scope = newScope;
-    }
-    else if (TableType* ttv = Luau::getMutable<TableType>(newTy))
-    {
-        LUAU_ASSERT(ttv->state == TableState::Free || ttv->state == TableState::Generic);
-        ttv->scope = newScope;
-    }
-    else if (FunctionType* ftv = Luau::getMutable<FunctionType>(newTy))
-    {
-        ftv->scope = newScope;
-    }
-
-    return newTy;
-}
-
-PendingTypePack* TxnLog::changeScope(TypePackId tp, NotNull<Scope> newScope)
-{
-    LUAU_ASSERT(get<FreeTypePack>(tp));
-
-    PendingTypePack* newTp = queue(tp);
-    if (FreeTypePack* ftp = Luau::getMutable<FreeTypePack>(newTp))
-    {
-        ftp->scope = newScope;
-    }
-
-    return newTp;
-}
-
 PendingType* TxnLog::changeIndexer(TypeId ty, std::optional<TableIndexer> indexer)
 {
     LUAU_ASSERT(get<TableType>(ty));

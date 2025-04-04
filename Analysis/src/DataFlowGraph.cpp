@@ -13,32 +13,22 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauPreprocessTypestatedArgument)
+LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackTrueReset)
 
 namespace Luau
 {
 
 bool doesCallError(const AstExprCall* call); // TypeInfer.cpp
 
-struct ReferencedDefFinder : public AstVisitor
-{
-    bool visit(AstExprLocal* local) override
-    {
-        referencedLocalDefs.push_back(local->local);
-        return true;
-    }
-    // ast defs is just a mapping from expr -> def in general
-    // will get built up by the dfg builder
-
-    // localDefs, we need to copy over
-    std::vector<AstLocal*> referencedLocalDefs;
-};
-
 struct PushScope
 {
     ScopeStack& stack;
+    size_t previousSize;
 
     PushScope(ScopeStack& stack, DfgScope* scope)
         : stack(stack)
+        , previousSize(stack.size())
     {
         // `scope` should never be `nullptr` here.
         LUAU_ASSERT(scope);
@@ -47,7 +37,18 @@ struct PushScope
 
     ~PushScope()
     {
-        stack.pop_back();
+        if (FFlag::LuauDfgScopeStackTrueReset)
+        {
+            // If somehow this stack has _shrunk_ to be smaller than we expect,
+            // something very strange has happened.
+            LUAU_ASSERT(stack.size() > previousSize);
+            while (stack.size() > previousSize)
+                stack.pop_back();
+        }
+        else
+        {
+            stack.pop_back();
+        }
     }
 };
 
@@ -872,6 +873,12 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 {
     visitExpr(c->func);
 
+    if (FFlag::LuauPreprocessTypestatedArgument)
+    {
+        for (AstExpr* arg : c->args)
+            visitExpr(arg);
+    }
+
     if (shouldTypestateForFirstArgument(*c) && c->args.size > 1 && isLValue(*c->args.begin()))
     {
         AstExpr* firstArg = *c->args.begin();
@@ -902,8 +909,11 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
         visitLValue(firstArg, def);
     }
 
-    for (AstExpr* arg : c->args)
-        visitExpr(arg);
+    if (!FFlag::LuauPreprocessTypestatedArgument)
+    {
+        for (AstExpr* arg : c->args)
+            visitExpr(arg);
+    }
 
     // We treat function calls as "subscripted" as they could potentially
     // return a subscripted value, consider:

@@ -132,6 +132,8 @@ struct ConstraintGenerator
 
     DenseHashMap<TypeId, TypeIds> localTypes{nullptr};
 
+    DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
+
     DcrLogger* logger;
 
     ConstraintGenerator(

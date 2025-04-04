@@ -16,6 +16,7 @@
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalFailsafe)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceElideAssert)
 
 namespace Luau
 {
@@ -414,7 +415,8 @@ TypeId matchLiteralType(
             }
             else if (item.kind == AstExprTable::Item::List)
             {
-                LUAU_ASSERT(tableTy->indexer);
+                if (!FFlag::LuauBidirectionalInferenceCollectIndexerTypes || !FFlag::LuauBidirectionalInferenceElideAssert)
+                    LUAU_ASSERT(tableTy->indexer);
 
                 if (expectedTableTy->indexer)
                 {

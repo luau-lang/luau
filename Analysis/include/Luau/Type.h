@@ -356,10 +356,8 @@ struct FunctionType
     );
 
     // Local monomorphic function
-    FunctionType(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
     FunctionType(
         TypeLevel level,
-        Scope* scope,
         TypePackId argTypes,
         TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {},
@@ -376,16 +374,6 @@ struct FunctionType
         std::optional<FunctionDefinition> defn = {},
         bool hasSelf = false
     );
-    FunctionType(
-        TypeLevel level,
-        Scope* scope,
-        std::vector<TypeId> generics,
-        std::vector<TypePackId> genericPacks,
-        TypePackId argTypes,
-        TypePackId retTypes,
-        std::optional<FunctionDefinition> defn = {},
-        bool hasSelf = false
-    );
 
     std::optional<FunctionDefinition> definition;
     /// These should all be generic
@@ -394,7 +382,6 @@ struct FunctionType
     std::vector<std::optional<FunctionArgument>> argNames;
     Tags tags;
     TypeLevel level;
-    Scope* scope = nullptr;
     TypePackId argTypes;
     TypePackId retTypes;
     std::shared_ptr<MagicFunction> magic = nullptr;
@@ -481,7 +468,9 @@ struct Property
     TypeId type() const;
     void setType(TypeId ty);
 
-    // Sets the write type of this property to the read type.
+    // If this property has a present `writeTy`, set it equal to the `readTy`.
+    // This is to ensure that if we normalize a property that has divergent
+    // read and write types, we make them converge (for now).
     void makeShared();
 
     bool isShared() const;
@@ -525,9 +514,6 @@ struct TableType
 
     std::optional<TypeId> boundTo;
     Tags tags;
-
-    // Methods of this table that have an untyped self will use the same shared self type.
-    std::optional<TypeId> selfTy;
 
     // We track the number of as-yet-unadded properties to unsealed tables.
     // Some constraints will use this information to decide whether or not they
@@ -890,6 +876,9 @@ struct TypeFun
      */
     TypeId type;
 
+    // The location of where this TypeFun was defined, if available
+    std::optional<Location> definitionLocation;
+
     TypeFun() = default;
 
     explicit TypeFun(TypeId ty)
@@ -897,16 +886,23 @@ struct TypeFun
     {
     }
 
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type, std::optional<Location> definitionLocation = std::nullopt)
         : typeParams(std::move(typeParams))
         , type(type)
+        , definitionLocation(definitionLocation)
     {
     }
 
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
+    TypeFun(
+        std::vector<GenericTypeDefinition> typeParams,
+        std::vector<GenericTypePackDefinition> typePackParams,
+        TypeId type,
+        std::optional<Location> definitionLocation = std::nullopt
+    )
         : typeParams(std::move(typeParams))
         , typePackParams(std::move(typePackParams))
         , type(type)
+        , definitionLocation(definitionLocation)
     {
     }
 
