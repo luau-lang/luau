@@ -1658,11 +1658,11 @@ FragmentAutocompleteResult fragmentAutocomplete(
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
     if (FFlag::DebugLogFragmentsFromAutocomplete)
         logLuau("Fragment Autocomplete Source Script", src);
-    TypeArena arenaForFragmentAutocomplete;
+    unfreeze(tcResult.incrementalModule->internalTypes);
     auto result = Luau::autocomplete_(
         tcResult.incrementalModule,
         frontend.builtinTypes,
-        &arenaForFragmentAutocomplete,
+        &tcResult.incrementalModule->internalTypes,
         tcResult.ancestry,
         globalScope,
         tcResult.freshScope,
@@ -1670,9 +1670,9 @@ FragmentAutocompleteResult fragmentAutocomplete(
         frontend.fileResolver,
         callback
     );
-
+    freeze(tcResult.incrementalModule->internalTypes);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);
-    return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(arenaForFragmentAutocomplete), std::move(result)};
+    return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(result)};
 }
 
 } // namespace Luau
