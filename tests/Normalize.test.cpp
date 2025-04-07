@@ -1193,7 +1193,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity")
 {
-    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
+    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 30};
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
     ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
     ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
@@ -1208,10 +1208,9 @@ _(_)[_(n32)] %= _(_(_))
     LUAU_REQUIRE_ERRORS(result);
 }
 
-#if !(defined(_WIN32) && !(defined(_M_X64) || defined(_M_ARM64)))
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
 {
-    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
+    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 30};
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
     ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
     ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
@@ -1225,6 +1224,5 @@ _().readu32 %= _(_(_(_),_))
 
     LUAU_REQUIRE_ERRORS(result);
 }
-#endif
 
 TEST_SUITE_END();
