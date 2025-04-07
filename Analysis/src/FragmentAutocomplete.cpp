@@ -1659,6 +1659,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
     if (FFlag::DebugLogFragmentsFromAutocomplete)
         logLuau("Fragment Autocomplete Source Script", src);
     unfreeze(tcResult.incrementalModule->internalTypes);
+    TypeArena arenaForAutocomplete;
     auto result = Luau::autocomplete_(
         tcResult.incrementalModule,
         frontend.builtinTypes,
@@ -1672,7 +1673,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
     );
     freeze(tcResult.incrementalModule->internalTypes);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);
-    return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(result)};
+    return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(arenaForAutocomplete), std::move(result)};
 }
 
 } // namespace Luau
