@@ -1,16 +1,16 @@
 # Luau.Common Sources
-# Note: Until 3.19, INTERFACE targets couldn't have SOURCES property set
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
-    target_sources(Luau.Common PRIVATE
-        Common/include/Luau/Common.h
-        Common/include/Luau/Bytecode.h
-        Common/include/Luau/BytecodeUtils.h
-        Common/include/Luau/DenseHash.h
-        Common/include/Luau/ExperimentalFlags.h
-        Common/include/Luau/Variant.h
-        Common/include/Luau/VecDeque.h
-    )
-endif()
+target_sources(Luau.Common PRIVATE
+    Common/include/Luau/Common.h
+    Common/include/Luau/Bytecode.h
+    Common/include/Luau/BytecodeUtils.h
+    Common/include/Luau/DenseHash.h
+    Common/include/Luau/ExperimentalFlags.h
+    Common/include/Luau/Variant.h
+    Common/include/Luau/VecDeque.h
+    Common/include/luacommon.h
+
+    Common/src/lflags.cpp
+)
 
 # Luau.Ast Sources
 target_sources(Luau.Ast PRIVATE
@@ -459,9 +459,10 @@ if(TARGET Luau.UnitTest)
         tests/EqSat.slice.test.cpp
         tests/EqSatSimplification.test.cpp
         tests/Error.test.cpp
+        tests/FastFlags.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h
-	tests/FragmentAutocomplete.test.cpp
+        tests/FragmentAutocomplete.test.cpp
         tests/Frontend.test.cpp
         tests/Generalization.test.cpp
         tests/InsertionOrderedMap.test.cpp

@@ -1,4 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "luacommon.h"
+
 #include "Luau/Common.h"
 #include "Luau/ExperimentalFlags.h"
 
@@ -9,16 +11,8 @@
 
 static void setLuauFlag(std::string_view name, bool state)
 {
-    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-    {
-        if (name == flag->name)
-        {
-            flag->value = state;
-            return;
-        }
-    }
-
-    fprintf(stderr, "Warning: unrecognized flag '%.*s'.\n", int(name.length()), name.data());
+    if (!luau_setfflag(name.data(), state))
+        fprintf(stderr, "Warning: unrecognized flag '%.*s'.\n", int(name.length()), name.data());
 }
 
 static void setLuauFlags(bool state)

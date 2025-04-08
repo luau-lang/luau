@@ -22,7 +22,7 @@ if(LUAU_STATIC_CRT)
 endif()
 
 project(Luau LANGUAGES CXX C)
-add_library(Luau.Common INTERFACE)
+add_library(Luau.Common STATIC)
 add_library(Luau.CLI.lib STATIC)
 add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
@@ -65,7 +65,9 @@ add_library(Luau.VM.Internals INTERFACE)
 
 include(Sources.cmake)
 
-target_include_directories(Luau.Common INTERFACE Common/include)
+target_compile_features(Luau.Common PUBLIC cxx_std_17)
+target_include_directories(Luau.Common PUBLIC Common/include)
+target_link_libraries(Luau.Common)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
 target_include_directories(Luau.CLI.lib PUBLIC CLI/include)
@@ -164,6 +166,7 @@ if(LUAU_EXTERN_C)
     target_compile_definitions(Luau.VM PUBLIC LUA_API=extern\"C\")
     target_compile_definitions(Luau.Compiler PUBLIC LUACODE_API=extern\"C\")
     target_compile_definitions(Luau.CodeGen PUBLIC LUACODEGEN_API=extern\"C\")
+    target_compile_definitions(Luau.Common PUBLIC LUACOMMON_API=extern\"C\")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
