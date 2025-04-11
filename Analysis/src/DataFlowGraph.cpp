@@ -15,7 +15,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackTrueReset)
-
+LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
 namespace Luau
 {
 
@@ -196,7 +196,15 @@ DataFlowGraph DataFlowGraphBuilder::build(
 
     DataFlowGraphBuilder builder(defArena, keyArena);
     builder.handle = handle;
-    DfgScope* moduleScope = builder.makeChildScope();
+
+    DfgScope* moduleScope;
+    // We're not explicitly calling makeChildScope here because that function relies on currentScope
+    // which guarantees that the scope being returned is NotNull
+    // This means that while the scope stack is empty, we'll have to manually initialize the global scope
+    if (FFlag::LuauDfgScopeStackNotNull)
+        moduleScope = builder.scopes.emplace_back(new DfgScope{nullptr, DfgScope::ScopeType::Linear}).get();
+    else
+        moduleScope = builder.makeChildScope();
     PushScope ps{builder.scopeStack, moduleScope};
     builder.visitBlockWithoutChildScope(block);
     builder.resolveCaptures();
@@ -228,7 +236,13 @@ void DataFlowGraphBuilder::resolveCaptures()
     }
 }
 
-DfgScope* DataFlowGraphBuilder::currentScope()
+NotNull<DfgScope> DataFlowGraphBuilder::currentScope()
+{
+    LUAU_ASSERT(!scopeStack.empty());
+    return NotNull{scopeStack.back()};
+}
+
+DfgScope* DataFlowGraphBuilder::currentScope_DEPRECATED()
 {
     if (scopeStack.empty())
         return nullptr; // nullptr is the root DFG scope.
@@ -237,7 +251,10 @@ DfgScope* DataFlowGraphBuilder::currentScope()
 
 DfgScope* DataFlowGraphBuilder::makeChildScope(DfgScope::ScopeType scopeType)
 {
-    return scopes.emplace_back(new DfgScope{currentScope(), scopeType}).get();
+    if (FFlag::LuauDfgScopeStackNotNull)
+        return scopes.emplace_back(new DfgScope{currentScope(), scopeType}).get();
+    else
+        return scopes.emplace_back(new DfgScope{currentScope_DEPRECATED(), scopeType}).get();
 }
 
 void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b)
@@ -312,9 +329,9 @@ void DataFlowGraphBuilder::joinProps(DfgScope* result, const DfgScope& a, const 
     }
 }
 
-DefId DataFlowGraphBuilder::lookup(Symbol symbol)
+DefId DataFlowGraphBuilder::lookup(Symbol symbol, Location location)
 {
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
 
     // true if any of the considered scopes are a loop.
     bool outsideLoopScope = false;
@@ -339,15 +356,15 @@ DefId DataFlowGraphBuilder::lookup(Symbol symbol)
         }
     }
 
-    DefId result = defArena->freshCell();
+    DefId result = defArena->freshCell(symbol, location);
     scope->bindings[symbol] = result;
     captures[symbol].allVersions.push_back(result);
     return result;
 }
 
-DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key)
+DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key, Location location)
 {
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
     for (DfgScope* current = scope; current; current = current->parent)
     {
         if (auto props = current->props.find(def))
@@ -357,7 +374,7 @@ DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key)
         }
         else if (auto phi = get<Phi>(def); phi && phi->operands.empty()) // Unresolved phi nodes
         {
-            DefId result = defArena->freshCell();
+            DefId result = defArena->freshCell(def->name, location);
             scope->props[def][key] = result;
             return result;
         }
@@ -367,7 +384,7 @@ DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key)
     {
         std::vector<DefId> defs;
         for (DefId operand : phi->operands)
-            defs.push_back(lookup(operand, key));
+            defs.push_back(lookup(operand, key, location));
 
         DefId result = defArena->phi(defs);
         scope->props[def][key] = result;
@@ -375,7 +392,7 @@ DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key)
     }
     else if (get<Cell>(def))
     {
-        DefId result = defArena->freshCell();
+        DefId result = defArena->freshCell(def->name, location);
         scope->props[def][key] = result;
         return result;
     }
@@ -393,7 +410,10 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatBlock* b)
         cf = visitBlockWithoutChildScope(b);
     }
 
-    currentScope()->inherit(child);
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->inherit(child);
+    else
+        currentScope_DEPRECATED()->inherit(child);
     return cf;
 }
 
@@ -478,7 +498,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
         elsecf = visit(i->elsebody);
     }
 
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
     if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
         join(scope, scope, elseScope);
     else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
@@ -505,7 +525,10 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatWhile* w)
         visit(w->body);
     }
 
-    currentScope()->inherit(whileScope);
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->inherit(whileScope);
+    else
+        currentScope_DEPRECATED()->inherit(whileScope);
 
     return ControlFlow::None;
 }
@@ -521,7 +544,10 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatRepeat* r)
         visitExpr(r->condition);
     }
 
-    currentScope()->inherit(repeatScope);
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->inherit(repeatScope);
+    else
+        currentScope_DEPRECATED()->inherit(repeatScope);
 
     return ControlFlow::None;
 }
@@ -570,7 +596,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatLocal* l)
         // We need to create a new def to intentionally avoid alias tracking, but we'd like to
         // make sure that the non-aliased defs are also marked as a subscript for refinements.
         bool subscripted = i < defs.size() && containsSubscriptedDefinition(defs[i]);
-        DefId def = defArena->freshCell(subscripted);
+        DefId def = defArena->freshCell(local, local->location, subscripted);
         if (i < l->values.size)
         {
             AstExpr* e = l->values.data[i];
@@ -580,7 +606,10 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatLocal* l)
             }
         }
         graph.localDefs[local] = def;
-        currentScope()->bindings[local] = def;
+        if (FFlag::LuauDfgScopeStackNotNull)
+            currentScope()->bindings[local] = def;
+        else
+            currentScope_DEPRECATED()->bindings[local] = def;
         captures[local].allVersions.push_back(def);
     }
 
@@ -602,16 +631,22 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFor* f)
         if (f->var->annotation)
             visitType(f->var->annotation);
 
-        DefId def = defArena->freshCell();
+        DefId def = defArena->freshCell(f->var, f->var->location);
         graph.localDefs[f->var] = def;
-        currentScope()->bindings[f->var] = def;
+        if (FFlag::LuauDfgScopeStackNotNull)
+            currentScope()->bindings[f->var] = def;
+        else
+            currentScope_DEPRECATED()->bindings[f->var] = def;
         captures[f->var].allVersions.push_back(def);
 
         // TODO(controlflow): entry point has a back edge from exit point
         visit(f->body);
     }
 
-    currentScope()->inherit(forScope);
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->inherit(forScope);
+    else
+        currentScope_DEPRECATED()->inherit(forScope);
 
     return ControlFlow::None;
 }
@@ -628,9 +663,12 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatForIn* f)
             if (local->annotation)
                 visitType(local->annotation);
 
-            DefId def = defArena->freshCell();
+            DefId def = defArena->freshCell(local, local->location);
             graph.localDefs[local] = def;
-            currentScope()->bindings[local] = def;
+            if (FFlag::LuauDfgScopeStackNotNull)
+                currentScope()->bindings[local] = def;
+            else
+                currentScope_DEPRECATED()->bindings[local] = def;
             captures[local].allVersions.push_back(def);
         }
 
@@ -641,8 +679,10 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatForIn* f)
 
         visit(f->body);
     }
-
-    currentScope()->inherit(forScope);
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->inherit(forScope);
+    else
+        currentScope_DEPRECATED()->inherit(forScope);
 
     return ControlFlow::None;
 }
@@ -657,7 +697,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatAssign* a)
     for (size_t i = 0; i < a->vars.size; ++i)
     {
         AstExpr* v = a->vars.data[i];
-        visitLValue(v, i < defs.size() ? defs[i] : defArena->freshCell());
+        visitLValue(v, i < defs.size() ? defs[i] : defArena->freshCell(Symbol{}, v->location));
     }
 
     return ControlFlow::None;
@@ -683,7 +723,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFunction* f)
     //
     // which is evidence that references to variables must be a phi node of all possible definitions,
     // but for bug compatibility, we'll assume the same thing here.
-    visitLValue(f->name, defArena->freshCell());
+    visitLValue(f->name, defArena->freshCell(Symbol{}, f->name->location));
     visitExpr(f->func);
 
     if (auto local = f->name->as<AstExprLocal>())
@@ -703,9 +743,12 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFunction* f)
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatLocalFunction* l)
 {
-    DefId def = defArena->freshCell();
+    DefId def = defArena->freshCell(l->name, l->location);
     graph.localDefs[l->name] = def;
-    currentScope()->bindings[l->name] = def;
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->bindings[l->name] = def;
+    else
+        currentScope_DEPRECATED()->bindings[l->name] = def;
     captures[l->name].allVersions.push_back(def);
     visitExpr(l->func);
 
@@ -736,9 +779,12 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatTypeFunction* f)
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareGlobal* d)
 {
-    DefId def = defArena->freshCell();
+    DefId def = defArena->freshCell(d->name, d->nameLocation);
     graph.declaredDefs[d] = def;
-    currentScope()->bindings[d->name] = def;
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->bindings[d->name] = def;
+    else
+        currentScope_DEPRECATED()->bindings[d->name] = def;
     captures[d->name].allVersions.push_back(def);
 
     visitType(d->type);
@@ -748,9 +794,12 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareGlobal* d)
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareFunction* d)
 {
-    DefId def = defArena->freshCell();
+    DefId def = defArena->freshCell(d->name, d->nameLocation);
     graph.declaredDefs[d] = def;
-    currentScope()->bindings[d->name] = def;
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->bindings[d->name] = def;
+    else
+        currentScope_DEPRECATED()->bindings[d->name] = def;
     captures[d->name].allVersions.push_back(def);
 
     DfgScope* unreachable = makeChildScope();
@@ -805,19 +854,19 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
         if (auto g = e->as<AstExprGroup>())
             return visitExpr(g);
         else if (auto c = e->as<AstExprConstantNil>())
-            return {defArena->freshCell(), nullptr}; // ok
+            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantBool>())
-            return {defArena->freshCell(), nullptr}; // ok
+            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantNumber>())
-            return {defArena->freshCell(), nullptr}; // ok
+            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantString>())
-            return {defArena->freshCell(), nullptr}; // ok
+            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto l = e->as<AstExprLocal>())
             return visitExpr(l);
         else if (auto g = e->as<AstExprGlobal>())
             return visitExpr(g);
         else if (auto v = e->as<AstExprVarargs>())
-            return {defArena->freshCell(), nullptr}; // ok
+            return {defArena->freshCell(Symbol{}, v->location), nullptr}; // ok
         else if (auto c = e->as<AstExprCall>())
             return visitExpr(c);
         else if (auto i = e->as<AstExprIndexName>())
@@ -858,14 +907,14 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprGroup* group)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprLocal* l)
 {
-    DefId def = lookup(l->local);
+    DefId def = lookup(l->local, l->local->location);
     const RefinementKey* key = keyArena->leaf(def);
     return {def, key};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprGlobal* g)
 {
-    DefId def = lookup(g->name);
+    DefId def = lookup(g->name, g->location);
     return {def, keyArena->leaf(def)};
 }
 
@@ -925,7 +974,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
     //  local v = foo({})
     //
     // We want to consider `v` to be subscripted here.
-    return {defArena->freshCell(/*subscripted=*/true)};
+    return {defArena->freshCell(Symbol{}, c->location, /*subscripted=*/true)};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIndexName* i)
@@ -933,7 +982,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIndexName* i)
     auto [parentDef, parentKey] = visitExpr(i->expr);
     std::string index = i->index.value;
 
-    DefId def = lookup(parentDef, index);
+    DefId def = lookup(parentDef, index, i->location);
     return {def, keyArena->node(parentKey, def, index)};
 }
 
@@ -946,11 +995,11 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIndexExpr* i)
     {
         std::string index{string->value.data, string->value.size};
 
-        DefId def = lookup(parentDef, index);
+        DefId def = lookup(parentDef, index, i->location);
         return {def, keyArena->node(parentKey, def, index)};
     }
 
-    return {defArena->freshCell(/* subscripted= */ true), nullptr};
+    return {defArena->freshCell(Symbol{}, i->location, /* subscripted= */ true), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
@@ -963,7 +1012,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
         // There's no syntax for `self` to have an annotation if using `function t:m()`
         LUAU_ASSERT(!self->annotation);
 
-        DefId def = defArena->freshCell();
+        DefId def = defArena->freshCell(f->debugname, f->location);
         graph.localDefs[self] = def;
         signatureScope->bindings[self] = def;
         captures[self].allVersions.push_back(def);
@@ -974,7 +1023,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
         if (param->annotation)
             visitType(param->annotation);
 
-        DefId def = defArena->freshCell();
+        DefId def = defArena->freshCell(param, param->location);
         graph.localDefs[param] = def;
         signatureScope->bindings[param] = def;
         captures[param].allVersions.push_back(def);
@@ -996,13 +1045,16 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
     // g() --> 5
     visit(f->body);
 
-    return {defArena->freshCell(), nullptr};
+    return {defArena->freshCell(f->debugname, f->location), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTable* t)
 {
-    DefId tableCell = defArena->freshCell();
-    currentScope()->props[tableCell] = {};
+    DefId tableCell = defArena->freshCell(Symbol{}, t->location);
+    if (FFlag::LuauDfgScopeStackNotNull)
+        currentScope()->props[tableCell] = {};
+    else
+        currentScope_DEPRECATED()->props[tableCell] = {};
     for (AstExprTable::Item item : t->items)
     {
         DataFlowResult result = visitExpr(item.value);
@@ -1010,7 +1062,12 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTable* t)
         {
             visitExpr(item.key);
             if (auto string = item.key->as<AstExprConstantString>())
-                currentScope()->props[tableCell][string->value.data] = result.def;
+            {
+                if (FFlag::LuauDfgScopeStackNotNull)
+                    currentScope()->props[tableCell][string->value.data] = result.def;
+                else
+                    currentScope_DEPRECATED()->props[tableCell][string->value.data] = result.def;
+            }
         }
     }
 
@@ -1021,7 +1078,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprUnary* u)
 {
     visitExpr(u->expr);
 
-    return {defArena->freshCell(), nullptr};
+    return {defArena->freshCell(Symbol{}, u->location), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprBinary* b)
@@ -1029,7 +1086,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprBinary* b)
     visitExpr(b->left);
     visitExpr(b->right);
 
-    return {defArena->freshCell(), nullptr};
+    return {defArena->freshCell(Symbol{}, b->location), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)
@@ -1046,7 +1103,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIfElse* i)
     visitExpr(i->trueExpr);
     visitExpr(i->falseExpr);
 
-    return {defArena->freshCell(), nullptr};
+    return {defArena->freshCell(Symbol{}, i->location), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
@@ -1054,7 +1111,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
     for (AstExpr* e : i->expressions)
         visitExpr(e);
 
-    return {defArena->freshCell(), nullptr};
+    return {defArena->freshCell(Symbol{}, i->location), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprError* error)
@@ -1065,7 +1122,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprError* error)
     for (AstExpr* e : error->expressions)
         visitExpr(e);
 
-    return {defArena->freshCell(), nullptr};
+    return {defArena->freshCell(Symbol{}, error->location), nullptr};
 }
 
 void DataFlowGraphBuilder::visitLValue(AstExpr* e, DefId incomingDef)
@@ -1091,12 +1148,12 @@ void DataFlowGraphBuilder::visitLValue(AstExpr* e, DefId incomingDef)
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)
 {
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
 
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
     if (scope->canUpdateDefinition(l->local))
     {
-        DefId updated = defArena->freshCell(containsSubscriptedDefinition(incomingDef));
+        DefId updated = defArena->freshCell(l->local, l->location, containsSubscriptedDefinition(incomingDef));
         scope->bindings[l->local] = updated;
         captures[l->local].allVersions.push_back(updated);
         return updated;
@@ -1107,12 +1164,12 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprGlobal* g, DefId incomingDef)
 {
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
 
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
     if (scope->canUpdateDefinition(g->name))
     {
-        DefId updated = defArena->freshCell(containsSubscriptedDefinition(incomingDef));
+        DefId updated = defArena->freshCell(g->name, g->location, containsSubscriptedDefinition(incomingDef));
         scope->bindings[g->name] = updated;
         captures[g->name].allVersions.push_back(updated);
         return updated;
@@ -1125,10 +1182,10 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprIndexName* i, DefId incomingDef)
 {
     DefId parentDef = visitExpr(i->expr).def;
 
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
     if (scope->canUpdateDefinition(parentDef, i->index.value))
     {
-        DefId updated = defArena->freshCell(containsSubscriptedDefinition(incomingDef));
+        DefId updated = defArena->freshCell(i->index, i->location, containsSubscriptedDefinition(incomingDef));
         scope->props[parentDef][i->index.value] = updated;
         return updated;
     }
@@ -1141,12 +1198,12 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprIndexExpr* i, DefId incomingDef)
     DefId parentDef = visitExpr(i->expr).def;
     visitExpr(i->index);
 
-    DfgScope* scope = currentScope();
+    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
     if (auto string = i->index->as<AstExprConstantString>())
     {
         if (scope->canUpdateDefinition(parentDef, string->value.data))
         {
-            DefId updated = defArena->freshCell(containsSubscriptedDefinition(incomingDef));
+            DefId updated = defArena->freshCell(Symbol{}, i->location, containsSubscriptedDefinition(incomingDef));
             scope->props[parentDef][string->value.data] = updated;
             return updated;
         }
@@ -1154,7 +1211,7 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprIndexExpr* i, DefId incomingDef)
             return visitExpr(static_cast<AstExpr*>(i)).def;
     }
     else
-        return defArena->freshCell(/*subscripted=*/true);
+        return defArena->freshCell(Symbol{}, i->location, /*subscripted=*/true);
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprError* error, DefId incomingDef)

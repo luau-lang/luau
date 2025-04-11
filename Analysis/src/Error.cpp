@@ -606,7 +606,7 @@ struct ErrorConverter
         auto tfit = get<TypeFunctionInstanceType>(e.ty);
         LUAU_ASSERT(tfit); // Luau analysis has actually done something wrong if this type is not a type function.
         if (!tfit)
-            return "Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type function.";
+            return "Internal error: Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type function.";
 
         // unary operators
         if (auto unaryString = kUnaryOps.find(tfit->function->name); unaryString != kUnaryOps.end())

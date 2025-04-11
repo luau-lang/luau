@@ -46,9 +46,11 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 // when this value is set to a negative value, guessing will be totally disabled.
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
-LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionImprovements)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionFunctionMetamethods)
@@ -520,7 +522,7 @@ struct TypeFunctionReducer
             return;
 
         if (FFlag::DebugLuauLogTypeFamilies)
-            printf("Trying to reduce %s\n", toString(subject, {true}).c_str());
+            printf("Trying to %sreduce %s\n", force ? "force " : "", toString(subject, {true}).c_str());
 
         if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(subject))
         {
@@ -1218,6 +1220,9 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     // check to see if the operand type is resolved enough, and wait to reduce if not
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
+
+    if (FFlag::LuauNonReentrantGeneralization)
+        operandTy = follow(operandTy);
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
 
@@ -2112,28 +2117,50 @@ struct FindRefinementBlockers : TypeOnceVisitor
 struct ContainsRefinableType : TypeOnceVisitor
 {
     bool found = false;
-    ContainsRefinableType() : TypeOnceVisitor(/* skipBoundTypes */ true) {}
+    ContainsRefinableType()
+        : TypeOnceVisitor(/* skipBoundTypes */ true)
+    {
+    }
 
 
-    bool visit(TypeId ty) override {
+    bool visit(TypeId ty) override
+    {
         // Default case: if we find *some* type that's worth refining against,
         // then we can claim that this type contains a refineable type.
         found = true;
         return false;
     }
 
-    bool visit(TypeId Ty, const NoRefineType&) override {
+    bool visit(TypeId Ty, const NoRefineType&) override
+    {
         // No refine types aren't interesting
         return false;
     }
 
-    bool visit(TypeId ty, const TableType&) override { return !found; }
-    bool visit(TypeId ty, const MetatableType&) override { return !found; }
-    bool visit(TypeId ty, const FunctionType&) override { return !found; }
-    bool visit(TypeId ty, const UnionType&) override { return !found; }
-    bool visit(TypeId ty, const IntersectionType&) override { return !found; }
-    bool visit(TypeId ty, const NegationType&) override { return !found; }
-
+    bool visit(TypeId ty, const TableType&) override
+    {
+        return !found;
+    }
+    bool visit(TypeId ty, const MetatableType&) override
+    {
+        return !found;
+    }
+    bool visit(TypeId ty, const FunctionType&) override
+    {
+        return !found;
+    }
+    bool visit(TypeId ty, const UnionType&) override
+    {
+        return !found;
+    }
+    bool visit(TypeId ty, const IntersectionType&) override
+    {
+        return !found;
+    }
+    bool visit(TypeId ty, const NegationType&) override
+    {
+        return !found;
+    }
 };
 
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
@@ -2414,7 +2441,6 @@ TypeFunctionReductionResult<TypeId> unionTypeFunction(
     }
 
     return {resultTy, Reduction::MaybeOk, {}, {}};
-
 }
 
 
@@ -2849,7 +2875,14 @@ bool tblIndexInto_DEPRECATED(TypeId indexer, TypeId indexee, DenseHashSet<TypeId
     return false;
 }
 
-bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, DenseHashSet<TypeId>& seenSet, NotNull<TypeFunctionContext> ctx, bool isRaw)
+bool tblIndexInto(
+    TypeId indexer,
+    TypeId indexee,
+    DenseHashSet<TypeId>& result,
+    DenseHashSet<TypeId>& seenSet,
+    NotNull<TypeFunctionContext> ctx,
+    bool isRaw
+)
 {
     indexer = follow(indexer);
     indexee = follow(indexee);
@@ -2860,7 +2893,7 @@ bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, 
 
     if (FFlag::LuauIndexTypeFunctionFunctionMetamethods)
     {
-        if (auto unionTy =  get<UnionType>(indexee))
+        if (auto unionTy = get<UnionType>(indexee))
         {
             bool res = true;
             for (auto component : unionTy)
@@ -3087,8 +3120,9 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
             {
                 return follow(ty);
             }
-    );
-}
+        );
+    }
+
     // If the type being reduced to is a single type, no need to union
     if (properties.size() == 1)
         return {*properties.begin(), Reduction::MaybeOk, {}, {}};
@@ -3332,6 +3366,39 @@ TypeFunctionReductionResult<TypeId> getmetatableTypeFunction(
     return getmetatableHelper(targetTy, location, ctx);
 }
 
+TypeFunctionReductionResult<TypeId> weakoptionalTypeFunc(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("weakoptional type function: encountered a type function instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId targetTy = follow(typeParams.at(0));
+
+    if (isPending(targetTy, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+
+    if (is<NeverType>(instance))
+        return {ctx->builtins->nilType, Reduction::MaybeOk, {}, {}};
+
+    std::shared_ptr<const NormalizedType> targetNorm = ctx->normalizer->normalize(targetTy);
+
+    if (!targetNorm)
+        return {std::nullopt, Reduction::MaybeOk, {}, {}};
+
+    auto result = ctx->normalizer->isInhabited(targetNorm.get());
+    if (result == NormalizationResult::False)
+        return {ctx->builtins->nilType, Reduction::MaybeOk, {}, {}};
+
+    return {targetTy, Reduction::MaybeOk, {}, {}};
+}
+
 
 BuiltinTypeFunctions::BuiltinTypeFunctions()
     : userFunc{"user", userDefinedTypeFunction}
@@ -3361,6 +3428,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , rawgetFunc{"rawget", rawgetTypeFunction}
     , setmetatableFunc{"setmetatable", setmetatableTypeFunction}
     , getmetatableFunc{"getmetatable", getmetatableTypeFunction}
+    , weakoptionalFunc{"weakoptional", weakoptionalTypeFunc}
 {
 }
 
@@ -3369,7 +3437,7 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
     // make a type function for a one-argument type function
     auto mkUnaryTypeFunction = [&](const TypeFunction* tf)
     {
-        TypeId t = arena->addType(GenericType{"T"});
+        TypeId t = arena->addType(GenericType{"T", Polarity::Negative});
         GenericTypeDefinition genericT{t};
 
         return TypeFun{{genericT}, arena->addType(TypeFunctionInstanceType{NotNull{tf}, {t}, {}})};
@@ -3378,8 +3446,8 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
     // make a type function for a two-argument type function
     auto mkBinaryTypeFunction = [&](const TypeFunction* tf)
     {
-        TypeId t = arena->addType(GenericType{"T"});
-        TypeId u = arena->addType(GenericType{"U"});
+        TypeId t = arena->addType(GenericType{"T", Polarity::Negative});
+        TypeId u = arena->addType(GenericType{"U", Polarity::Negative});
         GenericTypeDefinition genericT{t};
         GenericTypeDefinition genericU{u, {t}};
 

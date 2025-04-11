@@ -83,7 +83,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
         LUAU_REQUIRE_ERRORS(result);
 
         TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-        REQUIRE(tpm);
+        REQUIRE_MESSAGE(tpm, "Expected TypePackMismatch but got " << result.errors[0]);
         CHECK("string?" == toString(tpm->wantedTp));
         CHECK("number | string" == toString(tpm->givenTp));
 

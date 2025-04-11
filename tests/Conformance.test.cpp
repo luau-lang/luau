@@ -34,7 +34,6 @@ void luaC_validate(lua_State* L);
 LUAU_FASTFLAG(LuauLibWhereErrorAutoreserve)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauStackLimit)
 LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 
@@ -756,8 +755,6 @@ TEST_CASE("Closure")
 
 TEST_CASE("Calls")
 {
-    ScopedFastFlag LuauStackLimit{DFFlag::LuauStackLimit, true};
-
     runConformance("calls.luau");
 }
 
@@ -797,8 +794,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag LuauStackLimit{DFFlag::LuauStackLimit, true};
-
     runConformance(
         "pcall.luau",
         [](lua_State* L)

@@ -241,12 +241,10 @@ TypeId matchLiteralType(
 
     if (FFlag::LuauBidirectionalInferenceUpcast && expr->is<AstExprFunction>())
     {
-        // TODO: Push argument / return types into the lambda. For now, just do 
+        // TODO: Push argument / return types into the lambda. For now, just do
         // the non-literal thing: check for a subtype and upcast if valid.
         auto result = subtyping->isSubtype(/*subTy=*/exprType, /*superTy=*/expectedType, unifier->scope);
-        return result.isSubtype 
-            ? expectedType
-            : exprType;
+        return result.isSubtype ? expectedType : exprType;
     }
 
     if (auto exprTable = expr->as<AstExprTable>())
@@ -352,7 +350,6 @@ TypeId matchLiteralType(
                         }
 
                         keysToDelete.insert(item.key->as<AstExprConstantString>());
-
                     }
 
                     // If it's just an extra property and the expected type
@@ -375,22 +372,25 @@ TypeId matchLiteralType(
                 // quadratic in a hurry.
                 if (expectedProp.isShared())
                 {
-                    matchedType =
-                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedReadTy, propTy, item.value, toBlock);
+                    matchedType = matchLiteralType(
+                        astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedReadTy, propTy, item.value, toBlock
+                    );
                     prop.readTy = matchedType;
                     prop.writeTy = matchedType;
                 }
                 else if (expectedReadTy)
                 {
-                    matchedType =
-                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedReadTy, propTy, item.value, toBlock);
+                    matchedType = matchLiteralType(
+                        astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedReadTy, propTy, item.value, toBlock
+                    );
                     prop.readTy = matchedType;
                     prop.writeTy.reset();
                 }
                 else if (expectedWriteTy)
                 {
-                    matchedType =
-                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedWriteTy, propTy, item.value, toBlock);
+                    matchedType = matchLiteralType(
+                        astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *expectedWriteTy, propTy, item.value, toBlock
+                    );
                     prop.readTy.reset();
                     prop.writeTy = matchedType;
                 }
@@ -448,7 +448,6 @@ TypeId matchLiteralType(
                         if (tableTy->indexer->indexResultType == *propTy)
                             tableTy->indexer->indexResultType = matchedType;
                     }
-
                 }
             }
             else if (item.kind == AstExprTable::Item::General)
@@ -476,7 +475,6 @@ TypeId matchLiteralType(
                     indexerKeyTypes.insert(tKey);
                     indexerValueTypes.insert(tProp);
                 }
-
             }
             else
                 LUAU_ASSERT(!"Unexpected");
@@ -544,12 +542,12 @@ TypeId matchLiteralType(
             {
                 TypeId inferredKeyType = builtinTypes->neverType;
                 TypeId inferredValueType = builtinTypes->neverType;
-                for (auto kt: indexerKeyTypes)
+                for (auto kt : indexerKeyTypes)
                 {
                     auto simplified = simplifyUnion(builtinTypes, arena, inferredKeyType, kt);
                     inferredKeyType = simplified.result;
                 }
-                for (auto vt: indexerValueTypes)
+                for (auto vt : indexerValueTypes)
                 {
                     auto simplified = simplifyUnion(builtinTypes, arena, inferredValueType, vt);
                     inferredValueType = simplified.result;

@@ -19,6 +19,8 @@ LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(LuauNormalizeLimitFunctionSet)
 LUAU_FASTFLAG(LuauSubtypingStopAtNormFail)
 LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
+LUAU_FASTFLAG(LuauSubtypingEnableReasoningLimit)
+LUAU_FASTFLAG(LuauTypePackDetectCycles)
 
 using namespace Luau;
 
@@ -1193,6 +1195,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity")
 {
+    ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 80};
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
     ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
@@ -1215,6 +1218,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
     ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
     ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
+    ScopedFastFlag luauSubtypingEnableReasoningLimit{FFlag::LuauSubtypingEnableReasoningLimit, true};
 
     CheckResult result = check(R"(
 function _(_,"").readu32(l0)
@@ -1226,5 +1230,42 @@ _().readu32 %= _(_(_(_),_))
     LUAU_REQUIRE_ERRORS(result);
 }
 #endif
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypePackDetectCycles, true}};
+
+    // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check
+    CHECK_THROWS_AS(
+        check(R"(
+function _(_).readu32<t0...>()
+repeat
+until function<t4>()
+end
+return if _ then _,_(_)
+end
+_(_(_(_)),``)
+do end
+    )"),
+        InternalCompilerError
+    );
+}
+#if 0
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypePackDetectCycles, true}};
+
+    // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check
+    CHECK_THROWS_AS(
+        check(R"(
+function _(_).n0(l32,...)
+return ({n0=_,[_(if _ then _,nil)]=- _,[_(_(_))]=_,})[_],_(_)
+end
+_[_] ^= _(_(_))
+    )"),
+        InternalCompilerError
+    );
+}
+#endif 
 
 TEST_SUITE_END();

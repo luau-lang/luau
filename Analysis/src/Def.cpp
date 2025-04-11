@@ -36,9 +36,9 @@ void collectOperands(DefId def, std::vector<DefId>* operands)
     }
 }
 
-DefId DefArena::freshCell(bool subscripted)
+DefId DefArena::freshCell(Symbol sym, Location location, bool subscripted)
 {
-    return NotNull{allocator.allocate(Def{Cell{subscripted}})};
+    return NotNull{allocator.allocate(Def{Cell{subscripted}, sym, location})};
 }
 
 DefId DefArena::phi(DefId a, DefId b)

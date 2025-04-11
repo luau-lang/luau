@@ -38,7 +38,8 @@ CstExprIndexExpr::CstExprIndexExpr(Position openBracketPosition, Position closeB
 {
 }
 
-CstExprFunction::CstExprFunction() : CstNode(CstClassIndex())
+CstExprFunction::CstExprFunction()
+    : CstNode(CstClassIndex())
 {
 }
 

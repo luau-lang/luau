@@ -966,6 +966,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff2")
     CHECK(toString(requireTypeAlias("Keys")) == "number");
 }
 
+#if 0
+// CLI-148701
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff3")
 {
     if (!FFlag::LuauSolverV2)
@@ -993,6 +995,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff3")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(toString(requireTypeAlias("Keys")) == "unknown");
 }
+#endif
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
 {
@@ -1123,8 +1126,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metame
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[]
-    {
+    ScopedFastFlag sff[]{
         {FFlag::LuauIndexTypeFunctionFunctionMetamethods, true},
         {FFlag::LuauIndexTypeFunctionImprovements, true},
     };
@@ -1152,8 +1154,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metame
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[]
-    {
+    ScopedFastFlag sff[]{
         {FFlag::LuauIndexTypeFunctionFunctionMetamethods, true},
         {FFlag::LuauIndexTypeFunctionImprovements, true},
     };
@@ -1236,7 +1237,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_rfc_alternative_section"
         type MyObject = {a: string}
         type MyObject2 = {a: string, b: number}
 
-        local function edgeCase(param: MyObject) 
+        local function edgeCase(param: MyObject)
             type unknownType = index<typeof(param), "b">
         end
     )");

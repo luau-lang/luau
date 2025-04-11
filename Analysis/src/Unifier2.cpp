@@ -20,6 +20,7 @@
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(LuauUnifyMetatableWithAny)
 LUAU_FASTFLAG(LuauExtraFollows)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization)
 
 namespace Luau
 {
@@ -321,10 +322,23 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
     if (shouldInstantiate)
     {
         for (auto generic : subFn->generics)
-            genericSubstitutions[generic] = freshType(arena, builtinTypes, scope);
+        {
+            const GenericType* gen = get<GenericType>(generic);
+            LUAU_ASSERT(gen);
+            genericSubstitutions[generic] = freshType(scope, gen->polarity);
+        }
 
         for (auto genericPack : subFn->genericPacks)
-            genericPackSubstitutions[genericPack] = arena->freshTypePack(scope);
+        {
+            if (FFlag::LuauNonReentrantGeneralization)
+            {
+                const GenericTypePack* gen = get<GenericTypePack>(genericPack);
+                LUAU_ASSERT(gen);
+                genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
+            }
+            else
+                genericPackSubstitutions[genericPack] = arena->freshTypePack(scope);
+        }
     }
 
     bool argResult = unify(superFn->argTypes, subFn->argTypes);
@@ -939,6 +953,25 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePack
     }
 
     return OccursCheckResult::Pass;
+}
+
+TypeId Unifier2::freshType(NotNull<Scope> scope, Polarity polarity)
+{
+    TypeId result = ::Luau::freshType(arena, builtinTypes, scope.get(), polarity);
+    newFreshTypes.emplace_back(result);
+    return result;
+}
+
+TypePackId Unifier2::freshTypePack(NotNull<Scope> scope, Polarity polarity)
+{
+    TypePackId result = arena->freshTypePack(scope.get());
+
+    auto ftp = getMutable<FreeTypePack>(result);
+    LUAU_ASSERT(ftp);
+    ftp->polarity = polarity;
+
+    newFreshTypePacks.emplace_back(result);
+    return result;
 }
 
 } // namespace Luau

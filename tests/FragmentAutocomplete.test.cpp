@@ -45,6 +45,7 @@ LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauBetterScopeSelection)
 LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
+LUAU_FASTFLAG(LuauFragmentAcMemoryLeak)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -87,6 +88,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauBetterScopeSelection{FFlag::LuauBetterScopeSelection, true};
     ScopedFastFlag luauBlockDiffFragmentSelection{FFlag::LuauBlockDiffFragmentSelection, true};
     ScopedFastFlag luauAutocompleteUsesModuleForTypeCompatibility{FFlag::LuauAutocompleteUsesModuleForTypeCompatibility, true};
+    ScopedFastFlag luauFragmentAcMemoryLeak{FFlag::LuauFragmentAcMemoryLeak, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -1331,6 +1333,7 @@ t
 
     FragmentAutocompleteStatusResult frag = Luau::tryFragmentAutocomplete(frontend, "game/A", Position{2, 1}, context, nullCallback);
     REQUIRE(frag.result);
+    REQUIRE(frag.result->incrementalModule);
     CHECK_EQ("game/A", frag.result->incrementalModule->name);
     CHECK_NE(frontend.moduleResolverForAutocomplete.getModule("game/A"), nullptr);
     CHECK_EQ(frontend.moduleResolver.getModule("game/A"), nullptr);

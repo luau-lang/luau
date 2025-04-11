@@ -75,7 +75,7 @@ struct FragmentAutocompleteResult
 {
     ModulePtr incrementalModule;
     Scope* freshScope;
-    TypeArena arenaForAutocomplete;
+    TypeArena arenaForAutocomplete_DEPRECATED;
     AutocompleteResult acResults;
 };
 

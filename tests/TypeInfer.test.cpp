@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauCacheInferencePerAstExpr)
+LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked)
 
 using namespace Luau;
 
@@ -1972,10 +1973,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_local_before_declaration_ice")
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_dont_double_solve_compound_assignment" * doctest::timeout(1.0))
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauCacheInferencePerAstExpr, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauCacheInferencePerAstExpr, true}};
 
     CheckResult result = check(R"(
         local _ = {}
@@ -1999,6 +1997,40 @@ TEST_CASE_FIXTURE(Fixture, "assert_allows_singleton_union_or_intersection")
         local x = 42 :: | number
         local y = 42 :: & number
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauMagicFreezeCheckBlocked, true}
+    };
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local f = table.freeze
+        f(table)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauMagicFreezeCheckBlocked, true}
+    };
+    // This is the original fuzzer version of the above issue.
+    CheckResult results = check(R"(
+        local function l0()
+        end
+        for l0 in false do
+        _ = (if _ then table)
+        repeat
+        do end
+        _:freeze(table)
+        until if _ then {{n0=_,},(_:freeze()._[_]),}
+        end
+    )");
+    LUAU_REQUIRE_ERRORS(results);
+    LUAU_REQUIRE_NO_ERROR(results, ConstraintSolvingIncompleteError);
 }
 
 

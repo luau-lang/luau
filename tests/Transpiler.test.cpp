@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauStoreCSTData2)
-LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauAstTypeGroup3);
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)
@@ -360,9 +359,9 @@ TEST_CASE("function_with_types_spaces_around_tokens")
     code = R"( function p<X, Y, Z...>  (o: string, m: number, ...: any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
-//  TODO(CLI-139347): re-enable test once colon positions are supported
-//    code = R"( function p<X, Y, Z...>(o  : string, m: number, ...: any): string end )";
-//    CHECK_EQ(code, transpile(code, {}, true).code);
+    //  TODO(CLI-139347): re-enable test once colon positions are supported
+    //    code = R"( function p<X, Y, Z...>(o  : string, m: number, ...: any): string end )";
+    //    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( function p<X, Y, Z...>(o:   string, m: number, ...: any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -376,9 +375,9 @@ TEST_CASE("function_with_types_spaces_around_tokens")
     code = R"( function p<X, Y, Z...>(o: string, m: number,   ...: any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
-//  TODO(CLI-139347): re-enable test once colon positions are supported
-//    code = R"( function p<X, Y, Z...>(o: string, m: number, ...  : any): string end )";
-//    CHECK_EQ(code, transpile(code, {}, true).code);
+    //  TODO(CLI-139347): re-enable test once colon positions are supported
+    //    code = R"( function p<X, Y, Z...>(o: string, m: number, ...  : any): string end )";
+    //    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( function p<X, Y, Z...>(o: string, m: number, ...:   any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -386,9 +385,9 @@ TEST_CASE("function_with_types_spaces_around_tokens")
     code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any  ): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
-//  TODO(CLI-139347): re-enable test once return type positions are supported
-//    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any)   :string end )";
-//    CHECK_EQ(code, transpile(code, {}, true).code);
+    //  TODO(CLI-139347): re-enable test once return type positions are supported
+    //    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any)   :string end )";
+    //    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any):    string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -858,7 +857,6 @@ TEST_CASE_FIXTURE(Fixture, "stmt_semicolon")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"( local test = 1; )";
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -869,6 +867,7 @@ TEST_CASE_FIXTURE(Fixture, "stmt_semicolon")
 
 TEST_CASE_FIXTURE(Fixture, "do_block_ending_with_semicolon")
 {
+    ScopedFastFlag sff{FFlag::LuauStoreCSTData2, true};
     std::string code = R"(
         do
             return;
@@ -881,7 +880,6 @@ TEST_CASE_FIXTURE(Fixture, "if_stmt_semicolon")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
         if init then
@@ -895,7 +893,6 @@ TEST_CASE_FIXTURE(Fixture, "if_stmt_semicolon_2")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
         if (t < 1) then return c/2*t*t + b end;
@@ -907,7 +904,6 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_stmt_semicolon")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
         for i,v in ... do
@@ -920,7 +916,6 @@ TEST_CASE_FIXTURE(Fixture, "while_do_semicolon")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
         while true do
@@ -933,7 +928,6 @@ TEST_CASE_FIXTURE(Fixture, "function_definition_semicolon")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauExtendStatEndPosWithSemicolon, true},
     };
     std::string code = R"(
         function foo()
@@ -1068,7 +1062,7 @@ TEST_CASE_FIXTURE(Fixture, "type_lists_should_be_emitted_correctly")
         local c:()->()=function(): ()
         end
     )"
-                                                   : R"(
+                                                    : R"(
         local a:(string,number,...string)->(string,...number)=function(a:string,b:number,...:string): (string,...number)
         end
 
