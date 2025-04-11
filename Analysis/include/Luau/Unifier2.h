@@ -44,6 +44,12 @@ struct Unifier2
     // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
     DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
 
+    // Unification sometimes results in the creation of new free types.
+    // We collect them here so that other systems can perform necessary
+    // bookkeeping.
+    std::vector<TypeId> newFreshTypes;
+    std::vector<TypePackId> newFreshTypePacks;
+
     int recursionCount = 0;
     int recursionLimit = 0;
 
@@ -113,6 +119,9 @@ private:
     // Returns true if needle occurs within haystack already.  ie if we bound
     // needle to haystack, would a cyclic TypePack result?
     OccursCheckResult occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
+
+    TypeId freshType(NotNull<Scope> scope, Polarity polarity);
+    TypePackId freshTypePack(NotNull<Scope> scope, Polarity polarity);
 };
 
 } // namespace Luau

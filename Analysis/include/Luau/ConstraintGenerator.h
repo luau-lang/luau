@@ -11,15 +11,14 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
+#include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/Variant.h"
 
 #include <memory>
 #include <vector>
-#include <unordered_map>
 
 namespace Luau
 {
@@ -162,19 +161,26 @@ struct ConstraintGenerator
     void visitFragmentRoot(const ScopePtr& resumeScope, AstStatBlock* block);
 
 private:
-    std::vector<std::vector<TypeId>> interiorTypes;
+    struct InteriorFreeTypes
+    {
+        std::vector<TypeId> types;
+        std::vector<TypePackId> typePacks;
+    };
+
+    std::vector<std::vector<TypeId>> DEPRECATED_interiorTypes;
+    std::vector<InteriorFreeTypes> interiorFreeTypes;
 
     /**
      * Fabricates a new free type belonging to a given scope.
      * @param scope the scope the free type belongs to.
      */
-    TypeId freshType(const ScopePtr& scope);
+    TypeId freshType(const ScopePtr& scope, Polarity polarity = Polarity::Unknown);
 
     /**
      * Fabricates a new free type pack belonging to a given scope.
      * @param scope the scope the free type pack belongs to.
      */
-    TypePackId freshTypePack(const ScopePtr& scope);
+    TypePackId freshTypePack(const ScopePtr& scope, Polarity polarity = Polarity::Unknown);
 
     /**
      * Allocate a new TypePack with the given head and tail.
@@ -295,7 +301,7 @@ private:
     );
 
     Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
-    Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
+    Inference check(const ScopePtr& scope, AstExprConstantBool* boolExpr, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprLocal* local);
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference checkIndexName(const ScopePtr& scope, const RefinementKey* key, AstExpr* indexee, const std::string& index, Location indexLocation);
@@ -371,6 +377,11 @@ private:
      **/
     TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
+    // resolveType() is recursive, but we only want to invoke
+    // inferGenericPolarities() once at the very end.  We thus isolate the
+    // recursive part of the algorithm to this internal helper.
+    TypeId resolveType_(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
+
     /**
      * Resolves a type pack from its AST annotation.
      * @param scope the scope that the type annotation appears within.
@@ -379,6 +390,9 @@ private:
      * @return the type pack of the AST annotation.
      **/
     TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
+
+    // Inner hepler for resolveTypePack
+    TypePackId resolveTypePack_(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
      * Resolves a type pack from its AST annotation.
@@ -418,7 +432,7 @@ private:
      **/
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(
         const ScopePtr& scope,
-        AstArray<AstGenericTypePack*> packs,
+        AstArray<AstGenericTypePack*> generics,
         bool useCache = false,
         bool addTypes = true
     );

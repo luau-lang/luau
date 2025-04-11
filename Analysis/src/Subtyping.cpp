@@ -23,6 +23,8 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingStopAtNormFail)
+LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingEnableReasoningLimit)
 
 namespace Luau
 {
@@ -100,6 +102,9 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
             else
                 result.insert(r);
         }
+
+        if (FFlag::LuauSubtypingEnableReasoningLimit && result.size() >= size_t(FInt::LuauSubtypingReasoningLimit))
+            return result;
     }
 
     for (const SubtypingReasoning& r : b)
@@ -116,6 +121,9 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
             else
                 result.insert(r);
         }
+
+        if (FFlag::LuauSubtypingEnableReasoningLimit && result.size() >= size_t(FInt::LuauSubtypingReasoningLimit))
+            return result;
     }
 
     return result;

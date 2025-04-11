@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
-LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
@@ -3940,7 +3939,6 @@ TEST_CASE_FIXTURE(Fixture, "function_name_has_correct_start_location")
 
 TEST_CASE_FIXTURE(Fixture, "stat_end_includes_semicolon_position")
 {
-    ScopedFastFlag _{FFlag::LuauExtendStatEndPosWithSemicolon, true};
     AstStatBlock* block = parse(R"(
         local x = 1
         local y = 2;

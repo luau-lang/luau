@@ -77,9 +77,9 @@ TypeId TypeArena::freshType_DEPRECATED(Scope* scope, TypeLevel level)
     return allocated;
 }
 
-TypePackId TypeArena::freshTypePack(Scope* scope)
+TypePackId TypeArena::freshTypePack(Scope* scope, Polarity polarity)
 {
-    TypePackId allocated = typePacks.allocate(FreeTypePack{scope});
+    TypePackId allocated = typePacks.allocate(FreeTypePack{scope, polarity});
 
     asMutable(allocated)->owningArena = this;
 

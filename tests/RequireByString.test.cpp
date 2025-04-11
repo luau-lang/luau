@@ -136,7 +136,11 @@ public:
                     return luauDirAbs;
             }
 
-            luauDirRel += "/..";
+            if (luauDirRel == ".")
+                luauDirRel = "..";
+            else
+                luauDirRel += "/..";
+
             std::optional<std::string> parentPath = getParentPath(luauDirAbs);
             REQUIRE_MESSAGE(parentPath, "Error getting Luau path");
             luauDirAbs = *parentPath;
@@ -355,6 +359,13 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireInitLua")
     assertOutputContainsAll({"true", "result from init.lua"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelf")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested_module_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true", "result from submodule"});
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithFileAmbiguity")
 {
     std::string ambiguousPath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/ambiguous_file_requirer";
@@ -462,13 +473,10 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "LoadStringRelative")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAbsolutePath")
 {
-#ifdef _WIN32
-    std::string absolutePath = "C:/an/absolute/path";
-#else
     std::string absolutePath = "/an/absolute/path";
-#endif
+
     runProtectedRequire(absolutePath);
-    assertOutputContainsAll({"false", "cannot require an absolute path"});
+    assertOutputContainsAll({"false", "require path must start with a valid prefix: ./, ../, or @"});
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
@@ -476,13 +484,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
     std::string path = "an/unprefixed/path";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "require path must start with a valid prefix: ./, ../, or @"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithExtension")
-{
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/dependency.luau";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"false", "error requiring module: consider removing the file extension"});
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")

@@ -493,7 +493,7 @@ static void autocompleteProps(
             // Then we are on a one way journey to a stack overflow.
             if (FFlag::LuauAutocompleteUnionCopyPreviousSeen)
             {
-                for (auto ty: seen)
+                for (auto ty : seen)
                 {
                     if (is<UnionType, IntersectionType>(ty))
                         innerSeen.insert(ty);

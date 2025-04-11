@@ -7,9 +7,10 @@
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
 
+#include "Luau/AnalyzeRequirer.h"
 #include "Luau/FileUtils.h"
 #include "Luau/Flags.h"
-#include "Luau/Require.h"
+#include "Luau/RequireNavigator.h"
 
 #include <condition_variable>
 #include <functional>
@@ -173,15 +174,18 @@ struct CliFileResolver : Luau::FileResolver
         {
             std::string path{expr->value.data, expr->value.size};
 
-            AnalysisRequireContext requireContext{context->name};
-            AnalysisCacheManager cacheManager;
-            AnalysisErrorHandler errorHandler;
+            FileNavigationContext navigationContext{context->name};
+            Luau::Require::ErrorHandler nullErrorHandler{};
 
-            RequireResolver resolver(path, requireContext, cacheManager, errorHandler);
-            RequireResolver::ResolvedRequire resolvedRequire = resolver.resolveRequire();
+            Luau::Require::Navigator navigator(navigationContext, nullErrorHandler);
+            if (navigator.navigate(path) != Luau::Require::Navigator::Status::Success)
+                return std::nullopt;
 
-            if (resolvedRequire.status == RequireResolver::ModuleStatus::FileRead)
-                return {{resolvedRequire.identifier}};
+            if (!navigationContext.isModulePresent())
+                return std::nullopt;
+
+            if (std::optional<std::string> identifier = navigationContext.getIdentifier())
+                return {{*identifier}};
         }
 
         return std::nullopt;
@@ -193,48 +197,6 @@ struct CliFileResolver : Luau::FileResolver
             return "stdin";
         return name;
     }
-
-private:
-    struct AnalysisRequireContext : RequireResolver::RequireContext
-    {
-        explicit AnalysisRequireContext(std::string path)
-            : path(std::move(path))
-        {
-        }
-
-        std::string getPath() override
-        {
-            return path;
-        }
-
-        bool isRequireAllowed() override
-        {
-            return true;
-        }
-
-        bool isStdin() override
-        {
-            return path == "-";
-        }
-
-        std::string createNewIdentifer(const std::string& path) override
-        {
-            return path;
-        }
-
-    private:
-        std::string path;
-    };
-
-    struct AnalysisCacheManager : public RequireResolver::CacheManager
-    {
-        AnalysisCacheManager() = default;
-    };
-
-    struct AnalysisErrorHandler : RequireResolver::ErrorHandler
-    {
-        AnalysisErrorHandler() = default;
-    };
 };
 
 struct CliConfigResolver : Luau::ConfigResolver

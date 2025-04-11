@@ -4364,12 +4364,19 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_on_argument_type_pack_vararg")
 {
-    check(R"(
-local function foo(a: <T...>(...: T...) -> number)
-	return a(4, 5, 6)
-end
+    // Caveat lector!  This is actually invalid syntax!
+    // The correct syntax would be as follows:
+    //
+    // local function foo(a: <T...>(T...) -> number)
+    //
+    // We leave it as-written here because we still expect autocomplete to
+    // handle this code sensibly.
+    CheckResult result = check(R"(
+        local function foo(a: <T...>(...: T...) -> number)
+            return a(4, 5, 6)
+        end
 
-foo(@1)
+        foo(@1)
     )");
 
     const std::optional<std::string> EXPECTED_INSERT = FFlag::LuauSolverV2 ? "function(...: number): number  end" : "function(...): number  end";

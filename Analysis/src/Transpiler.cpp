@@ -11,7 +11,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauStoreCSTData2)
-LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)

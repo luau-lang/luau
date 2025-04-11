@@ -35,6 +35,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
+LUAU_FASTFLAGVARIABLE(LuauStatForInFix)
 
 namespace Luau
 {
@@ -1317,8 +1318,24 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             // Extract the remaining return values of the call
             // and check them against the parameter types of the iterator function.
             auto [types, tail] = flatten(callRetPack);
-            std::vector<TypeId> argTypes = std::vector<TypeId>(types.begin() + 1, types.end());
-            argPack = addTypePack(TypePackVar{TypePack{std::move(argTypes), tail}});
+
+            if (FFlag::LuauStatForInFix)
+            {
+                if (!types.empty())
+                {
+                    std::vector<TypeId> argTypes = std::vector<TypeId>(types.begin() + 1, types.end());
+                    argPack = addTypePack(TypePackVar{TypePack{std::move(argTypes), tail}});
+                }
+                else
+                {
+                    argPack = addTypePack(TypePack{});
+                }
+            }
+            else
+            {
+                std::vector<TypeId> argTypes = std::vector<TypeId>(types.begin() + 1, types.end());
+                argPack = addTypePack(TypePackVar{TypePack{std::move(argTypes), tail}});
+            }
         }
         else
         {

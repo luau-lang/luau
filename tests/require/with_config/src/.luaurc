@@ -1,6 +1,6 @@
 {
     "aliases": {
-        "dep": "dependency",
-        "subdir": "subdirectory"
+        "dep": "./dependency",
+        "subdir": "./subdirectory"
     }
 }
