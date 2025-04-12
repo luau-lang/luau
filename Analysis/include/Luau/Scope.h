@@ -40,7 +40,7 @@ struct Scope
     // All the children of this scope.
     std::vector<NotNull<Scope>> children;
     std::unordered_map<Symbol, Binding> bindings;
-    TypePackId returnType;
+    TypePackId returnType = nullptr;
     std::optional<TypePackId> varargPack;
 
     TypeLevel level;
@@ -100,6 +100,7 @@ struct Scope
     std::unordered_map<Name, TypePackId> typeAliasTypePackParameters;
 
     std::optional<std::vector<TypeId>> interiorFreeTypes;
+    std::optional<std::vector<TypePackId>> interiorFreeTypePacks;
 };
 
 // Returns true iff the left scope encloses the right scope.  A Scope* equal to

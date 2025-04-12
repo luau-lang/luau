@@ -15,6 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauStatForInFix)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1249,10 +1250,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tryDispatchIterableFunction_under_constraine
 {
     CheckResult result = check(R"(
 local function foo(Instance)
-	for _, Child in next, Instance:GetChildren() do
-	end
+    for _, Child in next, Instance:GetChildren() do
+    end
 end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_surprising_iterator")
+{
+    ScopedFastFlag luauStatForInFix{FFlag::LuauStatForInFix, true};
+
+    CheckResult result = check(R"(
+function broken(): (...() -> ())
+    return function() end, function() end
+end
+
+for p in broken() do print(p) end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

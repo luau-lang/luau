@@ -20,7 +20,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauAllowComplexTypesInGenericParams)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryForTableTypes)
-LUAU_FASTFLAGVARIABLE(LuauExtendStatEndPosWithSemicolon)
 LUAU_FASTFLAGVARIABLE(LuauStoreCSTData2)
 LUAU_FASTFLAGVARIABLE(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAGVARIABLE(LuauAstTypeGroup3)
@@ -204,7 +203,9 @@ ParseExprResult Parser::parseExpr(const char* buffer, size_t bufferSize, AstName
         AstExpr* expr = p.parseExpr();
         size_t lines = p.lexer.current().location.end.line + (bufferSize > 0 && buffer[bufferSize - 1] != '\n');
 
-        return ParseExprResult{expr, lines, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations), std::move(p.cstNodeMap)};
+        return ParseExprResult{
+            expr, lines, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations), std::move(p.cstNodeMap)
+        };
     }
     catch (ParseError& err)
     {
@@ -316,10 +317,7 @@ AstStatBlock* Parser::parseBlockNoScope()
         {
             nextLexeme();
             stat->hasSemicolon = true;
-            if (FFlag::LuauExtendStatEndPosWithSemicolon)
-            {
-                stat->location.end = lexer.previousLocation().end;
-            }
+            stat->location.end = lexer.previousLocation().end;
         }
 
         body.push_back(stat);
@@ -745,14 +743,7 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
         // while we could concatenate the name chain, for now let's just write the short name
         debugname = name.name;
 
-        expr = allocator.alloc<AstExprIndexName>(
-            Location(expr->location, name.location),
-            expr,
-            name.name,
-            name.location,
-            opPosition,
-            '.'
-        );
+        expr = allocator.alloc<AstExprIndexName>(Location(expr->location, name.location), expr, name.name, name.location, opPosition, '.');
 
         // note: while the parser isn't recursive here, we're generating recursive structures of unbounded depth
         incrementRecursionCounter("function name");
@@ -771,14 +762,7 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
         // while we could concatenate the name chain, for now let's just write the short name
         debugname = name.name;
 
-        expr = allocator.alloc<AstExprIndexName>(
-            Location(expr->location, name.location),
-            expr,
-            name.name,
-            name.location,
-            opPosition,
-            ':'
-        );
+        expr = allocator.alloc<AstExprIndexName>(Location(expr->location, name.location), expr, name.name, name.location, opPosition, ':');
 
         hasself = true;
     }
@@ -1666,13 +1650,12 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 
     auto* cstNode = FFlag::LuauStoreCSTData2 && options.storeCstData ? allocator.alloc<CstExprFunction>() : nullptr;
 
-    auto [generics, genericPacks] = FFlag::LuauStoreCSTData2 && cstNode ? parseGenericTypeList(
-                                                                                          /* withDefaultValues= */ false,
-                                                                                          &cstNode->openGenericsPosition,
-                                                                                          &cstNode->genericsCommaPositions,
-                                                                                          &cstNode->closeGenericsPosition
-                                                                                      )
-                                                                                    : parseGenericTypeList(/* withDefaultValues= */ false);
+    auto [generics, genericPacks] =
+        FFlag::LuauStoreCSTData2 && cstNode
+            ? parseGenericTypeList(
+                  /* withDefaultValues= */ false, &cstNode->openGenericsPosition, &cstNode->genericsCommaPositions, &cstNode->closeGenericsPosition
+              )
+            : parseGenericTypeList(/* withDefaultValues= */ false);
 
     MatchLexeme matchParen = lexer.current();
     expectAndConsume('(', "function");
@@ -1822,7 +1805,12 @@ Parser::Binding Parser::parseBinding()
 }
 
 // bindinglist ::= (binding | `...') [`,' bindinglist]
-std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Binding>& result, bool allowDot3, AstArray<Position>* commaPositions, std::optional<Position> initialCommaPosition)
+std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(
+    TempVector<Binding>& result,
+    bool allowDot3,
+    AstArray<Position>* commaPositions,
+    std::optional<Position> initialCommaPosition
+)
 {
     TempVector<Position> localCommaPositions(scratchPosition);
 

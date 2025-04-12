@@ -34,7 +34,6 @@ LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
-LUAU_FASTFLAGVARIABLE(LuauFragmentAcSupportsReporter)
 LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAGVARIABLE(LuauCloneReturnTypePack)
@@ -43,6 +42,7 @@ LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauFragmentNoTypeFunEval)
 LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
+LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
 
 namespace
 {
@@ -1213,7 +1213,7 @@ void mixedModeCompatibility(
 
 static void reportWaypoint(IFragmentAutocompleteReporter* reporter, FragmentAutocompleteWaypoint type)
 {
-    if (!FFlag::LuauFragmentAcSupportsReporter || !reporter)
+    if (!reporter)
         return;
 
     reporter->reportWaypoint(type);
@@ -1221,7 +1221,7 @@ static void reportWaypoint(IFragmentAutocompleteReporter* reporter, FragmentAuto
 
 static void reportFragmentString(IFragmentAutocompleteReporter* reporter, std::string_view fragment)
 {
-    if (!FFlag::LuauFragmentAcSupportsReporter || !reporter)
+    if (!reporter)
         return;
 
     reporter->reportFragmentString(fragment);
@@ -1351,6 +1351,8 @@ FragmentTypeCheckResult typecheckFragmentHelper_DEPRECATED(
         {
             if (!sc->interiorFreeTypes.has_value())
                 sc->interiorFreeTypes.emplace();
+            if (!sc->interiorFreeTypePacks.has_value())
+                sc->interiorFreeTypePacks.emplace();
         }
     }
 
@@ -1472,6 +1474,7 @@ FragmentTypeCheckResult typecheckFragment_(
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
     incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
     freshChildOfNearestScope->interiorFreeTypes.emplace();
+    freshChildOfNearestScope->interiorFreeTypePacks.emplace();
     cg.rootScope = freshChildOfNearestScope.get();
 
     if (FFlag::LuauUserTypeFunTypecheck)
@@ -1622,7 +1625,7 @@ FragmentAutocompleteStatusResult tryFragmentAutocomplete(
             std::move(stringCompletionCB),
             context.DEPRECATED_fragmentEndPosition,
             context.freshParse.root,
-            FFlag::LuauFragmentAcSupportsReporter ? context.reporter : nullptr
+            context.reporter
         );
         return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
     }
@@ -1658,11 +1661,13 @@ FragmentAutocompleteResult fragmentAutocomplete(
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
     if (FFlag::DebugLogFragmentsFromAutocomplete)
         logLuau("Fragment Autocomplete Source Script", src);
-    TypeArena arenaForFragmentAutocomplete;
+    TypeArena arenaForAutocomplete_DEPRECATED;
+    if (FFlag::LuauFragmentAcMemoryLeak)
+        unfreeze(tcResult.incrementalModule->internalTypes);
     auto result = Luau::autocomplete_(
         tcResult.incrementalModule,
         frontend.builtinTypes,
-        &arenaForFragmentAutocomplete,
+        FFlag::LuauFragmentAcMemoryLeak ? &tcResult.incrementalModule->internalTypes : &arenaForAutocomplete_DEPRECATED,
         tcResult.ancestry,
         globalScope,
         tcResult.freshScope,
@@ -1670,9 +1675,10 @@ FragmentAutocompleteResult fragmentAutocomplete(
         frontend.fileResolver,
         callback
     );
-
+    if (FFlag::LuauFragmentAcMemoryLeak)
+        freeze(tcResult.incrementalModule->internalTypes);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);
-    return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(arenaForFragmentAutocomplete), std::move(result)};
+    return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(arenaForAutocomplete_DEPRECATED), std::move(result)};
 }
 
 } // namespace Luau

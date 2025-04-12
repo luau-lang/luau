@@ -289,4 +289,6 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
  */
 void trackInteriorFreeType(Scope* scope, TypeId ty);
 
+void trackInteriorFreeTypePack(Scope* scope, TypePackId tp);
+
 } // namespace Luau

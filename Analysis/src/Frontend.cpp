@@ -45,7 +45,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRunCustomModuleChecks, false)
 
 LUAU_FASTFLAGVARIABLE(LuauSelectivelyRetainDFGArena)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
@@ -952,7 +951,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         item.stats.timeCheck += duration;
         item.stats.filesStrict += 1;
 
-        if (DFFlag::LuauRunCustomModuleChecks && item.options.customModuleCheck)
+        if (item.options.customModuleCheck)
             item.options.customModuleCheck(sourceModule, *moduleForAutocomplete);
 
         item.module = moduleForAutocomplete;
@@ -972,7 +971,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     item.stats.filesStrict += mode == Mode::Strict;
     item.stats.filesNonstrict += mode == Mode::Nonstrict;
 
-    if (DFFlag::LuauRunCustomModuleChecks && item.options.customModuleCheck)
+    if (item.options.customModuleCheck)
         item.options.customModuleCheck(sourceModule, *module);
 
     if (FFlag::LuauSolverV2 && mode == Mode::NoCheck)

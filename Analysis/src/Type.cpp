@@ -488,11 +488,12 @@ FreeType::FreeType(TypeLevel level, TypeId lowerBound, TypeId upperBound)
 {
 }
 
-FreeType::FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound)
+FreeType::FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound, Polarity polarity)
     : index(Unifiable::freshIndex())
     , scope(scope)
     , lowerBound(lowerBound)
     , upperBound(upperBound)
+    , polarity(polarity)
 {
 }
 
@@ -543,16 +544,18 @@ GenericType::GenericType(TypeLevel level)
 {
 }
 
-GenericType::GenericType(const Name& name)
+GenericType::GenericType(const Name& name, Polarity polarity)
     : index(Unifiable::freshIndex())
     , name(name)
     , explicitName(true)
+    , polarity(polarity)
 {
 }
 
-GenericType::GenericType(Scope* scope)
+GenericType::GenericType(Scope* scope, Polarity polarity)
     : index(Unifiable::freshIndex())
     , scope(scope)
+    , polarity(polarity)
 {
 }
 
@@ -1268,9 +1271,9 @@ IntersectionTypeIterator end(const IntersectionType* itv)
     return IntersectionTypeIterator{};
 }
 
-TypeId freshType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Scope* scope)
+TypeId freshType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Scope* scope, Polarity polarity)
 {
-    return arena->addType(FreeType{scope, builtinTypes->neverType, builtinTypes->unknownType});
+    return arena->addType(FreeType{scope, builtinTypes->neverType, builtinTypes->unknownType, polarity});
 }
 
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)

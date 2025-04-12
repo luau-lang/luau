@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
 LUAU_FASTFLAG(LuauFollowTableFreeze)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization)
 LUAU_FASTFLAG(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauSearchForRefineableType)
@@ -701,7 +702,9 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauNonReentrantGeneralization)
+        CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
+    else if (FFlag::LuauSolverV2)
         CHECK("({unknown}) -> ()" == toString(requireType("swap")));
     else
     {
@@ -1966,7 +1969,7 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_set_nil_even_on_non_lvalue_base_expr")
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(
-            t: {known_prop: boolean, [string]: number}, 
+            t: {known_prop: boolean, [string]: number},
             key: string
         )
             t[key] = nil
@@ -4675,7 +4678,7 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}};
+    ScopedFastFlag sff[] = {{FFlag::LuauNonReentrantGeneralization, true}};
 
     CheckResult result = check(R"(
         function oc(player, speaker)
@@ -4687,9 +4690,9 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(
-        "<a, b...>({{ read Character: t1 }}, { Character: t1 }) -> () "
+        "<a>({{ read Character: t1 }}, { Character: t1 }) -> () "
         "where "
-        "t1 = { read FindFirstChild: (t1, string) -> (a, b...) }" == toString(requireType("oc"))
+        "t1 = { read FindFirstChild: (t1, string) -> (a, ...unknown) }" == toString(requireType("oc"))
     );
 }
 
@@ -5515,7 +5518,6 @@ TEST_CASE_FIXTURE(Fixture, "missing_fields_bidirectional_inference")
     CHECK_EQ(toString(err->givenType), "{{ author: string }}");
     CHECK_EQ(toString(err->wantedType), "{Book}");
     CHECK_EQ(result.errors[1].location, Location{{3, 28}, {7, 9}});
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_index_syntax_bidirectional_infer_with_tables")

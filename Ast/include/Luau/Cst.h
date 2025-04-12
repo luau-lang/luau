@@ -113,11 +113,11 @@ public:
     CstExprFunction();
 
     Position functionKeywordPosition{0, 0};
-    Position openGenericsPosition{0,0};
+    Position openGenericsPosition{0, 0};
     AstArray<Position> genericsCommaPositions;
-    Position closeGenericsPosition{0,0};
+    Position closeGenericsPosition{0, 0};
     AstArray<Position> argsCommaPositions;
-    Position returnSpecifierPosition{0,0};
+    Position returnSpecifierPosition{0, 0};
 };
 
 class CstExprTable : public CstNode

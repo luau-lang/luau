@@ -248,6 +248,8 @@ struct BuiltinTypeFunctions
     TypeFunction setmetatableFunc;
     TypeFunction getmetatableFunc;
 
+    TypeFunction weakoptionalFunc;
+
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };
 

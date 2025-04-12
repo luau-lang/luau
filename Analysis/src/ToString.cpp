@@ -301,6 +301,28 @@ struct StringifierState
         emit(std::to_string(i).c_str());
     }
 
+    void emit(Polarity p)
+    {
+        switch (p)
+        {
+        case Polarity::None:
+            emit("  ");
+            break;
+        case Polarity::Negative:
+            emit(" -");
+            break;
+        case Polarity::Positive:
+            emit("+ ");
+            break;
+        case Polarity::Mixed:
+            emit("+-");
+            break;
+        default:
+            emit("!!");
+            break;
+        }
+    }
+
     void indent()
     {
         indentation += 4;
@@ -482,6 +504,8 @@ struct TypeStringifier
             {
                 state.emit("'");
                 state.emit(state.getName(ty));
+                if (FInt::DebugLuauVerboseTypeNames >= 1)
+                    state.emit(ftv.polarity);
             }
             else
             {
@@ -493,6 +517,9 @@ struct TypeStringifier
                 }
                 state.emit("'");
                 state.emit(state.getName(ty));
+
+                if (FInt::DebugLuauVerboseTypeNames >= 1)
+                    state.emit(ftv.polarity);
 
                 if (!get<UnknownType>(upperBound))
                 {
@@ -508,6 +535,9 @@ struct TypeStringifier
             state.emit("free-");
 
         state.emit(state.getName(ty));
+
+        if (FFlag::LuauSolverV2 && FInt::DebugLuauVerboseTypeNames >= 1)
+            state.emit(ftv.polarity);
 
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
@@ -537,6 +567,9 @@ struct TypeStringifier
         }
         else
             state.emit(state.getName(ty));
+
+        if (FInt::DebugLuauVerboseTypeNames >= 1)
+            state.emit(gtv.polarity);
 
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
@@ -1222,6 +1255,9 @@ struct TypePackStringifier
             state.emit(state.getName(tp));
         }
 
+        if (FInt::DebugLuauVerboseTypeNames >= 1)
+            state.emit(pack.polarity);
+
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
@@ -1240,6 +1276,9 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 1)
             state.emit("free-");
         state.emit(state.getName(tp));
+
+        if (FInt::DebugLuauVerboseTypeNames >= 1)
+            state.emit(pack.polarity);
 
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {

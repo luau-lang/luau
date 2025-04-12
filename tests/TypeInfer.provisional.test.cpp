@@ -58,7 +58,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             end
         end
     )"
-                                                         : R"(
+                                                          : R"(
         function f(a:{fn:()->(a,b...)}): ()
             if type(a) == 'boolean'then
                 local a1:boolean=a
@@ -77,7 +77,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             end
         end
     )"
-                                                                      : R"(
+                                                                       : R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean'then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
@@ -96,7 +96,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             end
         end
     )"
-                                                                  : R"(
+                                                                   : R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean'then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a

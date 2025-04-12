@@ -3194,10 +3194,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generali
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_unwind_mutually_recursive_union_type_func")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReduceUnionFollowUnionType, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReduceUnionFollowUnionType, true}};
 
     // This block ends up minting a type like:
     //

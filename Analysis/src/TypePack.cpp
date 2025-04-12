@@ -6,7 +6,7 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAGVARIABLE(LuauTypePackDetectCycles)
 
 namespace Luau
 {
@@ -18,10 +18,11 @@ FreeTypePack::FreeTypePack(TypeLevel level)
 {
 }
 
-FreeTypePack::FreeTypePack(Scope* scope)
+FreeTypePack::FreeTypePack(Scope* scope, Polarity polarity)
     : index(Unifiable::freshIndex())
     , level{}
     , scope(scope)
+    , polarity(polarity)
 {
 }
 
@@ -52,9 +53,10 @@ GenericTypePack::GenericTypePack(const Name& name)
 {
 }
 
-GenericTypePack::GenericTypePack(Scope* scope)
+GenericTypePack::GenericTypePack(Scope* scope, Polarity polarity)
     : index(Unifiable::freshIndex())
     , scope(scope)
+    , polarity(polarity)
 {
 }
 
@@ -146,6 +148,15 @@ TypePackIterator& TypePackIterator::operator++()
     {
         currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
         tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
+
+        if (FFlag::LuauTypePackDetectCycles && tp)
+        {
+            // Step twice on each iteration to detect cycles
+            tailCycleCheck = tp->tail ? log->follow(*tp->tail) : nullptr;
+
+            if (currentTypePack == tailCycleCheck)
+                throw InternalCompilerError("TypePackIterator detected a type pack cycle");
+        }
 
         currentIndex = 0;
     }

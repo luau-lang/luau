@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Polarity.h"
 #include "Luau/TypedAllocator.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
@@ -40,7 +41,7 @@ struct TypeArena
     TypeId freshType_DEPRECATED(Scope* scope);
     TypeId freshType_DEPRECATED(Scope* scope, TypeLevel level);
 
-    TypePackId freshTypePack(Scope* scope);
+    TypePackId freshTypePack(Scope* scope, Polarity polarity = Polarity::Unknown);
 
     TypePackId addTypePack(std::initializer_list<TypeId> types);
     TypePackId addTypePack(std::vector<TypeId> types, std::optional<TypePackId> tail = {});
