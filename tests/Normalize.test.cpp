@@ -21,7 +21,7 @@ LUAU_FASTFLAG(LuauSubtypingStopAtNormFail)
 LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
 LUAU_FASTFLAG(LuauSubtypingEnableReasoningLimit)
 LUAU_FASTFLAG(LuauTypePackDetectCycles)
-LUAU_FASTFLAG(LuauNonreentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization)
 
 using namespace Luau;
 
