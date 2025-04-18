@@ -39,7 +39,7 @@ LUAU_FASTFLAGVARIABLE(LuauHasPropProperBlock)
 LUAU_FASTFLAGVARIABLE(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauSearchForRefineableType)
 LUAU_FASTFLAG(LuauDeprecatedAttribute)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
 LUAU_FASTFLAGVARIABLE(LuauTrackInferredFunctionTypeFromCall)
@@ -673,73 +673,20 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
     if (!freeTy)
         return;
 
-    NotNull<Scope> tyScope{freeTy->scope};
+    TypeId* functionType = scopeToFunction->find(freeTy->scope);
+    if (!functionType)
+        return;
 
-    // TODO: If freeTy occurs within the enclosing function's type, we need to
-    // check to see whether this type should instead be generic.
+    std::optional<TypeId> resultTy = generalize(arena, builtinTypes, NotNull{freeTy->scope}, generalizedTypes, *functionType, ty);
 
-    TypeId newBound = follow(freeTy->upperBound);
-
-    TypeId* functionTyPtr = nullptr;
-    while (true)
+    if (FFlag::DebugLuauLogSolver)
     {
-        functionTyPtr = scopeToFunction->find(tyScope);
-        if (functionTyPtr || !tyScope->parent)
-            break;
-        else if (tyScope->parent)
-            tyScope = NotNull{tyScope->parent.get()};
-        else
-            break;
-    }
-
-    if (ty == newBound)
-        ty = builtinTypes->unknownType;
-
-    if (!functionTyPtr)
-    {
-        asMutable(ty)->reassign(Type{BoundType{follow(freeTy->upperBound)}});
-    }
-    else
-    {
-        const TypeId functionTy = follow(*functionTyPtr);
-        FunctionType* const function = getMutable<FunctionType>(functionTy);
-        LUAU_ASSERT(function);
-
-        TypeSearcher ts{ty};
-        ts.traverse(functionTy);
-
-        const TypeId upperBound = follow(freeTy->upperBound);
-        const TypeId lowerBound = follow(freeTy->lowerBound);
-
-        switch (ts.result)
-        {
-        case Polarity::None:
-            asMutable(ty)->reassign(Type{BoundType{upperBound}});
-            break;
-
-        case Polarity::Negative:
-        case Polarity::Mixed:
-            if (get<UnknownType>(upperBound) && ts.count > 1)
-            {
-                asMutable(ty)->reassign(Type{GenericType{tyScope}});
-                function->generics.emplace_back(ty);
-            }
-            else
-                asMutable(ty)->reassign(Type{BoundType{upperBound}});
-            break;
-
-        case Polarity::Positive:
-            if (get<UnknownType>(lowerBound) && ts.count > 1)
-            {
-                asMutable(ty)->reassign(Type{GenericType{tyScope}});
-                function->generics.emplace_back(ty);
-            }
-            else
-                asMutable(ty)->reassign(Type{BoundType{lowerBound}});
-            break;
-        default:
-            LUAU_ASSERT(!"Unreachable");
-        }
+        printf(
+            "Eagerly generalized %s (now %s)\n\tin function %s\n",
+            saveme.c_str(),
+            toString(ty, opts).c_str(),
+            toString(resultTy.value_or(*functionType), opts).c_str()
+        );
     }
 }
 
@@ -755,7 +702,7 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypeId ty, Typ
             constraint, ty, constraint->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed
         ); // FIXME?  Is this the right polarity?
 
-        if (FFlag::LuauNonReentrantGeneralization)
+        if (FFlag::LuauNonReentrantGeneralization2)
             trackInteriorFreeType(constraint->scope, ty);
 
         return;
@@ -890,6 +837,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 
     if (generalizedTy)
     {
+        pruneUnnecessaryGenerics(arena, builtinTypes, constraint->scope, generalizedTypes, *generalizedTy);
         if (get<BlockedType>(generalizedType))
             bind(constraint, generalizedType, *generalizedTy);
         else
@@ -918,7 +866,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
         {
             for (TypeId ty : *constraint->scope->interiorFreeTypes) // NOLINT(bugprone-unchecked-optional-access)
             {
-                if (FFlag::LuauNonReentrantGeneralization)
+                if (FFlag::LuauNonReentrantGeneralization2)
                 {
                     ty = follow(ty);
                     if (auto freeTy = get<FreeType>(ty))
@@ -928,7 +876,9 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
                         params.useCount = 1;
                         params.polarity = freeTy->polarity;
 
-                        generalizeType(arena, builtinTypes, constraint->scope, ty, params);
+                        GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, constraint->scope, ty, params);
+                        if (res.resourceLimitsExceeded)
+                            reportError(CodeTooComplex{}, constraint->scope->location); // FIXME: We don't have a very good location for this.
                     }
                     else if (get<TableType>(ty))
                         sealTable(constraint->scope, ty);
@@ -938,7 +888,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
             }
         }
 
-        if (FFlag::LuauNonReentrantGeneralization)
+        if (FFlag::LuauNonReentrantGeneralization2)
         {
             if (constraint->scope->interiorFreeTypePacks)
             {
@@ -1544,7 +1494,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     const bool occursCheckPassed = u2.unify(overloadToUse, inferredTy);
 
-    if (FFlag::LuauNonReentrantGeneralization)
+    if (FFlag::LuauNonReentrantGeneralization2)
     {
         for (TypeId freeTy : u2.newFreshTypes)
             trackInteriorFreeType(constraint->scope, freeTy);
@@ -1944,7 +1894,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
 
             FreeType freeResult{tt->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed};
             emplace<FreeType>(constraint, resultType, freeResult);
-            if (FFlag::LuauNonReentrantGeneralization)
+            if (FFlag::LuauNonReentrantGeneralization2)
                 trackInteriorFreeType(constraint->scope, resultType);
 
             tt->indexer = TableIndexer{indexType, resultType};

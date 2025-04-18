@@ -36,13 +36,13 @@ LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
 LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
-LUAU_FASTFLAGVARIABLE(LuauCloneReturnTypePack)
 LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteDemandBasedCloning)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauFragmentNoTypeFunEval)
 LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
+LUAU_FASTFLAGVARIABLE(LuauGlobalVariableModuleIsolation)
 
 namespace
 {
@@ -569,12 +569,32 @@ struct UsageFinder : public AstVisitor
         return true;
     }
 
+    bool visit(AstExprGlobal* global) override
+    {
+        if (FFlag::LuauGlobalVariableModuleIsolation)
+            globalDefsToPrePopulate.emplace_back(global->name, dfg->getDef(global));
+        return true;
+    }
+
+    bool visit(AstStatFunction* function) override
+    {
+        if (FFlag::LuauGlobalVariableModuleIsolation)
+        {
+            if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
+                globalFunctionsReferenced.emplace_back(g->name);
+        }
+
+        return true;
+    }
+
     NotNull<DataFlowGraph> dfg;
     DenseHashSet<Name> declaredAliases{""};
     std::vector<std::pair<const Def*, AstLocal*>> localBindingsReferenced;
     DenseHashSet<const Def*> mentionedDefs{nullptr};
     std::vector<Name> referencedBindings{""};
     std::vector<std::pair<Name, Name>> referencedImportedBindings{{"", ""}};
+    std::vector<std::pair<AstName, const Def*>> globalDefsToPrePopulate;
+    std::vector<AstName> globalFunctionsReferenced;
 };
 
 // Runs the `UsageFinder` traversal on the fragment and grabs all of the types that are
@@ -648,7 +668,45 @@ void cloneTypesFromFragment(
         }
     }
 
-    // Finally - clone the returnType on the staleScope. This helps avoid potential leaks of free types.
+    if (FFlag::LuauGlobalVariableModuleIsolation)
+    {
+        // Fourth  - prepopulate the global function types
+        for (const auto& name : f.globalFunctionsReferenced)
+        {
+            if (auto ty = staleModule->getModuleScope()->lookup(name))
+            {
+                destScope->bindings[name] = Binding{Luau::cloneIncremental(*ty, *destArena, cloneState, destScope)};
+            }
+            else
+            {
+                TypeId bt = destArena->addType(BlockedType{});
+                destScope->bindings[name] = Binding{bt};
+            }
+        }
+
+        // Fifth  - prepopulate the globals here
+        for (const auto& [name, def] : f.globalDefsToPrePopulate)
+        {
+            if (auto ty = staleModule->getModuleScope()->lookup(name))
+            {
+                destScope->lvalueTypes[def] = Luau::cloneIncremental(*ty, *destArena, cloneState, destScope);
+            }
+            else if (auto ty = destScope->lookup(name))
+            {
+                // This branch is a little strange - we are looking up a symbol in the destScope
+                // This scope has no parent pointer, and only cloned types are written to it, so this is a
+                // safe operation to do without cloning.
+                // The reason we do this, is the usage finder will traverse the global functions referenced first
+                // If there is no name associated with this function at the global scope, it must appear first in the fragment and we must
+                // create a blocked type for it. We write this blocked type directly into the `destScope` bindings
+                // Then when we go to traverse the `AstExprGlobal` associated with this function, we need to ensure that we map the def -> blockedType
+                // in `lvalueTypes`, which was previously written into `destScope`
+                destScope->lvalueTypes[def] = *ty;
+            }
+        }
+    }
+
+    // Finally, clone the returnType on the staleScope. This helps avoid potential leaks of free types.
     if (staleScope->returnType)
         destScope->returnType = Luau::cloneIncremental(staleScope->returnType, *destArena, cloneState, destScope);
 }
@@ -820,7 +878,7 @@ void cloneAndSquashScopes(
         }
     }
 
-    if (FFlag::LuauCloneReturnTypePack && destScope->returnType)
+    if (destScope->returnType)
         destScope->returnType = Luau::cloneIncremental(destScope->returnType, *destArena, cloneState, destScope);
 
     return;
@@ -1452,7 +1510,7 @@ FragmentTypeCheckResult typecheckFragment_(
     SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
-
+    std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
     /// Contraint Generator
     ConstraintGenerator cg{
         incrementalModule,
@@ -1462,7 +1520,7 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&resolver},
         frontend.builtinTypes,
         iceHandler,
-        stale->getModuleScope(),
+        FFlag::LuauGlobalVariableModuleIsolation ? freshChildOfNearestScope : stale->getModuleScope(),
         frontend.globals.globalTypeFunctionScope,
         nullptr,
         nullptr,
@@ -1471,7 +1529,6 @@ FragmentTypeCheckResult typecheckFragment_(
     };
 
     CloneState cloneState{frontend.builtinTypes};
-    std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
     incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
     freshChildOfNearestScope->interiorFreeTypes.emplace();
     freshChildOfNearestScope->interiorFreeTypePacks.emplace();

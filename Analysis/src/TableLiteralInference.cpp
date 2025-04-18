@@ -13,7 +13,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceUpcast)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalFailsafe)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceElideAssert)
@@ -142,13 +141,8 @@ TypeId matchLiteralType(
 
     if (!isLiteral(expr))
     {
-        if (FFlag::LuauBidirectionalInferenceUpcast)
-        {
-            auto result = subtyping->isSubtype(/*subTy=*/exprType, /*superTy=*/expectedType, unifier->scope);
-            return result.isSubtype ? expectedType : exprType;
-        }
-        else
-            return exprType;
+        auto result = subtyping->isSubtype(/*subTy=*/exprType, /*superTy=*/expectedType, unifier->scope);
+        return result.isSubtype ? expectedType : exprType;
     }
 
     expectedType = follow(expectedType);
@@ -239,7 +233,7 @@ TypeId matchLiteralType(
     }
 
 
-    if (FFlag::LuauBidirectionalInferenceUpcast && expr->is<AstExprFunction>())
+    if (expr->is<AstExprFunction>())
     {
         // TODO: Push argument / return types into the lambda. For now, just do
         // the non-literal thing: check for a subtype and upcast if valid.

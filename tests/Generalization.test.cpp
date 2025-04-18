@@ -15,7 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
@@ -227,7 +227,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization, true};
+    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization2, true};
 
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
@@ -261,7 +261,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization, true};
+    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization2, true};
 
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();

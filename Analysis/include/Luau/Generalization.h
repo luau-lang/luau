@@ -16,8 +16,24 @@ struct GeneralizationParams
     Polarity polarity = Polarity::None;
 };
 
+template<typename TID>
+struct GeneralizationResult
+{
+    std::optional<TID> result;
+
+    // True if the provided type was replaced with a generic.
+    bool wasReplacedByGeneric = false;
+
+    bool resourceLimitsExceeded = false;
+
+    explicit operator bool() const
+    {
+        return bool(result);
+    }
+};
+
 // Replace a single free type by its bounds according to the polarity provided.
-std::optional<TypeId> generalizeType(
+GeneralizationResult<TypeId> generalizeType(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
@@ -26,7 +42,7 @@ std::optional<TypeId> generalizeType(
 );
 
 // Generalize one type pack
-std::optional<TypePackId> generalizeTypePack(
+GeneralizationResult<TypePackId> generalizeTypePack(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
@@ -36,11 +52,31 @@ std::optional<TypePackId> generalizeTypePack(
 
 void sealTable(NotNull<Scope> scope, TypeId ty);
 
+/** Attempt to generalize a type.
+ *
+ * If generalizationTarget is set, then only that type will be replaced by its
+ * bounds.  The way this is intended to be used is that ty is some function that
+ * is not fully generalized, and generalizationTarget is a type within its
+ * signature.  There should be no further constraints that could affect the
+ * bounds of generalizationTarget.
+ *
+ * Returns nullopt if generalization failed due to resources limits.
+ */
 std::optional<TypeId> generalize(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Scope> scope,
+    NotNull<DenseHashSet<TypeId>> cachedTypes,
+    TypeId ty,
+    std::optional<TypeId> generalizationTarget = {}
+);
+
+void pruneUnnecessaryGenerics(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
     NotNull<DenseHashSet<TypeId>> cachedTypes,
     TypeId ty
 );
-}
+
+} // namespace Luau

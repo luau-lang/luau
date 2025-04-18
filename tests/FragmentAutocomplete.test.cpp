@@ -21,7 +21,6 @@
 #include <memory>
 #include <optional>
 
-
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
@@ -40,12 +39,12 @@ LUAU_FASTFLAG(LuauClonedTableAndFunctionTypesMustHaveScopes)
 LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 LUAU_FASTFLAG(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAG(LuauDoNotClonePersistentBindings)
-LUAU_FASTFLAG(LuauCloneReturnTypePack)
 LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauBetterScopeSelection)
 LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAG(LuauFragmentAcMemoryLeak)
+LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
@@ -83,12 +82,12 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauDisableNewSolverAssertsInMixedMode{FFlag::LuauDisableNewSolverAssertsInMixedMode, true};
     ScopedFastFlag luauCloneTypeAliasBindings{FFlag::LuauCloneTypeAliasBindings, true};
     ScopedFastFlag luauDoNotClonePersistentBindings{FFlag::LuauDoNotClonePersistentBindings, true};
-    ScopedFastFlag luauCloneReturnTypePack{FFlag::LuauCloneReturnTypePack, true};
     ScopedFastFlag luauIncrementalAutocompleteDemandBasedCloning{FFlag::LuauIncrementalAutocompleteDemandBasedCloning, true};
     ScopedFastFlag luauBetterScopeSelection{FFlag::LuauBetterScopeSelection, true};
     ScopedFastFlag luauBlockDiffFragmentSelection{FFlag::LuauBlockDiffFragmentSelection, true};
     ScopedFastFlag luauAutocompleteUsesModuleForTypeCompatibility{FFlag::LuauAutocompleteUsesModuleForTypeCompatibility, true};
     ScopedFastFlag luauFragmentAcMemoryLeak{FFlag::LuauFragmentAcMemoryLeak, true};
+    ScopedFastFlag luauGlobalVariableModuleIsolation{FFlag::LuauGlobalVariableModuleIsolation, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -3597,6 +3596,30 @@ end
             CHECK(res.result->acResults.entryMap.count("foo"));
         }
     );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "NotNull_assertion_caused_by_leaking_free_type_from_stale_module")
+{
+    const std::string source = R"(
+local Players = game:GetService("Players")
+
+Players.PlayerAdded:Connect(function(Player)
+    for_,v in script.PlayerValue:GetChildren()do
+        v
+    end
+end)
+)";
+
+    const std::string dest = R"(
+local Players = game:GetService("Players")
+
+Players.PlayerAdded:Connect(function(Player)
+    for_,v in script.PlayerValue:GetChildren()do
+        v:L
+    end
+end)
+)";
+    autocompleteFragmentInBothSolvers(source, dest, Position{5, 11}, [](auto& result) {});
 }
 // NOLINTEND(bugprone-unchecked-optional-access)
 

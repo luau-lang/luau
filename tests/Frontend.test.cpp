@@ -16,8 +16,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauSelectivelyRetainDFGArena)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauNewNonStrictVisitTypes)
 
 namespace
 {
@@ -1015,8 +1015,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
     LUAU_REQUIRE_NO_ERRORS(resultA);
 
     CheckResult resultB = frontend.check("B");
-    // In the new non-strict mode, we do not currently support error reporting for unknown symbols in type positions.
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauNewNonStrictVisitTypes)
         LUAU_REQUIRE_NO_ERRORS(resultB);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, resultB);
@@ -1570,7 +1569,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_correct_ast_root")
 
 TEST_CASE_FIXTURE(FrontendFixture, "dfg_data_cleared_on_retain_type_graphs_unset")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauSelectivelyRetainDFGArena, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     fileResolver.source["game/A"] = R"(
 local a = 1
 local b = 2

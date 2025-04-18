@@ -87,8 +87,8 @@ struct AstLocal
 template<typename T>
 struct AstArray
 {
-    T* data;
-    size_t size;
+    T* data = nullptr;
+    size_t size = 0;
 
     const T* begin() const
     {

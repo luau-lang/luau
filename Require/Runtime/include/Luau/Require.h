@@ -113,5 +113,9 @@ struct luarequire_Configuration
 // Populates function pointers in the given luarequire_Configuration.
 typedef void (*luarequire_Configuration_init)(luarequire_Configuration* config);
 
-// Initializes the require library with the given configuration and context.
+// Initializes and pushes the require closure onto the stack without
+// registration.
+LUALIB_API int lua_pushrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx);
+
+// Initializes the require library and registers it globally.
 LUALIB_API void luaopen_require(lua_State* L, luarequire_Configuration_init config_init, void* ctx);

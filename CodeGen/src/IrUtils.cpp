@@ -16,12 +16,119 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauVectorLibNativeDot);
-
 namespace Luau
 {
 namespace CodeGen
 {
+
+int getOpLength(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_GETGLOBAL:
+    case LOP_SETGLOBAL:
+    case LOP_GETIMPORT:
+    case LOP_GETTABLEKS:
+    case LOP_SETTABLEKS:
+    case LOP_NAMECALL:
+    case LOP_JUMPIFEQ:
+    case LOP_JUMPIFLE:
+    case LOP_JUMPIFLT:
+    case LOP_JUMPIFNOTEQ:
+    case LOP_JUMPIFNOTLE:
+    case LOP_JUMPIFNOTLT:
+    case LOP_NEWTABLE:
+    case LOP_SETLIST:
+    case LOP_FORGLOOP:
+    case LOP_LOADKX:
+    case LOP_FASTCALL2:
+    case LOP_FASTCALL2K:
+    case LOP_FASTCALL3:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
+        return 2;
+
+    default:
+        return 1;
+    }
+}
+
+bool isJumpD(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_JUMP:
+    case LOP_JUMPIF:
+    case LOP_JUMPIFNOT:
+    case LOP_JUMPIFEQ:
+    case LOP_JUMPIFLE:
+    case LOP_JUMPIFLT:
+    case LOP_JUMPIFNOTEQ:
+    case LOP_JUMPIFNOTLE:
+    case LOP_JUMPIFNOTLT:
+    case LOP_FORNPREP:
+    case LOP_FORNLOOP:
+    case LOP_FORGPREP:
+    case LOP_FORGLOOP:
+    case LOP_FORGPREP_INEXT:
+    case LOP_FORGPREP_NEXT:
+    case LOP_JUMPBACK:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+bool isSkipC(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_LOADB:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+bool isFastCall(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_FASTCALL:
+    case LOP_FASTCALL1:
+    case LOP_FASTCALL2:
+    case LOP_FASTCALL2K:
+    case LOP_FASTCALL3:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+int getJumpTarget(uint32_t insn, uint32_t pc)
+{
+    LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
+
+    if (isJumpD(op))
+        return int(pc + LUAU_INSN_D(insn) + 1);
+    else if (isFastCall(op))
+        return int(pc + LUAU_INSN_C(insn) + 2);
+    else if (isSkipC(op) && LUAU_INSN_C(insn))
+        return int(pc + LUAU_INSN_C(insn) + 1);
+    else if (int(op) == LOP_JUMPX)
+        return int(pc + LUAU_INSN_E(insn) + 1);
+    else
+        return -1;
+}
 
 IrValueKind getCmdValueKind(IrCmd cmd)
 {
@@ -83,7 +190,6 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::UNM_VEC:
         return IrValueKind::Tvalue;
     case IrCmd::DOT_VEC:
-        LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
         return IrValueKind::Double;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:

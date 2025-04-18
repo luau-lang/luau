@@ -10,8 +10,6 @@
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::A64;
 
-LUAU_FASTFLAG(LuauVectorLibNativeDot);
-
 static std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
 {
     std::string result = "{";
@@ -389,8 +387,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
 {
-    ScopedFastFlag sff{FFlag::LuauVectorLibNativeDot, true};
-
     SINGLE_COMPARE(fabs(d1, d2), 0x1E60C041);
     SINGLE_COMPARE(fadd(d1, d2, d3), 0x1E632841);
     SINGLE_COMPARE(fadd(s29, s29, s28), 0x1E3C2BBD);

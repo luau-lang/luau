@@ -10,14 +10,10 @@
 #include "Luau/Normalize.h"
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(LuauNormalizeNegatedErrorToAnError)
-LUAU_FASTFLAG(LuauNormalizeIntersectErrorToAnError)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauNormalizeLimitFunctionSet)
-LUAU_FASTFLAG(LuauSubtypingStopAtNormFail)
 LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
 LUAU_FASTFLAG(LuauSubtypingEnableReasoningLimit)
 LUAU_FASTFLAG(LuauTypePackDetectCycles)
@@ -605,8 +601,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersect_truthy_expressed_as_intersection"
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_error")
 {
-    ScopedFastFlag luauNormalizeIntersectErrorToAnError{FFlag::LuauNormalizeIntersectErrorToAnError, true};
-
     std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(string & AAA)", 1);
     REQUIRE(norm);
     CHECK("*error-type*" == toString(normalizer.typeFromNormal(*norm)));
@@ -614,9 +608,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersect_error")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_not_error")
 {
-    ScopedFastFlag luauNormalizeIntersectErrorToAnError{FFlag::LuauNormalizeIntersectErrorToAnError, true};
-    ScopedFastFlag luauNormalizeNegatedErrorToAnError{FFlag::LuauNormalizeNegatedErrorToAnError, true};
-
     std::shared_ptr<const NormalizedType> norm = toNormalizedType(R"(string & Not<)", 1);
     REQUIRE(norm);
     CHECK("*error-type*" == toString(normalizer.typeFromNormal(*norm)));
@@ -1199,8 +1190,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity"
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 80};
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
-    ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
-    ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
 
     CheckResult result = check(R"(
 function _(_).readu32(l0)
@@ -1217,8 +1206,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
 {
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
-    ScopedFastFlag luauNormalizeLimitFunctionSet{FFlag::LuauNormalizeLimitFunctionSet, true};
-    ScopedFastFlag luauSubtypingStopAtNormFail{FFlag::LuauSubtypingStopAtNormFail, true};
     ScopedFastFlag luauSubtypingEnableReasoningLimit{FFlag::LuauSubtypingEnableReasoningLimit, true};
     ScopedFastFlag luauTurnOffNonreentrantGeneralization{FFlag::LuauNonReentrantGeneralization, false};
 

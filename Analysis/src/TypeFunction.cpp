@@ -48,7 +48,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
@@ -65,6 +66,8 @@ LUAU_FASTFLAGVARIABLE(LuauSimplyRefineNotNil)
 LUAU_FASTFLAGVARIABLE(LuauIndexDeferPendingIndexee)
 LUAU_FASTFLAGVARIABLE(LuauNewTypeFunReductionChecks2)
 LUAU_FASTFLAGVARIABLE(LuauReduceUnionFollowUnionType)
+LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
+LUAU_FASTFLAGVARIABLE(LuauNarrowIntersectionNevers)
 
 namespace Luau
 {
@@ -309,9 +312,22 @@ struct TypeFunctionReducer
 
     enum class SkipTestResult
     {
+        /// If a type function is cyclic, it cannot be reduced, but maybe we can
+        /// make a guess and offer a suggested annotation to the user.
         CyclicTypeFunction,
+
+        /// Indicase that we will not be able to reduce this type function this
+        /// time. Constraint resolution may cause this type function to become
+        /// reducible later.
         Irreducible,
+
+        /// Some type functions can operate on generic parameters
+        Generic,
+
+        /// We might be able to reduce this type function, but not yet.
         Defer,
+
+        /// We can attempt to reduce this type function right now.
         Okay,
     };
 
@@ -334,7 +350,10 @@ struct TypeFunctionReducer
         }
         else if (is<GenericType>(ty))
         {
-            return SkipTestResult::Irreducible;
+            if (FFlag::DebugLuauGreedyGeneralization)
+                return SkipTestResult::Generic;
+            else
+                return SkipTestResult::Irreducible;
         }
 
         return SkipTestResult::Okay;
@@ -353,7 +372,10 @@ struct TypeFunctionReducer
         }
         else if (is<GenericTypePack>(ty))
         {
-            return SkipTestResult::Irreducible;
+            if (FFlag::DebugLuauGreedyGeneralization)
+                return SkipTestResult::Generic;
+            else
+                return SkipTestResult::Irreducible;
         }
 
         return SkipTestResult::Okay;
@@ -435,7 +457,7 @@ struct TypeFunctionReducer
         {
             SkipTestResult skip = testForSkippability(p);
 
-            if (skip == SkipTestResult::Irreducible)
+            if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !tfit->function->canReduceGenerics))
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
@@ -461,7 +483,7 @@ struct TypeFunctionReducer
         {
             SkipTestResult skip = testForSkippability(p);
 
-            if (skip == SkipTestResult::Irreducible)
+            if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !tfit->function->canReduceGenerics))
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
@@ -1221,7 +1243,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
 
-    if (FFlag::LuauNonReentrantGeneralization)
+    if (FFlag::LuauNonReentrantGeneralization2)
         operandTy = follow(operandTy);
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
@@ -2163,6 +2185,44 @@ struct ContainsRefinableType : TypeOnceVisitor
     }
 };
 
+namespace
+{
+bool isApproximateFalsy(TypeId ty)
+{
+    ty = follow(ty);
+    bool seenNil = false;
+    bool seenFalse = false;
+    if (auto ut = get<UnionType>(ty))
+    {
+        for (auto option : ut)
+        {
+            if (auto pt = get<PrimitiveType>(option); pt && pt->type == PrimitiveType::NilType)
+                seenNil = true;
+            else if (auto st = get<SingletonType>(option); st && st->variant == BooleanSingleton{false})
+                seenFalse = true;
+            else
+                return false;
+        }
+    }
+    return seenFalse && seenNil;
+}
+
+bool isApproximateTruthy(TypeId ty)
+{
+    ty = follow(ty);
+    if (auto nt = get<NegationType>(ty))
+        return isApproximateFalsy(nt->ty);
+    return false;
+}
+
+bool isSimpleDiscriminant(TypeId ty)
+{
+    ty = follow(ty);
+    return isApproximateTruthy(ty) || isApproximateFalsy(ty);
+}
+
+}
+
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -2257,16 +2317,37 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
                 }
             }
 
-            // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
-            // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
-            if (get<TableType>(target))
+            if (FFlag::LuauOptimizeFalsyAndTruthyIntersect)
             {
-                SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                if (!result.blockedTypes.empty())
-                    return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
-
-                return {result.result, {}};
+                // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
+                // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
+                // We also fire for simple discriminants such as false? and ~(false?): the falsy and truthy types respectively
+                // NOTE: It would be nice to be able to do a simple intersection for something like:
+                //
+                //  { a: A, b: B, ... } & { x: X }
+                //
+                if (is<TableType>(target) || isSimpleDiscriminant(discriminant))
+                {
+                    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+                    if (!result.blockedTypes.empty())
+                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+                    return {result.result, {}};
+                }
             }
+            else
+            {
+                // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
+                // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
+                if (get<TableType>(target))
+                {
+                    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+                    if (!result.blockedTypes.empty())
+                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+
+                    return {result.result, {}};
+                }
+            }
+
 
             // In the general case, we'll still use normalization though.
             TypeId intersection = ctx->arena->addType(IntersectionType{{target, discriminant}});
@@ -2485,6 +2566,8 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
 
     // fold over the types with `simplifyIntersection`
     TypeId resultTy = ctx->builtins->unknownType;
+    // collect types which caused intersection to return never
+    DenseHashSet<TypeId> unintersectableTypes{nullptr};
     for (auto ty : types)
     {
         // skip any `*no-refine*` types.
@@ -2492,6 +2575,17 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
             continue;
 
         SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, resultTy, ty);
+
+        if (FFlag::LuauNarrowIntersectionNevers)
+        {
+            // If simplifying the intersection returned never, note the type we tried to intersect it with, and continue trying to intersect with the
+            // rest
+            if (get<NeverType>(result.result))
+            {
+                unintersectableTypes.insert(follow(ty));
+                continue;
+            }
+        }
 
         if (FFlag::LuauIntersectNotNil)
         {
@@ -2508,6 +2602,24 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
         }
 
         resultTy = result.result;
+    }
+
+    if (FFlag::LuauNarrowIntersectionNevers)
+    {
+        if (!unintersectableTypes.empty())
+        {
+            unintersectableTypes.insert(resultTy);
+            if (unintersectableTypes.size() > 1)
+            {
+                TypeId intersection =
+                    ctx->arena->addType(IntersectionType{std::vector<TypeId>(unintersectableTypes.begin(), unintersectableTypes.end())});
+                return {intersection, Reduction::MaybeOk, {}, {}};
+            }
+            else
+            {
+                return {*unintersectableTypes.begin(), Reduction::MaybeOk, {}, {}};
+            }
+        }
     }
 
     // if the intersection simplifies to `never`, this gives us bad autocomplete.
@@ -3413,8 +3525,8 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , powFunc{"pow", powTypeFunction}
     , modFunc{"mod", modTypeFunction}
     , concatFunc{"concat", concatTypeFunction}
-    , andFunc{"and", andTypeFunction}
-    , orFunc{"or", orTypeFunction}
+    , andFunc{"and", andTypeFunction, /*canReduceGenerics*/ true}
+    , orFunc{"or", orTypeFunction, /*canReduceGenerics*/ true}
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
     , eqFunc{"eq", eqTypeFunction}
