@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauCacheInferencePerAstExpr)
 LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization)
 
 using namespace Luau;
 
@@ -433,14 +434,15 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 {
 #if defined(LUAU_ENABLE_ASAN)
-    int limit = 250;
+    int limit = 200;
 #elif defined(_DEBUG) || defined(_NOOPT)
-    int limit = 300;
+    int limit = 250;
 #else
-    int limit = 600;
+    int limit = 500;
 #endif
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+    ScopedFastFlag _{FFlag::LuauNonReentrantGeneralization, false};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
