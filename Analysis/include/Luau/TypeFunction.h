@@ -155,6 +155,9 @@ struct TypeFunction
 
     /// The reducer function for the type function.
     ReducerFunction<TypeId> reducer;
+
+    /// If true, this type function can reduce even if it is parameterized on a generic.
+    bool canReduceGenerics = false;
 };
 
 /// Represents a type function that may be applied to map a series of types and
@@ -167,6 +170,9 @@ struct TypePackFunction
 
     /// The reducer function for the type pack function.
     ReducerFunction<TypePackId> reducer;
+
+    /// If true, this type function can reduce even if it is parameterized on a generic.
+    bool canReduceGenerics = false;
 };
 
 struct FunctionGraphReductionResult

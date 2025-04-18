@@ -46,7 +46,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 
-LUAU_FASTFLAGVARIABLE(LuauSelectivelyRetainDFGArena)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
 
 namespace Luau
@@ -1003,11 +1002,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         freeze(module->interfaceTypes);
 
         module->internalTypes.clear();
-        if (FFlag::LuauSelectivelyRetainDFGArena)
-        {
-            module->defArena.allocator.clear();
-            module->keyArena.allocator.clear();
-        }
+        module->defArena.allocator.clear();
+        module->keyArena.allocator.clear();
 
         module->astTypes.clear();
         module->astTypePacks.clear();

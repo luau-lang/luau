@@ -272,7 +272,7 @@ typedef struct Udata
     };
 } Udata;
 
-typedef struct Buffer
+typedef struct LuauBuffer
 {
     CommonHeader;
 

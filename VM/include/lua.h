@@ -72,13 +72,11 @@ enum lua_Type
     LUA_TNIL = 0,     // must be 0 due to lua_isnoneornil
     LUA_TBOOLEAN = 1, // must be 1 due to l_isfalse
 
-
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
     LUA_TVECTOR,
 
     LUA_TSTRING, // all types above this must be value types, all types below this must be GC types - see iscollectable
-
 
     LUA_TTABLE,
     LUA_TFUNCTION,

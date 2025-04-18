@@ -3,7 +3,6 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeAnalysis.h"
-#include "Luau/BytecodeUtils.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
@@ -177,7 +176,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
 
         // Numeric for loops require additional processing to maintain loop stack
         // Notably, this must be performed even when the block is dead so that we maintain the pairing FORNPREP-FORNLOOP
-        if (op == LOP_FORNPREP)
+        if (int(op) == LOP_FORNPREP)
             beforeInstForNPrep(*this, pc, i);
 
         // We skip dead bytecode instructions when they appear after block was already terminated
@@ -199,7 +198,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         }
 
         // See above for FORNPREP..FORNLOOP processing
-        if (op == LOP_FORNLOOP)
+        if (int(op) == LOP_FORNLOOP)
             afterInstForNLoop(*this, pc);
 
         i = nexti;
@@ -255,7 +254,7 @@ void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
 
 void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
 {
-    switch (op)
+    switch (int(op))
     {
     case LOP_NOP:
         break;
@@ -478,7 +477,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
             int ra = LUAU_INSN_A(*pc);
 
             IrOp loopRepeat = blockAtInst(i + 1 + LUAU_INSN_D(*pc));
-            IrOp loopExit = blockAtInst(i + getOpLength(LOP_FORGLOOP));
+            IrOp loopExit = blockAtInst(i + getOpLength(LuauOpcode(LOP_FORGLOOP)));
             IrOp fallback = block(IrBlockKind::Fallback);
 
             inst(IrCmd::INTERRUPT, constUint(i));

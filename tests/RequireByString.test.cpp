@@ -544,7 +544,9 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireFromLuauBinary")
     char executable[] = "luau";
     std::vector<std::string> paths = {
         getLuauDirectory(PathType::Relative) + "/tests/require/without_config/dependency.luau",
-        getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/dependency.luau"
+        getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/dependency.luau",
+        getLuauDirectory(PathType::Relative) + "/tests/require/without_config/module.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/module.luau",
     };
 
     for (const std::string& path : paths)

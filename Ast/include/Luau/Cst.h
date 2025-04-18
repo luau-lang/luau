@@ -388,6 +388,7 @@ public:
         std::optional<Position> separatorPosition;
 
         CstExprConstantString* stringInfo = nullptr; // only if Kind == StringProperty
+        Position stringPosition{0, 0}; // only if Kind == StringProperty
     };
 
     CstTypeTable(AstArray<Item> items, bool isArray);

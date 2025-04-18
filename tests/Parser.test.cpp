@@ -16,14 +16,13 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAllowComplexTypesInGenericParams)
-LUAU_FASTFLAG(LuauErrorRecoveryForTableTypes)
 LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)
 LUAU_FASTFLAG(LuauParseStringIndexer)
 LUAU_FASTFLAG(LuauFixFunctionWithAttributesStartLocation)
+LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -2579,6 +2578,28 @@ TEST_CASE_FIXTURE(Fixture, "function_start_locations_are_before_attributes")
     CHECK_EQ(anonymousFunction->location, Location({9, 18}, {10, 11}));
 }
 
+TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size_zero")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx(R"(
+        for value in tbl do
+        end
+    )", parseOptions);
+    REQUIRE(result.root);
+    REQUIRE_EQ(1, result.root->body.size);
+
+    auto forLoop = result.root->body.data[0]->as<AstStatForIn>();
+    auto baseCstNode = result.cstNodeMap.find(forLoop);
+    REQUIRE(baseCstNode);
+
+    auto cstNode = (*baseCstNode)->as<CstStatForIn>();
+    CHECK_EQ(cstNode->varsCommaPositions.size, 0);
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ParseErrorRecovery");
@@ -3828,7 +3849,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
 {
-    ScopedFastFlag _{FFlag::LuauAllowComplexTypesInGenericParams, true};
     const auto root = parse(R"(
         type X<T> = T
         local x: X<(() -> ())?>
@@ -3865,7 +3885,6 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
 
 TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")
 {
-    ScopedFastFlag _{FFlag::LuauAllowComplexTypesInGenericParams, true};
     const auto root = parse(R"(
         type X<T> = T
         local x: X<
@@ -3902,7 +3921,6 @@ TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")
 
 TEST_CASE_FIXTURE(Fixture, "recover_from_bad_table_type")
 {
-    ScopedFastFlag _{FFlag::LuauErrorRecoveryForTableTypes, true};
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
     const auto result = tryParse(

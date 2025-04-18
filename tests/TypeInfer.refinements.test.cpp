@@ -2567,4 +2567,29 @@ TEST_CASE_FIXTURE(Fixture, "oss_1687_equality_shouldnt_leak_nil")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1451")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauWeakNilRefinementType, true}
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Part = {
+            HasTag: (Part, string) -> boolean,
+            Name: string,
+        }
+        local myList = {} :: {Part}
+        local nextPart = (table.remove(myList)) :: Part
+
+        if nextPart:HasTag("foo") then
+          return
+        end
+
+        print(nextPart.Name)
+
+    )"));
+}
+
+
 TEST_SUITE_END();

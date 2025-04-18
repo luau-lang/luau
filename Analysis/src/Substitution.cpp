@@ -2,12 +2,10 @@
 #include "Luau/Substitution.h"
 
 #include "Luau/Common.h"
-#include "Luau/Clone.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 
 #include <algorithm>
-#include <stdexcept>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
@@ -18,9 +16,9 @@ LUAU_FASTFLAG(LuauDeprecatedAttribute)
 namespace Luau
 {
 
-static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
+static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
 {
-    auto go = [ty, &dest, alwaysClone](auto&& a)
+    auto go = [ty, &dest](auto&& a)
     {
         using T = std::decay_t<decltype(a)>;
 
@@ -140,13 +138,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         }
         else if constexpr (std::is_same_v<T, ClassType>)
         {
-            if (alwaysClone)
-            {
-                ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
-                return dest.addType(std::move(clone));
-            }
-            else
-                return ty;
+            ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
+            return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, NegationType>)
             return dest.addType(NegationType{a.ty});
@@ -547,6 +540,27 @@ void Tarjan::visitSCC(int index)
     }
 }
 
+bool Tarjan::ignoreChildren(TypeId ty)
+{
+    return false;
+}
+
+bool Tarjan::ignoreChildren(TypePackId ty)
+{
+    return false;
+}
+
+// Some subclasses might ignore children visit, but not other actions like replacing the children
+bool Tarjan::ignoreChildrenVisit(TypeId ty)
+{
+    return ignoreChildren(ty);
+}
+
+bool Tarjan::ignoreChildrenVisit(TypePackId ty)
+{
+    return ignoreChildren(ty);
+}
+
 TarjanResult Tarjan::findDirty(TypeId ty)
 {
     return visitRoot(ty);
@@ -555,6 +569,11 @@ TarjanResult Tarjan::findDirty(TypeId ty)
 TarjanResult Tarjan::findDirty(TypePackId tp)
 {
     return visitRoot(tp);
+}
+
+Substitution::Substitution(TypeArena* arena)
+    : Substitution(TxnLog::empty(), arena)
+{
 }
 
 Substitution::Substitution(const TxnLog* log_, TypeArena* arena)
@@ -657,7 +676,7 @@ void Substitution::resetState(const TxnLog* log, TypeArena* arena)
 
 TypeId Substitution::clone(TypeId ty)
 {
-    return shallowClone(ty, *arena, log, /* alwaysClone */ true);
+    return shallowClone(ty, *arena, log);
 }
 
 TypePackId Substitution::clone(TypePackId tp)
@@ -871,6 +890,15 @@ void Substitution::replaceChildren(TypePackId tp)
         for (TypePackId& t : tfitp->packArguments)
             t = replace(t);
     }
+}
+
+template<typename Ty>
+std::optional<Ty> Substitution::replace(std::optional<Ty> ty)
+{
+    if (ty)
+        return replace(*ty);
+    else
+        return std::nullopt;
 }
 
 } // namespace Luau

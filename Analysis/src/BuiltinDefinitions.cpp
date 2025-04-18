@@ -30,7 +30,7 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauFollowTableFreeze)
@@ -314,8 +314,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauNonReentrantGeneralization
-    if (FFlag::LuauNonReentrantGeneralization)
+    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauNonReentrantGeneralization2
+    if (FFlag::LuauNonReentrantGeneralization2)
         globalScope = globals.globalScope.get();
 
     if (FFlag::LuauSolverV2)
@@ -1614,7 +1614,7 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
         if (resultTy && !get<BlockedType>(resultTy))
         {
             // If there's an existing result type but it's _not_ blocked, then
-            // we aren't type stating this builtin and should fall back to 
+            // we aren't type stating this builtin and should fall back to
             // regular inference.
             return false;
         }

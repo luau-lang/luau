@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauNarrowIntersectionNevers)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1777,6 +1778,27 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag narrowIntersections{FFlag::LuauNarrowIntersectionNevers, true};
+
+    loadDefinition(R"(
+        declare class Player
+            Character: unknown
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(player: Player?)
+            if player and player.Character then
+                print(player.Character)
+            end
+        end
+    )"));
+
+    CHECK_EQ("Player & { Character: ~(false?) }", toString(requireTypeAtPosition({3, 23})));
 }
 
 TEST_SUITE_END();

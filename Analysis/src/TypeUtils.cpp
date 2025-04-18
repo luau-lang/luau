@@ -14,7 +14,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete);
 LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope);
 LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 
 namespace Luau
@@ -308,7 +308,7 @@ TypePack extendTypePack(
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope, ftp->polarity);
 
-            if (FFlag::LuauNonReentrantGeneralization)
+            if (FFlag::LuauNonReentrantGeneralization2)
                 trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
 
             if (FFlag::LuauSolverV2)
@@ -577,7 +577,7 @@ void trackInteriorFreeType(Scope* scope, TypeId ty)
 void trackInteriorFreeTypePack(Scope* scope, TypePackId tp)
 {
     LUAU_ASSERT(tp);
-    if (!FFlag::LuauNonReentrantGeneralization)
+    if (!FFlag::LuauNonReentrantGeneralization2)
         return;
 
     for (; scope; scope = scope->parent.get())

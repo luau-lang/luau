@@ -31,6 +31,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteUsesModuleForTypeCompatibility)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteUnionCopyPreviousSeen)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteMissingFollows)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -83,6 +84,8 @@ static ParenthesesRecommendation getParenRecommendationForIntersect(const Inters
     ParenthesesRecommendation rec = ParenthesesRecommendation::None;
     for (Luau::TypeId partId : intersect->parts)
     {
+        if (FFlag::LuauAutocompleteMissingFollows)
+            partId = follow(partId);
         if (auto partFunc = Luau::get<FunctionType>(partId))
         {
             rec = std::max(rec, getParenRecommendationForFunc(partFunc, nodes));
@@ -1623,6 +1626,8 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(
     {
         for (TypeId part : intersect->parts)
         {
+            if (FFlag::LuauAutocompleteMissingFollows)
+                part = follow(part);
             if (auto candidateFunctionType = Luau::get<FunctionType>(part))
             {
                 if (std::optional<AutocompleteEntryMap> ret = performCallback(candidateFunctionType))
