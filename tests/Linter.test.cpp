@@ -10,7 +10,7 @@
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LintRedundantNativeAttribute);
 LUAU_FASTFLAG(LuauDeprecatedAttribute);
-LUAU_FASTFLAG(LuauNonReentrantGeneralization);
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2);
 
 using namespace Luau;
 
@@ -1925,7 +1925,7 @@ print(foo:bar(2.0))
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")
 {
     // FIXME: For now this flag causes a stack overflow on Windows.
-    ScopedFastFlag _{FFlag::LuauNonReentrantGeneralization, false};
+    ScopedFastFlag _{FFlag::LuauNonReentrantGeneralization2, false};
 
     LintResult result = lint(R"(
 local t = {}

@@ -17,7 +17,7 @@ LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
 LUAU_FASTFLAG(LuauSubtypingEnableReasoningLimit)
 LUAU_FASTFLAG(LuauTypePackDetectCycles)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 
 using namespace Luau;
 
@@ -1207,7 +1207,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
     ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
     ScopedFastFlag luauSubtypingEnableReasoningLimit{FFlag::LuauSubtypingEnableReasoningLimit, true};
-    ScopedFastFlag luauTurnOffNonreentrantGeneralization{FFlag::LuauNonReentrantGeneralization, false};
+    ScopedFastFlag luauTurnOffNonreentrantGeneralization{FFlag::LuauNonReentrantGeneralization2, false};
 
     CheckResult result = check(R"(
 function _(_,"").readu32(l0)
