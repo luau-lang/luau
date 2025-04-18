@@ -212,7 +212,6 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
             codeStart
         ))
     {
-        CODEGEN_ASSERT(!"Failed to create entry function");
         return false;
     }
 

@@ -20,7 +20,7 @@ struct SourceCode
         None,
         Module,
         Script,
-        Local
+        Local_DEPRECATED
     };
 
     std::string source;

@@ -191,6 +191,13 @@ TEST_CASE("for_in_loop_spaces_around_tokens")
     CHECK_EQ(five, transpile(five).code);
 }
 
+TEST_CASE("for_in_single_variable")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    const std::string one = R"( for key in pairs(x) do end )";
+    CHECK_EQ(one, transpile(one).code);
+}
+
 TEST_CASE("while_loop")
 {
     const std::string code = R"( while f(x)do print() end )";
@@ -1992,6 +1999,18 @@ TEST_CASE("transpile_type_table_preserve_property_definition_style")
         type Foo = {
             ["$$typeof1"]: string,
             ['$$typeof2']: string,
+        }
+    )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_type_table_string_properties_spaces_between_tokens")
+{
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    std::string code = R"(
+        type Foo = {
+            [  "$$typeof1"]: string,
+            ['$$typeof2'  ]: string,
         }
     )";
     CHECK_EQ(code, transpile(code, {}, true).code);

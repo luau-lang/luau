@@ -24,6 +24,9 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyUnion(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right);
 
+SimplifyResult simplifyIntersectWithTruthy(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId target);
+SimplifyResult simplifyIntersectWithFalsy(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId target);
+
 enum class Relation
 {
     Disjoint,   // No A is a B or vice versa

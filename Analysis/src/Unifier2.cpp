@@ -18,9 +18,7 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAGVARIABLE(LuauUnifyMetatableWithAny)
-LUAU_FASTFLAG(LuauExtraFollows)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 
 namespace Luau
 {
@@ -238,9 +236,9 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     auto superMetatable = get<MetatableType>(superTy);
     if (subMetatable && superMetatable)
         return unify(subMetatable, superMetatable);
-    else if (FFlag::LuauUnifyMetatableWithAny && subMetatable && superAny)
+    else if (subMetatable && superAny)
         return unify(subMetatable, superAny);
-    else if (FFlag::LuauUnifyMetatableWithAny && subAny && superMetatable)
+    else if (subAny && superMetatable)
         return unify(subAny, superMetatable);
     else if (subMetatable) // if we only have one metatable, unify with the inner table
         return unify(subMetatable->table, superTy);
@@ -284,7 +282,7 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     if (superArgTail)
         return doDefault();
 
-    const IntersectionType* upperBoundIntersection = get<IntersectionType>(FFlag::LuauExtraFollows ? upperBound : subFree->upperBound);
+    const IntersectionType* upperBoundIntersection = get<IntersectionType>(upperBound);
     if (!upperBoundIntersection)
         return doDefault();
 
@@ -321,18 +319,18 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
 
     if (shouldInstantiate)
     {
-        for (auto generic : subFn->generics)
+        for (TypeId generic : subFn->generics)
         {
             const GenericType* gen = get<GenericType>(generic);
             LUAU_ASSERT(gen);
             genericSubstitutions[generic] = freshType(scope, gen->polarity);
         }
 
-        for (auto genericPack : subFn->genericPacks)
+        for (TypePackId genericPack : subFn->genericPacks)
         {
-            if (FFlag::LuauNonReentrantGeneralization)
+            if (FFlag::LuauNonReentrantGeneralization2)
             {
-                const GenericTypePack* gen = get<GenericTypePack>(genericPack);
+                const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
                 LUAU_ASSERT(gen);
                 genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
             }
@@ -650,211 +648,6 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
 
     return true;
 }
-
-struct FreeTypeSearcher : TypeVisitor
-{
-    NotNull<Scope> scope;
-
-    explicit FreeTypeSearcher(NotNull<Scope> scope)
-        : TypeVisitor(/*skipBoundTypes*/ true)
-        , scope(scope)
-    {
-    }
-
-    Polarity polarity = Polarity::Positive;
-
-    void flip()
-    {
-        switch (polarity)
-        {
-        case Polarity::Positive:
-            polarity = Polarity::Negative;
-            break;
-        case Polarity::Negative:
-            polarity = Polarity::Positive;
-            break;
-        case Polarity::Mixed:
-            break;
-        default:
-            LUAU_ASSERT(!"Unreachable");
-        }
-    }
-
-    DenseHashSet<const void*> seenPositive{nullptr};
-    DenseHashSet<const void*> seenNegative{nullptr};
-
-    bool seenWithCurrentPolarity(const void* ty)
-    {
-        switch (polarity)
-        {
-        case Polarity::Positive:
-        {
-            if (seenPositive.contains(ty))
-                return true;
-
-            seenPositive.insert(ty);
-            return false;
-        }
-        case Polarity::Negative:
-        {
-            if (seenNegative.contains(ty))
-                return true;
-
-            seenNegative.insert(ty);
-            return false;
-        }
-        case Polarity::Mixed:
-        {
-            if (seenPositive.contains(ty) && seenNegative.contains(ty))
-                return true;
-
-            seenPositive.insert(ty);
-            seenNegative.insert(ty);
-            return false;
-        }
-        default:
-            LUAU_ASSERT(!"Unreachable");
-        }
-
-        return false;
-    }
-
-    // The keys in these maps are either TypeIds or TypePackIds. It's safe to
-    // mix them because we only use these pointers as unique keys.  We never
-    // indirect them.
-    DenseHashMap<const void*, size_t> negativeTypes{0};
-    DenseHashMap<const void*, size_t> positiveTypes{0};
-
-    bool visit(TypeId ty) override
-    {
-        if (seenWithCurrentPolarity(ty))
-            return false;
-
-        LUAU_ASSERT(ty);
-        return true;
-    }
-
-    bool visit(TypeId ty, const FreeType& ft) override
-    {
-        if (seenWithCurrentPolarity(ty))
-            return false;
-
-        if (!subsumes(scope, ft.scope))
-            return true;
-
-        switch (polarity)
-        {
-        case Polarity::Positive:
-            positiveTypes[ty]++;
-            break;
-        case Polarity::Negative:
-            negativeTypes[ty]++;
-            break;
-        case Polarity::Mixed:
-            positiveTypes[ty]++;
-            negativeTypes[ty]++;
-            break;
-        default:
-            LUAU_ASSERT(!"Unreachable");
-        }
-
-        return true;
-    }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        if (seenWithCurrentPolarity(ty))
-            return false;
-
-        if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
-        {
-            switch (polarity)
-            {
-            case Polarity::Positive:
-                positiveTypes[ty]++;
-                break;
-            case Polarity::Negative:
-                negativeTypes[ty]++;
-                break;
-            case Polarity::Mixed:
-                positiveTypes[ty]++;
-                negativeTypes[ty]++;
-                break;
-            default:
-                LUAU_ASSERT(!"Unreachable");
-            }
-        }
-
-        for (const auto& [_name, prop] : tt.props)
-        {
-            if (prop.isReadOnly())
-                traverse(*prop.readTy);
-            else
-            {
-                LUAU_ASSERT(prop.isShared());
-
-                Polarity p = polarity;
-                polarity = Polarity::Mixed;
-                traverse(prop.type());
-                polarity = p;
-            }
-        }
-
-        if (tt.indexer)
-        {
-            traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
-        }
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        if (seenWithCurrentPolarity(ty))
-            return false;
-
-        flip();
-        traverse(ft.argTypes);
-        flip();
-
-        traverse(ft.retTypes);
-
-        return false;
-    }
-
-    bool visit(TypeId, const ClassType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypePackId tp, const FreeTypePack& ftp) override
-    {
-        if (seenWithCurrentPolarity(tp))
-            return false;
-
-        if (!subsumes(scope, ftp.scope))
-            return true;
-
-        switch (polarity)
-        {
-        case Polarity::Positive:
-            positiveTypes[tp]++;
-            break;
-        case Polarity::Negative:
-            negativeTypes[tp]++;
-            break;
-        case Polarity::Mixed:
-            positiveTypes[tp]++;
-            negativeTypes[tp]++;
-            break;
-        default:
-            LUAU_ASSERT(!"Unreachable");
-        }
-
-        return true;
-    }
-};
 
 TypeId Unifier2::mkUnion(TypeId left, TypeId right)
 {

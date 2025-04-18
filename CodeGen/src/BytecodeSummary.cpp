@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeSummary.h"
-#include "Luau/BytecodeUtils.h"
+
+#include "Luau/IrUtils.h"
+
 #include "CodeGenLower.h"
 
 #include "lua.h"
@@ -42,7 +44,7 @@ FunctionBytecodeSummary FunctionBytecodeSummary::fromProto(Proto* proto, unsigne
         Instruction insn = proto->code[i];
         uint8_t op = LUAU_INSN_OP(insn);
         summary.incCount(0, op);
-        i += Luau::getOpLength(LuauOpcode(op));
+        i += getOpLength(LuauOpcode(op));
     }
 
     return summary;

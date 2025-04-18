@@ -16,7 +16,6 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNormalizedBufferIsNotUnknown)
 
 using namespace Luau;
 
@@ -967,14 +966,7 @@ TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->booleanType)
 TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->numberType));
 TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->stringType));
 TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->threadType));
-
-TEST_CASE_FIXTURE(SubtypeFixture, "unknown <!: ~buffer")
-{
-    // TODO: replace with TEST_IS_NOT_SUBTYPE on flag removal
-    ScopedFastFlag luauNormalizedBufferIsNotUnknown{FFlag::LuauNormalizedBufferIsNotUnknown, true};
-
-    CHECK_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->bufferType));
-}
+TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->bufferType));
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
 {

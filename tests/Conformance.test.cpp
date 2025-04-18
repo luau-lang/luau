@@ -34,7 +34,6 @@ void luaC_validate(lua_State* L);
 LUAU_FASTFLAG(LuauLibWhereErrorAutoreserve)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauVectorLibNativeDot)
 LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 
 static lua_CompileOptions defaultOptions()
@@ -881,8 +880,6 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauVectorLibNativeDot{FFlag::LuauVectorLibNativeDot, true};
-
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")

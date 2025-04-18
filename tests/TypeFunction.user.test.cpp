@@ -13,6 +13,8 @@ LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
+LUAU_FASTFLAG(LuauNoTypeFunctionsNamedTypeOf)
+
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -462,7 +464,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
             -- this should never be returned
             return types.number
         end
-        
+
         -- forcing an error here to check the exact type of the negation
         local function ok(idx: getnegation<>): never return idx end
     )");
@@ -1113,7 +1115,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 
             return arg -- this should not be reached
         end
-        
+
         local function ok(idx: illegal<number>): nil return idx end
     )");
 
@@ -2202,6 +2204,23 @@ local x: wrap<{a: number}> = { a = 2 }
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: number }?");
+}
+
+TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_type_function_name")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag udtf{FFlag::LuauUserTypeFunTypecheck, true};
+    ScopedFastFlag noTypeOfTypeFunctions{FFlag::LuauNoTypeFunctionsNamedTypeOf, true};
+
+    CheckResult result = check(R"(
+        type function typeof(t)
+	        return t
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK("typeof cannot be used as an identifier for a type function or alias" == toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

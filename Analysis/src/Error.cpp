@@ -18,7 +18,7 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-LUAU_FASTFLAG(LuauNonStrictFuncDefErrorFix)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -70,7 +70,7 @@ namespace Luau
 {
 
 // this list of binary operator type functions is used for better stringification of type functions errors
-static const std::unordered_map<std::string, const char*> kBinaryOps{
+static const std::unordered_map<std::string, const char*> DEPRECATED_kBinaryOps{
     {"add", "+"},
     {"sub", "-"},
     {"mul", "*"},
@@ -86,12 +86,27 @@ static const std::unordered_map<std::string, const char*> kBinaryOps{
     {"eq", "== or ~="}
 };
 
+static const std::unordered_map<std::string, const char*> kBinaryOps{
+    {"add", "+"},
+    {"sub", "-"},
+    {"mul", "*"},
+    {"div", "/"},
+    {"idiv", "//"},
+    {"pow", "^"},
+    {"mod", "%"},
+    {"concat", ".."},
+    {"lt", "< or >="},
+    {"le", "<= or >"},
+    {"eq", "== or ~="}
+};
+
 // this list of unary operator type functions is used for better stringification of type functions errors
 static const std::unordered_map<std::string, const char*> kUnaryOps{{"unm", "-"}, {"len", "#"}, {"not", "not"}};
 
 // this list of type functions will receive a special error indicating that the user should file a bug on the GitHub repository
 // putting a type function in this list indicates that it is expected to _always_ reduce
-static const std::unordered_set<std::string> kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect"};
+static const std::unordered_set<std::string> DEPRECATED_kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect"};
+static const std::unordered_set<std::string> kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect", "and", "or"};
 
 struct ErrorConverter
 {
@@ -643,7 +658,8 @@ struct ErrorConverter
         }
 
         // binary operators
-        if (auto binaryString = kBinaryOps.find(tfit->function->name); binaryString != kBinaryOps.end())
+        const auto binaryOps = FFlag::DebugLuauGreedyGeneralization ? kBinaryOps : DEPRECATED_kBinaryOps;
+        if (auto binaryString = binaryOps.find(tfit->function->name); binaryString != binaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
 
@@ -697,10 +713,10 @@ struct ErrorConverter
                        "'";
         }
 
-        if (kUnreachableTypeFunctions.count(tfit->function->name))
+        if ((FFlag::DebugLuauGreedyGeneralization ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
-                   "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
+                "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
         }
 
         // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type functions" explicitly.
@@ -756,7 +772,7 @@ struct ErrorConverter
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
     {
-        if (FFlag::LuauNonStrictFuncDefErrorFix && e.functionName.empty())
+        if (e.functionName.empty())
         {
             return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
         }
@@ -801,6 +817,11 @@ struct ErrorConverter
     std::string operator()(const UserDefinedTypeFunctionError& e) const
     {
         return e.message;
+    }
+
+    std::string operator()(const ReservedIdentifier& e) const
+    {
+        return e.name + " cannot be used as an identifier for a type function or alias";
     }
 
     std::string operator()(const CannotAssignToNever& e) const
@@ -1190,6 +1211,11 @@ bool UserDefinedTypeFunctionError::operator==(const UserDefinedTypeFunctionError
     return message == rhs.message;
 }
 
+bool ReservedIdentifier::operator==(const ReservedIdentifier& rhs) const
+{
+    return name == rhs.name;
+}
+
 bool CannotAssignToNever::operator==(const CannotAssignToNever& rhs) const
 {
     if (cause.size() != rhs.cause.size())
@@ -1408,6 +1434,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
 
         for (auto& ty : e.cause)
             ty = clone(ty);
+    }
+    else if constexpr (std::is_same_v<T, ReservedIdentifier>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

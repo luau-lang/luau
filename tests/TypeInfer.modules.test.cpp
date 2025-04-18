@@ -231,7 +231,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_module_that_does_not_export")
 TEST_CASE_FIXTURE(BuiltinsFixture, "warn_if_you_try_to_require_a_non_modulescript")
 {
     fileResolver.source["Modules/A"] = "";
-    fileResolver.sourceTypes["Modules/A"] = SourceCode::Local;
+    fileResolver.sourceTypes["Modules/A"] = SourceCode::Script;
 
     fileResolver.source["Modules/B"] = R"(
         local M = require(script.Parent.A)

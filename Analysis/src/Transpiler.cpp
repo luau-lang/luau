@@ -2646,6 +2646,7 @@ struct Printer
                             {
                                 advance(item.indexerOpenPosition);
                                 writer.symbol("[");
+                                advance(item.stringPosition);
                                 writer.sourceString(
                                     std::string_view(item.stringInfo->sourceString.data, item.stringInfo->sourceString.size),
                                     item.stringInfo->quoteStyle,

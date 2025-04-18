@@ -455,6 +455,13 @@ struct UserDefinedTypeFunctionError
     bool operator==(const UserDefinedTypeFunctionError& rhs) const;
 };
 
+struct ReservedIdentifier
+{
+    std::string name;
+
+    bool operator==(const ReservedIdentifier& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -504,7 +511,8 @@ using TypeErrorData = Variant<
     UnexpectedTypeInSubtyping,
     UnexpectedTypePackInSubtyping,
     ExplicitFunctionAnnotationRecommended,
-    UserDefinedTypeFunctionError>;
+    UserDefinedTypeFunctionError,
+    ReservedIdentifier>;
 
 struct TypeErrorSummary
 {

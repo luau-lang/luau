@@ -16,8 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauVectorLibNativeDot)
-
 namespace Luau
 {
 namespace CodeGen
@@ -706,8 +704,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::DOT_VEC:
     {
-        LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
-
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
 
         ScopedRegX64 tmp1{regs};

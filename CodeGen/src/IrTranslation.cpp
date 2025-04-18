@@ -2,7 +2,6 @@
 #include "IrTranslation.h"
 
 #include "Luau/Bytecode.h"
-#include "Luau/BytecodeUtils.h"
 #include "Luau/CodeGenOptions.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
@@ -1502,7 +1501,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         return false;
     }
 
-    IrOp next = build.blockAtInst(pcpos + getOpLength(LOP_NAMECALL));
+    IrOp next = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LOP_NAMECALL)));
     IrOp fallback = build.block(IrBlockKind::Fallback);
     IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
     IrOp secondFastPath = build.block(IrBlockKind::Internal);

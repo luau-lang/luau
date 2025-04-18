@@ -5,8 +5,6 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauVectorLibNativeDot);
-
 namespace Luau
 {
 namespace CodeGen
@@ -15,80 +13,11 @@ namespace CodeGen
 struct IrBuilder;
 enum class HostMetamethod;
 
-inline bool isJumpD(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_JUMP:
-    case LOP_JUMPIF:
-    case LOP_JUMPIFNOT:
-    case LOP_JUMPIFEQ:
-    case LOP_JUMPIFLE:
-    case LOP_JUMPIFLT:
-    case LOP_JUMPIFNOTEQ:
-    case LOP_JUMPIFNOTLE:
-    case LOP_JUMPIFNOTLT:
-    case LOP_FORNPREP:
-    case LOP_FORNLOOP:
-    case LOP_FORGPREP:
-    case LOP_FORGLOOP:
-    case LOP_FORGPREP_INEXT:
-    case LOP_FORGPREP_NEXT:
-    case LOP_JUMPBACK:
-    case LOP_JUMPXEQKNIL:
-    case LOP_JUMPXEQKB:
-    case LOP_JUMPXEQKN:
-    case LOP_JUMPXEQKS:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-inline bool isSkipC(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_LOADB:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-inline bool isFastCall(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_FASTCALL:
-    case LOP_FASTCALL1:
-    case LOP_FASTCALL2:
-    case LOP_FASTCALL2K:
-    case LOP_FASTCALL3:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-inline int getJumpTarget(uint32_t insn, uint32_t pc)
-{
-    LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
-
-    if (isJumpD(op))
-        return int(pc + LUAU_INSN_D(insn) + 1);
-    else if (isFastCall(op))
-        return int(pc + LUAU_INSN_C(insn) + 2);
-    else if (isSkipC(op) && LUAU_INSN_C(insn))
-        return int(pc + LUAU_INSN_C(insn) + 1);
-    else if (op == LOP_JUMPX)
-        return int(pc + LUAU_INSN_E(insn) + 1);
-    else
-        return -1;
-}
+int getOpLength(LuauOpcode op);
+bool isJumpD(LuauOpcode op);
+bool isSkipC(LuauOpcode op);
+bool isFastCall(LuauOpcode op);
+int getJumpTarget(uint32_t insn, uint32_t pc);
 
 inline bool isBlockTerminator(IrCmd cmd)
 {
@@ -180,9 +109,6 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
     case IrCmd::DOT_VEC:
-        if (cmd == IrCmd::DOT_VEC)
-            LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
-        LUAU_FALLTHROUGH;
     case IrCmd::UNM_VEC:
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:

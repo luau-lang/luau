@@ -356,6 +356,7 @@ static void resume(lua_State* L, void* ud)
     else
     {
         // resume from previous yield or break
+        LUAU_ASSERT(firstArg >= L->base);
         LUAU_ASSERT(L->status == LUA_YIELD || L->status == LUA_BREAK);
         L->status = 0;
 
@@ -469,6 +470,8 @@ static void resume_finish(lua_State* L, int status)
 
 int lua_resume(lua_State* L, lua_State* from, int nargs)
 {
+    api_check(L, L->top - L->base >= nargs);
+
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
         return resume_error(L, "cannot resume non-suspended coroutine", nargs);
@@ -498,6 +501,8 @@ int lua_resume(lua_State* L, lua_State* from, int nargs)
 
 int lua_resumeerror(lua_State* L, lua_State* from)
 {
+    api_check(L, L->top - L->base >= 1);
+
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
         return resume_error(L, "cannot resume non-suspended coroutine", 1);

@@ -86,6 +86,7 @@ struct TarjanNode
 struct Tarjan
 {
     Tarjan();
+    virtual ~Tarjan() = default;
 
     // Vertices (types and type packs) are indexed, using pre-order traversal.
     DenseHashMap<TypeId, int> typeToIndex{nullptr};
@@ -121,7 +122,7 @@ struct Tarjan
     void visitChildren(TypePackId tp, int index);
 
     void visitChild(TypeId ty);
-    void visitChild(TypePackId ty);
+    void visitChild(TypePackId tp);
 
     template<typename Ty>
     void visitChild(std::optional<Ty> ty)
@@ -132,7 +133,7 @@ struct Tarjan
 
     // Visit the root vertex.
     TarjanResult visitRoot(TypeId ty);
-    TarjanResult visitRoot(TypePackId ty);
+    TarjanResult visitRoot(TypePackId tp);
 
     // Used to reuse the object for a new operation
     void clearTarjan(const TxnLog* log);
@@ -150,26 +151,12 @@ struct Tarjan
     void visitSCC(int index);
 
     // Each subclass can decide to ignore some nodes.
-    virtual bool ignoreChildren(TypeId ty)
-    {
-        return false;
-    }
-
-    virtual bool ignoreChildren(TypePackId ty)
-    {
-        return false;
-    }
+    virtual bool ignoreChildren(TypeId ty);
+    virtual bool ignoreChildren(TypePackId ty);
 
     // Some subclasses might ignore children visit, but not other actions like replacing the children
-    virtual bool ignoreChildrenVisit(TypeId ty)
-    {
-        return ignoreChildren(ty);
-    }
-
-    virtual bool ignoreChildrenVisit(TypePackId ty)
-    {
-        return ignoreChildren(ty);
-    }
+    virtual bool ignoreChildrenVisit(TypeId ty);
+    virtual bool ignoreChildrenVisit(TypePackId ty);
 
     // Subclasses should say which vertices are dirty,
     // and what to do with dirty vertices.
@@ -184,6 +171,7 @@ struct Tarjan
 struct Substitution : Tarjan
 {
 protected:
+    explicit Substitution(TypeArena* arena);
     Substitution(const TxnLog* log_, TypeArena* arena);
 
     /*
@@ -232,28 +220,23 @@ public:
     virtual TypeId clean(TypeId ty) = 0;
     virtual TypePackId clean(TypePackId tp) = 0;
 
+protected:
     // Helper functions to create new types (used by subclasses)
     template<typename T>
-    TypeId addType(const T& tv)
+    TypeId addType(T tv)
     {
-        return arena->addType(tv);
+        return arena->addType(std::move(tv));
     }
 
     template<typename T>
-    TypePackId addTypePack(const T& tp)
+    TypePackId addTypePack(T tp)
     {
-        return arena->addTypePack(TypePackVar{tp});
+        return arena->addTypePack(TypePackVar{std::move(tp)});
     }
 
 private:
     template<typename Ty>
-    std::optional<Ty> replace(std::optional<Ty> ty)
-    {
-        if (ty)
-            return replace(*ty);
-        else
-            return std::nullopt;
-    }
+    std::optional<Ty> replace(std::optional<Ty> ty);
 };
 
 } // namespace Luau

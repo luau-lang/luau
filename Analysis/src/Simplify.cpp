@@ -14,8 +14,9 @@
 
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8);
-LUAU_FASTFLAGVARIABLE(LuauFlagBasicIntersectFollows);
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
+LUAU_FASTFLAGVARIABLE(LuauSimplificationRecheckAssumption)
+LUAU_FASTFLAGVARIABLE(LuauOptimizeFalsyAndTruthyIntersect)
 
 namespace Luau
 {
@@ -47,6 +48,8 @@ struct TypeSimplifier
     // Attempt to intersect the two types.  Does not recurse.  Does not handle
     // unions, intersections, or negations.
     std::optional<TypeId> basicIntersect(TypeId left, TypeId right);
+    std::optional<TypeId> basicIntersectWithTruthy(TypeId target) const;
+    std::optional<TypeId> basicIntersectWithFalsy(TypeId target) const;
 
     TypeId intersect(TypeId left, TypeId right);
     TypeId union_(TypeId left, TypeId right);
@@ -707,7 +710,9 @@ TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
     bool changed = false;
     std::set<TypeId> newParts;
 
-    if (leftUnion->options.size() > (size_t)DFInt::LuauSimplificationComplexityLimit)
+    size_t maxSize = DFInt::LuauSimplificationComplexityLimit;
+
+    if (leftUnion->options.size() > maxSize)
         return arena->addType(IntersectionType{{left, right}});
 
     for (TypeId part : leftUnion)
@@ -722,6 +727,13 @@ TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
         }
 
         newParts.insert(simplified);
+
+        if (FFlag::LuauSimplificationRecheckAssumption)
+        {
+            // Initial combination size check could not predict nested union iteration
+            if (newParts.size() > maxSize)
+                return arena->addType(IntersectionType{{left, right}});
+        }
     }
 
     if (!changed)
@@ -762,6 +774,13 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
                 continue;
 
             newParts.insert(simplified);
+
+            if (FFlag::LuauSimplificationRecheckAssumption)
+            {
+                // Initial combination size check could not predict nested union iteration
+                if (newParts.size() > maxSize)
+                    return arena->addType(IntersectionType{{left, right}});
+            }
         }
     }
 
@@ -838,6 +857,78 @@ TypeId TypeSimplifier::intersectNegatedUnion(TypeId left, TypeId right)
         return right;
     else
         return intersectFromParts(std::move(newParts));
+}
+
+std::optional<TypeId> TypeSimplifier::basicIntersectWithTruthy(TypeId target) const
+{
+    target = follow(target);
+
+    if (is<UnknownType>(target))
+        return builtinTypes->truthyType;
+
+    if (is<AnyType>(target))
+        // any = *error-type* | unknown, so truthy & any = *error-type* | truthy
+        return arena->addType(UnionType{{builtinTypes->truthyType, builtinTypes->errorType}});
+
+    if (is<NeverType, ErrorType>(target))
+        return target;
+
+    if (is<FunctionType, TableType, MetatableType, ClassType>(target))
+        return target;
+
+    if (auto pt = get<PrimitiveType>(target))
+    {
+        switch (pt->type)
+        {
+        case PrimitiveType::NilType:
+            return builtinTypes->neverType;
+        case PrimitiveType::Boolean:
+            return builtinTypes->trueType;
+        default:
+            return target;
+        }
+    }
+
+    if (auto st = get<SingletonType>(target))
+        return st->variant == BooleanSingleton{false} ? builtinTypes->neverType : target;
+
+    return std::nullopt;
+}
+
+std::optional<TypeId> TypeSimplifier::basicIntersectWithFalsy(TypeId target) const
+{
+    target = follow(target);
+
+    if (is<NeverType, ErrorType>(target))
+        return target;
+
+    if (is<AnyType>(target))
+        // any = *error-type* | unknown, so falsy & any = *error-type* | falsy
+        return arena->addType(UnionType{{builtinTypes->falsyType, builtinTypes->errorType}});
+
+    if (is<UnknownType>(target))
+        return builtinTypes->falsyType;
+
+    if (is<FunctionType, TableType, MetatableType, ClassType>(target))
+        return builtinTypes->neverType;
+
+    if (auto pt = get<PrimitiveType>(target))
+    {
+        switch (pt->type)
+        {
+        case PrimitiveType::NilType:
+            return builtinTypes->nilType;
+        case PrimitiveType::Boolean:
+            return builtinTypes->falseType;
+        default:
+            return builtinTypes->neverType;
+        }
+    }
+
+    if (auto st = get<SingletonType>(target))
+        return st->variant == BooleanSingleton{false} ? builtinTypes->falseType : builtinTypes->neverType;
+
+    return std::nullopt;
 }
 
 TypeId TypeSimplifier::intersectTypeWithNegation(TypeId left, TypeId right)
@@ -1066,11 +1157,8 @@ TypeId TypeSimplifier::intersectIntersectionWithType(TypeId left, TypeId right)
 
 std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 {
-    if (FFlag::LuauFlagBasicIntersectFollows)
-    {
-        left = follow(left);
-        right = follow(right);
-    }
+    left = follow(left);
+    right = follow(right);
 
     if (get<AnyType>(left) && get<ErrorType>(right))
         return right;
@@ -1177,6 +1265,25 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
         }
 
         return std::nullopt;
+    }
+
+    if (FFlag::LuauOptimizeFalsyAndTruthyIntersect)
+    {
+        if (isTruthyType(left))
+            if (auto res = basicIntersectWithTruthy(right))
+                return res;
+
+        if (isTruthyType(right))
+            if (auto res = basicIntersectWithTruthy(left))
+                return res;
+
+        if (isFalsyType(left))
+            if (auto res = basicIntersectWithFalsy(right))
+                return res;
+
+        if (isFalsyType(right))
+            if (auto res = basicIntersectWithFalsy(left))
+                return res;
     }
 
     Relation relation = relate(left, right);

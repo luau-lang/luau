@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeAnalysis.h"
 
-#include "Luau/BytecodeUtils.h"
 #include "Luau/CodeGenOptions.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
@@ -639,7 +638,7 @@ void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpT
                 bcBlocks.push_back(BytecodeBlock{nexti, -1});
         }
         // Returns just terminate the block
-        else if (op == LOP_RETURN)
+        else if (int(op) == LOP_RETURN)
         {
             bcBlocks.back().finishpc = i;
         }
@@ -702,7 +701,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
 
             BytecodeTypes& bcType = function.bcTypes[i];
 
-            switch (op)
+            switch (int(op))
             {
             case LOP_NOP:
                 break;

@@ -10,6 +10,8 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAGVARIABLE(LuauArityMismatchOnUndersaturatedUnknownArguments)
+
 namespace Luau
 {
 
@@ -254,15 +256,32 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             }
 
             // If any of the unsatisfied arguments are not supertypes of
-            // nil, then this overload does not match.
+            // nil or are `unknown`, then this overload does not match.
             for (size_t i = firstUnsatisfiedArgument; i < requiredHead.size(); ++i)
             {
-                if (!subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
+                if (FFlag::LuauArityMismatchOnUndersaturatedUnknownArguments)
                 {
-                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                    TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
+                    if (get<UnknownType>(follow(requiredHead[i])) || !subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
+                    {
+                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                        for (auto arg : fn->argTypes)
+                            if (get<UnknownType>(follow(arg)))
+                                minParams += 1;
 
-                    return {Analysis::ArityMismatch, {error}};
+                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
+
+                        return {Analysis::ArityMismatch, {error}};
+                    }
+                }
+                else
+                {
+                    if (!subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
+                    {
+                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
+
+                        return {Analysis::ArityMismatch, {error}};
+                    }
                 }
             }
 

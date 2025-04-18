@@ -35,7 +35,7 @@ static void validateConfig(lua_State* L, const luarequire_Configuration& config)
         luaL_error(L, "require configuration is missing required function pointer: load");
 }
 
-void luaopen_require(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
+int lua_pushrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
 {
     luarequire_Configuration* config = static_cast<luarequire_Configuration*>(lua_newuserdata(L, sizeof(luarequire_Configuration)));
     if (!config)
@@ -48,5 +48,11 @@ void luaopen_require(lua_State* L, luarequire_Configuration_init config_init, vo
 
     // "require" captures config and ctx as upvalues
     lua_pushcclosure(L, Luau::Require::lua_require, "require", 2);
+    return 1;
+}
+
+void luaopen_require(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
+{
+    lua_pushrequire(L, config_init, ctx);
     lua_setglobal(L, "require");
 }
