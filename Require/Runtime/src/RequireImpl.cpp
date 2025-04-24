@@ -43,7 +43,8 @@ static bool isCached(lua_State* L, const std::string& key)
 static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* L, void* ctx, std::string path)
 {
     lua_Debug ar;
-    lua_getinfo(L, 1, "s", &ar);
+    if (!lua_getinfo(L, 1, "s", &ar))
+        luaL_error(L, "require is not supported in this context");
 
     if (!lrc->is_require_allowed(L, ctx, ar.source))
         luaL_error(L, "require is not supported in this context");
