@@ -20,14 +20,13 @@ LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauExposeRequireByStringAutocomplete)
 LUAU_FASTFLAG(LuauAutocompleteUnionCopyPreviousSeen)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
 
 using namespace Luau;
 
-static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
+static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
     return std::nullopt;
 }
@@ -159,7 +158,7 @@ struct ACBuiltinsFixture : ACFixtureImpl<BuiltinsFixture>
 {
 };
 
-struct ACClassFixture : ACFixtureImpl<ClassFixture>
+struct ACExternTypeFixture : ACFixtureImpl<ExternTypeFixture>
 {
 };
 
@@ -3754,7 +3753,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
     bool isCorrect = false;
     auto ac1 = autocomplete(
         '1',
-        [&isCorrect](std::string, std::optional<const ClassType*>, std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap>
+        [&isCorrect](std::string, std::optional<const ExternType*>, std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap>
         {
             isCorrect = contents && *contents == "testing/";
             return std::nullopt;
@@ -3766,8 +3765,6 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_by_string")
 {
-    ScopedFastFlag sff{FFlag::LuauExposeRequireByStringAutocomplete, true};
-
     fileResolver.source["MainModule"] = R"(
         local info = "MainModule serves as the root directory"
     )";
@@ -3960,7 +3957,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
         local x = require(@1"@2"@3)
     )");
 
-    StringCompletionCallback callback = [](std::string, std::optional<const ClassType*>, std::optional<std::string> contents
+    StringCompletionCallback callback = [](std::string, std::optional<const ExternType*>, std::optional<std::string> contents
                                         ) -> std::optional<AutocompleteEntryMap>
     {
         Luau::AutocompleteEntryMap results = {{"test", Luau::AutocompleteEntry{Luau::AutocompleteEntryKind::String, std::nullopt, false, false}}};
@@ -4432,7 +4429,7 @@ local x = 1 + result.
     CHECK(ac.entryMap.count("x"));
 }
 
-TEST_CASE_FIXTURE(ACClassFixture, "ac_dont_overflow_on_recursive_union")
+TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
 {
     ScopedFastFlag _{FFlag::LuauAutocompleteUnionCopyPreviousSeen, true};
     check(R"(

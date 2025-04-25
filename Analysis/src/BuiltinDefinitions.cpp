@@ -32,10 +32,10 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAGVARIABLE(LuauFollowTableFreeze)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked)
+LUAU_FASTFLAGVARIABLE(LuauFormatUseLastPosition)
 
 namespace Luau
 {
@@ -344,7 +344,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     if (auto it = globals.globalScope->exportedTypeBindings.find("vector"); it != globals.globalScope->exportedTypeBindings.end())
     {
         TypeId vectorTy = it->second.type;
-        ClassType* vectorCls = getMutable<ClassType>(vectorTy);
+        ExternType* vectorCls = getMutable<ExternType>(vectorTy);
 
         vectorCls->metatable = arena.addType(TableType{{}, std::nullopt, TypeLevel{}, TableState::Sealed});
         TableType* metatableTy = Luau::getMutable<TableType>(vectorCls->metatable);
@@ -705,6 +705,14 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
         return true;
     }
 
+    // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
+    // This does _not_ handle cases like:
+    //
+    //  local foo : () -> (...string) = (nil :: any)
+    //  print(string.format("%s %d %s", foo()))
+    //
+    // ... which should be disallowed.
+
     std::vector<TypeId> expected = parseFormatString(context.builtinTypes, fmt->value.data, fmt->value.size);
     const auto& [params, tail] = flatten(context.arguments);
 
@@ -716,7 +724,9 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
     {
         TypeId actualTy = params[i + paramOffset];
         TypeId expectedTy = expected[i];
-        Location location = context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
+        Location location = FFlag::LuauFormatUseLastPosition
+            ? context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location
+            : context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
         // use subtyping instead here
         SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
 
@@ -1529,8 +1539,7 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
         tableType->scope = context.constraint->scope.get();
     }
 
-    if (FFlag::LuauTrackInteriorFreeTypesOnScope)
-        trackInteriorFreeType(context.constraint->scope.get(), resultType);
+    trackInteriorFreeType(context.constraint->scope.get(), resultType);
 
     TypePackId clonedTypePack = arena->addTypePack({resultType});
     asMutable(context.result)->ty.emplace<BoundTypePack>(clonedTypePack);

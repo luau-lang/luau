@@ -32,12 +32,12 @@ LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauCacheInferencePerAstExpr)
 LUAU_FASTFLAG(LuauLimitIterationWhenCheckingArgumentCounts)
 LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked)
-LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauStringPartLengthLimit)
 LUAU_FASTFLAG(LuauSimplificationRecheckAssumption)
+LUAU_FASTFLAG(LuauAlwaysResolveAstTypes)
 
 using namespace Luau;
 
@@ -1982,6 +1982,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_dont_double_solve_compound_assignment" * doctes
 
 TEST_CASE_FIXTURE(Fixture, "assert_allows_singleton_union_or_intersection")
 {
+    ScopedFastFlag sff{FFlag::LuauAlwaysResolveAstTypes, true};
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local x = 42 :: | number
         local y = 42 :: & number
@@ -2041,7 +2042,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
         {FFlag::LuauHasPropProperBlock, true},
         {FFlag::LuauNonReentrantGeneralization2, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true}
@@ -2080,7 +2080,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
         {FFlag::LuauNonReentrantGeneralization2, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
     };
@@ -2113,7 +2112,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
         {FFlag::LuauHasPropProperBlock, true},
         {FFlag::LuauNonReentrantGeneralization2, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},

@@ -88,7 +88,7 @@ TypePackId Anyification::clean(TypePackId tp)
 
 bool Anyification::ignoreChildren(TypeId ty)
 {
-    if (get<ClassType>(ty))
+    if (get<ExternType>(ty))
         return true;
 
     return ty->persistent;

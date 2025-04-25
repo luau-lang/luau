@@ -252,8 +252,18 @@ CstTypeSingletonString::CstTypeSingletonString(AstArray<char> sourceString, CstE
     LUAU_ASSERT(quoteStyle != CstExprConstantString::QuotedInterp);
 }
 
+CstTypePackExplicit::CstTypePackExplicit()
+    : CstNode(CstClassIndex())
+    , hasParentheses(false)
+    , openParenthesesPosition(Position{0, 0})
+    , closeParenthesesPosition(Position{0, 0})
+    , commaPositions({})
+{
+}
+
 CstTypePackExplicit::CstTypePackExplicit(Position openParenthesesPosition, Position closeParenthesesPosition, AstArray<Position> commaPositions)
     : CstNode(CstClassIndex())
+    , hasParentheses(true)
     , openParenthesesPosition(openParenthesesPosition)
     , closeParenthesesPosition(closeParenthesesPosition)
     , commaPositions(commaPositions)

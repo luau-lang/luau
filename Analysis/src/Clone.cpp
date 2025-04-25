@@ -355,7 +355,7 @@ private:
         t->metatable = shallowClone(t->metatable);
     }
 
-    void cloneChildren(ClassType* t)
+    void cloneChildren(ExternType* t)
     {
         for (auto& [_, p] : t->props)
             p = shallowClone(p);

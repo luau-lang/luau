@@ -473,8 +473,10 @@ class CstTypePackExplicit : public CstNode
 public:
     LUAU_CST_RTTI(CstTypePackExplicit)
 
-    CstTypePackExplicit(Position openParenthesesPosition, Position closeParenthesesPosition, AstArray<Position> commaPositions);
+    explicit CstTypePackExplicit();
+    explicit CstTypePackExplicit(Position openParenthesesPosition, Position closeParenthesesPosition, AstArray<Position> commaPositions);
 
+    bool hasParentheses;
     Position openParenthesesPosition;
     Position closeParenthesesPosition;
     AstArray<Position> commaPositions;

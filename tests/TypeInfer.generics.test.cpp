@@ -13,6 +13,8 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
+LUAU_FASTFLAG(LuauIntersectNotNil)
 
 using namespace Luau;
 
@@ -833,7 +835,15 @@ function clone<X, Y>(dict: {[X]:Y}): {[X]:Y}
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauSolverV2 && FFlag::LuauAddCallConstraintForIterableFunctions && !FFlag::LuauIntersectNotNil)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<UninhabitedTypeFunction>(result.errors.at(0)));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")

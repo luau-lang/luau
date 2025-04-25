@@ -332,11 +332,11 @@ struct TypePackMismatch
     bool operator==(const TypePackMismatch& rhs) const;
 };
 
-struct DynamicPropertyLookupOnClassesUnsafe
+struct DynamicPropertyLookupOnExternTypesUnsafe
 {
     TypeId ty;
 
-    bool operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const;
+    bool operator==(const DynamicPropertyLookupOnExternTypesUnsafe& rhs) const;
 };
 
 struct UninhabitedTypeFunction
@@ -499,7 +499,7 @@ using TypeErrorData = Variant<
     TypesAreUnrelated,
     NormalizationTooComplex,
     TypePackMismatch,
-    DynamicPropertyLookupOnClassesUnsafe,
+    DynamicPropertyLookupOnExternTypesUnsafe,
     UninhabitedTypeFunction,
     UninhabitedTypePackFunction,
     WhereClauseNeeded,

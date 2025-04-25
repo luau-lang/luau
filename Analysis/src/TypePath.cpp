@@ -307,9 +307,9 @@ struct TraversalState
                 prop = &it->second;
             }
         }
-        else if (auto c = get<ClassType>(*currentType))
+        else if (auto c = get<ExternType>(*currentType))
         {
-            prop = lookupClassProp(c, property.name);
+            prop = lookupExternTypeProp(c, property.name);
         }
         // For a metatable type, the table takes priority; check that before
         // falling through to the metatable entry below.
@@ -461,7 +461,7 @@ struct TraversalState
                     indexer = &(*mtMt->indexer);
             }
             // Note: we don't appear to walk the class hierarchy for indexers
-            else if (auto ct = get<ClassType>(current); ct && ct->indexer)
+            else if (auto ct = get<ExternType>(current); ct && ct->indexer)
                 indexer = &(*ct->indexer);
 
             if (indexer)

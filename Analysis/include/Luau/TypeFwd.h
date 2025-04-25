@@ -29,7 +29,7 @@ struct SingletonType;
 struct FunctionType;
 struct TableType;
 struct MetatableType;
-struct ClassType;
+struct ExternType;
 struct AnyType;
 struct UnionType;
 struct IntersectionType;

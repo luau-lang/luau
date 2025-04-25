@@ -46,7 +46,7 @@ struct InstanceCollector2 : TypeOnceVisitor
             cyclicInstance.insert(t);
     }
 
-    bool visit(TypeId ty, const ClassType&) override
+    bool visit(TypeId ty, const ExternType&) override
     {
         return false;
     }

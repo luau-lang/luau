@@ -149,9 +149,9 @@ TEST_CASE_FIXTURE(Fixture, "floor_division_binary_op")
 {
     CheckResult result = check(R"(
         local a = 4 // 8
-        local b = -4 // 9 
+        local b = -4 // 9
         local c = 9
-        c //= -6.5 
+        c //= -6.5
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1270,7 +1270,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "unrelated_classes_cannot_be_compared")
+TEST_CASE_FIXTURE(ExternTypeFixture, "unrelated_extern_types_cannot_be_compared")
 {
     CheckResult result = check(R"(
         local a = BaseClass.New()

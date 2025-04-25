@@ -14,8 +14,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_FASTFLAG(LuauAstTypeGroup3);
-LUAU_FASTFLAG(LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 TEST_SUITE_BEGIN("TranspilerTests");
 
@@ -1341,11 +1341,21 @@ TEST_CASE_FIXTURE(Fixture, "transpile_intersection_type_nested_2")
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "transpile_intersection_type_with_function")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true},
+    };
+    std::string code = "type FnB<U...> = () -> U... & T";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_CASE_FIXTURE(Fixture, "transpile_leading_union_pipe")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
         {FFlag::LuauParseOptionalAsNode2, true},
     };
     std::string code = "local a: | string | number";
@@ -1359,7 +1369,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_union_spaces_around_tokens")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
         {FFlag::LuauParseOptionalAsNode2, true},
     };
     std::string code = "local a: string   | number";
@@ -1373,7 +1382,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_leading_intersection_ampersand")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
     };
     std::string code = "local a: & string & number";
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -1386,7 +1394,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_intersection_spaces_around_tokens")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauStoreCSTData2, true},
-        {FFlag::LuauPreserveUnionIntersectionNodeForLeadingTokenSingleType, true},
     };
     std::string code = "local a: string   & number";
     CHECK_EQ(code, transpile(code, {}, true).code);
@@ -2060,98 +2067,157 @@ end
 
 TEST_CASE("transpile_type_function_unnamed_arguments")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true},
+    };
     std::string code = R"( type Foo = () -> () )";
-    CHECK_EQ(R"( type Foo = () ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo =   () -> () )";
-    CHECK_EQ(R"( type Foo =   () ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string) -> () )";
-    CHECK_EQ(R"( type Foo = (string) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string, number) -> () )";
-    CHECK_EQ(R"( type Foo = (string, number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (  string, number) -> () )";
-    CHECK_EQ(R"( type Foo = (  string, number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string  , number) -> () )";
-    CHECK_EQ(R"( type Foo = (string  , number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string,   number) -> () )";
-    CHECK_EQ(R"( type Foo = (string,   number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string, number  ) -> () )";
-    CHECK_EQ(R"( type Foo = (string, number  ) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string, number)   -> () )";
-    CHECK_EQ(R"( type Foo = (string, number)   ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (string, number) ->   ()  )";
-    CHECK_EQ(R"( type Foo = (string, number) ->()     )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_CASE("transpile_type_function_named_arguments")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true},
+    };
     std::string code = R"( type Foo = (x: string) -> () )";
-    CHECK_EQ(R"( type Foo = (x: string) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (x: string, y: number) -> ()  )";
-    CHECK_EQ(R"( type Foo = (x: string, y: number) ->()   )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (  x: string, y: number) -> () )";
-    CHECK_EQ(R"( type Foo = (  x: string, y: number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (x  : string, y: number) -> () )";
-    CHECK_EQ(R"( type Foo = (x  : string, y: number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (x:   string, y: number) -> () )";
-    CHECK_EQ(R"( type Foo = (x:   string, y: number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (x: string,   y: number) -> () )";
-    CHECK_EQ(R"( type Foo = (x: string,   y: number) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (number, info: string) -> () )";
-    CHECK_EQ(R"( type Foo = (number, info: string) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = (first: string, second: string, ...string) -> () )";
-    CHECK_EQ(R"( type Foo = (first: string, second: string, ...string) ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_CASE("transpile_type_function_generics")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true},
+    };
     std::string code = R"( type Foo = <X, Y, Z...>() -> () )";
-    CHECK_EQ(R"( type Foo = <X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo =   <X, Y, Z...>() -> () )";
-    CHECK_EQ(R"( type Foo =   <X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <  X, Y, Z...>() -> () )";
-    CHECK_EQ(R"( type Foo = <  X, Y, Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X  , Y, Z...>() -> () )";
-    CHECK_EQ(R"( type Foo = <X  , Y, Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X,   Y, Z...>() -> () )";
-    CHECK_EQ(R"( type Foo = <X,   Y, Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X, Y  , Z...>() -> () )";
-    CHECK_EQ(R"( type Foo = <X, Y  , Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X, Y,   Z...>() -> () )";
-    CHECK_EQ(R"( type Foo = <X, Y,   Z...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X, Y, Z  ...>() -> () )";
-    CHECK_EQ(R"( type Foo = <X, Y, Z  ...>() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X, Y, Z...  >() -> () )";
-    CHECK_EQ(R"( type Foo = <X, Y, Z...  >() ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = <X, Y, Z...>  () -> () )";
-    CHECK_EQ(R"( type Foo = <X, Y, Z...>  () ->()  )", transpile(code, {}, true).code);
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_type_function_return_types")
+{
+    ScopedFastFlag fflags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauAstTypeGroup3, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true},
+    };
+    std::string code = R"( type Foo = () ->   () )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (  ) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () ->   string )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (string) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () ->   (string) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> ...any )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () ->   ...any )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> ...  any )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (...any) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (  string, number) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (string  , number) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (string,   number) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> (string, number  ) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_CASE("fuzzer_nil_optional")

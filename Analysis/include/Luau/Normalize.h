@@ -181,7 +181,7 @@ struct NormalizedStringType
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr);
 
-struct NormalizedClassType
+struct NormalizedExternType
 {
     /** Has the following structure:
      *
@@ -192,7 +192,7 @@ struct NormalizedClassType
      *
      * Each TypeId is a class type.
      */
-    std::unordered_map<TypeId, TypeIds> classes;
+    std::unordered_map<TypeId, TypeIds> externTypes;
 
     /**
      * In order to maintain a consistent insertion order, we use this vector to
@@ -245,7 +245,7 @@ enum class NormalizationResult
 };
 
 // A normalized type is either any, unknown, or one of the form P | T | F | G where
-// * P is a union of primitive types (including singletons, classes and the error type)
+// * P is a union of primitive types (including singletons, extern types and the error type)
 // * T is a union of table types
 // * F is a union of an intersection of function types
 // * G is a union of generic/free/blocked types, intersected with a normalized type
@@ -260,7 +260,7 @@ struct NormalizedType
     // This type is either never, boolean type, or a boolean singleton.
     TypeId booleans;
 
-    NormalizedClassType classes;
+    NormalizedExternType externTypes;
 
     // The error part of the type.
     // This type is either never or the error type.
@@ -333,7 +333,7 @@ struct NormalizedType
     // Helpers that improve readability of the above (they just say if the component is present)
     bool hasTops() const;
     bool hasBooleans() const;
-    bool hasClasses() const;
+    bool hasExternTypes() const;
     bool hasErrors() const;
     bool hasNils() const;
     bool hasNumbers() const;
@@ -391,10 +391,10 @@ public:
     void unionTysWithTy(TypeIds& here, TypeId there);
     TypeId unionOfTops(TypeId here, TypeId there);
     TypeId unionOfBools(TypeId here, TypeId there);
-    void unionClassesWithClass(TypeIds& heres, TypeId there);
-    void unionClasses(TypeIds& heres, const TypeIds& theres);
-    void unionClassesWithClass(NormalizedClassType& heres, TypeId there);
-    void unionClasses(NormalizedClassType& heres, const NormalizedClassType& theres);
+    void unionExternTypesWithExternType(TypeIds& heres, TypeId there);
+    void unionExternTypes(TypeIds& heres, const TypeIds& theres);
+    void unionExternTypesWithExternType(NormalizedExternType& heres, TypeId there);
+    void unionExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres);
     void unionStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypePackId> unionOfTypePacks(TypePackId here, TypePackId there);
     std::optional<TypeId> unionOfFunctions(TypeId here, TypeId there);
@@ -423,8 +423,8 @@ public:
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
-    void intersectClasses(NormalizedClassType& heres, const NormalizedClassType& theres);
-    void intersectClassesWithClass(NormalizedClassType& heres, TypeId there);
+    void intersectExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres);
+    void intersectExternTypesWithExternType(NormalizedExternType& heres, TypeId there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypePackId> intersectionOfTypePacks(TypePackId here, TypePackId there);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);

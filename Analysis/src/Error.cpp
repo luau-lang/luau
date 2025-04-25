@@ -203,7 +203,7 @@ struct ErrorConverter
         TypeId t = follow(e.table);
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
-        else if (get<ClassType>(t))
+        else if (get<ExternType>(t))
             return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
@@ -371,7 +371,7 @@ struct ErrorConverter
         std::string s = "Key '" + e.key + "' not found in ";
 
         TypeId t = follow(e.table);
-        if (get<ClassType>(t))
+        if (get<ExternType>(t))
             s += "class";
         else
             s += "table";
@@ -402,8 +402,8 @@ struct ErrorConverter
         std::optional<TypeId> metatable;
         if (const MetatableType* mtType = get<MetatableType>(type))
             metatable = mtType->metatable;
-        else if (const ClassType* classType = get<ClassType>(type))
-            metatable = classType->metatable;
+        else if (const ExternType* externType = get<ExternType>(type))
+            metatable = externType->metatable;
 
         if (!metatable)
             return std::nullopt;
@@ -611,7 +611,7 @@ struct ErrorConverter
         return ss;
     }
 
-    std::string operator()(const DynamicPropertyLookupOnClassesUnsafe& e) const
+    std::string operator()(const DynamicPropertyLookupOnExternTypesUnsafe& e) const
     {
         return "Attempting a dynamic property access on type '" + Luau::toString(e.ty) + "' is unsafe and may cause exceptions at runtime";
     }
@@ -1149,7 +1149,7 @@ bool TypePackMismatch::operator==(const TypePackMismatch& rhs) const
     return *wantedTp == *rhs.wantedTp && *givenTp == *rhs.givenTp;
 }
 
-bool DynamicPropertyLookupOnClassesUnsafe::operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const
+bool DynamicPropertyLookupOnExternTypesUnsafe::operator==(const DynamicPropertyLookupOnExternTypesUnsafe& rhs) const
 {
     return ty == rhs.ty;
 }
@@ -1391,7 +1391,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.wantedTp = clone(e.wantedTp);
         e.givenTp = clone(e.givenTp);
     }
-    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
+    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnExternTypesUnsafe>)
         e.ty = clone(e.ty);
     else if constexpr (std::is_same_v<T, UninhabitedTypeFunction>)
         e.ty = clone(e.ty);

@@ -291,7 +291,7 @@ struct MagicFunctionCallContext
 {
     NotNull<struct ConstraintSolver> solver;
     NotNull<const Constraint> constraint;
-    const class AstExprCall* callSite;
+    NotNull<const AstExprCall> callSite;
     TypePackId arguments;
     TypePackId result;
 };
@@ -536,15 +536,15 @@ struct ClassUserData
     virtual ~ClassUserData() {}
 };
 
-/** The type of a class.
+/** The type of an external userdata exposed to Luau.
  *
- * Classes behave like tables in many ways, but there are some important differences:
+ * Extern types behave like tables in many ways, but there are some important differences:
  *
  * The properties of a class are always exactly known.
- * Classes optionally have a parent class.
- * Two different classes that share the same properties are nevertheless distinct and mutually incompatible.
+ * Extern types optionally have a parent type.
+ * Two different extern types that share the same properties are nevertheless distinct and mutually incompatible.
  */
-struct ClassType
+struct ExternType
 {
     using Props = TableType::Props;
 
@@ -558,7 +558,7 @@ struct ClassType
     std::optional<Location> definitionLocation;
     std::optional<TableIndexer> indexer;
 
-    ClassType(
+    ExternType(
         Name name,
         Props props,
         std::optional<TypeId> parent,
@@ -579,7 +579,7 @@ struct ClassType
     {
     }
 
-    ClassType(
+    ExternType(
         Name name,
         Props props,
         std::optional<TypeId> parent,
@@ -779,7 +779,7 @@ using TypeVariant = Unifiable::Variant<
     FunctionType,
     TableType,
     MetatableType,
-    ClassType,
+    ExternType,
     AnyType,
     UnionType,
     IntersectionType,
@@ -990,7 +990,7 @@ public:
     const TypeId threadType;
     const TypeId bufferType;
     const TypeId functionType;
-    const TypeId classType;
+    const TypeId externType;
     const TypeId tableType;
     const TypeId emptyTableType;
     const TypeId trueType;
@@ -1002,6 +1002,7 @@ public:
     const TypeId noRefineType;
     const TypeId falsyType;
     const TypeId truthyType;
+    const TypeId notNilType;
 
     const TypeId optionalNumberType;
     const TypeId optionalStringType;
@@ -1022,10 +1023,10 @@ TypeLevel* getMutableLevel(TypeId ty);
 
 std::optional<TypeLevel> getLevel(TypePackId tp);
 
-const Property* lookupClassProp(const ClassType* cls, const Name& name);
+const Property* lookupExternTypeProp(const ExternType* cls, const Name& name);
 
 // Whether `cls` is a subclass of `parent`
-bool isSubclass(const ClassType* cls, const ClassType* parent);
+bool isSubclass(const ExternType* cls, const ExternType* parent);
 
 Type* asMutable(TypeId ty);
 

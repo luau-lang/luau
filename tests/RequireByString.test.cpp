@@ -7,6 +7,7 @@
 #include "lualib.h"
 
 #include "Luau/Repl.h"
+#include "Luau/Require.h"
 #include "Luau/FileUtils.h"
 
 #include "doctest.h"
@@ -462,6 +463,20 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "CheckCachedResult")
 {
     std::string relativePath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/validate_cache";
     runProtectedRequire(relativePath);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RegisterRuntimeModule")
+{
+    lua_pushcfunction(L, luarequire_registermodule, nullptr);
+    lua_pushstring(L, "@test/helloworld");
+    lua_newtable(L);
+    lua_pushstring(L, "hello");
+    lua_pushstring(L, "world");
+    lua_settable(L, -3);
+    lua_call(L, 2, 0);
+
+    runCode(L, "return require('@test/helloworld').hello == 'world'");
     assertOutputContainsAll({"true"});
 }
 

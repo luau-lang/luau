@@ -95,16 +95,16 @@ struct InferPolarity : TypeVisitor
         // types.
         for (TypeId generic : ft.generics)
         {
+            generic = follow(generic);
             const auto gen = get<GenericType>(generic);
-            LUAU_ASSERT(gen);
-            if (subsumes(scope, gen->scope))
+            if (gen && subsumes(scope, gen->scope))
                 types[generic] = Polarity::None;
         }
         for (TypePackId genericPack : ft.genericPacks)
         {
+            genericPack = follow(genericPack);
             const auto gen = get<GenericTypePack>(genericPack);
-            LUAU_ASSERT(gen);
-            if (subsumes(scope, gen->scope))
+            if (gen && subsumes(scope, gen->scope))
                 packs[genericPack] = Polarity::None;
         }
 
@@ -118,7 +118,7 @@ struct InferPolarity : TypeVisitor
         return false;
     }
 
-    bool visit(TypeId, const ClassType&) override
+    bool visit(TypeId, const ExternType&) override
     {
         return false;
     }

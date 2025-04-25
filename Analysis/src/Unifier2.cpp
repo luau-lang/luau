@@ -321,9 +321,9 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
     {
         for (TypeId generic : subFn->generics)
         {
-            const GenericType* gen = get<GenericType>(generic);
-            LUAU_ASSERT(gen);
-            genericSubstitutions[generic] = freshType(scope, gen->polarity);
+            const GenericType* gen = get<GenericType>(follow(generic));
+            if (gen)
+                genericSubstitutions[generic] = freshType(scope, gen->polarity);
         }
 
         for (TypePackId genericPack : subFn->genericPacks)
@@ -331,8 +331,8 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
             if (FFlag::LuauNonReentrantGeneralization2)
             {
                 const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
-                LUAU_ASSERT(gen);
-                genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
+                if (gen)
+                    genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
             }
             else
                 genericPackSubstitutions[genericPack] = arena->freshTypePack(scope);

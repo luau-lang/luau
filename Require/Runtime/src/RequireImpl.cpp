@@ -13,7 +13,11 @@
 namespace Luau::Require
 {
 
-static const char* cacheTableKey = "_MODULES";
+// Stores explicitly registered modules.
+static const char* registeredCacheTableKey = "_REGISTEREDMODULES";
+
+// Stores the results of require calls.
+static const char* requiredCacheTableKey = "_MODULES";
 
 struct ResolvedRequire
 {
@@ -32,7 +36,7 @@ struct ResolvedRequire
 
 static bool isCached(lua_State* L, const std::string& key)
 {
-    luaL_findtable(L, LUA_REGISTRYINDEX, cacheTableKey, 1);
+    luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
     lua_getfield(L, -1, key.c_str());
     bool cached = !lua_isnil(L, -1);
     lua_pop(L, 2);
@@ -40,15 +44,12 @@ static bool isCached(lua_State* L, const std::string& key)
     return cached;
 }
 
-static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* L, void* ctx, std::string path)
+static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* L, void* ctx, const char* requirerChunkname, std::string path)
 {
-    lua_Debug ar;
-    lua_getinfo(L, 1, "s", &ar);
-
-    if (!lrc->is_require_allowed(L, ctx, ar.source))
+    if (!lrc->is_require_allowed(L, ctx, requirerChunkname))
         luaL_error(L, "require is not supported in this context");
 
-    RuntimeNavigationContext navigationContext{lrc, L, ctx, ar.source};
+    RuntimeNavigationContext navigationContext{lrc, L, ctx, requirerChunkname};
     RuntimeErrorHandler errorHandler{L}; // Errors reported directly to lua_State.
 
     Navigator navigator(navigationContext, errorHandler);
@@ -74,7 +75,7 @@ static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* 
     if (isCached(L, *cacheKey))
     {
         // Put cached result on top of stack before returning.
-        lua_getfield(L, LUA_REGISTRYINDEX, cacheTableKey);
+        lua_getfield(L, LUA_REGISTRYINDEX, requiredCacheTableKey);
         lua_getfield(L, -1, cacheKey->c_str());
         lua_remove(L, -2);
 
@@ -103,7 +104,21 @@ static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* 
     };
 }
 
-int lua_require(lua_State* L)
+static int checkRegisteredModules(lua_State* L, const char* path)
+{
+    luaL_findtable(L, LUA_REGISTRYINDEX, registeredCacheTableKey, 1);
+    lua_getfield(L, -1, path);
+    if (lua_isnil(L, -1))
+    {
+        lua_pop(L, 2);
+        return 0;
+    }
+
+    lua_remove(L, -2);
+    return 1;
+}
+
+int lua_requireinternal(lua_State* L, const char* requirerChunkname)
 {
     luarequire_Configuration* lrc = static_cast<luarequire_Configuration*>(lua_touserdata(L, lua_upvalueindex(1)));
     if (!lrc)
@@ -113,11 +128,14 @@ int lua_require(lua_State* L)
 
     const char* path = luaL_checkstring(L, 1);
 
-    ResolvedRequire resolvedRequire = resolveRequire(lrc, L, ctx, path);
+    if (checkRegisteredModules(L, path) == 1)
+        return 1;
+
+    ResolvedRequire resolvedRequire = resolveRequire(lrc, L, ctx, requirerChunkname, path);
     if (resolvedRequire.status == ResolvedRequire::Status::Cached)
         return 1;
 
-    int numResults = lrc->load(L, ctx, resolvedRequire.chunkname.c_str(), resolvedRequire.contents.c_str());
+    int numResults = lrc->load(L, ctx, path, resolvedRequire.chunkname.c_str(), resolvedRequire.contents.c_str());
     if (numResults > 1)
         luaL_error(L, "module must return a single value");
 
@@ -127,7 +145,7 @@ int lua_require(lua_State* L)
         // Initial stack state
         // (-1) result
 
-        lua_getfield(L, LUA_REGISTRYINDEX, cacheTableKey);
+        lua_getfield(L, LUA_REGISTRYINDEX, requiredCacheTableKey);
         // (-2) result, (-1) cache table
 
         lua_pushvalue(L, -2);
@@ -141,6 +159,44 @@ int lua_require(lua_State* L)
     }
 
     return numResults;
+}
+
+int lua_proxyrequire(lua_State* L)
+{
+    const char* requirerChunkname = luaL_checkstring(L, 2);
+    return lua_requireinternal(L, requirerChunkname);
+}
+
+int lua_require(lua_State* L)
+{
+    lua_Debug ar;
+    lua_getinfo(L, 1, "s", &ar);
+    return lua_requireinternal(L, ar.source);
+}
+
+int registerModuleImpl(lua_State* L)
+{
+    if (lua_gettop(L) != 2)
+        luaL_error(L, "expected 2 arguments: aliased require path and desired result");
+
+    size_t len;
+    const char* path = luaL_checklstring(L, 1, &len);
+    std::string_view pathView(path, len);
+    if (pathView.empty() || pathView[0] != '@')
+        luaL_argerrorL(L, 1, "path must begin with '@'");
+
+    luaL_findtable(L, LUA_REGISTRYINDEX, registeredCacheTableKey, 1);
+    // (1) path, (2) result, (3) cache table
+
+    lua_insert(L, 1);
+    // (1) cache table, (2) path, (3) result
+
+    lua_settable(L, 1);
+    // (1) cache table
+
+    lua_pop(L, 1);
+
+    return 0;
 }
 
 } // namespace Luau::Require

@@ -27,7 +27,6 @@
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauMixedModeDefFinderTraversesTypeOf)
 LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
@@ -43,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAGVARIABLE(LuauGlobalVariableModuleIsolation)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace
 {
@@ -97,7 +97,11 @@ Location getFunctionDeclarationExtents(AstExprFunction* exprFn, AstExpr* exprNam
 {
     auto fnBegin = exprFn->location.begin;
     auto fnEnd = exprFn->location.end;
-    if (auto returnAnnot = exprFn->returnAnnotation)
+    if (auto returnAnnot = exprFn->returnAnnotation; FFlag::LuauStoreReturnTypesAsPackOnAst && returnAnnot)
+    {
+        fnEnd = returnAnnot->location.end;
+    }
+    else if (auto returnAnnot = exprFn->returnAnnotation_DEPRECATED; !FFlag::LuauStoreReturnTypesAsPackOnAst && returnAnnot)
     {
         if (returnAnnot->tailType)
             fnEnd = returnAnnot->tailType->location.end;
@@ -540,6 +544,11 @@ struct UsageFinder : public AstVisitor
     bool visit(AstType* node) override
     {
         return true;
+    }
+
+    bool visit(AstTypePack* node) override
+    {
+        return FFlag::LuauStoreReturnTypesAsPackOnAst;
     }
 
     bool visit(AstStatTypeAlias* alias) override
@@ -1706,7 +1715,6 @@ FragmentAutocompleteResult fragmentAutocomplete(
     IFragmentAutocompleteReporter* reporter
 )
 {
-    LUAU_ASSERT(FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
     LUAU_TIMETRACE_SCOPE("Luau::fragmentAutocomplete", "FragmentAutocomplete");
     LUAU_TIMETRACE_ARGUMENT("name", moduleName.c_str());
 

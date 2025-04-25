@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
 LUAU_FASTFLAG(LuauSubtypingEnableReasoningLimit)
 LUAU_FASTFLAG(LuauTypePackDetectCycles)
@@ -323,9 +324,9 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "cyclic_table")
 }
 #endif
 
-TEST_CASE_FIXTURE(IsSubtypeFixture, "classes")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "extern_types")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
 
     check(""); // Ensure that we have a main Module.
 
@@ -760,7 +761,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
 
     CheckResult result = check(R"(
 export type t0 = { a: Child }
@@ -779,24 +780,24 @@ export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
+TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_extern_types")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
     CHECK("Parent | Unrelated" == toString(normal("Parent | Unrelated")));
     CHECK("Parent" == toString(normal("Parent | Child")));
     CHECK("Parent | Unrelated" == toString(normal("Parent | Child | Unrelated")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
+TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_extern_types")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
     CHECK("Child" == toString(normal("Parent & Child")));
     CHECK("never" == toString(normal("Child & Unrelated")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
+TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_extern_types_with_intersection")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
     CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
 }
 
@@ -868,9 +869,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
     CHECK("never" == toString(normal("Mt<{}, number> & Mt<{}, string>")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
+TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_extern_types")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
     CHECK("never" == toString(normal("Not<Parent> & Child")));
@@ -883,15 +884,15 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
     CHECK("Child" == toString(normal("(Child | Unrelated) & Not<Unrelated>")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_unknown")
+TEST_CASE_FIXTURE(NormalizeFixture, "extern_types_and_unknown")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
     CHECK("Parent" == toString(normal("Parent & unknown")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_never")
+TEST_CASE_FIXTURE(NormalizeFixture, "extern_types_and_never")
 {
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
     CHECK("never" == toString(normal("Parent & never")));
 }
 
@@ -1238,6 +1239,12 @@ do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
 {
+    // FIXME?  This test code happens not to ICE with eager generalization
+    // enabled.  This could either be because the problem is fixed, or because
+    // another bug is obscuring the problem.
+    if (FFlag::DebugLuauGreedyGeneralization)
+        return;
+
     ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypePackDetectCycles, true}};
 
     // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check

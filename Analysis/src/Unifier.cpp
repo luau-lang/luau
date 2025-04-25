@@ -292,7 +292,7 @@ TypePackId Widen::clean(TypePackId)
 
 bool Widen::ignoreChildren(TypeId ty)
 {
-    if (get<ClassType>(ty))
+    if (get<ExternType>(ty))
         return true;
 
     return !log->is<UnionType>(ty);
@@ -693,13 +693,13 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<MetatableType>(subTy))
         tryUnifyWithMetatable(superTy, subTy, /*reversed*/ true);
 
-    else if (log.getMutable<ClassType>(superTy))
-        tryUnifyWithClass(subTy, superTy, /*reversed*/ false);
+    else if (log.getMutable<ExternType>(superTy))
+        tryUnifyWithExternType(subTy, superTy, /*reversed*/ false);
 
-    // Unification of nonclasses with classes is almost, but not quite symmetrical.
-    // The order in which we perform this test is significant in the case that both types are classes.
-    else if (log.getMutable<ClassType>(subTy))
-        tryUnifyWithClass(subTy, superTy, /*reversed*/ true);
+    // Unification of Luau types with extern types is almost, but not quite symmetrical.
+    // The order in which we perform this test is significant in the case that both types are extern types.
+    else if (log.getMutable<ExternType>(subTy))
+        tryUnifyWithExternType(subTy, superTy, /*reversed*/ true);
 
     else if (log.get<NegationType>(superTy) || log.get<NegationType>(subTy))
         tryUnifyNegations(subTy, superTy);
@@ -1107,15 +1107,15 @@ void Unifier::tryUnifyNormalizedTypes(
         if (!get<PrimitiveType>(superNorm.errors))
             return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
 
-    for (const auto& [subClass, _] : subNorm.classes.classes)
+    for (const auto& [subExternType, _] : subNorm.externTypes.externTypes)
     {
         bool found = false;
-        const ClassType* subCtv = get<ClassType>(subClass);
+        const ExternType* subCtv = get<ExternType>(subExternType);
         LUAU_ASSERT(subCtv);
 
-        for (const auto& [superClass, superNegations] : superNorm.classes.classes)
+        for (const auto& [superExternType, superNegations] : superNorm.externTypes.externTypes)
         {
-            const ClassType* superCtv = get<ClassType>(superClass);
+            const ExternType* superCtv = get<ExternType>(superExternType);
             LUAU_ASSERT(superCtv);
 
             if (isSubclass(subCtv, superCtv))
@@ -1124,7 +1124,7 @@ void Unifier::tryUnifyNormalizedTypes(
 
                 for (TypeId negation : superNegations)
                 {
-                    const ClassType* negationCtv = get<ClassType>(negation);
+                    const ExternType* negationCtv = get<ExternType>(negation);
                     LUAU_ASSERT(negationCtv);
 
                     if (isSubclass(subCtv, negationCtv))
@@ -2382,8 +2382,8 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
     }
 }
 
-// Class unification is almost, but not quite symmetrical.  We use the 'reversed' boolean to indicate which scenario we are evaluating.
-void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
+// Extern type unification is almost, but not quite symmetrical.  We use the 'reversed' boolean to indicate which scenario we are evaluating.
+void Unifier::tryUnifyWithExternType(TypeId subTy, TypeId superTy, bool reversed)
 {
     if (reversed)
         std::swap(superTy, subTy);
@@ -2396,20 +2396,20 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
             reportError(location, TypeMismatch{subTy, superTy, mismatchContext()});
     };
 
-    const ClassType* superClass = get<ClassType>(superTy);
-    if (!superClass)
-        ice("tryUnifyClass invoked with non-class Type");
+    const ExternType* superExternType = get<ExternType>(superTy);
+    if (!superExternType)
+        ice("tryUnifyExternType invoked with non-class Type");
 
-    if (const ClassType* subClass = get<ClassType>(subTy))
+    if (const ExternType* subExternType = get<ExternType>(subTy))
     {
         switch (variance)
         {
         case Covariant:
-            if (!isSubclass(subClass, superClass))
+            if (!isSubclass(subExternType, superExternType))
                 return fail();
             return;
         case Invariant:
-            if (subClass != superClass)
+            if (subExternType != superExternType)
                 return fail();
             return;
         }
@@ -2434,7 +2434,7 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
 
         for (const auto& [propName, prop] : subTable->props)
         {
-            const Property* classProp = lookupClassProp(superClass, propName);
+            const Property* classProp = lookupExternTypeProp(superExternType, propName);
             if (!classProp)
             {
                 ok = false;
@@ -2462,7 +2462,7 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
         if (subTable->indexer)
         {
             ok = false;
-            std::string msg = "Class " + superClass->name + " does not have an indexer";
+            std::string msg = "Extern type " + superExternType->name + " does not have an indexer";
             reportError(location, GenericError{msg});
         }
 
@@ -2635,9 +2635,9 @@ static void tryUnifyWithAny(
             queue.push_back(mt->table);
             queue.push_back(mt->metatable);
         }
-        else if (state.log.getMutable<ClassType>(ty))
+        else if (state.log.getMutable<ExternType>(ty))
         {
-            // ClassTypes never contain free types.
+            // ExternTypes never contain free types.
         }
         else if (auto union_ = state.log.getMutable<UnionType>(ty))
             queue.insert(queue.end(), union_->options.begin(), union_->options.end());
@@ -2654,7 +2654,7 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
     LUAU_ASSERT(get<AnyType>(anyTy) || get<ErrorType>(anyTy) || get<UnknownType>(anyTy) || get<NeverType>(anyTy));
 
     // These types are not visited in general loop below
-    if (log.get<PrimitiveType>(subTy) || log.get<AnyType>(subTy) || log.get<ClassType>(subTy))
+    if (log.get<PrimitiveType>(subTy) || log.get<AnyType>(subTy) || log.get<ExternType>(subTy))
         return;
 
     TypePackId anyTp = types->addTypePack(TypePackVar{VariadicTypePack{anyTy}});

@@ -31,7 +31,7 @@ bool ApplyTypeFunction::ignoreChildren(TypeId ty)
 {
     if (get<GenericType>(ty))
         return true;
-    else if (get<ClassType>(ty))
+    else if (get<ExternType>(ty))
         return true;
     else
         return false;

@@ -157,8 +157,8 @@ private:
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstDeclaredClassProp parseDeclaredClassMethod(const AstArray<AstAttr*>& attributes);
-    AstDeclaredClassProp parseDeclaredClassMethod_DEPRECATED();
+    AstDeclaredExternTypeProperty parseDeclaredExternTypeMethod(const AstArray<AstAttr*>& attributes);
+    AstDeclaredExternTypeProperty parseDeclaredExternTypeMethod_DEPRECATED();
 
 
     // `declare global' Name: Type |
@@ -176,6 +176,14 @@ private:
     // funcbodyhead ::= `(' [namelist [`,' `...'] | `...'] `)' [`:` Type]
     // funcbody ::= funcbodyhead block end
     std::pair<AstExprFunction*, AstLocal*> parseFunctionBody(
+        bool hasself,
+        const Lexeme& matchFunction,
+        const AstName& debugname,
+        const Name* localName,
+        const AstArray<AstAttr*>& attributes
+    );
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    std::pair<AstExprFunction*, AstLocal*> parseFunctionBody_DEPRECATED(
         bool hasself,
         const Lexeme& matchFunction,
         const AstName& debugname,
@@ -219,8 +227,12 @@ private:
         TempVector<std::optional<Position>>* nameColonPositions = nullptr
     );
 
-    std::optional<AstTypeList> parseOptionalReturnType(Position* returnSpecifierPosition = nullptr);
-    std::pair<Location, AstTypeList> parseReturnType();
+    AstTypePack* parseOptionalReturnType(Position* returnSpecifierPosition = nullptr);
+    AstTypePack* parseReturnType();
+
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    std::optional<AstTypeList> parseOptionalReturnType_DEPRECATED(Position* returnSpecifierPosition = nullptr);
+    std::pair<Location, AstTypeList> parseReturnType_DEPRECATED();
 
     struct TableIndexerResult
     {
@@ -491,7 +503,7 @@ private:
     std::vector<CstTypeTable::Item> scratchCstTableTypeProps;
     std::vector<AstType*> scratchType;
     std::vector<AstTypeOrPack> scratchTypeOrPack;
-    std::vector<AstDeclaredClassProp> scratchDeclaredClassProps;
+    std::vector<AstDeclaredExternTypeProperty> scratchDeclaredClassProps;
     std::vector<AstExprTable::Item> scratchItem;
     std::vector<CstExprTable::Item> scratchCstItem;
     std::vector<AstArgumentName> scratchArgName;
