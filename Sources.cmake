@@ -179,6 +179,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGenerator.h
+    Analysis/include/Luau/ConstraintSet.h
     Analysis/include/Luau/ConstraintSolver.h
     Analysis/include/Luau/ControlFlow.h
     Analysis/include/Luau/DataFlowGraph.h

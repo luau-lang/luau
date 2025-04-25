@@ -847,14 +847,14 @@ void registerHiddenTypes(Frontend* frontend)
     globalScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, globals.globalTypes.addType(NegationType{t})};
     globalScope->exportedTypeBindings["Mt"] = TypeFun{{genericT, genericU}, globals.globalTypes.addType(MetatableType{t, u})};
     globalScope->exportedTypeBindings["fun"] = TypeFun{{}, frontend->builtinTypes->functionType};
-    globalScope->exportedTypeBindings["cls"] = TypeFun{{}, frontend->builtinTypes->classType};
+    globalScope->exportedTypeBindings["cls"] = TypeFun{{}, frontend->builtinTypes->externType};
     globalScope->exportedTypeBindings["err"] = TypeFun{{}, frontend->builtinTypes->errorType};
     globalScope->exportedTypeBindings["tbl"] = TypeFun{{}, frontend->builtinTypes->tableType};
 
     freeze(globals.globalTypes);
 }
 
-void createSomeClasses(Frontend* frontend)
+void createSomeExternTypes(Frontend* frontend)
 {
     GlobalTypes& globals = frontend->globals;
 
@@ -863,27 +863,27 @@ void createSomeClasses(Frontend* frontend)
 
     ScopePtr moduleScope = globals.globalScope;
 
-    TypeId parentType = arena.addType(ClassType{"Parent", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test", {}});
+    TypeId parentType = arena.addType(ExternType{"Parent", {}, frontend->builtinTypes->externType, std::nullopt, {}, nullptr, "Test", {}});
 
-    ClassType* parentClass = getMutable<ClassType>(parentType);
-    parentClass->props["method"] = {makeFunction(arena, parentType, {}, {})};
+    ExternType* parentExternType = getMutable<ExternType>(parentType);
+    parentExternType->props["method"] = {makeFunction(arena, parentType, {}, {})};
 
-    parentClass->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
+    parentExternType->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
 
     addGlobalBinding(globals, "Parent", {parentType});
     moduleScope->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
 
-    TypeId childType = arena.addType(ClassType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test", {}});
+    TypeId childType = arena.addType(ExternType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test", {}});
 
     addGlobalBinding(globals, "Child", {childType});
     moduleScope->exportedTypeBindings["Child"] = TypeFun{{}, childType};
 
-    TypeId anotherChildType = arena.addType(ClassType{"AnotherChild", {}, parentType, std::nullopt, {}, nullptr, "Test", {}});
+    TypeId anotherChildType = arena.addType(ExternType{"AnotherChild", {}, parentType, std::nullopt, {}, nullptr, "Test", {}});
 
     addGlobalBinding(globals, "AnotherChild", {anotherChildType});
     moduleScope->exportedTypeBindings["AnotherChild"] = TypeFun{{}, anotherChildType};
 
-    TypeId unrelatedType = arena.addType(ClassType{"Unrelated", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test", {}});
+    TypeId unrelatedType = arena.addType(ExternType{"Unrelated", {}, frontend->builtinTypes->externType, std::nullopt, {}, nullptr, "Test", {}});
 
     addGlobalBinding(globals, "Unrelated", {unrelatedType});
     moduleScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};

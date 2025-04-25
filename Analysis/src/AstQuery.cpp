@@ -574,11 +574,11 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                             return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
                     }
                 }
-                else if (const ClassType* ctv = get<ClassType>(parentTy))
+                else if (const ExternType* etv = get<ExternType>(parentTy))
                 {
-                    while (ctv)
+                    while (etv)
                     {
-                        if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
+                        if (auto propIt = etv->props.find(indexName->index.value); propIt != etv->props.end())
                         {
                             if (FFlag::LuauSolverV2)
                             {
@@ -590,7 +590,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                                     module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol
                                 );
                         }
-                        ctv = ctv->parent ? Luau::get<Luau::ClassType>(*ctv->parent) : nullptr;
+                        etv = etv->parent ? Luau::get<Luau::ExternType>(*etv->parent) : nullptr;
                     }
                 }
                 else if (const PrimitiveType* ptv = get<PrimitiveType>(parentTy); ptv && ptv->metatable)

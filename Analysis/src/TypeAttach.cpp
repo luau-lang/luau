@@ -14,6 +14,7 @@
 #include <string>
 
 LUAU_FASTFLAG(LuauStoreCSTData2)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
@@ -219,21 +220,21 @@ public:
         return Luau::visit(*this, mtv.table->ty);
     }
 
-    AstType* operator()(const ClassType& ctv)
+    AstType* operator()(const ExternType& etv)
     {
         RecursionCounter counter(&count);
 
-        char* name = allocateString(*allocator, ctv.name);
+        char* name = allocateString(*allocator, etv.name);
 
-        if (!options.expandClassProps || hasSeen(&ctv) || count > 1)
+        if (!options.expandExternTypeProps || hasSeen(&etv) || count > 1)
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{name}, std::nullopt, Location());
 
         AstArray<AstTableProp> props;
-        props.size = ctv.props.size();
+        props.size = etv.props.size();
         props.data = static_cast<AstTableProp*>(allocator->allocate(sizeof(AstTableProp) * props.size));
 
         int idx = 0;
-        for (const auto& [propName, prop] : ctv.props)
+        for (const auto& [propName, prop] : etv.props)
         {
             char* name = allocateString(*allocator, propName);
 
@@ -244,13 +245,13 @@ public:
         }
 
         AstTableIndexer* indexer = nullptr;
-        if (ctv.indexer)
+        if (etv.indexer)
         {
             RecursionCounter counter(&count);
 
             indexer = allocator->alloc<AstTableIndexer>();
-            indexer->indexType = Luau::visit(*this, ctv.indexer->indexType->ty);
-            indexer->resultType = Luau::visit(*this, ctv.indexer->indexResultType->ty);
+            indexer->indexType = Luau::visit(*this, etv.indexer->indexType->ty);
+            indexer->resultType = Luau::visit(*this, etv.indexer->indexResultType->ty);
         }
 
         return allocator->alloc<AstTypeTable>(Location(), props, indexer);
@@ -328,9 +329,19 @@ public:
         if (retTail)
             retTailAnnotation = rehydrate(*retTail);
 
-        return allocator->alloc<AstTypeFunction>(
-            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
-        );
+        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+        {
+            auto returnAnnotation = allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{returnTypes, retTailAnnotation});
+            return allocator->alloc<AstTypeFunction>(
+                Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, returnAnnotation
+            );
+        }
+        else
+        {
+            return allocator->alloc<AstTypeFunction>(
+                Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
+            );
+        }
     }
     AstType* operator()(const ErrorType&)
     {
@@ -585,19 +596,40 @@ public:
             visitLocal(arg);
         }
 
-        if (!fn->returnAnnotation)
+        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
         {
-            if (auto result = getScope(fn->body->location))
+            if (!fn->returnAnnotation)
             {
-                TypePackId ret = result->returnType;
+                if (auto result = getScope(fn->body->location))
+                {
+                    TypePackId ret = result->returnType;
 
-                AstTypePack* variadicAnnotation = nullptr;
-                const auto& [v, tail] = flatten(ret);
+                    AstTypePack* variadicAnnotation = nullptr;
+                    const auto& [v, tail] = flatten(ret);
 
-                if (tail)
-                    variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
+                    if (tail)
+                        variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
 
-                fn->returnAnnotation = AstTypeList{typeAstPack(ret), variadicAnnotation};
+                    fn->returnAnnotation = allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{typeAstPack(ret), variadicAnnotation});
+                }
+            }
+        }
+        else
+        {
+            if (!fn->returnAnnotation_DEPRECATED)
+            {
+                if (auto result = getScope(fn->body->location))
+                {
+                    TypePackId ret = result->returnType;
+
+                    AstTypePack* variadicAnnotation = nullptr;
+                    const auto& [v, tail] = flatten(ret);
+
+                    if (tail)
+                        variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
+
+                    fn->returnAnnotation_DEPRECATED = AstTypeList{typeAstPack(ret), variadicAnnotation};
+                }
             }
         }
 

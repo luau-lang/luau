@@ -16,6 +16,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauStatForInFix)
+LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -133,6 +134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
         for i, v in pairs({ "foo" }) do
             n = i
             s = v
+            print(i, v)
         end
     )");
 
@@ -142,6 +144,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
     {
         CHECK("number?" == toString(requireType("n")));
         CHECK("string?" == toString(requireType("s")));
+        CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 21})));
     }
     else
     {
@@ -152,22 +156,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
-    // CLI-116494 The generics K and V are leaking out of the next() function somehow.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag _{FFlag::LuauAddCallConstraintForIterableFunctions, true};
+    CheckResult result = check(R"(
+        local n
+        local s
+        for i, v in next, { "foo" } do
+            n = i
+            s = v
+            print(i, v)
+        end
+    )");
 
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::LuauSolverV2)
+    {
+        CHECK("number?" == toString(requireType("n")));
+        CHECK("string?" == toString(requireType("s")));
+        CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 21})));
+    }
+    else
+    {
+        CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
+        CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+    }
+}
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements")
+{
+    ScopedFastFlag _{FFlag::LuauAddCallConstraintForIterableFunctions, true};
     CheckResult result = check(R"(
         local n
         local s
         for i, v in next, { "foo", "bar" } do
             n = i
             s = v
+            print(i, v)
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
-    CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+    if (FFlag::LuauSolverV2)
+    {
+        CHECK("number?" == toString(requireType("n")));
+        // TODO: CLI-150066 fix these redundant unions
+        CHECK("(string | string)?" == toString(requireType("s")));
+        CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
+        CHECK_EQ("string | string", toString(requireTypeAtPosition({6, 21})));
+    }
+    else
+    {
+        CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
+        CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_with_an_iterator_of_type_any")
@@ -241,7 +283,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::LuauSolverV2 && FFlag::LuauAddCallConstraintForIterableFunctions)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -1232,6 +1281,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
 {
+    ScopedFastFlag _{FFlag::LuauAddCallConstraintForIterableFunctions, true};
+    ScopedFastFlag v1{FFlag::LuauSolverV2, true};
+
     CheckResult result = check(R"(
         function first(x: any)
             for k, v in pairs(x) do
@@ -1242,7 +1294,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK("any" == toString(requireTypeAtPosition({3, 22})));
+    CHECK("*error-type* | ~nil" == toString(requireTypeAtPosition({3, 22})));
     CHECK("any" == toString(requireTypeAtPosition({3, 25})));
 }
 
@@ -1269,6 +1321,16 @@ for p in broken() do print(p) end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_require")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        for _ in require do
+        end
+    )"));
 }
 
 TEST_SUITE_END();

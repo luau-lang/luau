@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAGVARIABLE(LuauNonStrictVisitorImprovements)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictVisitTypes)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace Luau
 {
@@ -311,7 +312,7 @@ struct NonStrictTypeChecker
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareGlobal>())
             return visit(s);
-        else if (auto s = stat->as<AstStatDeclareClass>())
+        else if (auto s = stat->as<AstStatDeclareExternType>())
             return visit(s);
         else if (auto s = stat->as<AstStatError>())
             return visit(s);
@@ -544,7 +545,7 @@ struct NonStrictTypeChecker
         return {};
     }
 
-    NonStrictContext visit(AstStatDeclareClass* declClass)
+    NonStrictContext visit(AstStatDeclareExternType* declClass)
     {
         if (FFlag::LuauNewNonStrictVisitTypes)
         {
@@ -833,8 +834,16 @@ struct NonStrictTypeChecker
         {
             visitGenerics(exprFn->generics, exprFn->genericPacks);
 
-            if (exprFn->returnAnnotation)
-                visit(*exprFn->returnAnnotation);
+            if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+            {
+                if (exprFn->returnAnnotation)
+                    visit(exprFn->returnAnnotation);
+            }
+            else
+            {
+                if (exprFn->returnAnnotation_DEPRECATED)
+                    visit(*exprFn->returnAnnotation_DEPRECATED);
+            }
 
             if (exprFn->varargAnnotation)
                 visit(exprFn->varargAnnotation);

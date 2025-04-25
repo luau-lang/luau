@@ -475,7 +475,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
     CHECK(toString(tpm->givenTp) == "~string");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_negation_inner")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_negation_inner")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -635,7 +635,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_methods_work")
     CHECK(toString(tpm->givenTp) == "(string, number) -> (...boolean)");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_serialization_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -649,7 +649,7 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works2")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_serialization_works2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -663,7 +663,7 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_serialization_works2")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_class_methods_works")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_methods_works")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -685,7 +685,7 @@ TEST_CASE_FIXTURE(ClassFixture, "udtf_class_methods_works")
     CHECK(toString(tpm->givenTp) == "{ BaseField: number, read BaseMethod: (BaseClass, number) -> (), read Touched: Connection }");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "write_of_readonly_is_nil")
+TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1512,7 +1512,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
     CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_serialization_1")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_serialization_1")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1529,7 +1529,7 @@ local function ok(idx: pass<test>): test return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_serialization_2")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_serialization_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1546,7 +1546,7 @@ local function ok(idx: pass<test>): test return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_serialization_3")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_serialization_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1567,7 +1567,7 @@ local function ok(idx: pass<test>): test return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_cloning_1")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_cloning_1")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1584,7 +1584,7 @@ local function ok(idx: pass<test>): test return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_cloning_2")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_cloning_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1601,7 +1601,7 @@ local function ok(idx: pass<test>): test return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_equality")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_equality")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1618,7 +1618,7 @@ local function ok(idx: pass<test>): true return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_1")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_1")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1637,7 +1637,7 @@ local function ok(idx: pass<test>): <T>(T) -> (T) return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_2")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1660,7 +1660,7 @@ local function ok(idx: pass<test>): <T>(T, T) -> (T) return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_3")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1689,7 +1689,7 @@ local function ok(idx: pass<>): <T, U..., V...>(T, U...) -> (T, V...) return idx
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_4")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_4")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1715,7 +1715,7 @@ local function ok(idx: pass<>): test return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_5")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_5")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1731,7 +1731,7 @@ local function ok(idx: pass<>): <T>(T) -> () return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_6")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_6")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1758,7 +1758,7 @@ local function ok(idx: pass<test>): <T, U>(T) -> (U) return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_7")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_7")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1780,7 +1780,7 @@ local function ok(idx: pass<test>): <T, U...>(T, U...) -> (T, U...) return idx e
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_8")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_8")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1802,7 +1802,7 @@ local function ok(idx: pass<test>): <T>(T, T) -> (T) return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_equality_2")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_equality_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1822,7 +1822,7 @@ local function ok(idx: get<>): false return idx end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_1")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_1")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1841,7 +1841,7 @@ local function ok(idx: get<>): false return idx end
     );
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_2")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_2")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1857,7 +1857,7 @@ local function ok(idx: get<>): false return idx end
     CHECK(toString(result.errors[0]) == R"(Generic type 'T' is not in a scope of the active generic function)");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_3")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1878,7 +1878,7 @@ local function ok(idx: get<>): false return idx end
     CHECK(toString(result.errors[0]) == R"(Generic type 'U' is not in a scope of the active generic function)");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_4")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_4")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1894,7 +1894,7 @@ local function ok(idx: get<>): false return idx end
     CHECK(toString(result.errors[0]) == R"(Duplicate type parameter 'T')");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_5")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_5")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1910,7 +1910,7 @@ local function ok(idx: get<>): false return idx end
     CHECK(toString(result.errors[0]) == R"(Duplicate type parameter 'T')");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_6")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_6")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1926,7 +1926,7 @@ local function ok(idx: get<>): false return idx end
     CHECK(toString(result.errors[0]) == R"(Generic type pack 'U...' cannot be placed in a type position)");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_generic_api_error_7")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_error_7")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -1942,7 +1942,7 @@ local function ok(idx: get<>): false return idx end
     CHECK(toString(result.errors[0]) == R"(Generic type pack 'U...' is not in a scope of the active generic function)");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_variadic_api")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_variadic_api")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
@@ -2050,7 +2050,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_print_tab_char_fix")
     CHECK_EQ("1\t2", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "udtf_class_parent_ops")
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_parent_ops")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
     ScopedFastFlag readWriteParents{FFlag::LuauTypeFunReadWriteParents, true};

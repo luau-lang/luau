@@ -6,7 +6,7 @@ namespace Luau
 
 bool Instantiation2::ignoreChildren(TypeId ty)
 {
-    if (get<ClassType>(ty))
+    if (get<ExternType>(ty))
         return true;
 
     if (auto ftv = get<FunctionType>(ty))

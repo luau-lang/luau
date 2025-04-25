@@ -36,7 +36,7 @@ static const std::string kTypes[] = {
     "vector",
 };
 
-static const std::string kClasses[] = {
+static const std::string kExternTypes[] = {
     "Vector3",
     "Instance",
     "Part",
@@ -902,8 +902,8 @@ struct ProtoToLuau
 
     void print(const luau::TypeClass& type)
     {
-        size_t index = size_t(type.kind()) % std::size(kClasses);
-        source += kClasses[index];
+        size_t index = size_t(type.kind()) % std::size(kExternTypes);
+        source += kExternTypes[index];
     }
 
     void print(const luau::TypeRef& type)

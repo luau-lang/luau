@@ -33,7 +33,7 @@ struct ESFixture : Fixture
     ESFixture()
         : simplifier(newSimplifier(arena, builtinTypes))
     {
-        createSomeClasses(&frontend);
+        createSomeExternTypes(&frontend);
 
         ScopePtr moduleScope = frontend.globals.globalScope;
 
@@ -234,7 +234,7 @@ TEST_CASE_FIXTURE(ESFixture, "nil | boolean | number | string | thread | functio
                          builtinTypes->threadType,
                          builtinTypes->functionType,
                          builtinTypes->tableType,
-                         builtinTypes->classType,
+                         builtinTypes->externType,
                          builtinTypes->bufferType,
                      }}))
     );
@@ -262,12 +262,12 @@ TEST_CASE_FIXTURE(ESFixture, "Child | Parent")
 
 TEST_CASE_FIXTURE(ESFixture, "class | Child")
 {
-    CHECK("class" == simplifyStr(arena->addType(UnionType{{builtinTypes->classType, childClass}})));
+    CHECK("class" == simplifyStr(arena->addType(UnionType{{builtinTypes->externType, childClass}})));
 }
 
 TEST_CASE_FIXTURE(ESFixture, "Parent | class | Child")
 {
-    CHECK("class" == simplifyStr(arena->addType(UnionType{{parentClass, builtinTypes->classType, childClass}})));
+    CHECK("class" == simplifyStr(arena->addType(UnionType{{parentClass, builtinTypes->externType, childClass}})));
 }
 
 TEST_CASE_FIXTURE(ESFixture, "Parent | Unrelated")
@@ -311,7 +311,7 @@ TEST_CASE_FIXTURE(ESFixture, "boolean & (true | number | string | thread | funct
         builtinTypes->threadType,
         builtinTypes->functionType,
         builtinTypes->tableType,
-        builtinTypes->classType,
+        builtinTypes->externType,
         builtinTypes->bufferType,
     }});
 

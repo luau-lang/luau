@@ -160,7 +160,7 @@ private:
     void visit(AstTypeList types);
     void visit(AstStatDeclareFunction* stat);
     void visit(AstStatDeclareGlobal* stat);
-    void visit(AstStatDeclareClass* stat);
+    void visit(AstStatDeclareExternType* stat);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);

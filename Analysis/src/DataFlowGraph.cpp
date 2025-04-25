@@ -16,6 +16,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackTrueReset)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+
 namespace Luau
 {
 
@@ -470,7 +472,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStat* s)
         return visit(d);
     else if (auto d = s->as<AstStatDeclareFunction>())
         return visit(d);
-    else if (auto d = s->as<AstStatDeclareClass>())
+    else if (auto d = s->as<AstStatDeclareExternType>())
         return visit(d);
     else if (auto error = s->as<AstStatError>())
         return visit(error);
@@ -808,12 +810,15 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareFunction* d)
     visitGenerics(d->generics);
     visitGenericPacks(d->genericPacks);
     visitTypeList(d->params);
-    visitTypeList(d->retTypes);
+    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+        visitTypePack(d->retTypes);
+    else
+        visitTypeList(d->retTypes_DEPRECATED);
 
     return ControlFlow::None;
 }
 
-ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareClass* d)
+ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareExternType* d)
 {
     // This declaration does not "introduce" any bindings in value namespace,
     // so there's no symbolic value to begin with. We'll traverse the properties
@@ -821,7 +826,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareClass* d)
     DfgScope* unreachable = makeChildScope();
     PushScope ps{scopeStack, unreachable};
 
-    for (AstDeclaredClassProp prop : d->props)
+    for (AstDeclaredExternTypeProperty prop : d->props)
         visitType(prop.ty);
 
     return ControlFlow::None;
@@ -1032,8 +1037,16 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
     if (f->varargAnnotation)
         visitTypePack(f->varargAnnotation);
 
-    if (f->returnAnnotation)
-        visitTypeList(*f->returnAnnotation);
+    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+    {
+        if (f->returnAnnotation)
+            visitTypePack(f->returnAnnotation);
+    }
+    else
+    {
+        if (f->returnAnnotation_DEPRECATED)
+            visitTypeList(*f->returnAnnotation_DEPRECATED);
+    }
 
     // TODO: function body can be re-entrant, as in mutations that occurs at the end of the function can also be
     // visible to the beginning of the function, so statically speaking, the body of the function has an exit point
@@ -1275,7 +1288,10 @@ void DataFlowGraphBuilder::visitType(AstTypeFunction* f)
     visitGenerics(f->generics);
     visitGenericPacks(f->genericPacks);
     visitTypeList(f->argTypes);
-    visitTypeList(f->returnTypes);
+    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+        visitTypePack(f->returnTypes);
+    else
+        visitTypeList(f->returnTypes_DEPRECATED);
 }
 
 void DataFlowGraphBuilder::visitType(AstTypeTypeof* t)

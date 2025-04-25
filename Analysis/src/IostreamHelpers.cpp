@@ -193,8 +193,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "NormalizationTooComplex { }";
     else if constexpr (std::is_same_v<T, TypePackMismatch>)
         stream << "TypePackMismatch { wanted = '" + toString(err.wantedTp) + "', given = '" + toString(err.givenTp) + "' }";
-    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
-        stream << "DynamicPropertyLookupOnClassesUnsafe { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnExternTypesUnsafe>)
+        stream << "DynamicPropertyLookupOnExternTypesUnsafe { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, UninhabitedTypeFunction>)
         stream << "UninhabitedTypeFunction { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, ExplicitFunctionAnnotationRecommended>)

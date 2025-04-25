@@ -277,7 +277,7 @@ static DifferResult diffSingleton(DifferEnvironment& env, TypeId left, TypeId ri
 static DifferResult diffFunction(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffGeneric(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffNegation(DifferEnvironment& env, TypeId left, TypeId right);
-static DifferResult diffClass(DifferEnvironment& env, TypeId left, TypeId right);
+static DifferResult diffExternType(DifferEnvironment& env, TypeId left, TypeId right);
 struct FindSeteqCounterexampleResult
 {
     // nullopt if no counterexample found
@@ -481,14 +481,14 @@ static DifferResult diffNegation(DifferEnvironment& env, TypeId left, TypeId rig
     return differResult;
 }
 
-static DifferResult diffClass(DifferEnvironment& env, TypeId left, TypeId right)
+static DifferResult diffExternType(DifferEnvironment& env, TypeId left, TypeId right)
 {
-    const ClassType* leftClass = get<ClassType>(left);
-    const ClassType* rightClass = get<ClassType>(right);
-    LUAU_ASSERT(leftClass);
-    LUAU_ASSERT(rightClass);
+    const ExternType* leftExternType = get<ExternType>(left);
+    const ExternType* rightExternType = get<ExternType>(right);
+    LUAU_ASSERT(leftExternType);
+    LUAU_ASSERT(rightExternType);
 
-    if (leftClass == rightClass)
+    if (leftExternType == rightExternType)
     {
         return DifferResult{};
     }
@@ -651,9 +651,9 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
         {
             return diffNegation(env, left, right);
         }
-        else if (auto lc = get<ClassType>(left))
+        else if (auto lc = get<ExternType>(left))
         {
-            return diffClass(env, left, right);
+            return diffExternType(env, left, right);
         }
 
         throw InternalCompilerError{"Unimplemented Simple TypeId variant for diffing"};
@@ -960,7 +960,7 @@ bool isSimple(TypeId ty)
 {
     ty = follow(ty);
     // TODO: think about GenericType, etc.
-    return get<PrimitiveType>(ty) || get<SingletonType>(ty) || get<AnyType>(ty) || get<NegationType>(ty) || get<ClassType>(ty) ||
+    return get<PrimitiveType>(ty) || get<SingletonType>(ty) || get<AnyType>(ty) || get<NegationType>(ty) || get<ExternType>(ty) ||
            get<UnknownType>(ty) || get<NeverType>(ty);
 }
 

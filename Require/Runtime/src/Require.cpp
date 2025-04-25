@@ -35,7 +35,13 @@ static void validateConfig(lua_State* L, const luarequire_Configuration& config)
         luaL_error(L, "require configuration is missing required function pointer: load");
 }
 
-int lua_pushrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
+static int pushrequireclosureinternal(
+    lua_State* L,
+    luarequire_Configuration_init config_init,
+    void* ctx,
+    lua_CFunction requirelikefunc,
+    const char* debugname
+)
 {
     luarequire_Configuration* config = static_cast<luarequire_Configuration*>(lua_newuserdata(L, sizeof(luarequire_Configuration)));
     if (!config)
@@ -46,13 +52,28 @@ int lua_pushrequire(lua_State* L, luarequire_Configuration_init config_init, voi
 
     lua_pushlightuserdata(L, ctx);
 
-    // "require" captures config and ctx as upvalues
-    lua_pushcclosure(L, Luau::Require::lua_require, "require", 2);
+    // require-like closure captures config and ctx as upvalues
+    lua_pushcclosure(L, requirelikefunc, debugname, 2);
     return 1;
+}
+
+int luarequire_pushrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
+{
+    return pushrequireclosureinternal(L, config_init, ctx, Luau::Require::lua_require, "require");
 }
 
 void luaopen_require(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
 {
-    lua_pushrequire(L, config_init, ctx);
+    luarequire_pushrequire(L, config_init, ctx);
     lua_setglobal(L, "require");
+}
+
+int luarequire_pushproxyrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx)
+{
+    return pushrequireclosureinternal(L, config_init, ctx, Luau::Require::lua_proxyrequire, "proxyrequire");
+}
+
+int luarequire_registermodule(lua_State* L)
+{
+    return Luau::Require::registerModuleImpl(L);
 }

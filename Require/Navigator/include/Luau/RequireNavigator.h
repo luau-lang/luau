@@ -3,7 +3,6 @@
 
 #include "Luau/Config.h"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>

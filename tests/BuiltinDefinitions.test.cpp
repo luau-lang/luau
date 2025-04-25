@@ -28,9 +28,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
         {
             props = &ttv->props;
         }
-        else if (const ClassType* ctv = get<ClassType>(binding.typeId))
+        else if (const ExternType* etv = get<ExternType>(binding.typeId))
         {
-            props = &ctv->props;
+            props = &etv->props;
         }
 
         if (props)

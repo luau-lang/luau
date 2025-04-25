@@ -446,7 +446,25 @@ public:
         AstStatBlock* body,
         size_t functionDepth,
         const AstName& debugname,
-        const std::optional<AstTypeList>& returnAnnotation = {},
+        AstTypePack* returnAnnotation,
+        AstTypePack* varargAnnotation = nullptr,
+        const std::optional<Location>& argLocation = std::nullopt
+    );
+
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    AstExprFunction(
+        const Location& location,
+        const AstArray<AstAttr*>& attributes,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
+        AstLocal* self,
+        const AstArray<AstLocal*>& args,
+        bool vararg,
+        const Location& varargLocation,
+        AstStatBlock* body,
+        size_t functionDepth,
+        const AstName& debugname,
+        const std::optional<AstTypeList>& returnAnnotation,
         AstTypePack* varargAnnotation = nullptr,
         const std::optional<Location>& argLocation = std::nullopt
     );
@@ -461,7 +479,9 @@ public:
     AstArray<AstGenericTypePack*> genericPacks;
     AstLocal* self;
     AstArray<AstLocal*> args;
-    std::optional<AstTypeList> returnAnnotation;
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    std::optional<AstTypeList> returnAnnotation_DEPRECATED;
+    AstTypePack* returnAnnotation = nullptr;
     bool vararg = false;
     Location varargLocation;
     AstTypePack* varargAnnotation;
@@ -929,6 +949,36 @@ class AstStatDeclareFunction : public AstStat
 public:
     LUAU_RTTI(AstStatDeclareFunction)
 
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    AstStatDeclareFunction(
+        const Location& location,
+        const AstName& name,
+        const Location& nameLocation,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
+        const AstTypeList& params,
+        const AstArray<AstArgumentName>& paramNames,
+        bool vararg,
+        const Location& varargLocation,
+        AstTypePack* retTypes
+    );
+
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    AstStatDeclareFunction(
+        const Location& location,
+        const AstArray<AstAttr*>& attributes,
+        const AstName& name,
+        const Location& nameLocation,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
+        const AstTypeList& params,
+        const AstArray<AstArgumentName>& paramNames,
+        bool vararg,
+        const Location& varargLocation,
+        AstTypePack* retTypes
+    );
+
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
     AstStatDeclareFunction(
         const Location& location,
         const AstName& name,
@@ -942,6 +992,7 @@ public:
         const AstTypeList& retTypes
     );
 
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
     AstStatDeclareFunction(
         const Location& location,
         const AstArray<AstAttr*>& attributes,
@@ -971,10 +1022,12 @@ public:
     AstArray<AstArgumentName> paramNames;
     bool vararg = false;
     Location varargLocation;
-    AstTypeList retTypes;
+    AstTypePack* retTypes;
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    AstTypeList retTypes_DEPRECATED;
 };
 
-struct AstDeclaredClassProp
+struct AstDeclaredExternTypeProperty
 {
     AstName name;
     Location nameLocation;
@@ -1000,16 +1053,16 @@ struct AstTableIndexer
     std::optional<Location> accessLocation;
 };
 
-class AstStatDeclareClass : public AstStat
+class AstStatDeclareExternType : public AstStat
 {
 public:
-    LUAU_RTTI(AstStatDeclareClass)
+    LUAU_RTTI(AstStatDeclareExternType)
 
-    AstStatDeclareClass(
+    AstStatDeclareExternType(
         const Location& location,
         const AstName& name,
         std::optional<AstName> superName,
-        const AstArray<AstDeclaredClassProp>& props,
+        const AstArray<AstDeclaredExternTypeProperty>& props,
         AstTableIndexer* indexer = nullptr
     );
 
@@ -1018,7 +1071,7 @@ public:
     AstName name;
     std::optional<AstName> superName;
 
-    AstArray<AstDeclaredClassProp> props;
+    AstArray<AstDeclaredExternTypeProperty> props;
     AstTableIndexer* indexer;
 };
 
@@ -1101,9 +1154,30 @@ public:
         const AstArray<AstGenericTypePack*>& genericPacks,
         const AstTypeList& argTypes,
         const AstArray<std::optional<AstArgumentName>>& argNames,
+        AstTypePack* returnTypes
+    );
+
+    AstTypeFunction(
+        const Location& location,
+        const AstArray<AstAttr*>& attributes,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
+        const AstTypeList& argTypes,
+        const AstArray<std::optional<AstArgumentName>>& argNames,
+        AstTypePack* returnTypes
+    );
+
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    AstTypeFunction(
+        const Location& location,
+        const AstArray<AstGenericType*>& generics,
+        const AstArray<AstGenericTypePack*>& genericPacks,
+        const AstTypeList& argTypes,
+        const AstArray<std::optional<AstArgumentName>>& argNames,
         const AstTypeList& returnTypes
     );
 
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
     AstTypeFunction(
         const Location& location,
         const AstArray<AstAttr*>& attributes,
@@ -1124,7 +1198,9 @@ public:
     AstArray<AstGenericTypePack*> genericPacks;
     AstTypeList argTypes;
     AstArray<std::optional<AstArgumentName>> argNames;
-    AstTypeList returnTypes;
+    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+    AstTypeList returnTypes_DEPRECATED;
+    AstTypePack* returnTypes;
 };
 
 class AstTypeTypeof : public AstType
@@ -1483,7 +1559,7 @@ public:
     {
         return visit(static_cast<AstStat*>(node));
     }
-    virtual bool visit(class AstStatDeclareClass* node)
+    virtual bool visit(class AstStatDeclareExternType* node)
     {
         return visit(static_cast<AstStat*>(node));
     }

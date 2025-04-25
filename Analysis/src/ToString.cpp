@@ -19,6 +19,8 @@
 #include <stdexcept>
 #include <string>
 
+LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
+
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauSyntheticErrors)
 LUAU_FASTFLAGVARIABLE(LuauStringPartLengthLimit)
@@ -121,7 +123,7 @@ struct FindCyclicTypes final : TypeVisitor
         return true;
     }
 
-    bool visit(TypeId ty, const ClassType&) override
+    bool visit(TypeId ty, const ExternType&) override
     {
         return false;
     }
@@ -720,7 +722,13 @@ struct TypeStringifier
         if (ttv.boundTo)
             return stringify(*ttv.boundTo);
 
-        if (!state.exhaustive)
+        bool showName = !state.exhaustive;
+        if (FFlag::LuauEnableDenseTableAlias)
+        {
+            // if hide table alias expansions are enabled and there is a name found for the table, use it
+            showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
+        }
+        if (showName)
         {
             if (ttv.name)
             {
@@ -743,6 +751,10 @@ struct TypeStringifier
                 stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
+        }
+
+        if (!state.exhaustive)
+        {
             if (ttv.syntheticName)
             {
                 state.result.invalid = true;
@@ -881,9 +893,9 @@ struct TypeStringifier
         state.emit(" }");
     }
 
-    void operator()(TypeId, const ClassType& ctv)
+    void operator()(TypeId, const ExternType& etv)
     {
-        state.emit(ctv.name);
+        state.emit(etv.name);
     }
 
     void operator()(TypeId, const AnyType&)

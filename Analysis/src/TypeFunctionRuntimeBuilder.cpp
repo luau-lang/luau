@@ -206,12 +206,12 @@ private:
             TypeFunctionTypePackId emptyTypePack = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{});
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{{}, {}, emptyTypePack, emptyTypePack});
         }
-        else if (auto c = get<ClassType>(ty))
+        else if (auto c = get<ExternType>(ty))
         {
             // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the original
             // class
             target = typeFunctionRuntime->typeArena.allocate(
-                TypeFunctionClassType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty}
+                TypeFunctionExternType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty}
             );
         }
         else if (auto g = get<GenericType>(ty))
@@ -291,7 +291,7 @@ private:
             serializeChildren(m1, m2);
         else if (auto [f1, f2] = std::tuple{get<FunctionType>(ty), getMutable<TypeFunctionFunctionType>(tfti)}; f1 && f2)
             serializeChildren(f1, f2);
-        else if (auto [c1, c2] = std::tuple{get<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
+        else if (auto [c1, c2] = std::tuple{get<ExternType>(ty), getMutable<TypeFunctionExternType>(tfti)}; c1 && c2)
             serializeChildren(c1, c2);
         else if (auto [g1, g2] = std::tuple{get<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
             serializeChildren(g1, g2);
@@ -411,7 +411,7 @@ private:
         f2->retTypes = shallowSerialize(f1->retTypes);
     }
 
-    void serializeChildren(const ClassType* c1, TypeFunctionClassType* c2)
+    void serializeChildren(const ExternType* c1, TypeFunctionExternType* c2)
     {
         for (const auto& [k, p] : c1->props)
         {
@@ -702,9 +702,9 @@ private:
             TypePackId emptyTypePack = state->ctx->arena->addTypePack(TypePack{});
             target = state->ctx->arena->addType(FunctionType{emptyTypePack, emptyTypePack, {}, false});
         }
-        else if (auto c = get<TypeFunctionClassType>(ty))
+        else if (auto c = get<TypeFunctionExternType>(ty))
         {
-            target = c->classTy;
+            target = c->externTy;
         }
         else if (auto g = get<TypeFunctionGenericType>(ty))
         {
@@ -811,7 +811,7 @@ private:
             deserializeChildren(m2, m1);
         else if (auto [f1, f2] = std::tuple{getMutable<FunctionType>(ty), getMutable<TypeFunctionFunctionType>(tfti)}; f1 && f2)
             deserializeChildren(f2, f1);
-        else if (auto [c1, c2] = std::tuple{getMutable<ClassType>(ty), getMutable<TypeFunctionClassType>(tfti)}; c1 && c2)
+        else if (auto [c1, c2] = std::tuple{getMutable<ExternType>(ty), getMutable<TypeFunctionExternType>(tfti)}; c1 && c2)
             deserializeChildren(c2, c1);
         else if (auto [g1, g2] = std::tuple{getMutable<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
             deserializeChildren(g2, g1);
@@ -972,7 +972,7 @@ private:
             f1->retTypes = shallowDeserialize(f2->retTypes);
     }
 
-    void deserializeChildren(TypeFunctionClassType* c2, ClassType* c1)
+    void deserializeChildren(TypeFunctionExternType* c2, ExternType* c1)
     {
         // noop.
     }

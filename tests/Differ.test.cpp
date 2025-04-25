@@ -1583,7 +1583,7 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_right")
     );
 }
 
-TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "equal_class")
+TEST_CASE_FIXTURE(DifferFixtureGeneric<ExternTypeFixture>, "equal_class")
 {
     CheckResult result = check(R"(
         local foo = BaseClass
@@ -1594,7 +1594,7 @@ TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "equal_class")
     compareTypesEq("foo", "almostFoo");
 }
 
-TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "class_normal")
+TEST_CASE_FIXTURE(DifferFixtureGeneric<ExternTypeFixture>, "class_normal")
 {
     CheckResult result = check(R"(
         local foo = BaseClass

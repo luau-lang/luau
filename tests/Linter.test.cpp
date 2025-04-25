@@ -1253,15 +1253,19 @@ _ = {
     [2] = 2,
     [1] = 3,
 }
+
+function _foo(): { first: number, second: string, first: boolean }
+end
 )");
 
-    REQUIRE(6 == result.warnings.size());
+    REQUIRE(7 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Table field 'first' is a duplicate; previously defined at line 3");
     CHECK_EQ(result.warnings[1].text, "Table field 'first' is a duplicate; previously defined at line 9");
     CHECK_EQ(result.warnings[2].text, "Table index 1 is a duplicate; previously defined as a list entry");
     CHECK_EQ(result.warnings[3].text, "Table index 3 is a duplicate; previously defined as a list entry");
     CHECK_EQ(result.warnings[4].text, "Table type field 'first' is a duplicate; previously defined at line 24");
     CHECK_EQ(result.warnings[5].text, "Table index 1 is a duplicate; previously defined at line 36");
+    CHECK_EQ(result.warnings[6].text, "Table type field 'first' is a duplicate; previously defined at line 41");
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
@@ -1298,6 +1302,19 @@ TEST_CASE_FIXTURE(Fixture, "ImportOnlyUsedInTypeAnnotation")
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'x' is never used; prefix with '_' to silence");
+}
+
+TEST_CASE_FIXTURE(Fixture, "ImportOnlyUsedInReturnType")
+{
+    LintResult result = lint(R"(
+        local Foo = require(script.Parent.Foo)
+
+        function foo(): Foo.Y
+        end
+    )");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Function 'foo' is never used; prefix with '_' to silence");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DisableUnknownGlobalWithTypeChecking")
@@ -1505,11 +1522,11 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 {
     unfreeze(frontend.globals.globalTypes);
-    TypeId instanceType = frontend.globals.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test", {}});
+    TypeId instanceType = frontend.globals.globalTypes.addType(ExternType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test", {}});
     persist(instanceType);
     frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
-    getMutable<ClassType>(instanceType)->props = {
+    getMutable<ExternType>(instanceType)->props = {
         {"Name", {builtinTypes->stringType}},
         {"DataCost", {builtinTypes->numberType, /* deprecated= */ true}},
         {"Wait", {builtinTypes->anyType, /* deprecated= */ true}},
@@ -1828,7 +1845,7 @@ Account = { balance=0 }
 function Account:deposit(v)
     self.balance = self.balance + v
 end
-    
+
 Account:deposit(200.00)
 )");
 
@@ -1849,7 +1866,7 @@ end
 function Account:deposit (v)
     self.balance = self.balance + v
 end
-    
+
 (getAccount()):deposit(200.00)
 )");
 

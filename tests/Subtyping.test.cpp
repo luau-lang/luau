@@ -151,13 +151,13 @@ struct SubtypeFixture : Fixture
 
     TypeId cls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
     {
-        return arena.addType(ClassType{name, {}, parent.value_or(builtinTypes->classType), {}, {}, nullptr, "", {}});
+        return arena.addType(ExternType{name, {}, parent.value_or(builtinTypes->externType), {}, {}, nullptr, "", {}});
     }
 
-    TypeId cls(const std::string& name, ClassType::Props&& props)
+    TypeId cls(const std::string& name, ExternType::Props&& props)
     {
         TypeId ty = cls(name);
-        getMutable<ClassType>(ty)->props = std::move(props);
+        getMutable<ExternType>(ty)->props = std::move(props);
         return ty;
     }
 
@@ -926,9 +926,9 @@ TEST_IS_NOT_SUBTYPE(numbersToNumberType, negate(join(builtinTypes->functionType,
 // Negated supertypes: intersections
 TEST_IS_SUBTYPE(builtinTypes->booleanType, negate(meet(builtinTypes->stringType, str("foo"))));
 TEST_IS_SUBTYPE(builtinTypes->trueType, negate(meet(builtinTypes->booleanType, builtinTypes->numberType)));
-TEST_IS_SUBTYPE(rootClass, negate(meet(builtinTypes->classType, childClass)));
-TEST_IS_SUBTYPE(childClass, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
-TEST_IS_SUBTYPE(builtinTypes->unknownType, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
+TEST_IS_SUBTYPE(rootClass, negate(meet(builtinTypes->externType, childClass)));
+TEST_IS_SUBTYPE(childClass, negate(meet(builtinTypes->externType, builtinTypes->numberType)));
+TEST_IS_SUBTYPE(builtinTypes->unknownType, negate(meet(builtinTypes->externType, builtinTypes->numberType)));
 TEST_IS_NOT_SUBTYPE(str("foo"), negate(meet(builtinTypes->stringType, negate(str("bar")))));
 
 // Negated supertypes: tables and metatables
@@ -938,7 +938,7 @@ TEST_IS_SUBTYPE(meta({}), negate(builtinTypes->numberType));
 TEST_IS_NOT_SUBTYPE(meta({}), negate(builtinTypes->tableType));
 
 // Negated supertypes: Functions
-TEST_IS_SUBTYPE(numberToNumberType, negate(builtinTypes->classType));
+TEST_IS_SUBTYPE(numberToNumberType, negate(builtinTypes->externType));
 TEST_IS_NOT_SUBTYPE(numberToNumberType, negate(builtinTypes->functionType));
 
 // Negated supertypes: Primitives and singletons
@@ -954,12 +954,12 @@ TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, meet(builtinTypes->booleanType, ne
 TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(str("foo")));
 TEST_IS_NOT_SUBTYPE(builtinTypes->booleanType, negate(builtinTypes->falseType));
 
-// Negated supertypes: Classes
+// Negated supertypes: extern types
 TEST_IS_SUBTYPE(rootClass, negate(builtinTypes->tableType));
-TEST_IS_NOT_SUBTYPE(rootClass, negate(builtinTypes->classType));
+TEST_IS_NOT_SUBTYPE(rootClass, negate(builtinTypes->externType));
 TEST_IS_NOT_SUBTYPE(childClass, negate(rootClass));
-TEST_IS_NOT_SUBTYPE(childClass, meet(builtinTypes->classType, negate(rootClass)));
-TEST_IS_SUBTYPE(anotherChildClass, meet(builtinTypes->classType, negate(childClass)));
+TEST_IS_NOT_SUBTYPE(childClass, meet(builtinTypes->externType, negate(rootClass)));
+TEST_IS_SUBTYPE(anotherChildClass, meet(builtinTypes->externType, negate(childClass)));
 
 // Negated primitives against unknown
 TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->booleanType));
@@ -970,12 +970,12 @@ TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->bufferType))
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
 {
-    CHECK_IS_SUBTYPE(rootClass, builtinTypes->classType);
+    CHECK_IS_SUBTYPE(rootClass, builtinTypes->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: class")
 {
-    CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), builtinTypes->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: Child | AnotherChild")
@@ -990,17 +990,17 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child | Root <: Root")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: class")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), builtinTypes->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: class")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, rootClass), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(meet(childClass, rootClass), builtinTypes->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: class")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), builtinTypes->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")
@@ -1389,7 +1389,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
     TypeId longTy = arena.addType(UnionType{
         {builtinTypes->booleanType,
          builtinTypes->bufferType,
-         builtinTypes->classType,
+         builtinTypes->externType,
          builtinTypes->functionType,
          builtinTypes->numberType,
          builtinTypes->stringType,

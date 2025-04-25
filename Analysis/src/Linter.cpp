@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauAttribute)
 LUAU_FASTFLAGVARIABLE(LintRedundantNativeAttribute)
 
 LUAU_FASTFLAG(LuauDeprecatedAttribute)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace Luau
 {
@@ -906,6 +907,11 @@ private:
     bool visit(AstType* node) override
     {
         return true;
+    }
+
+    bool visit(AstTypePack* node) override
+    {
+        return FFlag::LuauStoreReturnTypesAsPackOnAst;
     }
 
     bool visit(AstTypeReference* node) override
@@ -1970,6 +1976,11 @@ private:
         return true;
     }
 
+    bool visit(AstTypePack* node) override
+    {
+        return FFlag::LuauStoreReturnTypesAsPackOnAst;
+    }
+
     bool visit(AstTypeTable* node) override
     {
         if (FFlag::LuauSolverV2)
@@ -2372,9 +2383,9 @@ private:
 
     void check(AstExprIndexName* node, TypeId ty)
     {
-        if (const ClassType* cty = get<ClassType>(ty))
+        if (const ExternType* cty = get<ExternType>(ty))
         {
-            const Property* prop = lookupClassProp(cty, node->index.value);
+            const Property* prop = lookupExternTypeProp(cty, node->index.value);
 
             if (prop && prop->deprecated)
                 report(node->location, *prop, cty->name.c_str(), node->index.value);

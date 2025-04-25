@@ -107,7 +107,7 @@ struct luarequire_Configuration
 
     // Executes the module and places the result on the stack. Returns the
     // number of results placed on the stack.
-    int (*load)(lua_State* L, void* ctx, const char* chunkname, const char* contents);
+    int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* contents);
 };
 
 // Populates function pointers in the given luarequire_Configuration.
@@ -115,7 +115,18 @@ typedef void (*luarequire_Configuration_init)(luarequire_Configuration* config);
 
 // Initializes and pushes the require closure onto the stack without
 // registration.
-LUALIB_API int lua_pushrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx);
+LUALIB_API int luarequire_pushrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx);
 
 // Initializes the require library and registers it globally.
 LUALIB_API void luaopen_require(lua_State* L, luarequire_Configuration_init config_init, void* ctx);
+
+// Initializes and pushes a "proxyrequire" closure onto the stack. This function
+// takes two parameters: the string path to resolve and the chunkname of an
+// existing module. The path is resolved as if it were being required from the
+// module that the chunkname represents.
+LUALIB_API int luarequire_pushproxyrequire(lua_State* L, luarequire_Configuration_init config_init, void* ctx);
+
+// Registers an aliased require path to a result. After registration, the given
+// result will always be immediately returned when the given path is required.
+// Expects the path and table to be passed as arguments on the stack.
+LUALIB_API int luarequire_registermodule(lua_State* L);

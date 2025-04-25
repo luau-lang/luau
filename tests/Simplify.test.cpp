@@ -36,7 +36,7 @@ struct SimplifyFixture : Fixture
     const TypeId booleanTy = builtinTypes->booleanType;
     const TypeId nilTy = builtinTypes->nilType;
 
-    const TypeId classTy = builtinTypes->classType;
+    const TypeId classTy = builtinTypes->externType;
 
     const TypeId trueTy = builtinTypes->trueType;
     const TypeId falseTy = builtinTypes->falseType;
@@ -66,7 +66,7 @@ struct SimplifyFixture : Fixture
 
     SimplifyFixture()
     {
-        createSomeClasses(&frontend);
+        createSomeExternTypes(&frontend);
 
         parentClassTy = frontend.globals.globalScope->linearSearchForBinding("Parent")->typeId;
         childClassTy = frontend.globals.globalScope->linearSearchForBinding("Child")->typeId;
@@ -512,7 +512,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "top_class_type")
     CHECK(neverTy == intersect(classTy, stringTy));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "classes")
+TEST_CASE_FIXTURE(SimplifyFixture, "extern_types")
 {
     CHECK(childClassTy == intersect(childClassTy, parentClassTy));
     CHECK(childClassTy == intersect(parentClassTy, childClassTy));
@@ -523,7 +523,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "classes")
     CHECK(neverTy == intersect(childClassTy, unrelatedClassTy));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "negations_of_classes")
+TEST_CASE_FIXTURE(SimplifyFixture, "negations_of_extern_types")
 {
     TypeId notChildClassTy = mkNegation(childClassTy);
     TypeId notParentClassTy = mkNegation(parentClassTy);

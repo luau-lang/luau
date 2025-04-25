@@ -592,7 +592,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_never_for_empty_table
     CHECK(toString(requireType("foo")) == "never");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_on_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_on_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -612,7 +612,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_on_classes")
     CHECK_EQ("\"BaseField\" | \"BaseMethod\" | \"Touched\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_errors_if_it_has_nonclass_part")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_errors_if_it_has_nonclass_part")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -629,7 +629,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_errors_if_it_has_nonclass_p
     CHECK(toString(result.errors[1]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_common_subset_if_union_of_differing_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_common_subset_if_union_of_differing_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -643,7 +643,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_common_subset_if_union_of_d
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_with_parent_classes_too")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_with_parent_extern_types_too")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -657,7 +657,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_with_parent_classes_t
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "binary_type_function_works_with_default_argument")
+TEST_CASE_FIXTURE(ExternTypeFixture, "binary_type_function_works_with_default_argument")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -672,7 +672,7 @@ TEST_CASE_FIXTURE(ClassFixture, "binary_type_function_works_with_default_argumen
     CHECK("() -> number" == toString(requireType("thunk")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "vector2_multiply_is_overloaded")
+TEST_CASE_FIXTURE(ExternTypeFixture, "vector2_multiply_is_overloaded")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -1246,7 +1246,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_rfc_alternative_section"
     CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject'");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "index_type_function_works_on_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -1260,7 +1260,7 @@ TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes_with_parents")
+TEST_CASE_FIXTURE(ExternTypeFixture, "index_type_function_works_on_extern_types_with_parents")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -1405,7 +1405,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatable
     CHECK(toString(result.errors[1]) == "Property '\"Bar\" | \"Foo\"' does not exist on type 'exampleClass3'");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "rawget_type_function_errors_w_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "rawget_type_function_errors_w_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;

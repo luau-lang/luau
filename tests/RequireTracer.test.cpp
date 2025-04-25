@@ -6,6 +6,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+
 using namespace Luau;
 
 namespace
@@ -149,6 +151,50 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof")
     REQUIRE(ann != nullptr);
 
     AstTypeTypeof* typeofAnnotation = ann->as<AstTypeTypeof>();
+    REQUIRE(typeofAnnotation != nullptr);
+
+    AstExprIndexName* indexName = typeofAnnotation->expr->as<AstExprIndexName>();
+    REQUIRE(indexName != nullptr);
+    REQUIRE_EQ(indexName->index, "UsefulObject");
+
+    AstExprCall* call = indexName->expr->as<AstExprCall>();
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(1, call->args.size);
+
+    CHECK_EQ("workspace/CoolThing", result.exprs[call->args.data[0]].name);
+}
+
+TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof_in_return_type")
+{
+    AstStatBlock* block = parse(R"(
+        function foo(): typeof(require(workspace.CoolThing).UsefulObject)
+        end
+    )");
+    REQUIRE_EQ(1, block->body.size);
+
+    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+
+    AstStatFunction* func = block->body.data[0]->as<AstStatFunction>();
+    REQUIRE(func != nullptr);
+
+    AstTypeTypeof* typeofAnnotation;
+    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+    {
+        AstTypePack* retAnnotation = func->func->returnAnnotation;
+        REQUIRE(retAnnotation);
+
+        AstTypePackExplicit* tp = retAnnotation->as<AstTypePackExplicit>();
+        REQUIRE(tp);
+        REQUIRE_EQ(tp->typeList.types.size, 1);
+        typeofAnnotation = tp->typeList.types.data[0]->as<AstTypeTypeof>();
+    }
+    else
+    {
+        std::optional<AstTypeList> retAnnotation = func->func->returnAnnotation_DEPRECATED;
+        REQUIRE(retAnnotation);
+        REQUIRE_EQ(retAnnotation->types.size, 1);
+        typeofAnnotation = retAnnotation->types.data[0]->as<AstTypeTypeof>();
+    }
     REQUIRE(typeofAnnotation != nullptr);
 
     AstExprIndexName* indexName = typeofAnnotation->expr->as<AstExprIndexName>();

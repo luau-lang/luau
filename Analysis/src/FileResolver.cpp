@@ -10,10 +10,6 @@
 #include <string_view>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauExposeRequireByStringAutocomplete)
-LUAU_FASTFLAGVARIABLE(LuauEscapeCharactersInRequireSuggestions)
-LUAU_FASTFLAGVARIABLE(LuauHideImpossibleRequireSuggestions)
-
 namespace Luau
 {
 
@@ -22,12 +18,9 @@ static std::optional<RequireSuggestions> processRequireSuggestions(std::optional
     if (!suggestions)
         return suggestions;
 
-    if (FFlag::LuauEscapeCharactersInRequireSuggestions)
+    for (RequireSuggestion& suggestion : *suggestions)
     {
-        for (RequireSuggestion& suggestion : *suggestions)
-        {
-            suggestion.fullPath = escape(suggestion.fullPath);
-        }
+        suggestion.fullPath = escape(suggestion.fullPath);
     }
 
     return suggestions;
@@ -112,13 +105,11 @@ static RequireSuggestions makeSuggestionsFromNode(std::unique_ptr<RequireNode> n
             continue;
 
         std::string pathComponent = child->getPathComponent();
-        if (FFlag::LuauHideImpossibleRequireSuggestions)
-        {
-            // If path component contains a slash, it cannot be required by string.
-            // There's no point suggesting it.
-            if (pathComponent.find('/') != std::string::npos)
-                continue;
-        }
+
+        // If path component contains a slash, it cannot be required by string.
+        // There's no point suggesting it.
+        if (pathComponent.find('/') != std::string::npos)
+            continue;
 
         RequireSuggestion suggestion;
         suggestion.label = isPartialPath || path.back() == '/' ? child->getLabel() : "/" + child->getLabel();
@@ -163,9 +154,6 @@ std::optional<RequireSuggestions> RequireSuggester::getRequireSuggestions(const 
 
 std::optional<RequireSuggestions> FileResolver::getRequireSuggestions(const ModuleName& requirer, const std::optional<std::string>& path) const
 {
-    if (!FFlag::LuauExposeRequireByStringAutocomplete)
-        return std::nullopt;
-
     return requireSuggester ? requireSuggester->getRequireSuggestions(requirer, path) : std::nullopt;
 }
 

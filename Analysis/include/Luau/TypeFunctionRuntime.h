@@ -205,7 +205,7 @@ struct TypeFunctionTableType
     std::optional<TypeFunctionTypeId> metatable;
 };
 
-struct TypeFunctionClassType
+struct TypeFunctionExternType
 {
     using Name = std::string;
     using Props = std::map<Name, TypeFunctionProperty>;
@@ -222,7 +222,7 @@ struct TypeFunctionClassType
     std::optional<TypeFunctionTypeId> readParent;
     std::optional<TypeFunctionTypeId> writeParent;
 
-    TypeId classTy;
+    TypeId externTy;
 };
 
 struct TypeFunctionGenericType
@@ -244,7 +244,7 @@ using TypeFunctionTypeVariant = Luau::Variant<
     TypeFunctionNegationType,
     TypeFunctionFunctionType,
     TypeFunctionTableType,
-    TypeFunctionClassType,
+    TypeFunctionExternType,
     TypeFunctionGenericType>;
 
 struct TypeFunctionType

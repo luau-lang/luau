@@ -14,6 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions);
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -33,7 +34,16 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+    {
+        if (FFlag::LuauAddCallConstraintForIterableFunctions)
+        {
+            CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
+        }
+        else
+        {
+            CHECK("any?" == toString(requireType("a")));
+        }
+    }
     else
         CHECK(builtinTypes->anyType == requireType("a"));
 }
@@ -54,7 +64,16 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+    {
+        if (FFlag::LuauAddCallConstraintForIterableFunctions)
+        {
+            CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
+        }
+        else
+        {
+            CHECK("any?" == toString(requireType("a")));
+        }
+    }
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -73,7 +92,16 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+    {
+        if (FFlag::LuauAddCallConstraintForIterableFunctions)
+        {
+            CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
+        }
+        else
+        {
+            CHECK("any?" == toString(requireType("a")));
+        }
+    }
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -90,7 +118,16 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
     )");
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+    {
+        if (FFlag::LuauAddCallConstraintForIterableFunctions)
+        {
+            CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
+        }
+        else
+        {
+            CHECK("any?" == toString(requireType("a")));
+        }
+    }
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -109,7 +146,16 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any_pack")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+    {
+        if (FFlag::LuauAddCallConstraintForIterableFunctions)
+        {
+            CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
+        }
+        else
+        {
+            CHECK("any?" == toString(requireType("a")));
+        }
+    }
     else
         CHECK("any" == toString(requireType("a")));
 }
