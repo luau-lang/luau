@@ -299,9 +299,9 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
         }
-        else if constexpr (std::is_same_v<T, ClassType>)
+        else if constexpr (std::is_same_v<T, ExternType>)
         {
-            formatAppend(result, "ClassType %s", t.name.c_str());
+            formatAppend(result, "ExternType %s", t.name.c_str());
             finishNodeLabel(ty);
             finishNode();
 

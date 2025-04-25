@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauDeprecatedAttribute);
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace Luau
 {
@@ -241,7 +242,7 @@ AstExprFunction::AstExprFunction(
     AstStatBlock* body,
     size_t functionDepth,
     const AstName& debugname,
-    const std::optional<AstTypeList>& returnAnnotation,
+    AstTypePack* returnAnnotation,
     AstTypePack* varargAnnotation,
     const std::optional<Location>& argLocation
 )
@@ -260,6 +261,41 @@ AstExprFunction::AstExprFunction(
     , debugname(debugname)
     , argLocation(argLocation)
 {
+    LUAU_ASSERT(FFlag::LuauStoreReturnTypesAsPackOnAst);
+}
+
+AstExprFunction::AstExprFunction(
+    const Location& location,
+    const AstArray<AstAttr*>& attributes,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
+    AstLocal* self,
+    const AstArray<AstLocal*>& args,
+    bool vararg,
+    const Location& varargLocation,
+    AstStatBlock* body,
+    size_t functionDepth,
+    const AstName& debugname,
+    const std::optional<AstTypeList>& returnAnnotation,
+    AstTypePack* varargAnnotation,
+    const std::optional<Location>& argLocation
+)
+    : AstExpr(ClassIndex(), location)
+    , attributes(attributes)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , self(self)
+    , args(args)
+    , returnAnnotation_DEPRECATED(returnAnnotation)
+    , vararg(vararg)
+    , varargLocation(varargLocation)
+    , varargAnnotation(varargAnnotation)
+    , body(body)
+    , functionDepth(functionDepth)
+    , debugname(debugname)
+    , argLocation(argLocation)
+{
+    LUAU_ASSERT(!FFlag::LuauStoreReturnTypesAsPackOnAst);
 }
 
 void AstExprFunction::visit(AstVisitor* visitor)
@@ -275,8 +311,16 @@ void AstExprFunction::visit(AstVisitor* visitor)
         if (varargAnnotation)
             varargAnnotation->visit(visitor);
 
-        if (returnAnnotation)
-            visitTypeList(visitor, *returnAnnotation);
+        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+        {
+            if (returnAnnotation)
+                returnAnnotation->visit(visitor);
+        }
+        else
+        {
+            if (returnAnnotation_DEPRECATED)
+                visitTypeList(visitor, *returnAnnotation_DEPRECATED);
+        }
 
         body->visit(visitor);
     }
@@ -855,7 +899,7 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     const AstArray<AstArgumentName>& paramNames,
     bool vararg,
     const Location& varargLocation,
-    const AstTypeList& retTypes
+    AstTypePack* retTypes
 )
     : AstStat(ClassIndex(), location)
     , attributes()
@@ -869,8 +913,66 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     , varargLocation(varargLocation)
     , retTypes(retTypes)
 {
+    LUAU_ASSERT(FFlag::LuauStoreReturnTypesAsPackOnAst);
 }
 
+AstStatDeclareFunction::AstStatDeclareFunction(
+    const Location& location,
+    const AstArray<AstAttr*>& attributes,
+    const AstName& name,
+    const Location& nameLocation,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
+    const AstTypeList& params,
+    const AstArray<AstArgumentName>& paramNames,
+    bool vararg,
+    const Location& varargLocation,
+    AstTypePack* retTypes
+)
+    : AstStat(ClassIndex(), location)
+    , attributes(attributes)
+    , name(name)
+    , nameLocation(nameLocation)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , params(params)
+    , paramNames(paramNames)
+    , vararg(vararg)
+    , varargLocation(varargLocation)
+    , retTypes(retTypes)
+{
+    LUAU_ASSERT(FFlag::LuauStoreReturnTypesAsPackOnAst);
+}
+
+// Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+AstStatDeclareFunction::AstStatDeclareFunction(
+    const Location& location,
+    const AstName& name,
+    const Location& nameLocation,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
+    const AstTypeList& params,
+    const AstArray<AstArgumentName>& paramNames,
+    bool vararg,
+    const Location& varargLocation,
+    const AstTypeList& retTypes
+)
+    : AstStat(ClassIndex(), location)
+    , attributes()
+    , name(name)
+    , nameLocation(nameLocation)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , params(params)
+    , paramNames(paramNames)
+    , vararg(vararg)
+    , varargLocation(varargLocation)
+    , retTypes_DEPRECATED(retTypes)
+{
+    LUAU_ASSERT(!FFlag::LuauStoreReturnTypesAsPackOnAst);
+}
+
+// Clip with FFlagLuauStoreReturnTypesAsPackOnAst
 AstStatDeclareFunction::AstStatDeclareFunction(
     const Location& location,
     const AstArray<AstAttr*>& attributes,
@@ -894,8 +996,9 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     , paramNames(paramNames)
     , vararg(vararg)
     , varargLocation(varargLocation)
-    , retTypes(retTypes)
+    , retTypes_DEPRECATED(retTypes)
 {
+    LUAU_ASSERT(!FFlag::LuauStoreReturnTypesAsPackOnAst);
 }
 
 void AstStatDeclareFunction::visit(AstVisitor* visitor)
@@ -903,7 +1006,10 @@ void AstStatDeclareFunction::visit(AstVisitor* visitor)
     if (visitor->visit(this))
     {
         visitTypeList(visitor, params);
-        visitTypeList(visitor, retTypes);
+        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+            retTypes->visit(visitor);
+        else
+            visitTypeList(visitor, retTypes_DEPRECATED);
     }
 }
 
@@ -925,11 +1031,11 @@ bool AstStatDeclareFunction::hasAttribute(AstAttr::Type attributeType) const
     return hasAttributeInArray(attributes, attributeType);
 }
 
-AstStatDeclareClass::AstStatDeclareClass(
+AstStatDeclareExternType::AstStatDeclareExternType(
     const Location& location,
     const AstName& name,
     std::optional<AstName> superName,
-    const AstArray<AstDeclaredClassProp>& props,
+    const AstArray<AstDeclaredExternTypeProperty>& props,
     AstTableIndexer* indexer
 )
     : AstStat(ClassIndex(), location)
@@ -940,11 +1046,11 @@ AstStatDeclareClass::AstStatDeclareClass(
 {
 }
 
-void AstStatDeclareClass::visit(AstVisitor* visitor)
+void AstStatDeclareExternType::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
-        for (const AstDeclaredClassProp& prop : props)
+        for (const AstDeclaredExternTypeProperty& prop : props)
             prop.ty->visit(visitor);
     }
 }
@@ -1035,7 +1141,7 @@ AstTypeFunction::AstTypeFunction(
     const AstArray<AstGenericTypePack*>& genericPacks,
     const AstTypeList& argTypes,
     const AstArray<std::optional<AstArgumentName>>& argNames,
-    const AstTypeList& returnTypes
+    AstTypePack* returnTypes
 )
     : AstType(ClassIndex(), location)
     , attributes()
@@ -1045,9 +1151,53 @@ AstTypeFunction::AstTypeFunction(
     , argNames(argNames)
     , returnTypes(returnTypes)
 {
+    LUAU_ASSERT(FFlag::LuauStoreReturnTypesAsPackOnAst);
     LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
 }
 
+AstTypeFunction::AstTypeFunction(
+    const Location& location,
+    const AstArray<AstAttr*>& attributes,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
+    const AstTypeList& argTypes,
+    const AstArray<std::optional<AstArgumentName>>& argNames,
+    AstTypePack* returnTypes
+)
+    : AstType(ClassIndex(), location)
+    , attributes(attributes)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , argTypes(argTypes)
+    , argNames(argNames)
+    , returnTypes(returnTypes)
+{
+    LUAU_ASSERT(FFlag::LuauStoreReturnTypesAsPackOnAst);
+    LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
+}
+
+// Clip with FFlagLuauStoreReturnTypesAsPackOnAst
+AstTypeFunction::AstTypeFunction(
+    const Location& location,
+    const AstArray<AstGenericType*>& generics,
+    const AstArray<AstGenericTypePack*>& genericPacks,
+    const AstTypeList& argTypes,
+    const AstArray<std::optional<AstArgumentName>>& argNames,
+    const AstTypeList& returnTypes
+)
+    : AstType(ClassIndex(), location)
+    , attributes()
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , argTypes(argTypes)
+    , argNames(argNames)
+    , returnTypes_DEPRECATED(returnTypes)
+{
+    LUAU_ASSERT(!FFlag::LuauStoreReturnTypesAsPackOnAst);
+    LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
+}
+
+// Clip with FFlagLuauStoreReturnTypesAsPackOnAst
 AstTypeFunction::AstTypeFunction(
     const Location& location,
     const AstArray<AstAttr*>& attributes,
@@ -1063,8 +1213,9 @@ AstTypeFunction::AstTypeFunction(
     , genericPacks(genericPacks)
     , argTypes(argTypes)
     , argNames(argNames)
-    , returnTypes(returnTypes)
+    , returnTypes_DEPRECATED(returnTypes)
 {
+    LUAU_ASSERT(!FFlag::LuauStoreReturnTypesAsPackOnAst);
     LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
 }
 
@@ -1073,7 +1224,10 @@ void AstTypeFunction::visit(AstVisitor* visitor)
     if (visitor->visit(this))
     {
         visitTypeList(visitor, argTypes);
-        visitTypeList(visitor, returnTypes);
+        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+            returnTypes->visit(visitor);
+        else
+            visitTypeList(visitor, returnTypes_DEPRECATED);
     }
 }
 

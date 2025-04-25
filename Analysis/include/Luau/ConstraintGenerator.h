@@ -3,6 +3,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Constraint.h"
+#include "Luau/ConstraintSet.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/EqSatSimplification.h"
@@ -91,9 +92,8 @@ struct ConstraintGenerator
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
 
-    // Constraints that do not go to the solver right away.  Other constraints
-    // will enqueue them during solving.
-    std::vector<ConstraintPtr> unqueuedConstraints;
+    // The set of all free types introduced during constraint generation.
+    DenseHashSet<TypeId> freeTypes{nullptr};
 
     // Map a function's signature scope back to its signature type.
     DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
@@ -150,6 +150,9 @@ struct ConstraintGenerator
         NotNull<DataFlowGraph> dfg,
         std::vector<RequireCycle> requireCycles
     );
+
+    ConstraintSet run(AstStatBlock* block);
+    ConstraintSet runOnFragment(const ScopePtr& resumeScope, AstStatBlock* block);
 
     /**
      * The entry point to the ConstraintGenerator. This will construct a set
@@ -269,7 +272,7 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatTypeAlias* alias);
     ControlFlow visit(const ScopePtr& scope, AstStatTypeFunction* function);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
-    ControlFlow visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
+    ControlFlow visit(const ScopePtr& scope, AstStatDeclareExternType* declareExternType);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
@@ -480,10 +483,5 @@ private:
 
     TypeId simplifyUnion(const ScopePtr& scope, Location location, TypeId left, TypeId right);
 };
-
-/** Borrow a vector of pointers from a vector of owning pointers to constraints.
- */
-std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints);
-
 
 } // namespace Luau

@@ -9,7 +9,7 @@ using std::nullopt;
 namespace Luau
 {
 
-ClassFixture::ClassFixture(bool prepareAutocomplete)
+ExternTypeFixture::ExternTypeFixture(bool prepareAutocomplete)
     : BuiltinsFixture(prepareAutocomplete)
 {
     GlobalTypes& globals = frontend.globals;
@@ -19,22 +19,22 @@ ClassFixture::ClassFixture(bool prepareAutocomplete)
 
     unfreeze(arena);
 
-    TypeId connectionType = arena.addType(ClassType{"Connection", {}, nullopt, nullopt, {}, {}, "Connection", {}});
+    TypeId connectionType = arena.addType(ExternType{"Connection", {}, nullopt, nullopt, {}, {}, "Connection", {}});
 
-    TypeId baseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(baseClassInstanceType)->props = {
+    TypeId baseClassInstanceType = arena.addType(ExternType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(baseClassInstanceType)->props = {
         {"BaseMethod", Property::readonly(makeFunction(arena, baseClassInstanceType, {numberType}, {}))},
         {"BaseField", {numberType}},
 
         {"Touched", Property::readonly(connectionType)},
     };
 
-    getMutable<ClassType>(connectionType)->props = {
+    getMutable<ExternType>(connectionType)->props = {
         {"Connect", {makeFunction(arena, connectionType, {makeFunction(arena, nullopt, {baseClassInstanceType}, {})}, {})}}
     };
 
-    TypeId baseClassType = arena.addType(ClassType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(baseClassType)->props = {
+    TypeId baseClassType = arena.addType(ExternType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(baseClassType)->props = {
         {"StaticMethod", {makeFunction(arena, nullopt, {}, {numberType})}},
         {"Clone", {makeFunction(arena, nullopt, {baseClassInstanceType}, {baseClassInstanceType})}},
         {"New", {makeFunction(arena, nullopt, {}, {baseClassInstanceType})}},
@@ -42,49 +42,49 @@ ClassFixture::ClassFixture(bool prepareAutocomplete)
     globals.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
     addGlobalBinding(globals, "BaseClass", baseClassType, "@test");
 
-    TypeId childClassInstanceType = arena.addType(ClassType{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test", {}});
+    TypeId childClassInstanceType = arena.addType(ExternType{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test", {}});
 
-    getMutable<ClassType>(childClassInstanceType)->props = {
+    getMutable<ExternType>(childClassInstanceType)->props = {
         {"Method", {makeFunction(arena, childClassInstanceType, {}, {stringType})}},
     };
 
-    TypeId childClassType = arena.addType(ClassType{"ChildClass", {}, baseClassType, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(childClassType)->props = {
+    TypeId childClassType = arena.addType(ExternType{"ChildClass", {}, baseClassType, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(childClassType)->props = {
         {"New", {makeFunction(arena, nullopt, {}, {childClassInstanceType})}},
     };
     globals.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
     addGlobalBinding(globals, "ChildClass", childClassType, "@test");
 
-    TypeId grandChildInstanceType = arena.addType(ClassType{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}, "Test", {}});
+    TypeId grandChildInstanceType = arena.addType(ExternType{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}, "Test", {}});
 
-    getMutable<ClassType>(grandChildInstanceType)->props = {
+    getMutable<ExternType>(grandChildInstanceType)->props = {
         {"Method", {makeFunction(arena, grandChildInstanceType, {}, {stringType})}},
     };
 
-    TypeId grandChildType = arena.addType(ClassType{"GrandChild", {}, baseClassType, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(grandChildType)->props = {
+    TypeId grandChildType = arena.addType(ExternType{"GrandChild", {}, baseClassType, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(grandChildType)->props = {
         {"New", {makeFunction(arena, nullopt, {}, {grandChildInstanceType})}},
     };
     globals.globalScope->exportedTypeBindings["GrandChild"] = TypeFun{{}, grandChildInstanceType};
     addGlobalBinding(globals, "GrandChild", childClassType, "@test");
 
-    TypeId anotherChildInstanceType = arena.addType(ClassType{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}, "Test", {}});
+    TypeId anotherChildInstanceType = arena.addType(ExternType{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}, "Test", {}});
 
-    getMutable<ClassType>(anotherChildInstanceType)->props = {
+    getMutable<ExternType>(anotherChildInstanceType)->props = {
         {"Method", {makeFunction(arena, anotherChildInstanceType, {}, {stringType})}},
     };
 
-    TypeId anotherChildType = arena.addType(ClassType{"AnotherChild", {}, baseClassType, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(anotherChildType)->props = {
+    TypeId anotherChildType = arena.addType(ExternType{"AnotherChild", {}, baseClassType, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(anotherChildType)->props = {
         {"New", {makeFunction(arena, nullopt, {}, {anotherChildInstanceType})}},
     };
     globals.globalScope->exportedTypeBindings["AnotherChild"] = TypeFun{{}, anotherChildInstanceType};
     addGlobalBinding(globals, "AnotherChild", childClassType, "@test");
 
-    TypeId unrelatedClassInstanceType = arena.addType(ClassType{"UnrelatedClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    TypeId unrelatedClassInstanceType = arena.addType(ExternType{"UnrelatedClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
 
-    TypeId unrelatedClassType = arena.addType(ClassType{"UnrelatedClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(unrelatedClassType)->props = {
+    TypeId unrelatedClassType = arena.addType(ExternType{"UnrelatedClass", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(unrelatedClassType)->props = {
         {"New", {makeFunction(arena, nullopt, {}, {unrelatedClassInstanceType})}},
     };
     globals.globalScope->exportedTypeBindings["UnrelatedClass"] = TypeFun{{}, unrelatedClassInstanceType};
@@ -92,14 +92,14 @@ ClassFixture::ClassFixture(bool prepareAutocomplete)
 
     TypeId vector2MetaType = arena.addType(TableType{});
 
-    vector2InstanceType = arena.addType(ClassType{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test", {}});
-    getMutable<ClassType>(vector2InstanceType)->props = {
+    vector2InstanceType = arena.addType(ExternType{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test", {}});
+    getMutable<ExternType>(vector2InstanceType)->props = {
         {"X", {numberType}},
         {"Y", {numberType}},
     };
 
-    vector2Type = arena.addType(ClassType{"Vector2", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(vector2Type)->props = {
+    vector2Type = arena.addType(ExternType{"Vector2", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(vector2Type)->props = {
         {"New", {makeFunction(arena, nullopt, {numberType, numberType}, {vector2InstanceType})}},
     };
     getMutable<TableType>(vector2MetaType)->props = {
@@ -114,7 +114,7 @@ ClassFixture::ClassFixture(bool prepareAutocomplete)
     addGlobalBinding(globals, "Vector2", vector2Type, "@test");
 
     TypeId callableClassMetaType = arena.addType(TableType{});
-    TypeId callableClassType = arena.addType(ClassType{"CallableClass", {}, nullopt, callableClassMetaType, {}, {}, "Test", {}});
+    TypeId callableClassType = arena.addType(ExternType{"CallableClass", {}, nullopt, callableClassMetaType, {}, {}, "Test", {}});
     getMutable<TableType>(callableClassMetaType)->props = {
         {"__call", {makeFunction(arena, nullopt, {callableClassType, stringType}, {numberType})}},
     };
@@ -124,7 +124,7 @@ ClassFixture::ClassFixture(bool prepareAutocomplete)
     {
         TypeId indexableClassMetaType = arena.addType(TableType{});
         TypeId indexableClassType =
-            arena.addType(ClassType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", {}, TableIndexer{keyType, returnType}});
+            arena.addType(ExternType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", {}, TableIndexer{keyType, returnType}});
         globals.globalScope->exportedTypeBindings[className] = TypeFun{{}, indexableClassType};
     };
 
@@ -134,9 +134,9 @@ ClassFixture::ClassFixture(bool prepareAutocomplete)
     addIndexableClass("IndexableNumericKeyClass", numberType, numberType);
 
     // Add a confusing derived class which shares the same name internally, but has a unique alias
-    TypeId duplicateBaseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test", {}});
+    TypeId duplicateBaseClassInstanceType = arena.addType(ExternType{"BaseClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test", {}});
 
-    getMutable<ClassType>(duplicateBaseClassInstanceType)->props = {
+    getMutable<ExternType>(duplicateBaseClassInstanceType)->props = {
         {"Method", {makeFunction(arena, duplicateBaseClassInstanceType, {}, {stringType})}},
     };
 

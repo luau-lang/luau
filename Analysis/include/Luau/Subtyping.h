@@ -22,7 +22,7 @@ struct InternalErrorReporter;
 
 class TypeIds;
 class Normalizer;
-struct NormalizedClassType;
+struct NormalizedExternType;
 struct NormalizedFunctionType;
 struct NormalizedStringType;
 struct NormalizedType;
@@ -121,7 +121,7 @@ struct SubtypingEnvironment
     DenseHashMap<TypePackId, TypePackId> mappedGenericPacks{nullptr};
 
     /*
-     * See the test cyclic_tables_are_assumed_to_be_compatible_with_classes for
+     * See the test cyclic_tables_are_assumed_to_be_compatible_with_extern_types for
      * details.
      *
      * An empty value is equivalent to a nonexistent key.
@@ -229,9 +229,8 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const ClassType* subClass, const ClassType* superClass, NotNull<Scope> scope);
-    SubtypingResult
-    isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ClassType* subClass, TypeId superTy, const TableType* superTable, NotNull<Scope>);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const ExternType* subExternType, const ExternType* superExternType, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ExternType* subExternType, TypeId superTy, const TableType* superTable, NotNull<Scope>);
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const FunctionType* subFunction,
@@ -259,11 +258,11 @@ private:
     );
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
-        const NormalizedClassType& subClass,
-        const NormalizedClassType& superClass,
+        const NormalizedExternType& subExternType,
+        const NormalizedExternType& superExternType,
         NotNull<Scope> scope
     );
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedClassType& subClass, const TypeIds& superTables, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedExternType& subExternType, const TypeIds& superTables, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const NormalizedStringType& subString,

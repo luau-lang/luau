@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauReduceUnionFollowUnionType)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
+LUAU_FASTFLAG(LuauFormatUseLastPosition)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2806,7 +2807,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_callback_property")
     }
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "bidirectional_inference_of_class_methods")
+TEST_CASE_FIXTURE(ExternTypeFixture, "bidirectional_inference_of_class_methods")
 {
     CheckResult result = check(R"(
         local c = ChildClass.New()
@@ -3231,6 +3232,26 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_unwind_mutually_recursive_union_type_func")
     CHECK_EQ(err0->name, "l100");
     auto err1 = get<NotATable>(result.errors[1]);
     CHECK(err1);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_pack")
+{
+    ScopedFastFlag _{FFlag::LuauFormatUseLastPosition, true};
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(): (string, string, string)
+            return "", "", ""
+        end
+        print(string.format("%s %s %s", foo()))
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_pack_variadic")
+{
+    ScopedFastFlag _{FFlag::LuauFormatUseLastPosition, true};
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo : () -> (...string) = (nil :: any)
+        print(string.format("%s %s %s", foo()))
+    )"));
 }
 
 TEST_SUITE_END();

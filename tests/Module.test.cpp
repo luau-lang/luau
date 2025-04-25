@@ -237,7 +237,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
 
 TEST_CASE_FIXTURE(Fixture, "clone_class")
 {
-    Type exampleMetaClass{ClassType{
+    Type exampleMetaClass{ExternType{
         "ExampleClassMeta",
         {
             {"__add", {builtinTypes->anyType}},
@@ -249,7 +249,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
         "Test",
         {}
     }};
-    Type exampleClass{ClassType{
+    Type exampleClass{ExternType{
         "ExampleClass",
         {
             {"PropOne", {builtinTypes->numberType}},
@@ -267,14 +267,14 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
     CloneState cloneState{builtinTypes};
 
     TypeId cloned = clone(&exampleClass, dest, cloneState);
-    const ClassType* ctv = get<ClassType>(cloned);
-    REQUIRE(ctv != nullptr);
+    const ExternType* etv = get<ExternType>(cloned);
+    REQUIRE(etv != nullptr);
 
-    REQUIRE(ctv->metatable);
-    const ClassType* metatable = get<ClassType>(*ctv->metatable);
+    REQUIRE(etv->metatable);
+    const ExternType* metatable = get<ExternType>(*etv->metatable);
     REQUIRE(metatable);
 
-    CHECK_EQ("ExampleClass", ctv->name);
+    CHECK_EQ("ExampleClass", etv->name);
     CHECK_EQ("ExampleClassMeta", metatable->name);
 }
 

@@ -41,6 +41,8 @@
 #include <stdexcept>
 #include <optional>
 
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+
 namespace Luau
 {
 
@@ -296,6 +298,11 @@ struct ArcCollector : public AstVisitor
         if (name)
             add(*name);
         return true;
+    }
+
+    bool visit(AstTypePack* node) override
+    {
+        return FFlag::LuauStoreReturnTypesAsPackOnAst;
     }
 };
 

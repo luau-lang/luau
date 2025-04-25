@@ -90,11 +90,11 @@ struct TypeChecker
     ControlFlow check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function);
     ControlFlow check(const ScopePtr& scope, const AstStatTypeAlias& typealias);
     ControlFlow check(const ScopePtr& scope, const AstStatTypeFunction& typefunction);
-    ControlFlow check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass);
+    ControlFlow check(const ScopePtr& scope, const AstStatDeclareExternType& declaredExternType);
     ControlFlow check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
 
     void prototype(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0);
-    void prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass);
+    void prototype(const ScopePtr& scope, const AstStatDeclareExternType& declaredExternType);
 
     ControlFlow checkBlock(const ScopePtr& scope, const AstStatBlock& statement);
     ControlFlow checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& statement);
@@ -487,7 +487,7 @@ private:
     /**
      * A set of incorrect class definitions which is used to avoid a second-pass analysis.
      */
-    DenseHashSet<const AstStatDeclareClass*> incorrectClassDefinitions{nullptr};
+    DenseHashSet<const AstStatDeclareExternType*> incorrectExternTypeDefinitions{nullptr};
 
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };

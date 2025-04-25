@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)
 LUAU_FASTFLAG(LuauFixFunctionWithAttributesStartLocation)
+LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace
 {
@@ -331,7 +332,7 @@ struct Printer_DEPRECATED
         }
     }
 
-    void visualizeTypePackAnnotation(const AstTypePack& annotation, bool forVarArg)
+    void visualizeTypePackAnnotation(const AstTypePack& annotation, bool forVarArg, bool unconditionallyParenthesize = true)
     {
         advance(annotation.location.begin);
         if (const AstTypePackVariadic* variadicTp = annotation.as<AstTypePackVariadic>())
@@ -349,7 +350,7 @@ struct Printer_DEPRECATED
         else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
         {
             LUAU_ASSERT(!forVarArg);
-            visualizeTypeList(explicitTp->typeList, true);
+            visualizeTypeList(explicitTp->typeList, unconditionallyParenthesize);
         }
         else
         {
@@ -1065,12 +1066,15 @@ struct Printer_DEPRECATED
 
         writer.symbol(")");
 
-        if (writeTypes && func.returnAnnotation)
+        if (writeTypes && (FFlag::LuauStoreReturnTypesAsPackOnAst ? func.returnAnnotation != nullptr : func.returnAnnotation_DEPRECATED.has_value()))
         {
             writer.symbol(":");
             writer.space();
 
-            visualizeTypeList(*func.returnAnnotation, false);
+            if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+                visualizeTypePackAnnotation(*func.returnAnnotation, false, false);
+            else
+                visualizeTypeList(*func.returnAnnotation_DEPRECATED, false);
         }
 
         visualizeBlock(*func.body);
@@ -1174,7 +1178,10 @@ struct Printer_DEPRECATED
             }
 
             writer.symbol("->");
-            visualizeTypeList(a->returnTypes, true);
+            if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+                visualizeTypePackAnnotation(*a->returnTypes, false);
+            else
+                visualizeTypeList(a->returnTypes_DEPRECATED, true);
         }
         else if (const auto& a = typeAnnotation.as<AstTypeTable>())
         {
@@ -1368,7 +1375,7 @@ struct Printer
         }
     }
 
-    void visualizeTypePackAnnotation(AstTypePack& annotation, bool forVarArg)
+    void visualizeTypePackAnnotation(AstTypePack& annotation, bool forVarArg, bool unconditionallyParenthesize = true)
     {
         advance(annotation.location.begin);
         if (const AstTypePackVariadic* variadicTp = annotation.as<AstTypePackVariadic>())
@@ -1390,10 +1397,10 @@ struct Printer
             LUAU_ASSERT(!forVarArg);
             if (const auto cstNode = lookupCstNode<CstTypePackExplicit>(explicitTp))
                 visualizeTypeList(
-                    explicitTp->typeList, true, cstNode->openParenthesesPosition, cstNode->closeParenthesesPosition, cstNode->commaPositions
+                    explicitTp->typeList, FFlag::LuauStoreReturnTypesAsPackOnAst ? cstNode->hasParentheses : true, cstNode->openParenthesesPosition, cstNode->closeParenthesesPosition, cstNode->commaPositions
                 );
             else
-                visualizeTypeList(explicitTp->typeList, true);
+                visualizeTypeList(explicitTp->typeList, unconditionallyParenthesize);
         }
         else
         {
@@ -2383,14 +2390,17 @@ struct Printer
             advanceBefore(func.argLocation->end, 1);
         writer.symbol(")");
 
-        if (writeTypes && func.returnAnnotation)
+        if (writeTypes && FFlag::LuauStoreReturnTypesAsPackOnAst ? func.returnAnnotation != nullptr : func.returnAnnotation_DEPRECATED.has_value())
         {
             if (cstNode)
                 advance(cstNode->returnSpecifierPosition);
             writer.symbol(":");
             writer.space();
 
-            visualizeTypeList(*func.returnAnnotation, false);
+            if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+                visualizeTypePackAnnotation(*func.returnAnnotation, false, false);
+            else
+                visualizeTypeList(*func.returnAnnotation_DEPRECATED, false);
         }
 
         visualizeBlock(*func.body);
@@ -2573,7 +2583,10 @@ struct Printer
             if (cstNode)
                 advance(cstNode->returnArrowPosition);
             writer.symbol("->");
-            visualizeTypeList(a->returnTypes, true);
+            if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+                visualizeTypePackAnnotation(*a->returnTypes, false);
+            else
+                visualizeTypeList(a->returnTypes_DEPRECATED, true);
         }
         else if (const auto& a = typeAnnotation.as<AstTypeTable>())
         {

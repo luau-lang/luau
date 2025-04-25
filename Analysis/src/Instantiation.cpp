@@ -50,7 +50,7 @@ bool Instantiation::ignoreChildren(TypeId ty)
 {
     if (log->getMutable<FunctionType>(ty))
         return true;
-    else if (get<ClassType>(ty))
+    else if (get<ExternType>(ty))
         return true;
     else
         return false;
@@ -120,7 +120,7 @@ bool ReplaceGenerics::ignoreChildren(TypeId ty)
         // whenever we quantify, so the vectors overlap if and only if they are equal.
         return (!generics.empty() || !genericPacks.empty()) && (ftv->generics == generics) && (ftv->genericPacks == genericPacks);
     }
-    else if (get<ClassType>(ty))
+    else if (get<ExternType>(ty))
         return true;
     else
     {

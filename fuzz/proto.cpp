@@ -124,8 +124,8 @@ int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool for
     // Vector3 stub
     TypeId vector3MetaType = arena.addType(TableType{});
 
-    TypeId vector3InstanceType = arena.addType(ClassType{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test", {}});
-    getMutable<ClassType>(vector3InstanceType)->props = {
+    TypeId vector3InstanceType = arena.addType(ExternType{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test", {}});
+    getMutable<ExternType>(vector3InstanceType)->props = {
         {"X", {builtinTypes.numberType}},
         {"Y", {builtinTypes.numberType}},
         {"Z", {builtinTypes.numberType}},
@@ -139,16 +139,16 @@ int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool for
     globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
 
     // Instance stub
-    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(instanceType)->props = {
+    TypeId instanceType = arena.addType(ExternType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(instanceType)->props = {
         {"Name", {builtinTypes.stringType}},
     };
 
     globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     // Part stub
-    TypeId partType = arena.addType(ClassType{"Part", {}, instanceType, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(partType)->props = {
+    TypeId partType = arena.addType(ExternType{"Part", {}, instanceType, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(partType)->props = {
         {"Position", {vector3InstanceType}},
     };
 

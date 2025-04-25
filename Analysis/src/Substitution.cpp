@@ -136,9 +136,9 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
             clone.parts = a.parts;
             return dest.addType(std::move(clone));
         }
-        else if constexpr (std::is_same_v<T, ClassType>)
+        else if constexpr (std::is_same_v<T, ExternType>)
         {
-            ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
+            ExternType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, NegationType>)
@@ -252,21 +252,21 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypePackId a : tfit->packArguments)
             visitChild(a);
     }
-    else if (const ClassType* ctv = get<ClassType>(ty))
+    else if (const ExternType* etv = get<ExternType>(ty))
     {
-        for (const auto& [name, prop] : ctv->props)
+        for (const auto& [name, prop] : etv->props)
             visitChild(prop.type());
 
-        if (ctv->parent)
-            visitChild(*ctv->parent);
+        if (etv->parent)
+            visitChild(*etv->parent);
 
-        if (ctv->metatable)
-            visitChild(*ctv->metatable);
+        if (etv->metatable)
+            visitChild(*etv->metatable);
 
-        if (ctv->indexer)
+        if (etv->indexer)
         {
-            visitChild(ctv->indexer->indexType);
-            visitChild(ctv->indexer->indexResultType);
+            visitChild(etv->indexer->indexType);
+            visitChild(etv->indexer->indexResultType);
         }
     }
     else if (const NegationType* ntv = get<NegationType>(ty))
@@ -838,21 +838,21 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypePackId& a : tfit->packArguments)
             a = replace(a);
     }
-    else if (ClassType* ctv = getMutable<ClassType>(ty))
+    else if (ExternType* etv = getMutable<ExternType>(ty))
     {
-        for (auto& [name, prop] : ctv->props)
+        for (auto& [name, prop] : etv->props)
             prop.setType(replace(prop.type()));
 
-        if (ctv->parent)
-            ctv->parent = replace(*ctv->parent);
+        if (etv->parent)
+            etv->parent = replace(*etv->parent);
 
-        if (ctv->metatable)
-            ctv->metatable = replace(*ctv->metatable);
+        if (etv->metatable)
+            etv->metatable = replace(*etv->metatable);
 
-        if (ctv->indexer)
+        if (etv->indexer)
         {
-            ctv->indexer->indexType = replace(ctv->indexer->indexType);
-            ctv->indexer->indexResultType = replace(ctv->indexer->indexResultType);
+            etv->indexer->indexType = replace(etv->indexer->indexType);
+            etv->indexer->indexResultType = replace(etv->indexer->indexResultType);
         }
     }
     else if (NegationType* ntv = getMutable<NegationType>(ty))

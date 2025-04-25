@@ -15,7 +15,6 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
-LUAU_FASTFLAG(LuauAutocompleteRefactorsForIncrementalAutocomplete)
 
 LUAU_FASTFLAGVARIABLE(LuauNonReentrantGeneralization2)
 
@@ -549,7 +548,7 @@ struct FreeTypeSearcher : TypeVisitor
                 traverse(*prop.readTy);
             else
             {
-                LUAU_ASSERT(prop.isShared() || FFlag::LuauAutocompleteRefactorsForIncrementalAutocomplete);
+                LUAU_ASSERT(prop.isShared());
 
                 Polarity p = polarity;
                 polarity = Polarity::Mixed;
@@ -605,7 +604,7 @@ struct FreeTypeSearcher : TypeVisitor
         return false;
     }
 
-    bool visit(TypeId, const ClassType&) override
+    bool visit(TypeId, const ExternType&) override
     {
         return false;
     }
@@ -897,7 +896,7 @@ struct TypeCacher : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const ClassType&) override
+    bool visit(TypeId ty, const ExternType&) override
     {
         cache(ty);
         return false;
@@ -1513,26 +1512,22 @@ void pruneUnnecessaryGenerics(
     if (!functionTy)
         return;
 
-    // Types (and packs) to be removed from the generics list
-    DenseHashSet<TypeId> clipTypes{nullptr};
-    DenseHashSet<TypePackId> clipTypePacks{nullptr};
+    // If a generic has no explicit name and is only referred to in one place in
+    // the function's signature, it can be replaced with unknown.
 
     GenericCounter counter{cachedTypes};
     for (TypeId generic : functionTy->generics)
     {
+        generic = follow(generic);
         auto g = get<GenericType>(generic);
-        LUAU_ASSERT(g);
-        if (!g)
-            clipTypes.insert(generic);
-        else if (!g->explicitName)
+        if (g && !g->explicitName)
             counter.generics[generic] = 0;
     }
     for (TypePackId genericPack : functionTy->genericPacks)
     {
+        genericPack = follow(genericPack);
         auto g = get<GenericTypePack>(genericPack);
-        if (!g)
-            clipTypePacks.insert(genericPack);
-        else if (!g->explicitName)
+        if (g && !g->explicitName)
             counter.genericPacks[genericPack] = 0;
     }
 
@@ -1541,18 +1536,22 @@ void pruneUnnecessaryGenerics(
     for (const auto& [generic, count] : counter.generics)
     {
         if (count == 1)
-        {
             emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
-            clipTypes.insert(generic);
-        }
     }
 
+    // Remove duplicates and types that aren't actually generics.
+    DenseHashSet<TypeId> seen{nullptr};
     auto it = std::remove_if(
         functionTy->generics.begin(),
         functionTy->generics.end(),
         [&](TypeId ty)
         {
-            return clipTypes.contains(ty);
+            ty = follow(ty);
+            if (seen.contains(ty))
+                return true;
+            seen.insert(ty);
+
+            return !get<GenericType>(ty);
         }
     );
 
@@ -1561,18 +1560,21 @@ void pruneUnnecessaryGenerics(
     for (const auto& [genericPack, count] : counter.genericPacks)
     {
         if (count == 1)
-        {
             emplaceTypePack<BoundTypePack>(asMutable(genericPack), builtinTypes->unknownTypePack);
-            clipTypePacks.insert(genericPack);
-        }
     }
 
+    DenseHashSet<TypePackId> seen2{nullptr};
     auto it2 = std::remove_if(
         functionTy->genericPacks.begin(),
         functionTy->genericPacks.end(),
         [&](TypePackId tp)
         {
-            return clipTypePacks.contains(tp);
+            tp = follow(tp);
+            if (seen2.contains(tp))
+                return true;
+            seen2.insert(tp);
+
+            return !get<GenericTypePack>(tp);
         }
     );
 

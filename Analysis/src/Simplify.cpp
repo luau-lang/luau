@@ -356,7 +356,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     // * FunctionType
     // * TableType
     // * MetatableType
-    // * ClassType
+    // * ExternType
     // * UnionType
     // * IntersectionType
     // * NegationType
@@ -476,13 +476,13 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
                 return Relation::Disjoint;
         }
 
-        if (get<FunctionType>(right) || get<TableType>(right) || get<MetatableType>(right) || get<ClassType>(right))
+        if (get<FunctionType>(right) || get<TableType>(right) || get<MetatableType>(right) || get<ExternType>(right))
             return Relation::Disjoint;
     }
 
     if (auto ls = get<SingletonType>(left))
     {
-        if (get<FunctionType>(right) || get<TableType>(right) || get<MetatableType>(right) || get<ClassType>(right))
+        if (get<FunctionType>(right) || get<TableType>(right) || get<MetatableType>(right) || get<ExternType>(right))
             return Relation::Disjoint;
 
         if (get<PrimitiveType>(right))
@@ -551,9 +551,9 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         return Relation::Disjoint;
     }
 
-    if (auto ct = get<ClassType>(left))
+    if (auto ct = get<ExternType>(left))
     {
-        if (auto rct = get<ClassType>(right))
+        if (auto rct = get<ExternType>(right))
         {
             if (isSubclass(ct, rct))
                 return Relation::Subset;
@@ -873,7 +873,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersectWithTruthy(TypeId target) co
     if (is<NeverType, ErrorType>(target))
         return target;
 
-    if (is<FunctionType, TableType, MetatableType, ClassType>(target))
+    if (is<FunctionType, TableType, MetatableType, ExternType>(target))
         return target;
 
     if (auto pt = get<PrimitiveType>(target))
@@ -909,7 +909,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersectWithFalsy(TypeId target) con
     if (is<UnknownType>(target))
         return builtinTypes->falsyType;
 
-    if (is<FunctionType, TableType, MetatableType, ClassType>(target))
+    if (is<FunctionType, TableType, MetatableType, ExternType>(target))
         return builtinTypes->neverType;
 
     if (auto pt = get<PrimitiveType>(target))

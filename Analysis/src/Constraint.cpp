@@ -20,7 +20,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     DenseHashSet<TypeId>* result;
 
-    ReferenceCountInitializer(DenseHashSet<TypeId>* result)
+    explicit ReferenceCountInitializer(DenseHashSet<TypeId>* result)
         : result(result)
     {
     }
@@ -43,9 +43,9 @@ struct ReferenceCountInitializer : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const ClassType&) override
+    bool visit(TypeId ty, const ExternType&) override
     {
-        // ClassTypes never contain free types.
+        // ExternTypes never contain free types.
         return false;
     }
 

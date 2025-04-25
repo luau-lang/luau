@@ -121,7 +121,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "table_property")
     CHECK(traverseForType(requireType("x"), Path(TypePath::Property{"y", true}), builtinTypes) == builtinTypes->numberType);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "class_property")
+TEST_CASE_FIXTURE(ExternTypeFixture, "class_property")
 {
     CHECK(traverseForType(vector2InstanceType, Path(TypePath::Property{"X", true}), builtinTypes) == builtinTypes->numberType);
 }
@@ -217,7 +217,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "index")
     }
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "metatables")
+TEST_CASE_FIXTURE(ExternTypeFixture, "metatables")
 {
     SUBCASE("string")
     {
@@ -266,7 +266,7 @@ TEST_CASE_FIXTURE(ClassFixture, "metatables")
     SUBCASE("class")
     {
         auto result = traverseForType(vector2InstanceType, Path(TypeField::Metatable), builtinTypes);
-        // ClassFixture's Vector2 metatable is just an empty table, but it's there.
+        // ExternTypeFixture's Vector2 metatable is just an empty table, but it's there.
         CHECK(result);
     }
 }
@@ -334,7 +334,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "indexers")
         }
     }
 
-    // TODO: Class types
+    // TODO: Extern types
 }
 
 TEST_CASE_FIXTURE(TypePathFixture, "negated")
@@ -508,7 +508,7 @@ TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
             type Meta = {
                 __add: (Tab, Tab) -> number,
             }
-            
+
             type Tab = typeof(setmetatable({}, {} :: Meta))
         )");
 

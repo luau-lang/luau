@@ -7,5 +7,8 @@ namespace Luau::Require
 {
 
 int lua_require(lua_State* L);
+int lua_proxyrequire(lua_State* L);
+
+int registerModuleImpl(lua_State* L);
 
 } // namespace Luau::Require

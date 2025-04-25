@@ -1039,7 +1039,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant_old_solver")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
 
     CheckResult result = check(R"(
         function foo(ref: {current: Parent?})
@@ -1057,7 +1057,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant_new_solver")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    createSomeClasses(&frontend);
+    createSomeExternTypes(&frontend);
 
     CheckResult result = check(R"(
         function foo(ref: {read current: Parent?})

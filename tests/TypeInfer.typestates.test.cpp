@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 
 using namespace Luau;
 
@@ -521,6 +522,37 @@ TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(get<UnknownSymbol>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(0.5))
+{
+    ScopedFastFlag _{FFlag::LuauRefineWaitForBlockedTypesInTarget, true};
+    // We do not care about the errors here, only that this finishes typing
+    // in a sensible amount of time.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local _
+        while _[""] do
+            _, _ = nil
+            while _.n0 do
+                _, _ = nil
+            end
+            _, _ = nil
+        end
+        while _[""] do
+            while if _ then if _ then _ else "" else "" do
+                _, _ = nil
+                do
+                end
+                _, _, _ = nil
+            end
+            _, _ = nil
+            _, _, _ = nil
+            while _.readi16 do
+                _, _ = nil
+            end
+            _, _ = nil
+        end
+    )"));
 }
 
 TEST_SUITE_END();

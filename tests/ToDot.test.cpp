@@ -21,14 +21,14 @@ struct ToDotClassFixture : Fixture
 
         TypeId baseClassMetaType = arena.addType(TableType{});
 
-        TypeId baseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test", {}});
-        getMutable<ClassType>(baseClassInstanceType)->props = {
+        TypeId baseClassInstanceType = arena.addType(ExternType{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test", {}});
+        getMutable<ExternType>(baseClassInstanceType)->props = {
             {"BaseField", {builtinTypes->numberType}},
         };
         frontend.globals.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
 
-        TypeId childClassInstanceType = arena.addType(ClassType{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test", {}});
-        getMutable<ClassType>(childClassInstanceType)->props = {
+        TypeId childClassInstanceType = arena.addType(ExternType{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test", {}});
+        getMutable<ExternType>(childClassInstanceType)->props = {
             {"ChildField", {builtinTypes->stringType}},
         };
         frontend.globals.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
@@ -400,11 +400,11 @@ local a: ChildClass
     opts.showPointers = false;
     CHECK_EQ(
         R"(digraph graphname {
-n1 [label="ClassType ChildClass"];
+n1 [label="ExternType ChildClass"];
 n1 -> n2 [label="ChildField"];
 n2 [label="string"];
 n1 -> n3 [label="[parent]"];
-n3 [label="ClassType BaseClass"];
+n3 [label="ExternType BaseClass"];
 n3 -> n4 [label="BaseField"];
 n4 [label="number"];
 n3 -> n5 [label="[metatable]"];

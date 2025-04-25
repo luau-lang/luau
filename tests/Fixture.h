@@ -213,7 +213,7 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Wa
 std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
 void registerHiddenTypes(Frontend* frontend);
-void createSomeClasses(Frontend* frontend);
+void createSomeExternTypes(Frontend* frontend);
 
 template<typename E>
 const E* findError(const CheckResult& result)

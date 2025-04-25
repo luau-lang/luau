@@ -21,17 +21,16 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauTrackInteriorFreeTypesOnScope)
-LUAU_FASTFLAG(LuauTrackInteriorFreeTablesOnScope)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauFollowTableFreeze)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauSearchForRefineableType)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAG(LuauBidirectionalFailsafe)
 LUAU_FASTFLAG(LuauBidirectionalInferenceElideAssert)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
+LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3943,11 +3942,6 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauTrackInteriorFreeTypesOnScope, true},
-        {FFlag::LuauTrackInteriorFreeTablesOnScope, true},
-    };
-
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -4777,7 +4771,10 @@ TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // FIXME CLI-114134.  We need to simplify types more consistently.
-    CHECK_EQ("(unknown & {number} & {number}, unknown) -> ()", toString(requireType("f")));
+    if (FFlag::DebugLuauGreedyGeneralization)
+        CHECK("({number} & {number}, unknown) -> ()" == toString(requireType("f")));
+    else
+        CHECK_EQ("(unknown & {number} & {number}, unknown) -> ()", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "write_to_union_property_not_all_present")
@@ -5553,10 +5550,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_index_syntax_bidirectional_infer_with_tables
 
 TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSearchForRefineableType, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // NOTE: This probably should be revisited after CLI-143852: we end up
     // cyclic types with *tons* of overlap.
@@ -5663,6 +5657,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_in_indexer_with_compound_assig
             )
         ] *= _
     )");
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "stop_refining_new_table_indices_for_non_primitive_tables")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag stricterIndexCheck{FFlag::LuauTypeCheckerStricterIndexCheck, true};
+
+    CheckResult result = check(R"(
+        local foo:{val:number} = {val = 1}
+        if foo.vall then
+            local bar = foo.vall
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, UnknownProperty);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_match_literal_type_crash_again")

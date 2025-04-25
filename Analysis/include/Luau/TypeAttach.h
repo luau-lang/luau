@@ -11,7 +11,7 @@ namespace Luau
 struct TypeRehydrationOptions
 {
     std::unordered_set<std::string> bannedNames;
-    bool expandClassProps = false;
+    bool expandExternTypeProps = false;
 };
 
 void attachTypeData(SourceModule& source, Module& result);
