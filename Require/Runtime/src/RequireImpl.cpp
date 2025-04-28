@@ -170,7 +170,8 @@ int lua_proxyrequire(lua_State* L)
 int lua_require(lua_State* L)
 {
     lua_Debug ar;
-    lua_getinfo(L, 1, "s", &ar);
+    if (!lua_getinfo(L, 1, "s", &ar))
+        luaL_error(L, "require is not supported in this context");
     return lua_requireinternal(L, ar.source);
 }
 
