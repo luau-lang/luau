@@ -74,10 +74,6 @@ struct FreeType
     // This one got promoted to explicit
     explicit FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound, Polarity polarity = Polarity::Unknown);
     explicit FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId upperBound);
-    // Old constructors
-    explicit FreeType(TypeLevel level);
-    explicit FreeType(Scope* scope);
-    FreeType(Scope* scope, TypeLevel level);
 
     int index;
     TypeLevel level;

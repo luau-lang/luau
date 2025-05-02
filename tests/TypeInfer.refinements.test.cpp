@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Normalize.h"
 #include "Luau/Scope.h"
+#include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
 
 #include "Fixture.h"
@@ -11,10 +12,12 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauSimplyRefineNotNil)
 LUAU_FASTFLAG(LuauWeakNilRefinementType)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
+LUAU_FASTFLAG(LuauSimplificationTableExternType)
 
 using namespace Luau;
 
@@ -113,10 +116,18 @@ struct RefinementExternTypeFixture : BuiltinsFixture
             {"Position", Property{vec3}},
         };
 
+        TypeId optionalPart = arena.addType(UnionType{{part, builtinTypes->nilType}});
+        TypeId weldConstraint = frontend.globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        getMutable<ExternType>(weldConstraint)->props = {
+            {"Part0", Property{optionalPart}},
+            {"Part1", Property{optionalPart}},
+        };
+
         frontend.globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
         frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
         frontend.globals.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
         frontend.globals.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
+        frontend.globals.globalScope->exportedTypeBindings["WeldConstraint"] = TypeFun{{}, weldConstraint};
 
         for (const auto& [name, ty] : frontend.globals.globalScope->exportedTypeBindings)
             persist(ty.type);
@@ -752,11 +763,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
-    CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+    if (FFlag::DebugLuauGreedyGeneralization)
+    {
+        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
+        CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
-    CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+        CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+
+        CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+        CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_not_to_be_string")
@@ -1578,9 +1600,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_param_of_type_folder_or_p
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_known_ahead_of_time")
 {
-    // CLI-115087 - The new solver does not consistently combine tables with
-    // class types when they appear in the upper bounds of a free type.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauSimplificationTableExternType, true};
 
     CheckResult result = check(R"(
         local function f(x): Instance
@@ -1596,8 +1616,41 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_know
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("Instance", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::LuauSolverV2)
+    {
+        CHECK_EQ("t1 where t1 = Instance & { read IsA: (t1, string) -> (unknown, ...unknown) }", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("t1 where t1 = Instance & { read IsA: (t1, string) -> (unknown, ...unknown) }", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+    }
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_should_not_refine_extern_types_to_never")
+{
+
+    CheckResult result = check(R"(
+        local weld: WeldConstraint = nil :: any
+        assert(weld.Part1)
+        print(weld) -- hover type incorrectly becomes `never`
+        assert(weld.Part1.Name == "RootPart")
+        local part1 = assert(weld.Part1)
+        local pos = part1.Position
+    )");
+
+    if (FFlag::LuauSolverV2)
+    {
+        // CLI-142467: this is a major regression that we need to address.
+        CHECK_EQ("never", toString(requireTypeAtPosition({3, 15})));
+        CHECK_EQ("any", toString(requireTypeAtPosition({6, 29})));
+    }
+    else
+    {
+        CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
+        CHECK_EQ("Vector3", toString(requireTypeAtPosition({6, 29})));
+    }
 }
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "x_is_not_instance_or_else_not_part")
@@ -1605,6 +1658,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "x_is_not_instance_or_else_not_pa
     // CLI-117135 - RefinementTests.x_is_not_instance_or_else_not_part not correctly applying refinements to a function parameter
     if (FFlag::LuauSolverV2)
         return;
+
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
             if typeof(x) ~= "Instance" or not x:IsA("Part") then
@@ -1827,6 +1881,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_a_param_that_got_resolved
     // CLI-117134 - Applying a refinement causes an optional value access error.
     if (FFlag::LuauSolverV2)
         return;
+
     CheckResult result = check(R"(
         type Id<T> = T
 
@@ -2447,7 +2502,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
         end
     )"));
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));
+    if (FFlag::DebugLuauGreedyGeneralization)
+        CHECK_EQ("nil & string & unknown", toString(requireTypeAtPosition({4, 24})));
+    else
+        CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonnil_refinement_on_generic")

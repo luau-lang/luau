@@ -87,6 +87,11 @@ private:
     [[nodiscard]] Error navigateToAlias(const std::string& alias, const std::string& value);
     [[nodiscard]] Error navigateToAndPopulateConfig(const std::string& desiredAlias);
 
+    [[nodiscard]] Error resetToRequirer();
+    [[nodiscard]] Error jumpToAlias(const std::string& aliasPath);
+    [[nodiscard]] Error navigateToParent(std::optional<std::string> previousComponent);
+    [[nodiscard]] Error navigateToChild(const std::string& component);
+
     NavigationContext& navigationContext;
     ErrorHandler& errorHandler;
     Luau::Config config;

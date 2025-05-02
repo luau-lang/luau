@@ -5,6 +5,8 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
+LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
+LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 
 using namespace Luau;
 
@@ -263,6 +265,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "local_assigned_in_only_one_branch_that_fall
 
 TEST_CASE_FIXTURE(TypeStateFixture, "then_branch_assigns_and_else_branch_also_assigns_but_is_met_with_return")
 {
+    ScopedFastFlag _{FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true};
+
     CheckResult result = check(R"(
         local x = nil
         if math.random() > 0.5 then
@@ -275,11 +279,13 @@ TEST_CASE_FIXTURE(TypeStateFixture, "then_branch_assigns_and_else_branch_also_as
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("number?" == toString(requireType("y")));
+    CHECK("number" == toString(requireType("y")));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "then_branch_assigns_but_is_met_with_return_and_else_branch_assigns")
 {
+    ScopedFastFlag _{FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true};
+
     CheckResult result = check(R"(
         local x = nil
         if math.random() > 0.5 then
@@ -292,7 +298,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "then_branch_assigns_but_is_met_with_return_
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("string?" == toString(requireType("y")));
+    CHECK("string" == toString(requireType("y")));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "invalidate_type_refinements_upon_assignments")
@@ -338,8 +344,9 @@ TEST_CASE_FIXTURE(TypeStateFixture, "local_t_is_assigned_a_fresh_table_with_x_as
 }
 #endif
 
-TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_are_unions_of_all_assignments")
+TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type")
 {
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
     CheckResult result = check(R"(
         local x = nil
 
@@ -352,12 +359,16 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_are_unions_of_all_assignmen
         f()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("(number | string)?" == toString(requireTypeAtPosition({4, 18})));
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("number?", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+    CHECK("number?" == toString(requireTypeAtPosition({4, 18})));
 }
 
-TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_are_unions_of_all_assignments_2")
+TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_2")
 {
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
     CheckResult result = check(R"(
         local t = {x = nil}
 
@@ -370,9 +381,13 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_are_unions_of_all_assignmen
         f()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("{ x: nil } | { x: number } | { x: string }" == toString(requireTypeAtPosition({4, 18}), {true}));
-    CHECK("(number | string)?" == toString(requireTypeAtPosition({4, 20})));
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("t | { x: number }", toString(err->wantedType));
+    CHECK_EQ("{ x: string }", toString(err->givenType));
+
+    CHECK("{ x: nil } | { x: number }" == toString(requireTypeAtPosition({4, 18}), {true}));
+    CHECK("number?" == toString(requireTypeAtPosition({4, 20})));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
@@ -553,6 +568,282 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * 
             _, _ = nil
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1547_simple")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local rand = 0
+
+        function a()
+            rand = (rand % 4) + 1;
+        end
+    )"));
+
+    auto randTy = getType("rand");
+    REQUIRE(randTy);
+    CHECK_EQ("number", toString(*randTy));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1547")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local rand = 0
+
+        function a()
+            rand = (rand % 4) + 1;
+        end
+
+        function b()
+            rand = math.max(rand - 1, 0);
+        end
+    )"));
+
+    auto randTy = getType("rand");
+    REQUIRE(randTy);
+    CHECK_EQ("number", toString(*randTy));
+}
+
+TEST_CASE_FIXTURE(Fixture, "modify_captured_table_field")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local state = { x = 0 }
+        function incr()
+            state.x = state.x + 1
+        end
+    )"));
+
+    auto randTy = getType("state");
+    REQUIRE(randTy);
+    CHECK_EQ("{ x: number }", toString(*randTy, {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1561")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
+
+    loadDefinition(R"(
+        declare class Vector3
+            X: number
+            Y: number
+            Z: number
+        end
+
+        declare Vector3: {
+            new: (number?, number?, number?) -> Vector3
+        }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local targetVelocity: Vector3 = Vector3.new()
+        function set2D(X: number, Y: number)
+            targetVelocity = Vector3.new(X, Y, targetVelocity.Z)
+        end
+    )"));
+
+    CHECK_EQ("(number, number) -> ()", toString(requireType("set2D")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1575")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local flag = true
+        local function Flip()
+            flag = not flag
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "capture_upvalue_in_returned_function")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        function def()
+            local i : number = 0
+            local function Counter()
+                i = i + 1
+                return i
+            end
+            return Counter
+        end
+    )"));
+    CHECK_EQ("() -> () -> number", toString(requireType("def")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "throw_in_else_branch")
+{
+    ScopedFastFlag _{FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local x
+        local coinflip : () -> boolean = (nil :: any)
+
+        if coinflip () then
+            x = "I win."
+        else
+            error("You lose.")
+        end
+
+        print(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({11, 14})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "throw_in_if_branch")
+{
+    ScopedFastFlag _{FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local x
+        local coinflip : () -> boolean = (nil :: any)
+
+        if coinflip () then
+            error("You lose.")
+        else
+            x = "I win."
+        end
+
+        print(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({11, 14})));
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring")
+{
+    ScopedFastFlag _{FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type Payload = { payload: number }
+
+        local function decode(s: string): Payload?
+            return (nil :: any)
+        end
+
+        local function decodeEx(s: string): Payload
+            local p = decode(s)
+            if not p then
+                error("failed to decode payload!!!")
+            end
+            return p
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local x = nil
+
+        while math.random() > 0.5 do
+            x = 42
+            return
+        end
+
+        print(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // CLI-142447: This should probably be `nil` given that the `while` loop
+    // unconditionally returns, but `number?` is sound, if incomplete.
+    CHECK_EQ("number?", toString(requireTypeAtPosition({10, 14})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_refinement_in_loop")
+{
+    ScopedFastFlag _{FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function onEachString(t: { string | number })
+            for _, v in t do
+                if type(v) ~= "string" then
+                    continue
+                end
+                print(v)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number | string", toString(requireTypeAtPosition({4, 24})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({7, 22})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "throw_in_if_branch_and_do_nothing_in_else")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local x
+        local coinflip : () -> boolean = (nil :: any)
+
+        if coinflip () then
+            error("You lose.")
+        else
+        end
+
+        print(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 14})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assign_in_an_if_branch_without_else")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local x
+        local coinflip : () -> boolean = (nil :: any)
+
+        if coinflip () then
+            x = "I win."
+        end
+
+        print(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string?", toString(requireTypeAtPosition({9, 14})));
 }
 
 TEST_SUITE_END();

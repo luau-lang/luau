@@ -6,6 +6,8 @@
 #include "lua.h"
 #include "lualib.h"
 
+#include <string>
+
 static constexpr size_t initalFileBufferSize = 1024;
 static constexpr size_t initalIdentifierBufferSize = 64;
 
@@ -111,14 +113,16 @@ std::optional<std::string> RuntimeNavigationContext::getStringFromCWriter(
 }
 
 
-RuntimeErrorHandler::RuntimeErrorHandler(lua_State* L)
+RuntimeErrorHandler::RuntimeErrorHandler(lua_State* L, std::string requiredPath)
     : L(L)
+    , errorPrefix("error requiring module \"" + std::move(requiredPath) + "\": ")
 {
 }
 
 void RuntimeErrorHandler::reportError(std::string message)
 {
-    luaL_errorL(L, "%s", message.c_str());
+    std::string fullError = errorPrefix + std::move(message);
+    luaL_errorL(L, "%s", fullError.c_str());
 }
 
 } // namespace Luau::Require

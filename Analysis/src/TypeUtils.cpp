@@ -11,7 +11,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 
@@ -328,7 +327,7 @@ TypePack extendTypePack(
                         trackInteriorFreeType(ftp->scope, t);
                     }
                     else
-                        t = FFlag::LuauFreeTypesMustHaveBounds ? arena.freshType(builtinTypes, ftp->scope) : arena.freshType_DEPRECATED(ftp->scope);
+                        t = arena.freshType(builtinTypes, ftp->scope);
                 }
 
                 newPack.head.push_back(t);

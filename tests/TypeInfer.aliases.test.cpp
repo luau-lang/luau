@@ -14,7 +14,7 @@ LUAU_FASTFLAG(LuauFixInfiniteRecursionInNormalization)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
-LUAU_FASTFLAG(LuauNewNonStrictVisitTypes)
+LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1197,7 +1197,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_type_in_alias_segfault")
         export type FieldConfigMap<TSource, TContext> = Map<string, FieldConfig<TSource, TContext>>
     )");
 
-    if (FFlag::LuauNewNonStrictVisitTypes)
+    if (FFlag::LuauNewNonStrictVisitTypes2)
         LUAU_CHECK_ERROR_COUNT(2, result);
     else
         LUAU_CHECK_NO_ERRORS(result);

@@ -11,7 +11,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {
@@ -164,7 +163,7 @@ TypeId ReplaceGenerics::clean(TypeId ty)
     }
     else
     {
-        return FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtinTypes, scope, level) : addType(FreeType{scope, level});
+        return arena->freshType(builtinTypes, scope, level);
     }
 }
 

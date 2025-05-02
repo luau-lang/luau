@@ -53,7 +53,7 @@ static int pushrequireclosureinternal(
     lua_pushlightuserdata(L, ctx);
 
     // require-like closure captures config and ctx as upvalues
-    lua_pushcclosure(L, requirelikefunc, debugname, 2);
+    lua_pushcclosurek(L, requirelikefunc, debugname, 2, Luau::Require::lua_requirecont);
     return 1;
 }
 
@@ -76,4 +76,14 @@ int luarequire_pushproxyrequire(lua_State* L, luarequire_Configuration_init conf
 int luarequire_registermodule(lua_State* L)
 {
     return Luau::Require::registerModuleImpl(L);
+}
+
+int luarequire_clearcacheentry(lua_State* L)
+{
+    return Luau::Require::clearCacheEntry(L);
+}
+
+int luarequire_clearcache(lua_State* L)
+{
+    return Luau::Require::clearCache(L);
 }

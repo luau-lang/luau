@@ -28,6 +28,8 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 
+LUAU_FASTFLAG(LuauTypeFunOptional)
+
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::LuauSolverV2, FFlag::DebugLuauForceAllNewSolverTests};
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD() DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(__LINE__)
@@ -182,6 +184,9 @@ private:
 struct BuiltinsFixture : Fixture
 {
     explicit BuiltinsFixture(bool prepareAutocomplete = false);
+
+    // For the purpose of our tests, we're always the latest version of type functions.
+    ScopedFastFlag sff_optionalInTypeFunctionLib{FFlag::LuauTypeFunOptional, true};
 };
 
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);

@@ -2,6 +2,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(LuauDeclareExternType)
+LUAU_FASTFLAG(LuauTypeFunOptional)
 
 namespace Luau
 {
@@ -339,11 +340,11 @@ std::string getBuiltinDefinitionSource()
 }
 
 // TODO: split into separate tagged unions when the new solver can appropriately handle that.
-static const std::string kBuiltinDefinitionTypesSrc = R"BUILTIN_SRC(
+static const std::string kBuiltinDefinitionTypeMethodSrc = R"BUILTIN_SRC(
 
 export type type = {
     tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intesection" | "table" | "function" | "class" | "generic",
+         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
 
     is: (self: type, arg: string) -> boolean,
 
@@ -390,6 +391,10 @@ export type type = {
     ispack: (self: type) -> boolean,
 }
 
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
+
 declare types: {
     unknown: type,
     never: type,
@@ -409,12 +414,44 @@ declare types: {
     newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
     copy: @checked (arg: type) -> type,
 }
-
 )BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionTypesLibWithOptionalSrc = R"BUILTIN_SRC(
+
+declare types: {
+    unknown: type,
+    never: type,
+    any: type,
+    boolean: type,
+    number: type,
+    string: type,
+    thread: type,
+    buffer: type,
+
+    singleton: @checked (arg: string | boolean | nil) -> type,
+    optional: @checked (arg: type) -> type,
+    generic: @checked (name: string, ispack: boolean?) -> type,
+    negationof: @checked (arg: type) -> type,
+    unionof: @checked (...type) -> type,
+    intersectionof: @checked (...type) -> type,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
 
 std::string getTypeFunctionDefinitionSource()
 {
-    return kBuiltinDefinitionTypesSrc;
+
+    std::string result = kBuiltinDefinitionTypeMethodSrc;
+
+    if (FFlag::LuauTypeFunOptional)
+        result += kBuiltinDefinitionTypesLibWithOptionalSrc;
+    else
+        result += kBuiltinDefinitionTypesLibSrc;
+
+    return result;
 }
 
 } // namespace Luau

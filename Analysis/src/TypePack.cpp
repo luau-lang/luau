@@ -208,6 +208,26 @@ TypePackIterator end(TypePackId tp)
     return TypePackIterator{};
 }
 
+TypePackId getTail(TypePackId tp)
+{
+    DenseHashSet<TypePackId> seen{nullptr};
+    while (tp)
+    {
+        tp = follow(tp);
+
+        if (seen.contains(tp))
+            break;
+        seen.insert(tp);
+
+        if (auto pack = get<TypePack>(tp); pack && pack->tail)
+            tp = *pack->tail;
+        else
+            break;
+    }
+
+    return follow(tp);
+}
+
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
 {
     TypePackId lhsId = const_cast<TypePackId>(&lhs);
