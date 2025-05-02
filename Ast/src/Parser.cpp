@@ -20,7 +20,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauStoreCSTData2)
 LUAU_FASTFLAGVARIABLE(LuauAstTypeGroup3)
-LUAU_FASTFLAGVARIABLE(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAGVARIABLE(LuauParseOptionalAsNode2)
 LUAU_FASTFLAGVARIABLE(LuauDeclareExternType)
 LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
@@ -555,7 +554,7 @@ AstStat* Parser::parseDo()
 
     Location endLocation = lexer.current().location;
     body->hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
-    if (FFlag::LuauFixDoBlockEndLocation && body->hasEnd)
+    if (body->hasEnd)
         body->location.end = endLocation.end;
 
     if (FFlag::LuauStoreCSTData2 && options.storeCstData)

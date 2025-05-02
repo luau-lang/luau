@@ -681,7 +681,6 @@ void ConstraintSolver::initFreeTypeTracking()
         }
         maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
 
-
         for (NotNull<const Constraint> dep : c->dependencies)
         {
             block(dep, c);
@@ -2082,24 +2081,61 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
     if (auto lhsFree = getMutable<FreeType>(lhsType))
     {
         auto lhsFreeUpperBound = follow(lhsFree->upperBound);
-        if (get<TableType>(lhsFreeUpperBound) || get<MetatableType>(lhsFreeUpperBound))
-            lhsType = lhsFreeUpperBound;
+
+        if (FFlag::DebugLuauGreedyGeneralization)
+        {
+            const auto [blocked, maybeTy, isIndex] = lookupTableProp(constraint, lhsType, propName, ValueContext::LValue);
+            if (!blocked.empty())
+            {
+                for (TypeId t : blocked)
+                    block(t, constraint);
+                return false;
+            }
+            else if (maybeTy)
+            {
+                bind(constraint, c.propType, isIndex ? arena->addType(UnionType{{*maybeTy, builtinTypes->nilType}}) : *maybeTy);
+                unify(constraint, rhsType, *maybeTy);
+                return true;
+            }
+            else
+            {
+                TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, constraint->scope});
+
+                trackInteriorFreeType(constraint->scope, newUpperBound);
+
+                TableType* upperTable = getMutable<TableType>(newUpperBound);
+                LUAU_ASSERT(upperTable);
+
+                upperTable->props[c.propName] = rhsType;
+
+                // Food for thought: Could we block if simplification encounters a blocked type?
+                lhsFree->upperBound = simplifyIntersection(constraint->scope, constraint->location, lhsFreeUpperBound, newUpperBound);
+
+                bind(constraint, c.propType, rhsType);
+                return true;
+            }
+        }
         else
         {
-            TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, constraint->scope});
+            if (get<TableType>(lhsFreeUpperBound) || get<MetatableType>(lhsFreeUpperBound))
+                lhsType = lhsFreeUpperBound;
+            else
+            {
+                TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, constraint->scope});
 
-            trackInteriorFreeType(constraint->scope, newUpperBound);
+                trackInteriorFreeType(constraint->scope, newUpperBound);
 
-            TableType* upperTable = getMutable<TableType>(newUpperBound);
-            LUAU_ASSERT(upperTable);
+                TableType* upperTable = getMutable<TableType>(newUpperBound);
+                LUAU_ASSERT(upperTable);
 
-            upperTable->props[c.propName] = rhsType;
+                upperTable->props[c.propName] = rhsType;
 
-            // Food for thought: Could we block if simplification encounters a blocked type?
-            lhsFree->upperBound = simplifyIntersection(constraint->scope, constraint->location, lhsFreeUpperBound, newUpperBound);
+                // Food for thought: Could we block if simplification encounters a blocked type?
+                lhsFree->upperBound = simplifyIntersection(constraint->scope, constraint->location, lhsFreeUpperBound, newUpperBound);
 
-            bind(constraint, c.propType, rhsType);
-            return true;
+                bind(constraint, c.propType, rhsType);
+                return true;
+            }
         }
     }
 
@@ -2873,8 +2909,21 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     {
         const TypeId upperBound = follow(ft->upperBound);
 
-        if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
-            return lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
+        if (FFlag::DebugLuauGreedyGeneralization)
+        {
+            if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
+            {
+                TablePropLookupResult res = lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
+                // If the upper bound is a table that already has the property, we don't need to extend its bounds.
+                if (res.propType || get<PrimitiveType>(upperBound))
+                    return res;
+            }
+        }
+        else
+        {
+            if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
+                return lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
+        }
 
         // TODO: The upper bound could be an intersection that contains suitable tables or extern types.
 

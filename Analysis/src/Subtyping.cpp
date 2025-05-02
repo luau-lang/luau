@@ -7,13 +7,11 @@
 #include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
-#include "Luau/StringUtils.h"
 #include "Luau/Substitution.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
-#include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypePath.h"
@@ -33,7 +31,7 @@ struct VarianceFlipper
     Subtyping::Variance* variance;
     Subtyping::Variance oldValue;
 
-    VarianceFlipper(Subtyping::Variance* v)
+    explicit VarianceFlipper(Subtyping::Variance* v)
         : variance(v)
         , oldValue(*v)
     {

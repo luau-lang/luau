@@ -39,7 +39,6 @@ LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 LUAU_FASTFLAGVARIABLE(LuauUngeneralizedTypesForRecursiveFunctions)
 
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauRetainDefinitionAliasLocations)
 
@@ -52,6 +51,7 @@ LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 
 LUAU_FASTFLAGVARIABLE(LuauNoTypeFunctionsNamedTypeOf)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
+LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 
 namespace Luau
 {
@@ -1409,7 +1409,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
     sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->name->location};
 
-    bool sigFullyDefined = !hasFreeType(sig.signature);
+    bool sigFullyDefined = FFlag::DebugLuauGreedyGeneralization ? false : !hasFreeType(sig.signature);
     if (sigFullyDefined)
         emplaceType<BoundType>(asMutable(functionType), sig.signature);
 
@@ -1471,7 +1471,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
 
     Checkpoint start = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
-    bool sigFullyDefined = !hasFreeType(sig.signature);
+    bool sigFullyDefined = FFlag::DebugLuauGreedyGeneralization ? false : !hasFreeType(sig.signature);
 
     DefId def = dfg->getDef(function->name);
 
@@ -2389,9 +2389,12 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         this,
         [checkConstraint, callConstraint](const ConstraintPtr& constraint)
         {
-            constraint->dependencies.emplace_back(checkConstraint);
+            if (!(FFlag::DebugLuauGreedyGeneralization && get<PrimitiveTypeConstraint>(*constraint)))
+            {
+                constraint->dependencies.emplace_back(checkConstraint);
 
-            callConstraint->dependencies.emplace_back(constraint.get());
+                callConstraint->dependencies.emplace_back(constraint.get());
+            }
         }
     );
 
@@ -2496,8 +2499,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     }
     else
     {
-        FreeType ft =
-            FFlag::LuauFreeTypesMustHaveBounds ? FreeType{scope.get(), builtinTypes->neverType, builtinTypes->unknownType} : FreeType{scope.get()};
+        FreeType ft = FreeType{scope.get(), builtinTypes->neverType, builtinTypes->unknownType};
         ft.lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
         ft.upperBound = builtinTypes->stringType;
         freeTy = arena->addType(ft);
@@ -2524,8 +2526,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     }
     else
     {
-        FreeType ft =
-            FFlag::LuauFreeTypesMustHaveBounds ? FreeType{scope.get(), builtinTypes->neverType, builtinTypes->unknownType} : FreeType{scope.get()};
+        FreeType ft = FreeType{scope.get(), builtinTypes->neverType, builtinTypes->unknownType};
         ft.lowerBound = singletonType;
         ft.upperBound = builtinTypes->booleanType;
         freeTy = arena->addType(ft);
@@ -3076,7 +3077,7 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
     if (ty)
     {
         TypeIds* localDomain = localTypes.find(*ty);
-        if (localDomain)
+        if (localDomain && !(FFlag::LuauDoNotAddUpvalueTypesToLocalType && local->upvalue))
             localDomain->insert(rhsType);
     }
     else
@@ -3107,8 +3108,10 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
     if (annotatedTy)
         addConstraint(scope, local->location, SubtypeConstraint{rhsType, *annotatedTy});
 
-    if (TypeIds* localDomain = localTypes.find(*ty))
-        localDomain->insert(rhsType);
+    // This is vestigial.
+    if (!FFlag::LuauDoNotAddUpvalueTypesToLocalType)
+        if (TypeIds* localDomain = localTypes.find(*ty))
+            localDomain->insert(rhsType);
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId rhsType)
@@ -3410,12 +3413,21 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         bodyScope->varargPack = std::nullopt;
     }
 
+    LUAU_ASSERT(nullptr != varargPack);
+
     if (FFlag::DebugLuauGreedyGeneralization)
     {
-        genericTypes = argTypes;
+        // Some of the types in argTypes will eventually be generics, and some
+        // will not. The ones that are not generic will be pruned when
+        // GeneralizationConstraint dispatches.
+        genericTypes.insert(genericTypes.begin(), argTypes.begin(), argTypes.end());
+        varargPack = follow(varargPack);
+        returnType = follow(returnType);
+        if (varargPack == returnType)
+            genericTypePacks = {varargPack};
+        else
+            genericTypePacks = {varargPack, returnType};
     }
-
-    LUAU_ASSERT(nullptr != varargPack);
 
     // If there is both an annotation and an expected type, the annotation wins.
     // Type checking will sort out any discrepancies later.

@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
-LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauParseStringIndexer)
@@ -2869,8 +2868,6 @@ TEST_CASE_FIXTURE(Fixture, "inner_and_outer_scope_of_functions_have_correct_end_
 
 TEST_CASE_FIXTURE(Fixture, "do_block_end_location_is_after_end_token")
 {
-    ScopedFastFlag _{FFlag::LuauFixDoBlockEndLocation, true};
-
     AstStatBlock* stat = parse(R"(
         do
             local x = 1

@@ -1839,10 +1839,20 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
         return {rhsTy, Reduction::MaybeOk, {}, {}};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+    if (FFlag::DebugLuauGreedyGeneralization)
+    {
+        if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
+            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+        else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
+            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+    }
+    else
+    {
+        if (isPending(lhsTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+        else if (isPending(rhsTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+    }
 
     // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
@@ -1876,10 +1886,20 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (lhsTy == instance || rhsTy == instance)
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+    if (FFlag::DebugLuauGreedyGeneralization)
+    {
+        if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
+            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+        else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
+            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+    }
+    else
+    {
+        if (isPending(lhsTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+        else if (isPending(rhsTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+    }
 
     // Algebra Reduction Rules for comparison type functions
     // Note that comparing to never tells you nothing about the other operand
@@ -2240,8 +2260,12 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     for (size_t i = 1; i < typeParams.size(); i++)
         discriminantTypes.push_back(follow(typeParams.at(i)));
 
+    const bool targetIsPending = FFlag::DebugLuauGreedyGeneralization
+        ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
+        : isPending(targetTy, ctx->solver);
+
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (isPending(targetTy, ctx->solver))
+    if (targetIsPending)
         return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
     else
     {
@@ -2326,8 +2350,32 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
                 if (is<TableType>(target) || isSimpleDiscriminant(discriminant))
                 {
                     SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                    if (!result.blockedTypes.empty())
-                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+                    if (FFlag::DebugLuauGreedyGeneralization)
+                    {
+                        // Simplification considers free and generic types to be
+                        // 'blocking', but that's not suitable for refine<>.
+                        //
+                        // If we are only blocked on those types, we consider
+                        // the simplification a success and reduce.
+                        if (std::all_of(
+                                begin(result.blockedTypes),
+                                end(result.blockedTypes),
+                                [](auto&& v)
+                                {
+                                    return is<FreeType, GenericType>(follow(v));
+                                }
+                            ))
+                        {
+                            return {result.result, {}};
+                        }
+                        else
+                            return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+                    }
+                    else
+                    {
+                        if (!result.blockedTypes.empty())
+                            return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+                    }
                     return {result.result, {}};
                 }
             }
@@ -3527,7 +3575,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
     , eqFunc{"eq", eqTypeFunction}
-    , refineFunc{"refine", refineTypeFunction}
+    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::DebugLuauGreedyGeneralization}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}

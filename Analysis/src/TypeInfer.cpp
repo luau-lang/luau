@@ -32,7 +32,6 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
@@ -799,8 +798,7 @@ struct Demoter : Substitution
     {
         auto ftv = get<FreeType>(ty);
         LUAU_ASSERT(ftv);
-        return FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtins, demotedLevel(ftv->level))
-                                                  : addType(FreeType{demotedLevel(ftv->level)});
+        return arena->freshType(builtins, demotedLevel(ftv->level));
     }
 
     TypePackId clean(TypePackId tp) override
@@ -5410,8 +5408,7 @@ TypeId TypeChecker::freshType(const ScopePtr& scope)
 
 TypeId TypeChecker::freshType(TypeLevel level)
 {
-    return FFlag::LuauFreeTypesMustHaveBounds ? currentModule->internalTypes.freshType(builtinTypes, level)
-                                              : currentModule->internalTypes.addType(Type(FreeType(level)));
+    return currentModule->internalTypes.freshType(builtinTypes, level);
 }
 
 TypeId TypeChecker::singletonType(bool value)

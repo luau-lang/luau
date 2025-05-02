@@ -24,11 +24,13 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauUngeneralizedTypesForRecursiveFunctions)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauReduceUnionFollowUnionType)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
+LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -90,7 +92,7 @@ TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
     if (FFlag::LuauSolverV2)
     {
         const TypePackMismatch* tm = get<TypePackMismatch>(result.errors[0]);
-        REQUIRE(tm);
+        REQUIRE_MESSAGE(tm, "Expected TypeMismatch but got " << result.errors[0]);
         CHECK(toString(tm->wantedTp) == "number");
         CHECK(toString(tm->givenTp) == "boolean");
     }
@@ -3032,7 +3034,11 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
         auto tm2 = get<TypePackMismatch>(result.errors[1]);
         REQUIRE(tm2);
         CHECK(toString(tm2->wantedTp) == "string");
-        CHECK(toString(tm2->givenTp) == "~(false?)");
+
+        if (FFlag::DebugLuauGreedyGeneralization)
+            CHECK(toString(tm2->givenTp) == "unknown & ~(false?)");
+        else
+            CHECK(toString(tm2->givenTp) == "~(false?)");
     }
     else
     {
@@ -3213,12 +3219,13 @@ TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generali
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_unwind_mutually_recursive_union_type_func")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReduceUnionFollowUnionType, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDoNotAddUpvalueTypesToLocalType, true}};
 
-    // This block ends up minting a type like:
+    // Previously, this block minted a type like:
     //
     //  t2 where t1 = union<t2, t1> | union<t2, t1> | union<t2, t1> ; t2 = union<t2, t1>
     //
+    // ... due to how upvalues contributed to the locally inferred types.
     CheckResult result = check(R"(
         local _ = ...
         function _()
@@ -3226,12 +3233,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_unwind_mutually_recursive_union_type_func")
         end
         _[function(...) repeat until _(_[l100]) _ = _ end] += _
     )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    auto err0 = get<UnknownSymbol>(result.errors[0]);
-    CHECK(err0);
-    CHECK_EQ(err0->name, "l100");
-    auto err1 = get<NotATable>(result.errors[1]);
-    CHECK(err1);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_pack")

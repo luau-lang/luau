@@ -50,33 +50,6 @@ TypeId TypeArena::freshType(NotNull<BuiltinTypes> builtins, Scope* scope, TypeLe
     return allocated;
 }
 
-TypeId TypeArena::freshType_DEPRECATED(TypeLevel level)
-{
-    TypeId allocated = types.allocate(FreeType{level});
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-TypeId TypeArena::freshType_DEPRECATED(Scope* scope)
-{
-    TypeId allocated = types.allocate(FreeType{scope});
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-TypeId TypeArena::freshType_DEPRECATED(Scope* scope, TypeLevel level)
-{
-    TypeId allocated = types.allocate(FreeType{scope, level});
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
 TypePackId TypeArena::freshTypePack(Scope* scope, Polarity polarity)
 {
     TypePackId allocated = typePacks.allocate(FreeTypePack{scope, polarity});

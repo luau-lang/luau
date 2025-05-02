@@ -24,10 +24,6 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauParseErrorLimit)
-LUAU_FASTFLAG(LuauCloneIncrementalModule)
-
-LUAU_FASTFLAG(LuauMixedModeDefFinderTraversesTypeOf)
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauAutocompleteUsesModuleForTypeCompatibility)
@@ -72,8 +68,6 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 {
     static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
 
-    ScopedFastFlag luauFreeTypesMustHaveBounds{FFlag::LuauFreeTypesMustHaveBounds, true};
-    ScopedFastFlag luauCloneIncrementalModule{FFlag::LuauCloneIncrementalModule, true};
     ScopedFastFlag luauAllFreeTypesHaveScopes{FFlag::LuauAllFreeTypesHaveScopes, true};
     ScopedFastFlag luauClonedTableAndFunctionTypesMustHaveScopes{FFlag::LuauClonedTableAndFunctionTypesMustHaveScopes, true};
     ScopedFastFlag luauDisableNewSolverAssertsInMixedMode{FFlag::LuauDisableNewSolverAssertsInMixedMode, true};
@@ -1562,8 +1556,6 @@ return module)";
 
     {
         ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-        ScopedFastFlag sff2{FFlag::LuauCloneIncrementalModule, true};
-        ScopedFastFlag sff3{FFlag::LuauFreeTypesMustHaveBounds, true};
         checkAndExamine(source, "module", "{  }");
         fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
         fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
@@ -2782,7 +2774,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_ac_must_travers
     // This test ensures that we traverse typeof expressions for defs that are being referred to in the fragment
     // In this case, we want to ensure we populate the incremental environment with the reference to `m`
     // Without this, we would ice as we will refer to the local `m` before it's declaration
-    ScopedFastFlag sff{FFlag::LuauMixedModeDefFinderTraversesTypeOf, true};
     const std::string source = R"(
 --!strict
 local m = {}
@@ -2860,7 +2851,6 @@ type V = {h : number, i : U?}
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "generalization_crash_when_old_solver_freetypes_have_no_bounds_set")
 {
-    ScopedFastFlag sff{FFlag::LuauFreeTypesMustHaveBounds, true};
     const std::string source = R"(
 local UserInputService = game:GetService("UserInputService");
 
@@ -2892,7 +2882,6 @@ end)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
 {
-    ScopedFastFlag sff{FFlag::LuauCloneIncrementalModule, true};
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -2962,7 +2951,6 @@ return module)";
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_shouldnt_crash_on_cross_module_mutation")
 {
-    ScopedFastFlag sff{FFlag::LuauCloneIncrementalModule, true};
     const std::string source = R"(local module = {}
 function module.
 return module

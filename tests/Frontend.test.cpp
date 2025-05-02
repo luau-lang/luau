@@ -17,7 +17,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
-LUAU_FASTFLAG(LuauNewNonStrictVisitTypes)
+LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 
 namespace
 {
@@ -1015,7 +1015,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
     LUAU_REQUIRE_NO_ERRORS(resultA);
 
     CheckResult resultB = frontend.check("B");
-    if (FFlag::LuauSolverV2 && !FFlag::LuauNewNonStrictVisitTypes)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauNewNonStrictVisitTypes2)
         LUAU_REQUIRE_NO_ERRORS(resultB);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, resultB);

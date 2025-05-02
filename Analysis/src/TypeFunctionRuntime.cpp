@@ -15,6 +15,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunReadWriteParents)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
 
 namespace Luau
 {
@@ -313,6 +314,38 @@ static int getSingletonValue(lua_State* L)
     }
 
     luaL_error(L, "type.value: can't call `value` method on `%s` type", getTag(L, self).c_str());
+}
+
+// Luau: `types.optional(ty: type) -> type`
+// Returns the type instance representing an optional version of `ty`.
+// If `ty` is a union, this adds `nil` to the components of the union.
+// Otherwise, makes a union of the two things.
+static int createOptional(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::LuauTypeFunOptional);
+
+    int argumentCount = lua_gettop(L);
+    if (argumentCount != 1)
+        luaL_error(L, "types.optional: expected 1 argument, but got %d", argumentCount);
+
+    TypeFunctionTypeId argument = getTypeUserData(L, 1);
+
+    std::vector<TypeFunctionTypeId> components;
+
+    if (auto unionTy = get<TypeFunctionUnionType>(argument))
+    {
+        components.reserve(unionTy->components.size() + 1);
+
+        components.insert(components.begin(), unionTy->components.begin(), unionTy->components.end());
+    }
+    else
+        components.emplace_back(argument);
+
+    components.emplace_back(allocateTypeFunctionType(L, TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType)));
+
+    allocTypeUserData(L, TypeFunctionUnionType{components});
+
+    return 1;
 }
 
 // Luau: `types.unionof(...: type) -> type`
@@ -1524,6 +1557,7 @@ void registerTypesLibrary(lua_State* L)
         {"copy", deepCopy},
         {"generic", createGeneric},
 
+        {(FFlag::LuauTypeFunOptional) ? "optional" : nullptr, (FFlag::LuauTypeFunOptional) ? createOptional : nullptr},
         {nullptr, nullptr}
     };
 

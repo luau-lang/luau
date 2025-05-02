@@ -341,7 +341,10 @@ TEST_CASE("function_spaces_around_tokens")
 
 TEST_CASE("function_with_types_spaces_around_tokens")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true}
+    };
     std::string code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -392,9 +395,8 @@ TEST_CASE("function_with_types_spaces_around_tokens")
     code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any  ): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
-    //  TODO(CLI-139347): re-enable test once return type positions are supported
-    //    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any)   :string end )";
-    //    CHECK_EQ(code, transpile(code, {}, true).code);
+    code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any)   :string end )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any):    string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);

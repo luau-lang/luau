@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -472,7 +473,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::DebugLuauGreedyGeneralization)
+        CHECK("{ [number]: string | string | string, n: number }" == toString(requireType("t")));
+    else if (FFlag::LuauSolverV2)
         CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));
     else
         CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));

@@ -17,7 +17,7 @@
 
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAG(LuauNonStrictVisitorImprovements)
-LUAU_FASTFLAG(LuauNewNonStrictVisitTypes)
+LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 
 using namespace Luau;
 
@@ -668,7 +668,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict")
 {
-    ScopedFastFlag sff{FFlag::LuauNewNonStrictVisitTypes, true};
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictVisitTypes2, true};
 
     CheckResult result = check(Mode::Nonstrict, R"(
         --!nonstrict
@@ -683,7 +683,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict_2")
 {
-    ScopedFastFlag sff{FFlag::LuauNewNonStrictVisitTypes, true};
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictVisitTypes2, true};
 
     CheckResult result = check(Mode::Nonstrict, R"(
         --!nonstrict
@@ -705,6 +705,15 @@ end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "incomplete_function_annotation")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local x: () ->
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();
