@@ -18,6 +18,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAG(LuauMetatableTypeFunctions)
 LUAU_FASTFLAG(LuauMetatablesHaveLength)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauIndexAnyIsAny)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
@@ -1672,6 +1673,72 @@ print(test.a)
         toString(result.errors[0])
     );
     CHECK("Type 'add<string, string>' does not have key 'a'" == toString(result.errors[1]));
+}
+
+struct TFFixture
+{
+    TypeArena arena_;
+    NotNull<TypeArena> arena{&arena_};
+
+    BuiltinTypes builtinTypes_;
+    NotNull<BuiltinTypes> builtinTypes{&builtinTypes_};
+
+    ScopePtr globalScope = std::make_shared<Scope>(builtinTypes->anyTypePack);
+
+    InternalErrorReporter ice;
+    UnifierSharedState unifierState{&ice};
+    SimplifierPtr simplifier = EqSatSimplification::newSimplifier(arena, builtinTypes);
+    Normalizer normalizer{arena, builtinTypes, NotNull{&unifierState}};
+    TypeCheckLimits limits;
+    TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
+
+    const ScopedFastFlag sff[1] = {
+        {FFlag::DebugLuauGreedyGeneralization, true},
+    };
+
+    BuiltinTypeFunctions builtinTypeFunctions;
+
+    TypeFunctionContext tfc{
+        arena,
+        builtinTypes,
+        NotNull{globalScope.get()},
+        NotNull{simplifier.get()},
+        NotNull{&normalizer},
+        NotNull{&runtime},
+        NotNull{&ice},
+        NotNull{&limits}
+    };
+};
+
+TEST_CASE_FIXTURE(TFFixture, "refine<G, ~(false?)>")
+{
+    TypeId g = arena->addType(GenericType{globalScope.get(), Polarity::Negative});
+
+    TypeId refineTy = arena->addType(TypeFunctionInstanceType{
+        builtinTypeFunctions.refineFunc, {g, builtinTypes->truthyType}
+    });
+
+    FunctionGraphReductionResult res = reduceTypeFunctions(refineTy, Location{}, tfc);
+
+    CHECK(res.reducedTypes.size() == 1);
+
+    CHECK(res.errors.size() == 0);
+    CHECK(res.irreducibleTypes.size() == 0);
+    CHECK(res.blockedTypes.size() == 0);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "or<'a, 'b>")
+{
+    TypeId aType = arena->freshType(builtinTypes, globalScope.get());
+    TypeId bType = arena->freshType(builtinTypes, globalScope.get());
+
+    TypeId orType = arena->addType(TypeFunctionInstanceType{
+        builtinTypeFunctions.orFunc, {aType, bType}
+    });
+
+    FunctionGraphReductionResult res = reduceTypeFunctions(orType, Location{}, tfc);
+
+    CHECK(res.reducedTypes.size() == 1);
 }
 
 TEST_SUITE_END();

@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_FASTFLAG(LuauAstTypeGroup3)
-LUAU_FASTFLAG(LuauFixDoBlockEndLocation)
 LUAU_FASTFLAG(LuauParseOptionalAsNode2)
 LUAU_FASTFLAG(LuauFixFunctionWithAttributesStartLocation)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
@@ -706,8 +705,6 @@ struct Printer_DEPRECATED
             writer.keyword("do");
             for (const auto& s : block->body)
                 visualize(*s);
-            if (!FFlag::LuauFixDoBlockEndLocation)
-                writer.advance(block->location.end);
             writeEnd(program.location);
         }
         else if (const auto& a = program.as<AstStatIf>())
@@ -2323,8 +2320,6 @@ struct Printer
     {
         const auto cstNode = lookupCstNode<CstExprFunction>(&func);
 
-        // TODO(CLI-139347): need to handle return type (incl. parentheses of return type)
-
         if (func.generics.size > 0 || func.genericPacks.size > 0)
         {
             CommaSeparatorInserter comma(writer, cstNode ? cstNode->genericsCommaPositions.begin() : nullptr);
@@ -2395,12 +2390,18 @@ struct Printer
             if (cstNode)
                 advance(cstNode->returnSpecifierPosition);
             writer.symbol(":");
-            writer.space();
 
             if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+            {
+                if (!cstNode)
+                    writer.space();
                 visualizeTypePackAnnotation(*func.returnAnnotation, false, false);
+            }
             else
+            {
+                writer.space();
                 visualizeTypeList(*func.returnAnnotation_DEPRECATED, false);
+            }
         }
 
         visualizeBlock(*func.body);

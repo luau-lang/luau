@@ -10,23 +10,10 @@
 #include <optional>
 #include <utility>
 
-static constexpr char kRequireErrorAmbiguous[] = "require path could not be resolved to a unique file";
-static constexpr char kRequireErrorGeneric[] = "error requiring module";
-
 namespace Luau::Require
 {
 
 using Error = std::optional<std::string>;
-
-static Error toError(NavigationContext::NavigateResult result)
-{
-    if (result == NavigationContext::NavigateResult::Success)
-        return std::nullopt;
-    if (result == NavigationContext::NavigateResult::Ambiguous)
-        return kRequireErrorAmbiguous;
-    else
-        return kRequireErrorGeneric;
-}
 
 static std::string extractAlias(std::string_view path)
 {
@@ -53,7 +40,7 @@ Navigator::Status Navigator::navigate(std::string path)
 {
     std::replace(path.begin(), path.end(), '\\', '/');
 
-    if (Error error = toError(navigationContext.reset(navigationContext.getRequirerIdentifier())))
+    if (Error error = resetToRequirer())
     {
         errorHandler.reportError(*error);
         return Status::ErrorReported;
@@ -98,7 +85,7 @@ Error Navigator::navigateImpl(std::string_view path)
 
             // If the alias is "@self", we reset to the requirer's context and
             // navigate directly from there.
-            if (Error error = toError(navigationContext.reset(navigationContext.getRequirerIdentifier())))
+            if (Error error = resetToRequirer())
                 return error;
             if (Error error = navigateThroughPath(path))
                 return error;
@@ -114,7 +101,7 @@ Error Navigator::navigateImpl(std::string_view path)
 
     if (pathType == PathType::RelativeToCurrent || pathType == PathType::RelativeToParent)
     {
-        if (Error error = toError(navigationContext.toParent()))
+        if (Error error = navigateToParent(std::nullopt))
             return error;
         if (Error error = navigateThroughPath(path))
             return error;
@@ -133,6 +120,7 @@ Error Navigator::navigateThroughPath(std::string_view path)
         components = splitPath(components.second);
     }
 
+    std::optional<std::string> previousComponent;
     while (!(components.first.empty() && components.second.empty()))
     {
         if (components.first == "." || components.first.empty())
@@ -142,14 +130,15 @@ Error Navigator::navigateThroughPath(std::string_view path)
         }
         else if (components.first == "..")
         {
-            if (Error error = toError(navigationContext.toParent()))
+            if (Error error = navigateToParent(previousComponent))
                 return error;
         }
         else
         {
-            if (Error error = toError(navigationContext.toChild(std::string{components.first})))
+            if (Error error = navigateToChild(std::string{components.first}))
                 return error;
         }
+        previousComponent = components.first;
         components = splitPath(components.second);
     }
 
@@ -167,11 +156,11 @@ Error Navigator::navigateToAlias(const std::string& alias, const std::string& va
     }
     else if (pathType == PathType::Aliased)
     {
-        return "@" + alias + " cannot point to other aliases";
+        return "alias \"@" + alias + "\" cannot point to an aliased path (\"" + value + "\")";
     }
     else
     {
-        if (Error error = toError(navigationContext.jumpToAlias(value)))
+        if (Error error = jumpToAlias(value))
             return error;
     }
 
@@ -189,7 +178,7 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias)
         {
             std::optional<std::string> configContents = navigationContext.getConfig();
             if (!configContents)
-                return "could not get configuration file contents";
+                return "could not get configuration file contents to resolve alias \"" + desiredAlias + "\"";
 
             Luau::ConfigOptions opts;
             Luau::ConfigOptions::AliasOptions aliasOpts;
@@ -203,6 +192,58 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias)
     };
 
     return std::nullopt;
+}
+
+Error Navigator::resetToRequirer()
+{
+    NavigationContext::NavigateResult result = navigationContext.reset(navigationContext.getRequirerIdentifier());
+    if (result == NavigationContext::NavigateResult::Success)
+        return std::nullopt;
+
+    std::string errorMessage = "could not reset to requiring context";
+    if (result == NavigationContext::NavigateResult::Ambiguous)
+        errorMessage += " (ambiguous)";
+    return errorMessage;
+}
+
+Error Navigator::jumpToAlias(const std::string& aliasPath)
+{
+    NavigationContext::NavigateResult result = navigationContext.jumpToAlias(aliasPath);
+    if (result == NavigationContext::NavigateResult::Success)
+        return std::nullopt;
+
+    std::string errorMessage = "could not jump to alias \"" + aliasPath + "\"";
+    if (result == NavigationContext::NavigateResult::Ambiguous)
+        errorMessage += " (ambiguous)";
+    return errorMessage;
+}
+
+Error Navigator::navigateToParent(std::optional<std::string> previousComponent)
+{
+    NavigationContext::NavigateResult result = navigationContext.toParent();
+    if (result == NavigationContext::NavigateResult::Success)
+        return std::nullopt;
+
+    std::string errorMessage;
+    if (previousComponent)
+        errorMessage = "could not get parent of component \"" + *previousComponent + "\"";
+    else
+        errorMessage = "could not get parent of requiring context";
+    if (result == NavigationContext::NavigateResult::Ambiguous)
+        errorMessage += " (ambiguous)";
+    return errorMessage;
+}
+
+Error Navigator::navigateToChild(const std::string& component)
+{
+    NavigationContext::NavigateResult result = navigationContext.toChild(component);
+    if (result == NavigationContext::NavigateResult::Success)
+        return std::nullopt;
+
+    std::string errorMessage = "could not resolve child component \"" + component + "\"";
+    if (result == NavigationContext::NavigateResult::Ambiguous)
+        errorMessage += " (ambiguous)";
+    return errorMessage;
 }
 
 } // namespace Luau::Require

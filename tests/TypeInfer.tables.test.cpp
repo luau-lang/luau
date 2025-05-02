@@ -22,7 +22,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
-LUAU_FASTFLAG(LuauFollowTableFreeze)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
@@ -4723,10 +4722,10 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && !FFlag::DebugLuauGreedyGeneralization)
     {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(get<NotATable>(result.errors[0]));
+        LUAU_CHECK_ERROR_COUNT(1, result);
+        LUAU_CHECK_ERROR(result, NotATable);
         CHECK_EQ("(unknown, *error-type*) -> *error-type*", toString(requireType("foo")));
     }
     else
@@ -5335,7 +5334,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_musnt_assert")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauFollowTableFreeze, true},
     };
 
     auto result = check(R"(

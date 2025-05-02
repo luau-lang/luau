@@ -28,8 +28,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
-LUAU_FASTFLAGVARIABLE(LuauMixedModeDefFinderTraversesTypeOf)
-LUAU_FASTFLAGVARIABLE(LuauCloneIncrementalModule)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
@@ -737,7 +735,7 @@ struct MixedModeIncrementalTCDefFinder : public AstVisitor
         // requires that we find the local/global `m` and place it in the environment.
         // The default behaviour here is to return false, and have individual visitors override
         // the specific behaviour they need.
-        return FFlag::LuauMixedModeDefFinderTraversesTypeOf;
+        return true;
     }
 
     bool visit(AstStatTypeAlias* alias) override
@@ -1227,31 +1225,6 @@ ModulePtr cloneModule(CloneState& cloneState, const ModulePtr& source, std::uniq
     return incremental;
 }
 
-ModulePtr copyModule(const ModulePtr& result, std::unique_ptr<Allocator> alloc)
-{
-    ModulePtr incrementalModule = std::make_shared<Module>();
-    incrementalModule->name = result->name;
-    incrementalModule->humanReadableName = "Incremental$" + result->humanReadableName;
-    incrementalModule->internalTypes.owningModule = incrementalModule.get();
-    incrementalModule->interfaceTypes.owningModule = incrementalModule.get();
-    incrementalModule->allocator = std::move(alloc);
-    // Don't need to keep this alive (it's already on the source module)
-    copyModuleVec(incrementalModule->scopes, result->scopes);
-    copyModuleMap(incrementalModule->astTypes, result->astTypes);
-    copyModuleMap(incrementalModule->astTypePacks, result->astTypePacks);
-    copyModuleMap(incrementalModule->astExpectedTypes, result->astExpectedTypes);
-    // Don't need to clone astOriginalCallTypes
-    copyModuleMap(incrementalModule->astOverloadResolvedTypes, result->astOverloadResolvedTypes);
-    // Don't need to clone astForInNextTypes
-    copyModuleMap(incrementalModule->astForInNextTypes, result->astForInNextTypes);
-    // Don't need to clone astResolvedTypes
-    // Don't need to clone astResolvedTypePacks
-    // Don't need to clone upperBoundContributors
-    copyModuleMap(incrementalModule->astScopes, result->astScopes);
-    // Don't need to clone declared Globals;
-    return incrementalModule;
-}
-
 void mixedModeCompatibility(
     const ScopePtr& bottomScopeStale,
     const ScopePtr& myFakeScope,
@@ -1315,10 +1288,8 @@ FragmentTypeCheckResult typecheckFragmentHelper_DEPRECATED(
     ModulePtr incrementalModule = nullptr;
     if (FFlag::LuauAllFreeTypesHaveScopes)
         incrementalModule = cloneModule(cloneState, stale, std::move(astAllocator), freshChildOfNearestScope.get());
-    else if (FFlag::LuauCloneIncrementalModule)
-        incrementalModule = cloneModule_DEPRECATED(cloneState, stale, std::move(astAllocator));
     else
-        incrementalModule = copyModule(stale, std::move(astAllocator));
+        incrementalModule = cloneModule_DEPRECATED(cloneState, stale, std::move(astAllocator));
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneModuleEnd);
     incrementalModule->checkedInNewSolver = true;
@@ -1372,44 +1343,27 @@ FragmentTypeCheckResult typecheckFragmentHelper_DEPRECATED(
     };
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeStart);
-    if (FFlag::LuauCloneIncrementalModule)
-    {
-        incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
-        cg.rootScope = freshChildOfNearestScope.get();
+    incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
+    cg.rootScope = freshChildOfNearestScope.get();
 
-        if (FFlag::LuauAllFreeTypesHaveScopes)
-            cloneAndSquashScopes(
-                cloneState, closestScope.get(), stale, NotNull{&incrementalModule->internalTypes}, NotNull{&dfg}, root, freshChildOfNearestScope.get()
-            );
-        else
-            cloneAndSquashScopes_DEPRECATED(
-                cloneState, closestScope.get(), stale, NotNull{&incrementalModule->internalTypes}, NotNull{&dfg}, root, freshChildOfNearestScope.get()
-            );
-
-        reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeEnd);
-        cg.visitFragmentRoot(freshChildOfNearestScope, root);
-
-        if (FFlag::LuauPersistConstraintGenerationScopes)
-        {
-            for (auto p : cg.scopes)
-                incrementalModule->scopes.emplace_back(std::move(p));
-        }
-    }
+    if (FFlag::LuauAllFreeTypesHaveScopes)
+        cloneAndSquashScopes(
+            cloneState, closestScope.get(), stale, NotNull{&incrementalModule->internalTypes}, NotNull{&dfg}, root, freshChildOfNearestScope.get()
+        );
     else
+        cloneAndSquashScopes_DEPRECATED(
+            cloneState, closestScope.get(), stale, NotNull{&incrementalModule->internalTypes}, NotNull{&dfg}, root, freshChildOfNearestScope.get()
+        );
+
+    reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeEnd);
+    cg.visitFragmentRoot(freshChildOfNearestScope, root);
+
+    if (FFlag::LuauPersistConstraintGenerationScopes)
     {
-        // Any additions to the scope must occur in a fresh scope
-        cg.rootScope = stale->getModuleScope().get();
-        incrementalModule->scopes.emplace_back(root->location, freshChildOfNearestScope);
-        mixedModeCompatibility(closestScope, freshChildOfNearestScope, stale, NotNull{&dfg}, root);
-        // closest Scope -> children = { ...., freshChildOfNearestScope}
-        // We need to trim nearestChild from the scope hierarchy
-        closestScope->children.emplace_back(freshChildOfNearestScope.get());
-        cg.visitFragmentRoot(freshChildOfNearestScope, root);
-        // Trim nearestChild from the closestScope
-        Scope* back = closestScope->children.back().get();
-        LUAU_ASSERT(back == freshChildOfNearestScope.get());
-        closestScope->children.pop_back();
+        for (auto p : cg.scopes)
+            incrementalModule->scopes.emplace_back(std::move(p));
     }
+
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverStart);
 
     if (FFlag::LuauAllFreeTypesHaveScopes)

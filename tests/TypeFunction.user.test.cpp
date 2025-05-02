@@ -15,7 +15,6 @@ LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
 LUAU_FASTFLAG(LuauNoTypeFunctionsNamedTypeOf)
 
-
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_nil_serialization_works")
@@ -368,6 +367,43 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_serialization_works")
     TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
     REQUIRE(tpm);
     CHECK(toString(tpm->givenTp) == "boolean | number | string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optional_works")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        type function numberhuh()
+            return types.optional(types.number)
+        end
+        -- forcing an error here to check the exact type of the union
+        local function ok(idx: numberhuh<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK(toString(tpm->givenTp) == "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optional_works_on_unions")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            local ty = types.unionof(types.string, types.number, types.boolean)
+            return types.optional(ty)
+        end
+        -- forcing an error here to check the exact type of the union
+        local function ok(idx: foobar<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK(toString(tpm->givenTp) == "(boolean | number | string)?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")

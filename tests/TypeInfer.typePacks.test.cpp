@@ -13,6 +13,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -96,7 +97,10 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
+    if (FFlag::DebugLuauGreedyGeneralization)
+        CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
+    else
+        CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")

@@ -1249,8 +1249,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "bill")
     CHECK(isSubtype(b, a).isSubtype);
 }
 
-// TEST_CASE_FIXTURE(SubtypeFixture, "({[string]: number, a: string}) -> () <: ({[string]: number, a: string}) -> ()")
-TEST_CASE_FIXTURE(SubtypeFixture, "fred")
+TEST_CASE_FIXTURE(SubtypeFixture, "({[string]: number, a: string}) -> () <: ({[string]: number, a: string}) -> ()")
 {
     auto makeTheType = [&]()
     {

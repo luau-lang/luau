@@ -475,26 +475,26 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw("}");
     }
 
-    void write(const AstGenericType& genericType)
+    void write(class AstGenericType* genericType)
     {
         writeRaw("{");
         bool c = pushComma();
         writeType("AstGenericType");
-        write("name", genericType.name);
-        if (genericType.defaultValue)
-            write("luauType", genericType.defaultValue);
+        write("name", genericType->name);
+        if (genericType->defaultValue)
+            write("luauType", genericType->defaultValue);
         popComma(c);
         writeRaw("}");
     }
 
-    void write(const AstGenericTypePack& genericTypePack)
+    void write(class AstGenericTypePack* genericTypePack)
     {
         writeRaw("{");
         bool c = pushComma();
         writeType("AstGenericTypePack");
-        write("name", genericTypePack.name);
-        if (genericTypePack.defaultValue)
-            write("luauType", genericTypePack.defaultValue);
+        write("name", genericTypePack->name);
+        if (genericTypePack->defaultValue)
+            write("luauType", genericTypePack->defaultValue);
         popComma(c);
         writeRaw("}");
     }

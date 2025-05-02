@@ -17,7 +17,8 @@ LUAU_FASTFLAGVARIABLE(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackTrueReset)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
-
+LUAU_FASTFLAGVARIABLE(LuauDoNotAddUpvalueTypesToLocalType)
+LUAU_FASTFLAGVARIABLE(LuauDfgIfBlocksShouldRespectControlFlow)
 namespace Luau
 {
 
@@ -501,12 +502,26 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
     }
 
     DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
-    if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
-        join(scope, scope, elseScope);
-    else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
-        join(scope, thenScope, scope);
-    else if ((thencf | elsecf) == ControlFlow::None)
-        join(scope, thenScope, elseScope);
+    if (FFlag::LuauDfgIfBlocksShouldRespectControlFlow)
+    {
+        // If the control flow from the `if` or `else` block is non-linear,
+        // then we should assume that the _other_ branch is the one taken.
+        if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
+            scope->inherit(elseScope);
+        else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
+            scope->inherit(thenScope);
+        else if ((thencf | elsecf) == ControlFlow::None)
+            join(scope, thenScope, elseScope);
+    }
+    else
+    {
+        if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
+            join(scope, scope, elseScope);
+        else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
+            join(scope, thenScope, scope);
+        else if ((thencf | elsecf) == ControlFlow::None)
+            join(scope, thenScope, elseScope);
+    }
 
     if (thencf == elsecf)
         return thencf;
@@ -1164,7 +1179,7 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)
     DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
 
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
-    if (scope->canUpdateDefinition(l->local))
+    if (scope->canUpdateDefinition(l->local) && !(FFlag::LuauDoNotAddUpvalueTypesToLocalType && l->upvalue))
     {
         DefId updated = defArena->freshCell(l->local, l->location, containsSubscriptedDefinition(incomingDef));
         scope->bindings[l->local] = updated;

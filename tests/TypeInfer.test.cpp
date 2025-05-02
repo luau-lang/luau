@@ -2024,7 +2024,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving"
     LUAU_REQUIRE_NO_ERROR(results, ConstraintSolvingIncompleteError);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "konnichiwa" * doctest::timeout(0.25))
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_unification_aborts_eventually" * doctest::timeout(0.25))
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, false},

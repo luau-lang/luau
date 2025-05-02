@@ -106,7 +106,9 @@ struct luarequire_Configuration
     luarequire_WriteResult (*get_config)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
 
     // Executes the module and places the result on the stack. Returns the
-    // number of results placed on the stack.
+    // number of results placed on the stack. Returning -1 directs the requiring
+    // thread to yield. In this case, this thread should be resumed with the
+    // module result pushed onto its stack.
     int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* contents);
 };
 
@@ -130,3 +132,10 @@ LUALIB_API int luarequire_pushproxyrequire(lua_State* L, luarequire_Configuratio
 // result will always be immediately returned when the given path is required.
 // Expects the path and table to be passed as arguments on the stack.
 LUALIB_API int luarequire_registermodule(lua_State* L);
+
+// Clears the entry associated with the given cache key from the require cache.
+// Expects the cache key to be passed as an argument on the stack.
+LUALIB_API int luarequire_clearcacheentry(lua_State* L);
+
+// Clears all entries from the require cache.
+LUALIB_API int luarequire_clearcache(lua_State* L);

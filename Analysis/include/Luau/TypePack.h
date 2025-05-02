@@ -185,6 +185,8 @@ TypePackIterator begin(TypePackId tp);
 TypePackIterator begin(TypePackId tp, const TxnLog* log);
 TypePackIterator end(TypePackId tp);
 
+TypePackId getTail(TypePackId tp);
+
 using SeenSet = std::set<std::pair<const void*, const void*>>;
 
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);

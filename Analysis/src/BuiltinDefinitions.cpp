@@ -32,7 +32,6 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
-LUAU_FASTFLAGVARIABLE(LuauFollowTableFreeze)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked)
 LUAU_FASTFLAGVARIABLE(LuauFormatUseLastPosition)
@@ -1550,8 +1549,7 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
 static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCallContext& context)
 {
     TypeArena* arena = context.solver->arena;
-    if (FFlag::LuauFollowTableFreeze)
-        inputType = follow(inputType);
+    inputType = follow(inputType);
     if (auto mt = get<MetatableType>(inputType))
     {
         std::optional<TypeId> frozenTable = freezeTable(mt->table, context);

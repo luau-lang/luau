@@ -506,31 +506,6 @@ FreeType::FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId uppe
 {
 }
 
-// Old constructors
-FreeType::FreeType(TypeLevel level)
-    : index(Unifiable::freshIndex())
-    , level(level)
-    , scope(nullptr)
-{
-    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
-}
-
-FreeType::FreeType(Scope* scope)
-    : index(Unifiable::freshIndex())
-    , level{}
-    , scope(scope)
-{
-    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
-}
-
-FreeType::FreeType(Scope* scope, TypeLevel level)
-    : index(Unifiable::freshIndex())
-    , level(level)
-    , scope(scope)
-{
-    LUAU_ASSERT(!FFlag::LuauFreeTypesMustHaveBounds);
-}
-
 GenericType::GenericType()
     : index(Unifiable::freshIndex())
     , name("g" + std::to_string(index))

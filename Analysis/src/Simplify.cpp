@@ -6,6 +6,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Set.h"
+#include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/TypeUtils.h"
@@ -17,6 +18,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_FASTFLAGVARIABLE(LuauSimplificationRecheckAssumption)
 LUAU_FASTFLAGVARIABLE(LuauOptimizeFalsyAndTruthyIntersect)
+LUAU_FASTFLAGVARIABLE(LuauSimplificationTableExternType)
 
 namespace Luau
 {
@@ -316,12 +318,14 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     {
         if (get<AnyType>(right))
             return Relation::Subset;
-        else if (get<UnknownType>(right))
+
+        if (get<UnknownType>(right))
             return Relation::Coincident;
-        else if (get<ErrorType>(right))
+
+        if (get<ErrorType>(right))
             return Relation::Disjoint;
-        else
-            return Relation::Superset;
+
+        return Relation::Superset;
     }
 
     if (get<UnknownType>(right))
@@ -331,8 +335,8 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     {
         if (get<AnyType>(right))
             return Relation::Coincident;
-        else
-            return Relation::Superset;
+
+        return Relation::Superset;
     }
 
     if (get<AnyType>(right))
@@ -364,26 +368,33 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     if (isTypeVariable(left) || isTypeVariable(right))
         return Relation::Intersects;
 
+    if (FFlag::LuauSimplificationTableExternType)
+    {
+        // if either type is a type function, we cannot know if they'll be related.
+        if (get<TypeFunctionInstanceType>(left) || get<TypeFunctionInstanceType>(right))
+            return Relation::Intersects;
+    }
+
     if (get<ErrorType>(left))
     {
         if (get<ErrorType>(right))
             return Relation::Coincident;
         else if (get<AnyType>(right))
             return Relation::Subset;
-        else
-            return Relation::Disjoint;
+
+        return Relation::Disjoint;
     }
-    if (get<ErrorType>(right))
+    else if (get<ErrorType>(right))
         return flip(relate(right, left, seen));
 
     if (get<NeverType>(left))
     {
         if (get<NeverType>(right))
             return Relation::Coincident;
-        else
-            return Relation::Subset;
+
+        return Relation::Subset;
     }
-    if (get<NeverType>(right))
+    else if (get<NeverType>(right))
         return flip(relate(right, left, seen));
 
     if (auto ut = get<IntersectionType>(left))
@@ -447,33 +458,34 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         {
             if (lp->type == rp->type)
                 return Relation::Coincident;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
 
         if (auto rs = get<SingletonType>(right))
         {
             if (lp->type == PrimitiveType::String && rs->variant.get_if<StringSingleton>())
                 return Relation::Superset;
-            else if (lp->type == PrimitiveType::Boolean && rs->variant.get_if<BooleanSingleton>())
+
+            if (lp->type == PrimitiveType::Boolean && rs->variant.get_if<BooleanSingleton>())
                 return Relation::Superset;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
 
         if (lp->type == PrimitiveType::Function)
         {
             if (get<FunctionType>(right))
                 return Relation::Superset;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
         if (lp->type == PrimitiveType::Table)
         {
             if (get<TableType>(right))
                 return Relation::Superset;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
 
         if (get<FunctionType>(right) || get<TableType>(right) || get<MetatableType>(right) || get<ExternType>(right))
@@ -487,12 +499,13 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
 
         if (get<PrimitiveType>(right))
             return flip(relate(right, left, seen));
+
         if (auto rs = get<SingletonType>(right))
         {
             if (ls->variant == rs->variant)
                 return Relation::Coincident;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
     }
 
@@ -502,11 +515,11 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         {
             if (rp->type == PrimitiveType::Function)
                 return Relation::Subset;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
-        else
-            return Relation::Intersects;
+
+        return Relation::Intersects;
     }
 
     if (auto lt = get<TableType>(left))
@@ -515,10 +528,11 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         {
             if (rp->type == PrimitiveType::Table)
                 return Relation::Subset;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
-        else if (auto rt = get<TableType>(right))
+
+        if (auto rt = get<TableType>(right))
         {
             // TODO PROBABLY indexers and metatables.
             if (1 == rt->props.size())
@@ -538,14 +552,42 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
                  */
                 if (lt->props.size() > 1 && r == Relation::Superset)
                     return Relation::Intersects;
-                else
-                    return r;
+
+                return r;
             }
-            else if (1 == lt->props.size())
+
+            if (1 == lt->props.size())
                 return flip(relate(right, left, seen));
-            else
-                return Relation::Intersects;
+
+            return Relation::Intersects;
         }
+
+        if (FFlag::LuauSimplificationTableExternType)
+        {
+            if (auto re = get<ExternType>(right))
+            {
+                Relation overall = Relation::Coincident;
+
+                for (auto& [name, prop] : lt->props)
+                {
+                    if (auto propInExternType = re->props.find(name); propInExternType != re->props.end())
+                    {
+                        Relation propRel = relate(prop.type(), propInExternType->second.type());
+
+                        if (propRel == Relation::Disjoint)
+                            return Relation::Disjoint;
+
+                        if (propRel == Relation::Coincident)
+                            continue;
+
+                        overall = Relation::Intersects;
+                    }
+                }
+
+                return overall;
+            }
+        }
+
         // TODO metatables
 
         return Relation::Disjoint;
@@ -557,10 +599,11 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         {
             if (isSubclass(ct, rct))
                 return Relation::Subset;
-            else if (isSubclass(rct, ct))
+
+            if (isSubclass(rct, ct))
                 return Relation::Superset;
-            else
-                return Relation::Disjoint;
+
+            return Relation::Disjoint;
         }
 
         return Relation::Disjoint;
