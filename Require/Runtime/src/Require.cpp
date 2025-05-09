@@ -21,10 +21,10 @@ static void validateConfig(lua_State* L, const luarequire_Configuration& config)
         luaL_error(L, "require configuration is missing required function pointer: to_child");
     if (!config.is_module_present)
         luaL_error(L, "require configuration is missing required function pointer: is_module_present");
-    if (!config.get_contents)
-        luaL_error(L, "require configuration is missing required function pointer: get_contents");
     if (!config.get_chunkname)
         luaL_error(L, "require configuration is missing required function pointer: get_chunkname");
+    if (!config.get_loadname)
+        luaL_error(L, "require configuration is missing required function pointer: get_loadname");
     if (!config.get_cache_key)
         luaL_error(L, "require configuration is missing required function pointer: get_cache_key");
     if (!config.is_config_present)

@@ -31,7 +31,6 @@ extern int optimizationLevel;
 void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
-LUAU_FASTFLAG(LuauLibWhereErrorAutoreserve)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
@@ -1942,8 +1941,6 @@ int slowlyOverflowStack(lua_State* L)
 
 TEST_CASE("ApiStack")
 {
-    ScopedFastFlag luauLibWhereErrorAutoreserve{FFlag::LuauLibWhereErrorAutoreserve, true};
-
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 

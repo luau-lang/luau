@@ -62,14 +62,14 @@ bool RuntimeNavigationContext::isModulePresent() const
     return config->is_module_present(L, ctx);
 }
 
-std::optional<std::string> RuntimeNavigationContext::getContents() const
-{
-    return getStringFromCWriter(config->get_contents, initalFileBufferSize);
-}
-
 std::optional<std::string> RuntimeNavigationContext::getChunkname() const
 {
     return getStringFromCWriter(config->get_chunkname, initalIdentifierBufferSize);
+}
+
+std::optional<std::string> RuntimeNavigationContext::getLoadname() const
+{
+    return getStringFromCWriter(config->get_loadname, initalIdentifierBufferSize);
 }
 
 std::optional<std::string> RuntimeNavigationContext::getCacheKey() const

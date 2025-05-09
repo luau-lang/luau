@@ -29,8 +29,8 @@ struct ResolvedRequire
     };
 
     Status status;
-    std::string contents;
     std::string chunkname;
+    std::string loadname;
     std::string cacheKey;
 };
 
@@ -89,17 +89,17 @@ static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* 
         return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
     }
 
-    std::optional<std::string> contents = navigationContext.getContents();
-    if (!contents)
+    std::optional<std::string> loadname = navigationContext.getLoadname();
+    if (!loadname)
     {
-        errorHandler.reportError("could not get contents for module");
+        errorHandler.reportError("could not get loadname for module");
         return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
     }
 
     return ResolvedRequire{
         ResolvedRequire::Status::ModuleRead,
-        std::move(*contents),
         std::move(*chunkname),
+        std::move(*loadname),
         std::move(*cacheKey),
     };
 }
@@ -121,9 +121,9 @@ static int checkRegisteredModules(lua_State* L, const char* path)
 int lua_requirecont(lua_State* L, int status)
 {
     // Number of stack arguments present before this continuation is called.
-    const int numStackArgs = 2;
+    const int numStackArgs = lua_tointeger(L, 1);
     const int numResults = lua_gettop(L) - numStackArgs;
-    const char* cacheKey = luaL_checkstring(L, 2);
+    const char* cacheKey = luaL_checkstring(L, numStackArgs);
 
     if (numResults > 1)
         luaL_error(L, "module must return a single value");
@@ -152,6 +152,8 @@ int lua_requirecont(lua_State* L, int status)
 
 int lua_requireinternal(lua_State* L, const char* requirerChunkname)
 {
+    int stackTop = lua_gettop(L);
+
     // If modifying the state of the stack, please update numStackArgs in the
     // lua_requirecont continuation function.
 
@@ -171,11 +173,15 @@ int lua_requireinternal(lua_State* L, const char* requirerChunkname)
     if (resolvedRequire.status == ResolvedRequire::Status::Cached)
         return 1;
 
-    // (1) path, (2) cacheKey
+    // (1) path, ..., cacheKey
     lua_pushstring(L, resolvedRequire.cacheKey.c_str());
 
-    int numArgsBeforeLoad = lua_gettop(L);
-    int numResults = lrc->load(L, ctx, path, resolvedRequire.chunkname.c_str(), resolvedRequire.contents.c_str());
+    // Insert number of arguments before the continuation to check the results.
+    int numArgsBeforeLoad = stackTop + 2;
+    lua_pushinteger(L, numArgsBeforeLoad);
+    lua_insert(L, 1);
+
+    int numResults = lrc->load(L, ctx, path, resolvedRequire.chunkname.c_str(), resolvedRequire.loadname.c_str());
     if (numResults == -1)
     {
         if (lua_gettop(L) != numArgsBeforeLoad)

@@ -37,7 +37,6 @@ LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 LUAU_FASTFLAGVARIABLE(LuauStatForInFix)
 LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
-LUAU_FASTFLAGVARIABLE(LuauLimitIterationWhenCheckingArgumentCounts)
 
 namespace Luau
 {
@@ -4120,15 +4119,12 @@ void TypeChecker::checkArgumentList(
     int loopCount = 0;
     auto exceedsLoopCount = [&]()
     {
-        if (FFlag::LuauLimitIterationWhenCheckingArgumentCounts)
+        ++loopCount;
+        if (loopCount > FInt::LuauTypeInferTypePackLoopLimit)
         {
-            ++loopCount;
-            if (loopCount > FInt::LuauTypeInferTypePackLoopLimit)
-            {
-                state.reportError(TypeError{state.location, CodeTooComplex{}});
-                reportErrorCodeTooComplex(state.location);
-                return true;
-            }
+            state.reportError(TypeError{state.location, CodeTooComplex{}});
+            reportErrorCodeTooComplex(state.location);
+            return true;
         }
 
         return false;

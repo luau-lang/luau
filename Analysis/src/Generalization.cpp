@@ -1627,6 +1627,10 @@ void pruneUnnecessaryGenerics(
                 return true;
             seen.insert(ty);
 
+            auto state = counter.generics.find(ty);
+            if (state && state->count == 0)
+                return true;
+
             return !get<GenericType>(ty);
         }
     );
@@ -1649,6 +1653,10 @@ void pruneUnnecessaryGenerics(
             if (seen2.contains(tp))
                 return true;
             seen2.insert(tp);
+
+            auto state = counter.genericPacks.find(tp);
+            if (state && state->count == 0)
+                return true;
 
             return !get<GenericTypePack>(tp);
         }

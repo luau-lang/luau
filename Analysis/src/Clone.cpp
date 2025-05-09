@@ -14,7 +14,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
 LUAU_FASTFLAGVARIABLE(LuauClonedTableAndFunctionTypesMustHaveScopes)
 LUAU_FASTFLAGVARIABLE(LuauDoNotClonePersistentBindings)
-LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
 namespace Luau
 {
 
@@ -549,11 +548,6 @@ public:
     void cloneChildren(LazyType* t) override
     {
         // Do not clone lazy types
-        if (!FFlag::LuauIncrementalAutocompleteDemandBasedCloning)
-        {
-            if (auto unwrapped = t->unwrapped.load())
-                t->unwrapped.store(shallowClone(unwrapped));
-        }
     }
 };
 

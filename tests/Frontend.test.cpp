@@ -16,40 +16,10 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 
 namespace
 {
-
-struct NaiveModuleResolver : ModuleResolver
-{
-    std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override
-    {
-        if (auto name = pathExprToModuleName(currentModuleName, pathExpr))
-            return {{*name, false}};
-
-        return std::nullopt;
-    }
-
-    const ModulePtr getModule(const ModuleName& moduleName) const override
-    {
-        return nullptr;
-    }
-
-    bool moduleExists(const ModuleName& moduleName) const override
-    {
-        return false;
-    }
-
-    std::string getHumanReadableModuleName(const ModuleName& moduleName) const override
-    {
-        return moduleName;
-    }
-};
-
-NaiveModuleResolver naiveModuleResolver;
-
 struct NaiveFileResolver : NullFileResolver
 {
     std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override
@@ -920,7 +890,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     // When this test fails, it is because the TypeIds needed by the error have been deallocated.
     // It is thus basically impossible to predict what will happen when this assert is evaluated.
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
     {
         REQUIRE_EQ(
             "Type\n\t"
@@ -930,14 +900,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
             toString(result.errors[0])
         );
     }
-    else if (FFlag::LuauSolverV2)
-        REQUIRE_EQ(
-            R"(Type
-    '{ count: string }'
-could not be converted into
-    '{ Count: number }')",
-            toString(result.errors[0])
-        );
     else
         REQUIRE_EQ(
             "Table type 'a' not compatible with type '{| Count: number |}' because the former is missing field 'Count'", toString(result.errors[0])

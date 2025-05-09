@@ -3,7 +3,6 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauDeprecatedAttribute);
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace Luau
@@ -11,8 +10,6 @@ namespace Luau
 
 static bool hasAttributeInArray(const AstArray<AstAttr*> attributes, AstAttr::Type attributeType)
 {
-    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
-
     for (const auto attribute : attributes)
     {
         if (attribute->type == attributeType)
@@ -338,8 +335,6 @@ bool AstExprFunction::hasNativeAttribute() const
 
 bool AstExprFunction::hasAttribute(const AstAttr::Type attributeType) const
 {
-    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
-
     return hasAttributeInArray(attributes, attributeType);
 }
 
@@ -1026,8 +1021,6 @@ bool AstStatDeclareFunction::isCheckedFunction() const
 
 bool AstStatDeclareFunction::hasAttribute(AstAttr::Type attributeType) const
 {
-    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
-
     return hasAttributeInArray(attributes, attributeType);
 }
 
@@ -1244,8 +1237,6 @@ bool AstTypeFunction::isCheckedFunction() const
 
 bool AstTypeFunction::hasAttribute(AstAttr::Type attributeType) const
 {
-    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
-
     return hasAttributeInArray(attributes, attributeType);
 }
 

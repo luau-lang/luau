@@ -42,7 +42,6 @@ LUAU_FASTFLAGVARIABLE(LuauUngeneralizedTypesForRecursiveFunctions)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauRetainDefinitionAliasLocations)
 
-LUAU_FASTFLAG(LuauDeprecatedAttribute)
 LUAU_FASTFLAGVARIABLE(LuauCacheInferencePerAstExpr)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysResolveAstTypes)
 LUAU_FASTFLAGVARIABLE(LuauWeakNilRefinementType)
@@ -52,6 +51,7 @@ LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAGVARIABLE(LuauNoTypeFunctionsNamedTypeOf)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
+LUAU_FASTFLAGVARIABLE(LuauAvoidDoubleNegation)
 
 namespace Luau
 {
@@ -288,7 +288,9 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
         GeneralizationConstraint{
             result,
             moduleFnTy,
-            std::vector<TypeId>{},
+            /*interiorTypes*/ std::vector<TypeId>{},
+            /*hasDeprecatedAttribute*/ false,
+            /*noGenerics*/ true
         }
     );
 
@@ -573,7 +575,17 @@ void ConstraintGenerator::computeRefinement(
 
         // if we have a negative sense, then we need to negate the discriminant
         if (!sense)
-            discriminantTy = arena->addType(NegationType{discriminantTy});
+        {
+            if (FFlag::LuauAvoidDoubleNegation)
+            {
+                if (auto nt = get<NegationType>(follow(discriminantTy)))
+                    discriminantTy = nt->ty;
+                else
+                    discriminantTy = arena->addType(NegationType{discriminantTy});
+            }
+            else
+                discriminantTy = arena->addType(NegationType{discriminantTy});
+        }
 
         if (eq)
             discriminantTy = createTypeFunctionInstance(builtinTypeFunctions().singletonFunc, {discriminantTy}, {}, scope, location);
@@ -1377,7 +1389,6 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatRepeat* rep
 
 static void propagateDeprecatedAttributeToConstraint(ConstraintV& c, const AstExprFunction* func)
 {
-    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
     if (GeneralizationConstraint* genConstraint = c.get_if<GeneralizationConstraint>())
     {
         genConstraint->hasDeprecatedAttribute = func->hasAttribute(AstAttr::Type::Deprecated);
@@ -1386,7 +1397,6 @@ static void propagateDeprecatedAttributeToConstraint(ConstraintV& c, const AstEx
 
 static void propagateDeprecatedAttributeToType(TypeId signature, const AstExprFunction* func)
 {
-    LUAU_ASSERT(FFlag::LuauDeprecatedAttribute);
     FunctionType* fty = getMutable<FunctionType>(signature);
     LUAU_ASSERT(fty);
     fty->isDeprecatedFunction = func->hasAttribute(AstAttr::Type::Deprecated);
@@ -1429,8 +1439,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
         std::unique_ptr<Constraint> c =
             std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
-        if (FFlag::LuauDeprecatedAttribute)
-            propagateDeprecatedAttributeToConstraint(c->c, function->func);
+        propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
         Constraint* previous = nullptr;
         forEachConstraint(
@@ -1457,8 +1466,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     else
     {
         module->astTypes[function->func] = sig.signature;
-        if (FFlag::LuauDeprecatedAttribute)
-            propagateDeprecatedAttributeToType(sig.signature, function->func);
+        propagateDeprecatedAttributeToType(sig.signature, function->func);
     }
 
     return ControlFlow::None;
@@ -1502,8 +1510,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     if (sigFullyDefined)
     {
         emplaceType<BoundType>(asMutable(generalizedType), sig.signature);
-        if (FFlag::LuauDeprecatedAttribute)
-            propagateDeprecatedAttributeToType(sig.signature, function->func);
+        propagateDeprecatedAttributeToType(sig.signature, function->func);
     }
     else
     {
@@ -1512,8 +1519,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
         NotNull<Constraint> c = addConstraint(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
         getMutable<BlockedType>(generalizedType)->setOwner(c);
 
-        if (FFlag::LuauDeprecatedAttribute)
-            propagateDeprecatedAttributeToConstraint(c->c, function->func);
+        propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
         Constraint* previous = nullptr;
         forEachConstraint(
@@ -2054,8 +2060,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
 
     FunctionType* ftv = getMutable<FunctionType>(fnType);
     ftv->isCheckedFunction = global->isCheckedFunction();
-    if (FFlag::LuauDeprecatedAttribute)
-        ftv->isDeprecatedFunction = global->hasAttribute(AstAttr::Type::Deprecated);
+    ftv->isDeprecatedFunction = global->hasAttribute(AstAttr::Type::Deprecated);
 
     ftv->argNames.reserve(global->paramNames.size);
     for (const auto& el : global->paramNames)
@@ -3710,8 +3715,7 @@ TypeId ConstraintGenerator::resolveFunctionType(
     // how to quantify/instantiate it.
     FunctionType ftv{TypeLevel{}, {}, {}, argTypes, returnTypes};
     ftv.isCheckedFunction = fn->isCheckedFunction();
-    if (FFlag::LuauDeprecatedAttribute)
-        ftv.isDeprecatedFunction = fn->hasAttribute(AstAttr::Type::Deprecated);
+    ftv.isDeprecatedFunction = fn->hasAttribute(AstAttr::Type::Deprecated);
 
     // This replicates the behavior of the appropriate FunctionType
     // constructors.

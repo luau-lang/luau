@@ -17,8 +17,6 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAstTypeGroup3)
-LUAU_FASTFLAG(LuauParseOptionalAsNode2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauParseStringIndexer)
 LUAU_FASTFLAG(LuauFixFunctionWithAttributesStartLocation)
@@ -457,10 +455,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_is_an_intersection_type_if_led_with_one_
         returnAnnotation = annotation->returnTypes_DEPRECATED.types.data[0]->as<AstTypeIntersection>();
     }
     REQUIRE(returnAnnotation != nullptr);
-    if (FFlag::LuauAstTypeGroup3)
-        CHECK(returnAnnotation->types.data[0]->as<AstTypeGroup>());
-    else
-        CHECK(returnAnnotation->types.data[0]->as<AstTypeReference>());
+    CHECK(returnAnnotation->types.data[0]->as<AstTypeGroup>());
     CHECK(returnAnnotation->types.data[1]->as<AstTypeFunction>());
 }
 
@@ -2780,8 +2775,6 @@ TEST_CASE_FIXTURE(Fixture, "leading_union_intersection_with_single_type_preserve
 
 TEST_CASE_FIXTURE(Fixture, "parse_simple_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup3, true};
-
     AstStatBlock* stat = parse(R"(
         type Foo = (string)
     )");
@@ -2798,8 +2791,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_simple_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup3, true};
-
     AstStatBlock* stat = parse(R"(
         type Foo = ((string))
     )");
@@ -2819,8 +2810,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
 {
-    ScopedFastFlag _{FFlag::LuauAstTypeGroup3, true};
-
     AstStatBlock* stat = parse(R"(
         type Foo = () -> (string)
     )");
@@ -4206,18 +4195,10 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     auto unionTy = paramTy.type->as<AstTypeUnion>();
     LUAU_ASSERT(unionTy);
     CHECK_EQ(unionTy->types.size, 2);
-    if (FFlag::LuauAstTypeGroup3)
-    {
-        auto groupTy = unionTy->types.data[0]->as<AstTypeGroup>(); // (() -> ())
-        REQUIRE(groupTy);
-        CHECK(groupTy->type->is<AstTypeFunction>()); // () -> ()
-    }
-    else
-        CHECK(unionTy->types.data[0]->is<AstTypeFunction>()); // () -> ()
-    if (FFlag::LuauParseOptionalAsNode2)
-        CHECK(unionTy->types.data[1]->is<AstTypeOptional>()); // ?
-    else
-        CHECK(unionTy->types.data[1]->is<AstTypeReference>()); // nil
+    auto groupTy = unionTy->types.data[0]->as<AstTypeGroup>(); // (() -> ())
+    REQUIRE(groupTy);
+    CHECK(groupTy->type->is<AstTypeFunction>()); // () -> ()
+    CHECK(unionTy->types.data[1]->is<AstTypeOptional>()); // ?
 }
 
 TEST_CASE_FIXTURE(Fixture, "complex_union_in_generic_ty")

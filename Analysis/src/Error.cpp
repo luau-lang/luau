@@ -133,10 +133,7 @@ struct ErrorConverter
             size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
             if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
                 return "Type " + given + " could not be converted into " + wanted;
-            if (FFlag::LuauImproveTypePathsInErrors)
-                return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
-            else
-                return "Type\n    " + given + "\ncould not be converted into\n    " + wanted;
+            return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
         };
 
         if (givenTypeName == wantedTypeName)

@@ -83,14 +83,14 @@ struct luarequire_Configuration
     // Returns whether the context is currently pointing at a module.
     bool (*is_module_present)(lua_State* L, void* ctx);
 
-    // Provides the contents of the current module. This function is only called
-    // if is_module_present returns true.
-    luarequire_WriteResult (*get_contents)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
-
     // Provides a chunkname for the current module. This will be accessible
     // through the debug library. This function is only called if
     // is_module_present returns true.
     luarequire_WriteResult (*get_chunkname)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
+
+    // Provides a loadname that identifies the current module and is passed to
+    // load. This function is only called if is_module_present returns true.
+    luarequire_WriteResult (*get_loadname)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
 
     // Provides a cache key representing the current module. This function is
     // only called if is_module_present returns true.
@@ -109,7 +109,7 @@ struct luarequire_Configuration
     // number of results placed on the stack. Returning -1 directs the requiring
     // thread to yield. In this case, this thread should be resumed with the
     // module result pushed onto its stack.
-    int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* contents);
+    int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname);
 };
 
 // Populates function pointers in the given luarequire_Configuration.

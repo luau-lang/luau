@@ -30,11 +30,11 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
 
 namespace Luau
 {
@@ -1323,8 +1323,21 @@ void TypeChecker2::visit(AstExprConstantBool* expr)
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
     const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
-    if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
-        reportError(TypeMismatch{inferredType, bestType}, expr->location);
+    if (FFlag::LuauReportSubtypingErrors)
+    {
+        if (!isErrorSuppressing(expr->location, inferredType))
+        {
+            if (!r.isSubtype)
+                reportError(TypeMismatch{inferredType, bestType}, expr->location);
+
+            reportErrors(r.errors);
+        }
+    }
+    else
+    {
+        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+            reportError(TypeMismatch{inferredType, bestType}, expr->location);
+    }
 }
 
 void TypeChecker2::visit(AstExprConstantNumber* expr)
@@ -1348,8 +1361,21 @@ void TypeChecker2::visit(AstExprConstantString* expr)
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
     const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
-    if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
-        reportError(TypeMismatch{inferredType, bestType}, expr->location);
+    if (FFlag::LuauReportSubtypingErrors)
+    {
+        if (!isErrorSuppressing(expr->location, inferredType))
+        {
+            if (!r.isSubtype)
+                reportError(TypeMismatch{inferredType, bestType}, expr->location);
+
+            reportErrors(r.errors);
+        }
+    }
+    else
+    {
+        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+            reportError(TypeMismatch{inferredType, bestType}, expr->location);
+    }
 }
 
 void TypeChecker2::visit(AstExprLocal* expr)
@@ -1416,6 +1442,12 @@ void TypeChecker2::visitCall(AstExprCall* call)
         SubtypingResult result = subtyping->isSubtype(*originalCallTy, *selectedOverloadTy, scope);
         if (result.isSubtype)
             fnTy = follow(*selectedOverloadTy);
+
+        if (FFlag::LuauReportSubtypingErrors)
+        {
+            if (!isErrorSuppressing(call->location, *selectedOverloadTy))
+                reportErrors(std::move(result.errors));
+        }
 
         if (result.normalizationTooComplex)
         {
@@ -2728,61 +2760,41 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         if (!subLeafTy && !superLeafTy && !subLeafTp && !superLeafTp)
             ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
 
-        if (FFlag::LuauImproveTypePathsInErrors)
-        {
-            std::string relation = "a subtype of";
-            if (reasoning.variance == SubtypingVariance::Invariant)
-                relation = "exactly";
-            else if (reasoning.variance == SubtypingVariance::Contravariant)
-                relation = "a supertype of";
+        std::string relation = "a subtype of";
+        if (reasoning.variance == SubtypingVariance::Invariant)
+            relation = "exactly";
+        else if (reasoning.variance == SubtypingVariance::Contravariant)
+            relation = "a supertype of";
 
-            std::string subLeafAsString = toString(subLeaf);
-            // if the string is empty, it must be an empty type pack
-            if (subLeafAsString.empty())
-                subLeafAsString = "()";
+        std::string subLeafAsString = toString(subLeaf);
+        // if the string is empty, it must be an empty type pack
+        if (subLeafAsString.empty())
+            subLeafAsString = "()";
 
-            std::string superLeafAsString = toString(superLeaf);
-            // if the string is empty, it must be an empty type pack
-            if (superLeafAsString.empty())
-                superLeafAsString = "()";
+        std::string superLeafAsString = toString(superLeaf);
+        // if the string is empty, it must be an empty type pack
+        if (superLeafAsString.empty())
+            superLeafAsString = "()";
 
-            std::stringstream baseReasonBuilder;
-            baseReasonBuilder << "`" << subLeafAsString << "` is not " << relation << " `" << superLeafAsString << "`";
-            std::string baseReason = baseReasonBuilder.str();
+        std::stringstream baseReasonBuilder;
+        baseReasonBuilder << "`" << subLeafAsString << "` is not " << relation << " `" << superLeafAsString << "`";
+        std::string baseReason = baseReasonBuilder.str();
 
-            std::stringstream reason;
+        std::stringstream reason;
 
-            if (reasoning.subPath == reasoning.superPath)
-                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
-                       << "` in the latter type, and " << baseReason;
-            else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())
-                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` and " << toStringHuman(reasoning.superPath) << "`"
-                       << superLeafAsString << "`, and " << baseReason;
-            else if (!reasoning.subPath.empty())
-                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "`, which is not " << relation << " `" << superLeafAsString
-                       << "`";
-            else
-                reason << toStringHuman(reasoning.superPath) << "`" << superLeafAsString << "`, and " << baseReason;
-
-            reasons.push_back(reason.str());
-        }
+        if (reasoning.subPath == reasoning.superPath)
+            reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
+                   << "` in the latter type, and " << baseReason;
+        else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())
+            reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` and " << toStringHuman(reasoning.superPath) << "`"
+                   << superLeafAsString << "`, and " << baseReason;
+        else if (!reasoning.subPath.empty())
+            reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "`, which is not " << relation << " `" << superLeafAsString
+                   << "`";
         else
-        {
-            std::string relation = "a subtype of";
-            if (reasoning.variance == SubtypingVariance::Invariant)
-                relation = "exactly";
-            else if (reasoning.variance == SubtypingVariance::Contravariant)
-                relation = "a supertype of";
+            reason << toStringHuman(reasoning.superPath) << "`" << superLeafAsString << "`, and " << baseReason;
 
-            std::string reason;
-            if (reasoning.subPath == reasoning.superPath)
-                reason = "at " + toString(reasoning.subPath) + ", " + toString(subLeaf) + " is not " + relation + " " + toString(superLeaf);
-            else
-                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(subLeaf) + ") is not " +
-                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(superLeaf) + ")";
-
-            reasons.push_back(reason);
-        }
+        reasons.push_back(reason.str());
 
         // if we haven't already proved this isn't suppressing, we have to keep checking.
         if (suppressed)
@@ -2850,6 +2862,12 @@ bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location
     NotNull<Scope> scope{findInnermostScope(location)};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
+    if (FFlag::LuauReportSubtypingErrors)
+    {
+        if (!isErrorSuppressing(location, subTy))
+            reportErrors(std::move(r.errors));
+    }
+
     if (r.normalizationTooComplex)
         reportError(NormalizationTooComplex{}, location);
 
@@ -2863,6 +2881,12 @@ bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location 
 {
     NotNull<Scope> scope{findInnermostScope(location)};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
+
+    if (FFlag::LuauReportSubtypingErrors)
+    {
+        if (!isErrorSuppressing(location, subTy))
+            reportErrors(std::move(r.errors));
+    }
 
     if (r.normalizationTooComplex)
         reportError(NormalizationTooComplex{}, location);

@@ -7,6 +7,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
+LUAU_FASTFLAG(LuauReportSubtypingErrors)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 
 using namespace Luau;
 
@@ -407,9 +409,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_future_assignments")
 {
-    // early return if the flag isn't set since this is blocking gated commits
-    if (!FFlag::LuauSolverV2)
-        return;
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauNonReentrantGeneralization2, true}};
 
     CheckResult result = check(R"(
         local f

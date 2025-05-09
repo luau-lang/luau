@@ -16,6 +16,7 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
 
 using namespace Luau;
 
@@ -1613,6 +1614,37 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
             },
         }
     );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
+{
+    ScopedFastFlag sff{FFlag::LuauSubtypeGenericsAndNegations, true};
+
+    // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
+    // (~(false?), ~(false?)) -> (~(false?) & ~(false?)) | ~(false?)
+
+    TypeId aTy = arena.addType(GenericType{"A"});
+    getMutable<GenericType>(aTy)->scope = moduleScope.get();
+    TypeId bTy = arena.addType(GenericType{"B"});
+    getMutable<GenericType>(bTy)->scope = moduleScope.get();
+
+    TypeId genericFunctionTy = arena.addType(FunctionType{
+        {aTy, bTy},
+        {},
+        arena.addTypePack({aTy, bTy}),
+        arena.addTypePack({join(meet(aTy, builtinTypes->truthyType), bTy)})
+    });
+
+    const TypeId truthyTy = builtinTypes->truthyType;
+
+    TypeId actualFunctionTy = fn(
+        {truthyTy, truthyTy},
+        {join(meet(truthyTy, builtinTypes->truthyType), truthyTy)}
+    );
+
+    SubtypingResult result = isSubtype(genericFunctionTy, actualFunctionTy);
+
+    CHECK(result.isSubtype);
 }
 
 TEST_SUITE_END();

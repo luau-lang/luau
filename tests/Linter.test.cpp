@@ -1627,7 +1627,7 @@ static void checkDeprecatedWarning(const Luau::LintWarning& warning, const Luau:
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttribute")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauDeprecatedAttribute, true}, {FFlag::LuauSolverV2, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // @deprecated works on local functions
     {
@@ -1876,7 +1876,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeFunctionDeclaration")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauDeprecatedAttribute, true}, {FFlag::LuauSolverV2, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // @deprecated works on function type declarations
 
@@ -1894,7 +1894,7 @@ bar(2)
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeTableDeclaration")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauDeprecatedAttribute, true}, {FFlag::LuauSolverV2, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // @deprecated works on table type declarations
 
@@ -1914,7 +1914,7 @@ print(Hooty:tooty(2.0))
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeMethodDeclaration")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauDeprecatedAttribute, true}, {FFlag::LuauSolverV2, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // @deprecated works on table type declarations
 
