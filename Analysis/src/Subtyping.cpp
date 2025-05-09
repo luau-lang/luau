@@ -22,6 +22,7 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingEnableReasoningLimit)
+LUAU_FASTFLAGVARIABLE(LuauSubtypeGenericsAndNegations)
 
 namespace Luau
 {
@@ -669,6 +670,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = {false};
     else if (get<ErrorType>(subTy))
         result = {true};
+    else if (auto subGeneric = get<GenericType>(subTy); FFlag::LuauSubtypeGenericsAndNegations && subGeneric && variance == Variance::Covariant)
+    {
+        bool ok = bindGeneric(env, subTy, superTy);
+        result.isSubtype = ok;
+        result.isCacheable = false;
+    }
+    else if (auto superGeneric = get<GenericType>(superTy); FFlag::LuauSubtypeGenericsAndNegations && superGeneric && variance == Variance::Contravariant)
+    {
+        bool ok = bindGeneric(env, subTy, superTy);
+        result.isSubtype = ok;
+        result.isCacheable = false;
+    }
     else if (auto p = get2<NegationType, NegationType>(subTy, superTy))
         result = isCovariantWith(env, p.first->ty, p.second->ty, scope).withBothComponent(TypePath::TypeField::Negated);
     else if (auto subNegation = get<NegationType>(subTy))
@@ -711,13 +724,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
         result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
     }
-    else if (auto subGeneric = get<GenericType>(subTy); subGeneric && variance == Variance::Covariant)
+    else if (auto subGeneric = get<GenericType>(subTy); !FFlag::LuauSubtypeGenericsAndNegations && subGeneric && variance == Variance::Covariant)
     {
         bool ok = bindGeneric(env, subTy, superTy);
         result.isSubtype = ok;
         result.isCacheable = false;
     }
-    else if (auto superGeneric = get<GenericType>(superTy); superGeneric && variance == Variance::Contravariant)
+    else if (auto superGeneric = get<GenericType>(superTy); !FFlag::LuauSubtypeGenericsAndNegations && superGeneric && variance == Variance::Contravariant)
     {
         bool ok = bindGeneric(env, subTy, superTy);
         result.isSubtype = ok;

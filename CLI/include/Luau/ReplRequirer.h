@@ -7,24 +7,27 @@
 
 #include "lua.h"
 
-#include <functional>
 #include <string>
 
 void requireConfigInit(luarequire_Configuration* config);
 
 struct ReplRequirer
 {
+    using CompileOptions = Luau::CompileOptions(*)();
+    using BoolCheck = bool(*)();
+    using Coverage = void(*)(lua_State*, int);
+
     ReplRequirer(
-        std::function<Luau::CompileOptions()> copts,
-        std::function<bool()> coverageActive,
-        std::function<bool()> codegenEnabled,
-        std::function<void(lua_State*, int)> coverageTrack
+        CompileOptions copts,
+        BoolCheck coverageActive,
+        BoolCheck codegenEnabled,
+        Coverage coverageTrack
     );
 
-    std::function<Luau::CompileOptions()> copts;
-    std::function<bool()> coverageActive;
-    std::function<bool()> codegenEnabled;
-    std::function<void(lua_State*, int)> coverageTrack;
+    CompileOptions copts;
+    BoolCheck coverageActive;
+    BoolCheck codegenEnabled;
+    Coverage coverageTrack;
 
     std::string absPath;
     std::string relPath;

@@ -7,6 +7,7 @@
 #include "lualib.h"
 
 #include "Luau/Repl.h"
+#include "Luau/ReplRequirer.h"
 #include "Luau/Require.h"
 #include "Luau/FileUtils.h"
 
@@ -544,6 +545,16 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RegisterRuntimeModule")
 
     runCode(L, "return require('@test/helloworld').hello == 'world'");
     assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "ProxyRequire")
+{
+    luarequire_pushproxyrequire(L, requireConfigInit, createCliRequireContext(L));
+    lua_setglobal(L, "proxyrequire");
+
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/proxy_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true", "result from dependency", "required into proxy_requirer"});
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "LoadStringRelative")

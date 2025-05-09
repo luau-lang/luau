@@ -11,7 +11,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -541,7 +540,7 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
     {
 
         CHECK_EQ(
@@ -551,16 +550,6 @@ end
             " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
             " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
             " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
-        );
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        CHECK_EQ(
-            toString(result.errors[0]),
-            "Type 'X | Y | Z' could not be converted into '{ w: number }'; type X | Y | Z[0] (X) is not a subtype "
-            "of { w: number } ({ w: number })\n\t"
-            "type X | Y | Z[1] (Y) is not a subtype of { w: number } ({ w: number })\n\t"
-            "type X | Y | Z[2] (Z) is not a subtype of { w: number } ({ w: number })"
         );
     }
     else
@@ -683,22 +672,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // NOTE: union normalization will improve this message
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'(string) -> number'"
-                                     "\ncould not be converted into\n\t"
-                                     "'((number) -> string) | ((number) -> string)'; none of the union options are compatible";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '(string) -> number'
-could not be converted into
-    '((number) -> string) | ((number) -> string)'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
+    const std::string expected =
+        "Type\n\t"
+        "'(string) -> number'"
+        "\ncould not be converted into\n\t"
+        "'((number) -> string) | ((number) -> string)'; none of the union options are compatible";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_true_and_false")
@@ -785,22 +764,12 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'(number, a...) -> (number?, a...)'"
-                                     "\ncould not be converted into\n\t"
-                                     "'((number) -> number) | ((number?, a...) -> (number?, a...))'; none of the union options are compatible";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '(number, a...) -> (number?, a...)'
-could not be converted into
-    '((number) -> number) | ((number?, a...) -> (number?, a...))'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
+    const std::string expected =
+        "Type\n\t"
+        "'(number, a...) -> (number?, a...)'"
+        "\ncould not be converted into\n\t"
+        "'((number) -> number) | ((number?, a...) -> (number?, a...))'; none of the union options are compatible";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
@@ -816,22 +785,12 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'(number) -> number?'"
-                                     "\ncould not be converted into\n\t"
-                                     "'((number) -> nil) | ((number, string?) -> number)'; none of the union options are compatible";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '(number) -> number?'
-could not be converted into
-    '((number) -> nil) | ((number, string?) -> number)'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
+    const std::string expected =
+        "Type\n\t"
+        "'(number) -> number?'"
+        "\ncould not be converted into\n\t"
+        "'((number) -> nil) | ((number, string?) -> number)'; none of the union options are compatible";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
@@ -847,22 +806,12 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'() -> number | string'"
-                                     "\ncould not be converted into\n\t"
-                                     "'(() -> (string, string)) | (() -> number)'; none of the union options are compatible";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '() -> number | string'
-could not be converted into
-    '(() -> (string, string)) | (() -> number)'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
+    const std::string expected =
+        "Type\n\t"
+        "'() -> number | string'"
+        "\ncould not be converted into\n\t"
+        "'(() -> (string, string)) | (() -> number)'; none of the union options are compatible";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
@@ -878,22 +827,12 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'(...nil) -> (...number?)'"
-                                     "\ncould not be converted into\n\t"
-                                     "'((...string?) -> (...number)) | ((...string?) -> nil)'; none of the union options are compatible";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '(...nil) -> (...number?)'
-could not be converted into
-    '((...string?) -> (...number)) | ((...string?) -> nil)'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
+    const std::string expected =
+        "Type\n\t"
+        "'(...nil) -> (...number?)'"
+        "\ncould not be converted into\n\t"
+        "'((...string?) -> (...number)) | ((...string?) -> nil)'; none of the union options are compatible";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
@@ -906,35 +845,21 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
     {
-        const std::string expected = "Type\n\t"
-                                     "'(number) -> ()'"
-                                     "\ncould not be converted into\n\t"
-                                     "'((...number?) -> ()) | ((number?) -> ())'";
+        const std::string expected =
+            "Type\n\t"
+            "'(number) -> ()'"
+            "\ncould not be converted into\n\t"
+            "'((...number?) -> ()) | ((number?) -> ())'";
         CHECK(expected == toString(result.errors[0]));
     }
-    else if (FFlag::LuauSolverV2)
-    {
-        CHECK(R"(Type
-    '(number) -> ()'
-could not be converted into
-    '((...number?) -> ()) | ((number?) -> ())')" == toString(result.errors[0]));
-    }
-    else if (FFlag::LuauImproveTypePathsInErrors)
+    else
     {
         const std::string expected = R"(Type
 	'(number) -> ()'
 could not be converted into
 	'((...number?) -> ()) | ((number?) -> ())'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '(number) -> ()'
-could not be converted into
-    '((...number?) -> ()) | ((number?) -> ())'; none of the union options are compatible)";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -952,22 +877,12 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'() -> (number?, ...number)'"
-                                     "\ncould not be converted into\n\t"
-                                     "'(() -> (...number)) | (() -> number)'; none of the union options are compatible";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-    '() -> (number?, ...number)'
-could not be converted into
-    '(() -> (...number)) | (() -> number)'; none of the union options are compatible)";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
+    const std::string expected =
+        "Type\n\t"
+        "'() -> (number?, ...number)'"
+        "\ncould not be converted into\n\t"
+        "'(() -> (...number)) | (() -> number)'; none of the union options are compatible";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")

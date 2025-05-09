@@ -11,10 +11,9 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFixInfiniteRecursionInNormalization)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
-LUAU_FASTFLAG(LuauBidirectionalInferenceCollectIndexerTypes)
 LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
+LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -220,11 +219,10 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = (FFlag::LuauImproveTypePathsInErrors)
-                                     ? "Type '{ v: string }' could not be converted into 'T<number>'; \n"
-                                       "this is because accessing `v` results in `string` in the former type and `number` in the latter type, and "
-                                       "`string` is not exactly `number`"
-                                     : R"(Type '{ v: string }' could not be converted into 'T<number>'; at [read "v"], string is not exactly number)";
+    const std::string expected =
+        "Type '{ v: string }' could not be converted into 'T<number>'; \n"
+        "this is because accessing `v` results in `string` in the former type and `number` in the latter type, and "
+        "`string` is not exactly `number`";
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 44}});
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -244,11 +242,9 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected =
-        (FFlag::LuauImproveTypePathsInErrors)
-            ? "Type '{ t: { v: string } }' could not be converted into 'U<number>'; \n"
-              "this is because accessing `t.v` results in `string` in the former type and `number` in the latter type, and `string` is not exactly "
-              "`number`"
-            : R"(Type '{ t: { v: string } }' could not be converted into 'U<number>'; at [read "t"][read "v"], string is not exactly number)";
+        "Type '{ t: { v: string } }' could not be converted into 'U<number>'; \n"
+        "this is because accessing `t.v` results in `string` in the former type and `number` in the latter type, and `string` is not exactly "
+        "`number`";
 
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
     CHECK_EQ(expected, toString(result.errors[0]));
@@ -256,8 +252,6 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceCollectIndexerTypes, true};
-
     CheckResult result = check(R"(
         --!strict
         type T<a> = { f: a, g: U<a> }
@@ -1267,5 +1261,18 @@ TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_mod
     REQUIRE(tfun != module->exportedTypeBindings.end());
     CHECK_EQ(tfun->second.definitionLocation, Location{{1, 8}, {2, 11}});
 }
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
+{
+    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion, true};
+
+    // This used to crash under the new solver: we would like this to continue
+    // to not crash.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        export type t1<t0...> = t4<t0...>
+        export type t4<t2, t0...> = t4<t0...>
+    )"));
+}
+
 
 TEST_SUITE_END();

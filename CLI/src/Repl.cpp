@@ -164,7 +164,7 @@ static int lua_callgrind(lua_State* L)
 }
 #endif
 
-static void* createCliRequireContext(lua_State* L)
+void* createCliRequireContext(lua_State* L)
 {
     void* ctx = lua_newuserdatadtor(
         L,

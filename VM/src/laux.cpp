@@ -11,7 +11,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLibWhereErrorAutoreserve)
 LUAU_FASTFLAG(LuauYieldableContinuations)
 
 // convert a stack index to positive
@@ -80,9 +79,7 @@ void luaL_where(lua_State* L, int level)
         return;
     }
 
-    if (FFlag::LuauLibWhereErrorAutoreserve)
-        lua_rawcheckstack(L, 1);
-
+    lua_rawcheckstack(L, 1);
     lua_pushliteral(L, ""); // else, no information available...
 }
 

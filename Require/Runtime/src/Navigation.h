@@ -31,8 +31,8 @@ public:
 
     // Custom capabilities
     bool isModulePresent() const;
-    std::optional<std::string> getContents() const;
     std::optional<std::string> getChunkname() const;
+    std::optional<std::string> getLoadname() const;
     std::optional<std::string> getCacheKey() const;
 
 private:

@@ -24,20 +24,19 @@ LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAstTypeGroup3)
 LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauCacheInferencePerAstExpr)
-LUAU_FASTFLAG(LuauLimitIterationWhenCheckingArgumentCounts)
-LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked)
+LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauStringPartLengthLimit)
 LUAU_FASTFLAG(LuauSimplificationRecheckAssumption)
 LUAU_FASTFLAG(LuauAlwaysResolveAstTypes)
+LUAU_FASTFLAG(LuauReportSubtypingErrors)
+LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 
 using namespace Luau;
 
@@ -1144,8 +1143,12 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         end
     )");
 
-    if (FFlag::LuauInstantiateInSubtyping && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauInstantiateInSubtyping)
     {
+        // though this didn't error before the flag, it seems as though it should error since fields of a table are invariant.
+        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be
+        // unsound.
+
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const std::string expected =
             "Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'"
@@ -1164,31 +1167,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
             "\ncaused by:\n"
             "  Not all intersection parts are compatible.\n"
             "Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName'";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else if (FFlag::LuauInstantiateInSubtyping)
-    {
-        // though this didn't error before the flag, it seems as though it should error since fields of a table are invariant.
-        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be
-        // unsound.
-
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        const std::string expected = R"(Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'
-caused by:
-  Property 'getStoreFieldName' is not compatible.
-Type
-    '(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)'
-could not be converted into
-    '(Policies, FieldSpecifier) -> string'
-caused by:
-  Argument #2 type is not compatible.
-Type
-    'FieldSpecifier'
-could not be converted into
-    'FieldSpecifier & {| from: number? |}'
-caused by:
-  Not all intersection parts are compatible.
-Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -1235,19 +1213,27 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 
     if (FFlag::LuauSolverV2)
     {
-        CHECK(3 == result.errors.size());
-        if (FFlag::LuauAstTypeGroup3)
+        if (FFlag::LuauReportSubtypingErrors)
+        {
+            CHECK(4 == result.errors.size());
             CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
+            CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
+            CHECK(Location{{3, 45}, {3, 46}} == result.errors[2].location);
+            CHECK(Location{{3, 22}, {3, 41}} == result.errors[3].location);
+
+            for (const TypeError& e : result.errors)
+                CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
+        }
         else
-            CHECK(Location{{2, 22}, {2, 41}} == result.errors[0].location);
-        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-        if (FFlag::LuauAstTypeGroup3)
+        {
+            CHECK(3 == result.errors.size());
+            CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
+            CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
             CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
-        else
-            CHECK(Location{{3, 23}, {3, 40}} == result.errors[2].location);
-        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
-        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[1]));
-        CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[2]));
+            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[1]));
+            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[2]));
+        }
     }
     else
     {
@@ -1994,7 +1980,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMagicFreezeCheckBlocked, true}
+        {FFlag::LuauMagicFreezeCheckBlocked2, true}
     };
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local f = table.freeze
@@ -2006,7 +1992,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving"
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMagicFreezeCheckBlocked, true}
+        {FFlag::LuauMagicFreezeCheckBlocked2, true}
     };
     // This is the original fuzzer version of the above issue.
     CheckResult results = check(R"(
@@ -2029,7 +2015,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_unification_aborts_eventually" * doct
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, false},
         {FFlag::LuauInstantiateInSubtyping, true},
-        {FFlag::LuauLimitIterationWhenCheckingArgumentCounts, true},
     };
 
     ScopedFastInt sfi{FInt::LuauTypeInferTypePackLoopLimit, 100};
@@ -2128,6 +2113,57 @@ local _
     LUAU_REQUIRE_ERRORS(check(R"(
 _ = {[(_G)]=_,[_[_[_]][_[_]][nil][_]]={_G=_,},_[_[_]][_][_],n0={[_]=_,_G=_,},248,}
 local _
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_missing_follow_table_freeze")
+{
+    ScopedFastFlag _{FFlag::LuauMagicFreezeCheckBlocked2, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        if _:freeze(_)[_][_] then
+        else
+        do end
+        end
+        if _:freeze((nil))[_][_] then
+        else
+        do end
+        end
+        _ = table,true,_(lower)
+        do end
+        _:freeze()[_] += {} > _
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_double_negation" * doctest::timeout(0.5))
+{
+    ScopedFastFlag _{FFlag::LuauAvoidDoubleNegation, true};
+    // We don't care about errors, only that we don't OOM during typechecking.
+    LUAU_REQUIRE_ERRORS(check(R"(
+local _ = _
+repeat
+do end
+while 0 do
+do
+_ = _[0]
+_._ *= _
+end
+if _ then
+elseif "" then
+end
+_ = _[0]
+_ = ""
+end
+_ = ""
+until _
+while false do
+do
+_ = _[0]
+do end
+end
+_ = ""
+return if _ then _,_
+end
     )"));
 }
 

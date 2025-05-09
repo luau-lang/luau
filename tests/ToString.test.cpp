@@ -14,7 +14,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAttributeSyntax)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -873,15 +872,12 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
     )");
 
     std::string expected;
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
         expected =
             "Type pack '{ a: number, b: string, c: { d: string } }' could not be converted into '{ a: number, b: string, c: { d: number } }'; \n"
             "this is because in the 1st entry in the type pack, accessing `c.d` results in `string` in the former type and `number` in the latter "
             "type, and `string` is not exactly `number`";
-    else if (FFlag::LuauSolverV2)
-        expected =
-            R"(Type pack '{ a: number, b: string, c: { d: string } }' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0][read "c"][read "d"], string is not exactly number)";
-    else if (FFlag::LuauImproveTypePathsInErrors)
+    else
         expected = R"(Type
 	'{ a: number, b: string, c: { d: string } }'
 could not be converted into
@@ -892,20 +888,6 @@ Type
 	'{ d: string }'
 could not be converted into
 	'{| d: number |}'
-caused by:
-  Property 'd' is not compatible.
-Type 'string' could not be converted into 'number' in an invariant context)";
-    else
-        expected = R"(Type
-    '{ a: number, b: string, c: { d: string } }'
-could not be converted into
-    '{| a: number, b: string, c: {| d: number |} |}'
-caused by:
-  Property 'c' is not compatible.
-Type
-    '{ d: string }'
-could not be converted into
-    '{| d: number |}'
 caused by:
   Property 'd' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)";

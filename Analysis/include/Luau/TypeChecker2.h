@@ -13,8 +13,6 @@
 #include "Luau/TypeOrPack.h"
 #include "Luau/TypeUtils.h"
 
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
-
 namespace Luau
 {
 
@@ -40,29 +38,18 @@ struct Reasonings
 
     std::string toString()
     {
-        if (FFlag::LuauImproveTypePathsInErrors && reasons.empty())
+        if (reasons.empty())
             return "";
 
         // DenseHashSet ordering is entirely undefined, so we want to
         // sort the reasons here to achieve a stable error
         // stringification.
         std::sort(reasons.begin(), reasons.end());
-        std::string allReasons = FFlag::LuauImproveTypePathsInErrors ? "\nthis is because " : "";
-        bool first = true;
+        std::string allReasons = "\nthis is because ";
         for (const std::string& reason : reasons)
         {
-            if (FFlag::LuauImproveTypePathsInErrors)
-            {
-                if (reasons.size() > 1)
-                    allReasons += "\n\t * ";
-            }
-            else
-            {
-                if (first)
-                    first = false;
-                else
-                    allReasons += "\n\t";
-            }
+            if (reasons.size() > 1)
+                allReasons += "\n\t * ";
 
             allReasons += reason;
         }

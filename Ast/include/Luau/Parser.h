@@ -196,6 +196,7 @@ private:
 
     // binding ::= Name [`:` Type]
     Binding parseBinding();
+    AstArray<Position> extractAnnotationColonPositions(const TempVector<Binding>& bindings);
 
     // bindinglist ::= (binding | `...') {`,' bindinglist}
     // Returns the location of the vararg ..., or std::nullopt if the function is not vararg.
@@ -203,7 +204,8 @@ private:
         TempVector<Binding>& result,
         bool allowDot3 = false,
         AstArray<Position>* commaPositions = nullptr,
-        std::optional<Position> initialCommaPosition = std::nullopt
+        Position* initialCommaPosition = nullptr,
+        Position* varargAnnotationColonPosition = nullptr
     );
 
     AstType* parseOptionalType();
@@ -452,10 +454,12 @@ private:
     {
         Name name;
         AstType* annotation;
+        Position colonPosition;
 
-        explicit Binding(const Name& name, AstType* annotation = nullptr)
+        explicit Binding(const Name& name, AstType* annotation = nullptr, Position colonPosition = {0,0})
             : name(name)
             , annotation(annotation)
+            , colonPosition(colonPosition)
         {
         }
     };

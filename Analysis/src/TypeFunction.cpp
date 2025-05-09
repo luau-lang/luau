@@ -56,17 +56,16 @@ LUAU_FASTFLAGVARIABLE(LuauMetatableTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionImprovements)
 LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionFunctionMetamethods)
 LUAU_FASTFLAGVARIABLE(LuauIntersectNotNil)
-LUAU_FASTFLAGVARIABLE(LuauSkipNoRefineDuringRefinement)
 LUAU_FASTFLAGVARIABLE(LuauMetatablesHaveLength)
 LUAU_FASTFLAGVARIABLE(LuauIndexAnyIsAny)
 LUAU_FASTFLAGVARIABLE(LuauFixCyclicIndexInIndexer)
 LUAU_FASTFLAGVARIABLE(LuauSimplyRefineNotNil)
 LUAU_FASTFLAGVARIABLE(LuauIndexDeferPendingIndexee)
 LUAU_FASTFLAGVARIABLE(LuauNewTypeFunReductionChecks2)
-LUAU_FASTFLAGVARIABLE(LuauReduceUnionFollowUnionType)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAGVARIABLE(LuauNarrowIntersectionNevers)
 LUAU_FASTFLAGVARIABLE(LuauRefineWaitForBlockedTypesInTarget)
+LUAU_FASTFLAGVARIABLE(LuauNotAllBinaryTypeFunsHaveDefaults)
 
 namespace Luau
 {
@@ -2492,25 +2491,14 @@ struct CollectUnionTypeOptions : TypeOnceVisitor
 
     bool visit(TypeId ty, const UnionType& ut) override
     {
-        if (FFlag::LuauReduceUnionFollowUnionType)
-        {
-            // If we have something like:
-            //
-            //  union<A | B, C | D>
-            //
-            // We probably just want to consider this to be the same as
-            //
-            //   union<A, B, C, D>
-            return true;
-        }
-        else
-        {
-            // Copy of the default visit method.
-            options.insert(ty);
-            if (isPending(ty, ctx->solver))
-                blockingTypes.insert(ty);
-            return false;
-        }
+        // If we have something like:
+        //
+        //  union<A | B, C | D>
+        //
+        // We probably just want to consider this to be the same as
+        //
+        //   union<A, B, C, D>
+        return true;
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -3600,8 +3588,8 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
         return TypeFun{{genericT}, arena->addType(TypeFunctionInstanceType{NotNull{tf}, {t}, {}})};
     };
 
-    // make a type function for a two-argument type function
-    auto mkBinaryTypeFunction = [&](const TypeFunction* tf)
+    // make a type function for a two-argument type function with a default argument for the second type being the first
+    auto mkBinaryTypeFunctionWithDefault = [&](const TypeFunction* tf)
     {
         TypeId t = arena->addType(GenericType{"T", Polarity::Negative});
         TypeId u = arena->addType(GenericType{"U", Polarity::Negative});
@@ -3611,31 +3599,53 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
         return TypeFun{{genericT, genericU}, arena->addType(TypeFunctionInstanceType{NotNull{tf}, {t, u}, {}})};
     };
 
+    // make a two-argument type function without the default arguments
+    auto mkBinaryTypeFunction = [&](const TypeFunction* tf)
+    {
+        TypeId t = arena->addType(GenericType{"T", Polarity::Negative});
+        TypeId u = arena->addType(GenericType{"U", Polarity::Negative});
+        GenericTypeDefinition genericT{t};
+        GenericTypeDefinition genericU{u};
+
+        return TypeFun{{genericT, genericU}, arena->addType(TypeFunctionInstanceType{NotNull{tf}, {t, u}, {}})};
+    };
+
     scope->exportedTypeBindings[lenFunc.name] = mkUnaryTypeFunction(&lenFunc);
     scope->exportedTypeBindings[unmFunc.name] = mkUnaryTypeFunction(&unmFunc);
 
-    scope->exportedTypeBindings[addFunc.name] = mkBinaryTypeFunction(&addFunc);
-    scope->exportedTypeBindings[subFunc.name] = mkBinaryTypeFunction(&subFunc);
-    scope->exportedTypeBindings[mulFunc.name] = mkBinaryTypeFunction(&mulFunc);
-    scope->exportedTypeBindings[divFunc.name] = mkBinaryTypeFunction(&divFunc);
-    scope->exportedTypeBindings[idivFunc.name] = mkBinaryTypeFunction(&idivFunc);
-    scope->exportedTypeBindings[powFunc.name] = mkBinaryTypeFunction(&powFunc);
-    scope->exportedTypeBindings[modFunc.name] = mkBinaryTypeFunction(&modFunc);
-    scope->exportedTypeBindings[concatFunc.name] = mkBinaryTypeFunction(&concatFunc);
+    scope->exportedTypeBindings[addFunc.name] = mkBinaryTypeFunctionWithDefault(&addFunc);
+    scope->exportedTypeBindings[subFunc.name] = mkBinaryTypeFunctionWithDefault(&subFunc);
+    scope->exportedTypeBindings[mulFunc.name] = mkBinaryTypeFunctionWithDefault(&mulFunc);
+    scope->exportedTypeBindings[divFunc.name] = mkBinaryTypeFunctionWithDefault(&divFunc);
+    scope->exportedTypeBindings[idivFunc.name] = mkBinaryTypeFunctionWithDefault(&idivFunc);
+    scope->exportedTypeBindings[powFunc.name] = mkBinaryTypeFunctionWithDefault(&powFunc);
+    scope->exportedTypeBindings[modFunc.name] = mkBinaryTypeFunctionWithDefault(&modFunc);
+    scope->exportedTypeBindings[concatFunc.name] = mkBinaryTypeFunctionWithDefault(&concatFunc);
 
-    scope->exportedTypeBindings[ltFunc.name] = mkBinaryTypeFunction(&ltFunc);
-    scope->exportedTypeBindings[leFunc.name] = mkBinaryTypeFunction(&leFunc);
-    scope->exportedTypeBindings[eqFunc.name] = mkBinaryTypeFunction(&eqFunc);
+    scope->exportedTypeBindings[ltFunc.name] = mkBinaryTypeFunctionWithDefault(&ltFunc);
+    scope->exportedTypeBindings[leFunc.name] = mkBinaryTypeFunctionWithDefault(&leFunc);
+    scope->exportedTypeBindings[eqFunc.name] = mkBinaryTypeFunctionWithDefault(&eqFunc);
 
     scope->exportedTypeBindings[keyofFunc.name] = mkUnaryTypeFunction(&keyofFunc);
     scope->exportedTypeBindings[rawkeyofFunc.name] = mkUnaryTypeFunction(&rawkeyofFunc);
 
-    scope->exportedTypeBindings[indexFunc.name] = mkBinaryTypeFunction(&indexFunc);
-    scope->exportedTypeBindings[rawgetFunc.name] = mkBinaryTypeFunction(&rawgetFunc);
+    if (FFlag::LuauNotAllBinaryTypeFunsHaveDefaults)
+    {
+        scope->exportedTypeBindings[indexFunc.name] = mkBinaryTypeFunction(&indexFunc);
+        scope->exportedTypeBindings[rawgetFunc.name] = mkBinaryTypeFunction(&rawgetFunc);
+    }
+    else
+    {
+        scope->exportedTypeBindings[indexFunc.name] = mkBinaryTypeFunctionWithDefault(&indexFunc);
+        scope->exportedTypeBindings[rawgetFunc.name] = mkBinaryTypeFunctionWithDefault(&rawgetFunc);
+    }
 
     if (FFlag::LuauMetatableTypeFunctions)
     {
-        scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunction(&setmetatableFunc);
+        if (FFlag::LuauNotAllBinaryTypeFunsHaveDefaults)
+            scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunction(&setmetatableFunc);
+        else
+            scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunctionWithDefault(&setmetatableFunc);
         scope->exportedTypeBindings[getmetatableFunc.name] = mkUnaryTypeFunction(&getmetatableFunc);
     }
 }

@@ -11,13 +11,13 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauIntersectNotNil)
-LUAU_FASTFLAG(LuauSkipNoRefineDuringRefinement)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauSimplyRefineNotNil)
 LUAU_FASTFLAG(LuauWeakNilRefinementType)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
+LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 
 using namespace Luau;
 
@@ -1243,6 +1243,8 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
+    ScopedFastFlag _{FFlag::LuauAvoidDoubleNegation, true};
+
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
 
@@ -1259,9 +1261,12 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 
     if (FFlag::LuauSolverV2)
     {
-        // CLI-115281 Types produced by refinements do not consistently get simplified
+        // CLI-115281 Types produced by refinements do not consistently get
+        // simplified. Sometimes this is due to not refining at the correct
+        // time, sometimes this is due to hitting the simplifier rather than
+        // normalization.
         CHECK("{ tag: \"exists\", x: string } & { x: ~(false?) }" == toString(requireTypeAtPosition({5, 28})));
-        CHECK("({ tag: \"exists\", x: string } & { x: ~~(false?) }) | { tag: \"missing\", x: nil }" == toString(requireTypeAtPosition({7, 28})));
+        CHECK(R"(({ tag: "exists", x: string } & { x: false? }) | ({ tag: "missing", x: nil } & { x: false? }))" == toString(requireTypeAtPosition({7, 28})));
     }
     else
     {
@@ -2552,8 +2557,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "truthy_refinement_on_generic")
 
 TEST_CASE_FIXTURE(Fixture, "truthy_call_of_function_with_table_value_as_argument_should_not_refine_value_as_never")
 {
-    ScopedFastFlag sff{FFlag::LuauSkipNoRefineDuringRefinement, true};
-
     CheckResult result = check(R"(
         type Item = {}
 

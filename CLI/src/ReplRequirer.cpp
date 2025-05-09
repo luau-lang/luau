@@ -3,6 +3,7 @@
 
 #include "Luau/CodeGen.h"
 #include "Luau/CodeGenOptions.h"
+#include "Luau/FileUtils.h"
 #include "Luau/Require.h"
 
 #include "Luau/RequirerUtils.h"
@@ -101,16 +102,16 @@ static bool is_module_present(lua_State* L, void* ctx)
     return isFilePresent(req->absPath, req->suffix);
 }
 
-static luarequire_WriteResult get_contents(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
-{
-    ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return write(getFileContents(req->absPath, req->suffix), buffer, buffer_size, size_out);
-}
-
 static luarequire_WriteResult get_chunkname(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
     return write("@" + req->relPath, buffer, buffer_size, size_out);
+}
+
+static luarequire_WriteResult get_loadname(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
+{
+    ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
+    return write(req->absPath + req->suffix, buffer, buffer_size, size_out);
 }
 
 static luarequire_WriteResult get_cache_key(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
@@ -131,7 +132,7 @@ static luarequire_WriteResult get_config(lua_State* L, void* ctx, char* buffer, 
     return write(getFileContents(req->absPath, "/.luaurc"), buffer, buffer_size, size_out);
 }
 
-static int load(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* contents)
+static int load(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
 
@@ -144,8 +145,12 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
     // new thread needs to have the globals sandboxed
     luaL_sandboxthread(ML);
 
+    std::optional<std::string> contents = readFile(loadname);
+    if (!contents)
+        luaL_error(L, "could not read file '%s'", loadname);
+
     // now we can compile & run module on the new thread
-    std::string bytecode = Luau::compile(contents, req->copts());
+    std::string bytecode = Luau::compile(*contents, req->copts());
     if (luau_load(ML, chunkname, bytecode.data(), bytecode.size(), 0) == 0)
     {
         if (req->codegenEnabled())
@@ -199,23 +204,18 @@ void requireConfigInit(luarequire_Configuration* config)
     config->to_parent = to_parent;
     config->to_child = to_child;
     config->is_module_present = is_module_present;
-    config->get_contents = get_contents;
     config->is_config_present = is_config_present;
     config->get_chunkname = get_chunkname;
+    config->get_loadname = get_loadname;
     config->get_cache_key = get_cache_key;
     config->get_config = get_config;
     config->load = load;
 }
 
-ReplRequirer::ReplRequirer(
-    std::function<Luau::CompileOptions()> copts,
-    std::function<bool()> coverageActive,
-    std::function<bool()> codegenEnabled,
-    std::function<void(lua_State*, int)> coverageTrack
-)
-    : copts(std::move(copts))
-    , coverageActive(std::move(coverageActive))
-    , codegenEnabled(std::move(codegenEnabled))
-    , coverageTrack(std::move(coverageTrack))
+ReplRequirer::ReplRequirer(CompileOptions copts, BoolCheck coverageActive, BoolCheck codegenEnabled, Coverage coverageTrack)
+    : copts(copts)
+    , coverageActive(coverageActive)
+    , codegenEnabled(codegenEnabled)
+    , coverageTrack(coverageTrack)
 {
 }

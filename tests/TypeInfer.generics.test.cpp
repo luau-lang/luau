@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 
@@ -867,12 +866,10 @@ y.a.c = y
         CHECK_EQ(toString(mismatch->givenType), "{ a: { c: T<string>?, d: number }, b: number }");
         CHECK_EQ(toString(mismatch->wantedType), "T<string>");
         std::string reason =
-            (FFlag::LuauImproveTypePathsInErrors)
-                ? "\nthis is because \n\t"
-                  " * accessing `a.d` results in `number` in the former type and `string` in the latter type, and `number` is not exactly "
-                  "`string`\n\t"
-                  " * accessing `b` results in `number` in the former type and `string` in the latter type, and `number` is not exactly `string`"
-                : "at [read \"a\"][read \"d\"], number is not exactly string\n\tat [read \"b\"], number is not exactly string";
+            "\nthis is because \n\t"
+            " * accessing `a.d` results in `number` in the former type and `string` in the latter type, and `number` is not exactly "
+            "`string`\n\t"
+            " * accessing `b` results in `number` in the former type and `string` in the latter type, and `number` is not exactly `string`";
         CHECK_EQ(mismatch->reason, reason);
     }
     else
