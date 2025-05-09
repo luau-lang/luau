@@ -10,7 +10,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauNewTypeFunReductionChecks2)
 LUAU_FASTFLAG(LuauNoTypeFunctionsNamedTypeOf)
@@ -1337,35 +1336,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    if (FFlag::LuauImproveTypePathsInErrors)
-    {
-
-        CHECK(
-            toString(result.errors[0]) ==
-            "Type pack '\"number\"' could not be converted into 'never'; \n"
-            R"(this is because the 1st entry in the type pack is `"number"` in the former type and `never` in the latter type, and `"number"` is not a subtype of `never`)"
-        );
-        CHECK(
-            toString(result.errors[1]) ==
-            "Type pack '\"string\"' could not be converted into 'never'; \n"
-            R"(this is because the 1st entry in the type pack is `"string"` in the former type and `never` in the latter type, and `"string"` is not a subtype of `never`)"
-        );
-        CHECK(
-            toString(result.errors[2]) ==
-            "Type pack '\"table\"' could not be converted into 'never'; \n"
-            R"(this is because the 1st entry in the type pack is `"table"` in the former type and `never` in the latter type, and `"table"` is not a subtype of `never`)"
-        );
-    }
-    else
-    {
-        CHECK(
-            toString(result.errors[0]) == R"(Type pack '"number"' could not be converted into 'never'; at [0], "number" is not a subtype of never)"
-        );
-        CHECK(
-            toString(result.errors[1]) == R"(Type pack '"string"' could not be converted into 'never'; at [0], "string" is not a subtype of never)"
-        );
-        CHECK(toString(result.errors[2]) == R"(Type pack '"table"' could not be converted into 'never'; at [0], "table" is not a subtype of never)");
-    }
+    CHECK(
+        toString(result.errors[0]) ==
+        "Type pack '\"number\"' could not be converted into 'never'; \n"
+        R"(this is because the 1st entry in the type pack is `"number"` in the former type and `never` in the latter type, and `"number"` is not a subtype of `never`)"
+    );
+    CHECK(
+        toString(result.errors[1]) ==
+        "Type pack '\"string\"' could not be converted into 'never'; \n"
+        R"(this is because the 1st entry in the type pack is `"string"` in the former type and `never` in the latter type, and `"string"` is not a subtype of `never`)"
+    );
+    CHECK(
+        toString(result.errors[2]) ==
+        "Type pack '\"table\"' could not be converted into 'never'; \n"
+        R"(this is because the 1st entry in the type pack is `"table"` in the former type and `never` in the latter type, and `"table"` is not a subtype of `never`)"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")

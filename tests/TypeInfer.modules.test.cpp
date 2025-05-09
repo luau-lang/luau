@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -465,19 +464,13 @@ local b: B.T = a
     CheckResult result = frontend.check("game/C");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
     {
-        const std::string expected = "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; \n"
-                                     "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
-                                     "`number` is not exactly `string`";
+        const std::string expected =
+            "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; \n"
+            "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
+            "`number` is not exactly `string`";
         CHECK(expected == toString(result.errors[0]));
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        CHECK(
-            toString(result.errors.at(0)) ==
-            "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; at [read \"x\"], number is not exactly string"
-        );
     }
     else
     {
@@ -518,19 +511,13 @@ local b: B.T = a
     CheckResult result = frontend.check("game/D");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
     {
-        const std::string expected = "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; \n"
-                                     "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
-                                     "`number` is not exactly `string`";
+        const std::string expected =
+            "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; \n"
+            "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
+            "`number` is not exactly `string`";
         CHECK(expected == toString(result.errors[0]));
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        CHECK(
-            toString(result.errors.at(0)) ==
-            "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; at [read \"x\"], number is not exactly string"
-        );
     }
     else
     {

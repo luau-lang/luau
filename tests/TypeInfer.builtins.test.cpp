@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(LuauImproveTypePathsInErrors)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 
@@ -147,32 +146,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = (FFlag::LuauImproveTypePathsInErrors) ? "Type\n\t"
-                                                                         "'(number, number) -> boolean'"
-                                                                         "\ncould not be converted into\n\t"
-                                                                         "'((string, string) -> boolean)?'"
-                                                                         "\ncaused by:\n"
-                                                                         "  None of the union options are compatible. For example:\n"
-                                                                         "Type\n\t"
-                                                                         "'(number, number) -> boolean'"
-                                                                         "\ncould not be converted into\n\t"
-                                                                         "'(string, string) -> boolean'"
-                                                                         "\ncaused by:\n"
-                                                                         "  Argument #1 type is not compatible.\n"
-                                                                         "Type 'string' could not be converted into 'number'"
-                                                                       : R"(Type
-    '(number, number) -> boolean'
-could not be converted into
-    '((string, string) -> boolean)?'
-caused by:
-  None of the union options are compatible. For example:
-Type
-    '(number, number) -> boolean'
-could not be converted into
-    '(string, string) -> boolean'
-caused by:
-  Argument #1 type is not compatible.
-Type 'string' could not be converted into 'number')";
+    const std::string expected =
+        "Type\n\t"
+        "'(number, number) -> boolean'"
+        "\ncould not be converted into\n\t"
+        "'((string, string) -> boolean)?'"
+        "\ncaused by:\n"
+        "  None of the union options are compatible. For example:\n"
+        "Type\n\t"
+        "'(number, number) -> boolean'"
+        "\ncould not be converted into\n\t"
+        "'(string, string) -> boolean'"
+        "\ncaused by:\n"
+        "  Argument #1 type is not compatible.\n"
+        "Type 'string' could not be converted into 'number'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1008,15 +995,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauImproveTypePathsInErrors)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(
             "Type 'number?' could not be converted into 'number'; \n"
             "this is because the 2nd component of the union is `nil`, which is not a subtype of `number`",
-            toString(result.errors[0])
-        );
-    else if (FFlag::LuauSolverV2)
-        CHECK_EQ(
-            "Type 'number?' could not be converted into 'number'; type number?[1] (nil) is not a subtype of number (number)",
             toString(result.errors[0])
         );
     else

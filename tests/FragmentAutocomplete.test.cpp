@@ -33,12 +33,12 @@ LUAU_FASTFLAG(LuauClonedTableAndFunctionTypesMustHaveScopes)
 LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 LUAU_FASTFLAG(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAG(LuauDoNotClonePersistentBindings)
-LUAU_FASTFLAG(LuauIncrementalAutocompleteDemandBasedCloning)
 LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauBetterScopeSelection)
 LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAG(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
+LUAU_FASTFLAG(LuauFragmentAutocompleteIfRecommendations)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -73,12 +73,12 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauDisableNewSolverAssertsInMixedMode{FFlag::LuauDisableNewSolverAssertsInMixedMode, true};
     ScopedFastFlag luauCloneTypeAliasBindings{FFlag::LuauCloneTypeAliasBindings, true};
     ScopedFastFlag luauDoNotClonePersistentBindings{FFlag::LuauDoNotClonePersistentBindings, true};
-    ScopedFastFlag luauIncrementalAutocompleteDemandBasedCloning{FFlag::LuauIncrementalAutocompleteDemandBasedCloning, true};
     ScopedFastFlag luauBetterScopeSelection{FFlag::LuauBetterScopeSelection, true};
     ScopedFastFlag luauBlockDiffFragmentSelection{FFlag::LuauBlockDiffFragmentSelection, true};
     ScopedFastFlag luauAutocompleteUsesModuleForTypeCompatibility{FFlag::LuauAutocompleteUsesModuleForTypeCompatibility, true};
     ScopedFastFlag luauFragmentAcMemoryLeak{FFlag::LuauFragmentAcMemoryLeak, true};
     ScopedFastFlag luauGlobalVariableModuleIsolation{FFlag::LuauGlobalVariableModuleIsolation, true};
+    ScopedFastFlag luauFragmentAutocompleteIfRecommendations{FFlag::LuauFragmentAutocompleteIfRecommendations, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -746,11 +746,10 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_partial")
 {
     auto region = getAutocompleteRegion(
         R"(
-if
-)",
-        Position{1, 3}
+if)",
+        Position{1, 2}
     );
-    CHECK_EQ(Location{{1, 0}, {1, 3}}, region.fragmentLocation);
+    CHECK_EQ(Location{{1, 2}, {1, 2}}, region.fragmentLocation);
     REQUIRE(region.parentBlock);
     CHECK(region.nearestStatement->as<AstStatIf>());
 }
@@ -763,7 +762,7 @@ if true
 )",
         Position{1, 7}
     );
-    CHECK_EQ(Location{{1, 0}, {1, 7}}, region.fragmentLocation);
+    CHECK_EQ(Location{{1, 3}, {1, 7}}, region.fragmentLocation);
     REQUIRE(region.parentBlock);
     CHECK(region.nearestStatement->as<AstStatIf>());
 }
@@ -776,7 +775,7 @@ if true
 )",
         Position{1, 8}
     );
-    CHECK_EQ(Location{{1, 8}, {1, 8}}, region.fragmentLocation);
+    CHECK_EQ(Location{{1, 3}, {1, 8}}, region.fragmentLocation);
     REQUIRE(region.parentBlock);
     CHECK(region.nearestStatement->as<AstStatIf>());
 }
@@ -829,7 +828,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_else_if")
     auto region = getAutocompleteRegion(
         R"(
 if true then
-elseif
+elseif  
 end
 
 )",
@@ -849,7 +848,7 @@ elseif
 )",
         Position{2, 8}
     );
-    CHECK_EQ(Location{{2, 0}, {2, 8}}, region.fragmentLocation);
+    CHECK_EQ(Location{{2, 8}, {2, 8}}, region.fragmentLocation);
     REQUIRE(region.parentBlock);
     CHECK(region.nearestStatement->as<AstStatIf>());
 }
@@ -1071,7 +1070,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_n
     );
     REQUIRE(fragment.has_value());
     CHECK_EQ("", fragment->fragmentToParse);
-    CHECK_EQ(2, fragment->ancestry.size());
+    CHECK_EQ(1, fragment->ancestry.size());
     REQUIRE(fragment->root);
     CHECK_EQ(0, fragment->root->body.size);
     auto statBody = fragment->root->as<AstStatBlock>();
@@ -1104,7 +1103,7 @@ local z = x + y
     CHECK_EQ(Location{Position{3, 0}, Position{3, 15}}, fragment->root->location);
 
     CHECK_EQ("local z = x + y", fragment->fragmentToParse);
-    CHECK_EQ(5, fragment->ancestry.size());
+    CHECK_EQ(4, fragment->ancestry.size());
     REQUIRE(fragment->root);
     CHECK_EQ(1, fragment->root->body.size);
     auto stat = fragment->root->body.data[0]->as<AstStatLocal>();
@@ -1149,7 +1148,7 @@ local y = 5
     REQUIRE(fragment.has_value());
 
     CHECK_EQ("local z = x + y", fragment->fragmentToParse);
-    CHECK_EQ(5, fragment->ancestry.size());
+    CHECK_EQ(4, fragment->ancestry.size());
     REQUIRE(fragment->root);
     CHECK_EQ(Location{Position{2, 0}, Position{2, 15}}, fragment->root->location);
     CHECK_EQ(1, fragment->root->body.size);
@@ -1244,7 +1243,7 @@ abc("bar")
 
     REQUIRE(stringFragment.has_value());
 
-    CHECK_EQ("abc(\"foo\")", stringFragment->fragmentToParse);
+    CHECK_EQ("abc(\"foo\"", stringFragment->fragmentToParse);
     CHECK(stringFragment->nearestStatement);
     CHECK(stringFragment->nearestStatement->is<AstStatExpr>());
 
@@ -3605,6 +3604,126 @@ end)
 )";
     autocompleteFragmentInBothSolvers(source, dest, Position{5, 11}, [](auto& result) {});
 }
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_cond_no_then_recs_then")
+{
+    const std::string source = R"(
+
+    )";
+
+    const std::string dest = R"(
+if x t
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{1, 6},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK(result.result->acResults.entryMap.count("then"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_then_recs_else")
+{
+    const std::string source = R"(
+if x then
+
+end
+    )";
+
+    const std::string dest = R"(
+if x then
+e
+end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{2, 1},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK(result.result->acResults.entryMap.count("else"));
+            CHECK(result.result->acResults.entryMap.count("elseif"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_else_if_table_prop_recs_no_then")
+{
+    const std::string source = R"(
+type T = {xa : number, y : number}
+local t : T = {xa = 3, y = 3}
+
+if t.x then
+elseif
+end
+)";
+
+    const std::string dest = R"(
+type T = {xa : number, y : number}
+local t : T = {xa = 3, y = 3}
+
+if t.x then
+elseif t.xa t
+end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{5, 13},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(!result.result->acResults.entryMap.count("xa"));
+            CHECK(!result.result->acResults.entryMap.count("y"));
+            CHECK(result.result->acResults.entryMap.count("then"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_else_if_table_prop_recs_with_then")
+{
+    const std::string source = R"(
+type T = {xa : number, y : number}
+local t : T = {xa = 3, y = 3}
+
+if t.x then
+elseif  then
+end
+)";
+
+    const std::string dest = R"(
+type T = {xa : number, y : number}
+local t : T = {xa = 3, y = 3}
+
+if t.x then
+elseif t.  then
+end
+)";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{5, 9},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("xa"));
+            CHECK(result.result->acResults.entryMap.count("y"));
+            CHECK(!result.result->acResults.entryMap.count("then"));
+        }
+    );
+}
+
 // NOLINTEND(bugprone-unchecked-optional-access)
 
 TEST_SUITE_END();

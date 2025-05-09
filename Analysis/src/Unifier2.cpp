@@ -19,6 +19,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 namespace Luau
 {
@@ -330,6 +331,10 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
         {
             if (FFlag::LuauNonReentrantGeneralization2)
             {
+                if (FFlag::DebugLuauGreedyGeneralization)
+                    genericPack = follow(genericPack);
+
+                // TODO: Clip this follow() with DebugLuauGreedyGeneralization
                 const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
                 if (gen)
                     genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);

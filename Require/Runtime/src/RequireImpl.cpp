@@ -29,8 +29,8 @@ struct ResolvedRequire
     };
 
     Status status;
-    std::string contents;
     std::string chunkname;
+    std::string loadname;
     std::string cacheKey;
 };
 
@@ -89,17 +89,17 @@ static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* 
         return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
     }
 
-    std::optional<std::string> contents = navigationContext.getContents();
-    if (!contents)
+    std::optional<std::string> loadname = navigationContext.getLoadname();
+    if (!loadname)
     {
-        errorHandler.reportError("could not get contents for module");
+        errorHandler.reportError("could not get loadname for module");
         return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
     }
 
     return ResolvedRequire{
         ResolvedRequire::Status::ModuleRead,
-        std::move(*contents),
         std::move(*chunkname),
+        std::move(*loadname),
         std::move(*cacheKey),
     };
 }
