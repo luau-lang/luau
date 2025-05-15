@@ -467,7 +467,7 @@ static int getNegatedValue(lua_State* L)
     return 1;
 }
 
-// Luau: `types.newtable(props: {[type]: type | { read: type, write: type }}?, indexer: {index: type, readresult: type, writeresult: type}?,
+// Luau: `types.newtable(props: {[type]: { read: type } | { write: type } | { read: type, write: type } | type }?, indexer: {index: type, readresult: type, writeresult: type}?,
 // metatable: type?) -> type` Returns the type instance representing table
 static int createTable(lua_State* L)
 {
