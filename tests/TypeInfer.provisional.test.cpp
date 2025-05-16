@@ -13,12 +13,12 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -48,7 +48,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expected = FFlag::LuauStoreCSTData2 ? R"(
+    const std::string expected = R"(
         function f(a:{fn:()->(a,b...)}): ()
             if type(a) == 'boolean' then
                 local a1:boolean=a
@@ -56,18 +56,9 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
                 local a2:{fn:()->(a,b...)}=a
             end
         end
-    )"
-                                                          : R"(
-        function f(a:{fn:()->(a,b...)}): ()
-            if type(a) == 'boolean'then
-                local a1:boolean=a
-            elseif a.fn()then
-                local a2:{fn:()->(a,b...)}=a
-            end
-        end
     )";
 
-    const std::string expectedWithNewSolver = FFlag::LuauStoreCSTData2 ? R"(
+    const std::string expectedWithNewSolver = R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
@@ -75,31 +66,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
                 local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
             end
         end
-    )"
-                                                                       : R"(
-        function f(a:{fn:()->(unknown,...unknown)}): ()
-            if type(a) == 'boolean'then
-                local a1:{fn:()->(unknown,...unknown)}&boolean=a
-            elseif a.fn()then
-                local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
-            end
-        end
     )";
 
-    const std::string expectedWithEqSat = FFlag::LuauStoreCSTData2 ? R"(
+    const std::string expectedWithEqSat = R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
-            end
-        end
-    )"
-                                                                   : R"(
-        function f(a:{fn:()->(unknown,...unknown)}): ()
-            if type(a) == 'boolean'then
-                local a1:{fn:()->(unknown,...unknown)}&boolean=a
-            elseif a.fn()then
                 local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
             end
         end
@@ -1356,6 +1329,23 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
         CHECK("<T, b>({T}, b) -> number" == toString(requireType("find_first")));
     }
 #endif
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
+    // This is a tactical unsoundness we're introducing to resolve issues around
+    // cyclic types. You can see that if this loop were to run more than once,
+    // we'd error as we'd try to call a number.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local f = function () return 42 end
+        while true do
+            f = f()
+        end
+    )"));
 }
 
 TEST_SUITE_END();

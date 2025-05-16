@@ -19,7 +19,6 @@
 // used to control the recursion limit of any operations done by user-defined type functions
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
-LUAU_FASTFLAG(LuauTypeFunReadWriteParents)
 
 namespace Luau
 {
@@ -211,7 +210,7 @@ private:
             // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the original
             // class
             target = typeFunctionRuntime->typeArena.allocate(
-                TypeFunctionExternType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty}
+                TypeFunctionExternType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty}
             );
         }
         else if (auto g = get<GenericType>(ty))
@@ -436,16 +435,9 @@ private:
         {
             TypeFunctionTypeId parent = shallowSerialize(*c1->parent);
 
-            if (FFlag::LuauTypeFunReadWriteParents)
-            {
-                // we don't yet have read/write parents in the type inference engine.
-                c2->readParent = parent;
-                c2->writeParent = parent;
-            }
-            else
-            {
-                c2->parent_DEPRECATED = parent;
-            }
+            // we don't yet have read/write parents in the type inference engine.
+            c2->readParent = parent;
+            c2->writeParent = parent;
         }
     }
 

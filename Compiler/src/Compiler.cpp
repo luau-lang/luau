@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
 
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+LUAU_FASTFLAGVARIABLE(LuauCompileFixTypeFunctionSkip)
 
 namespace Luau
 {
@@ -3932,6 +3933,11 @@ struct Compiler
                 hasNativeFunction = true;
 
             return false;
+        }
+
+        bool visit(AstStatTypeFunction* node) override
+        {
+            return !FFlag::LuauCompileFixTypeFunctionSkip;
         }
     };
 

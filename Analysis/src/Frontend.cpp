@@ -39,15 +39,12 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRethrowKnownExceptions, false)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-
-LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
 
 namespace Luau
 {
@@ -1098,27 +1095,13 @@ void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, 
 {
     BuildQueueItem& item = state->buildQueueItems[itemPos];
 
-    if (DFFlag::LuauRethrowKnownExceptions)
+    try
     {
-        try
-        {
-            checkBuildQueueItem(item);
-        }
-        catch (const Luau::InternalCompilerError&)
-        {
-            item.exception = std::current_exception();
-        }
+        checkBuildQueueItem(item);
     }
-    else
+    catch (const Luau::InternalCompilerError&)
     {
-        try
-        {
-            checkBuildQueueItem(item);
-        }
-        catch (...)
-        {
-            item.exception = std::current_exception();
-        }
+        item.exception = std::current_exception();
     }
 
     {
@@ -1402,7 +1385,7 @@ ModulePtr check(
     SimplifierPtr simplifier = newSimplifier(NotNull{&result->internalTypes}, builtinTypes);
     TypeFunctionRuntime typeFunctionRuntime{iceHandler, NotNull{&limits}};
 
-    typeFunctionRuntime.allowEvaluation = FFlag::LuauTypeFunResultInAutocomplete || sourceModule.parseErrors.empty();
+    typeFunctionRuntime.allowEvaluation = true;
 
     ConstraintGenerator cg{
         result,

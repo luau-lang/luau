@@ -329,8 +329,6 @@ LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
 
-LUA_API void lua_setuserdatametatable_DEPRECATED(lua_State* L, int tag, int idx); // Deprecated for incorrect behavior with 'idx != -1'
-
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 

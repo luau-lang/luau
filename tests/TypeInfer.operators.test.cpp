@@ -55,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
     {
         // FIXME: Regression.
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
-        CHECK("number | string | string" == toString(*requireType("y")));
+        CHECK("number | string" == toString(*requireType("y")));
     }
     else
     {

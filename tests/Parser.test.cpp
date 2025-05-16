@@ -19,9 +19,7 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauParseStringIndexer)
-LUAU_FASTFLAG(LuauFixFunctionWithAttributesStartLocation)
 LUAU_FASTFLAG(LuauDeclareExternType)
-LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -2872,8 +2870,6 @@ TEST_CASE_FIXTURE(Fixture, "do_block_end_location_is_after_end_token")
 
 TEST_CASE_FIXTURE(Fixture, "function_start_locations_are_before_attributes")
 {
-    ScopedFastFlag _{FFlag::LuauFixFunctionWithAttributesStartLocation, true};
-
     AstStatBlock* stat = parse(R"(
         @native
         function globalFunction()
@@ -2906,8 +2902,6 @@ TEST_CASE_FIXTURE(Fixture, "function_start_locations_are_before_attributes")
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size_zero")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
-
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 

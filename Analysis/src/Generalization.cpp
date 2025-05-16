@@ -16,7 +16,7 @@
 
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
-LUAU_FASTFLAGVARIABLE(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAGVARIABLE(LuauNonReentrantGeneralization3)
 
 namespace Luau
 {
@@ -469,7 +469,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (FFlag::LuauNonReentrantGeneralization2)
+        if (FFlag::LuauNonReentrantGeneralization3)
         {
             if (!subsumes(scope, ft.scope))
                 return true;
@@ -520,7 +520,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
         {
-            if (FFlag::LuauNonReentrantGeneralization2)
+            if (FFlag::LuauNonReentrantGeneralization3)
                 unsealedTables.insert(ty);
             else
             {
@@ -559,7 +559,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if (tt.indexer)
         {
-            if (FFlag::LuauNonReentrantGeneralization2)
+            if (FFlag::LuauNonReentrantGeneralization3)
             {
                 // {[K]: V} is equivalent to three functions: get, set, and iterate
                 //
@@ -617,7 +617,7 @@ struct FreeTypeSearcher : TypeVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        if (FFlag::LuauNonReentrantGeneralization2)
+        if (FFlag::LuauNonReentrantGeneralization3)
         {
             GeneralizationParams<TypePackId>& params = typePacks[tp];
             ++params.useCount;
@@ -1159,7 +1159,7 @@ struct RemoveType : Substitution // NOLINT
 
             for (TypeId ty : ut)
             {
-                if (ty != needle)
+                if (ty != needle && !is<NeverType>(ty))
                     newParts.insert(ty);
             }
 
@@ -1180,7 +1180,7 @@ struct RemoveType : Substitution // NOLINT
 
             for (TypeId ty : it)
             {
-                if (ty != needle)
+                if (ty != needle && !is<UnknownType>(ty))
                     newParts.insert(ty);
             }
 
@@ -1301,7 +1301,23 @@ GeneralizationResult<TypeId> generalizeType(
         if (follow(ub) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), ub);
         else if (!isWithinFunction || params.useCount == 1)
-            emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
+        {
+            // If we have some free type:
+            //
+            //  A <: 'b < C
+            //
+            // We can approximately generalize this to the intersection of it's
+            // bounds, taking care to avoid constructing a degenerate
+            // union or intersection by clipping the free type from the upper
+            // and lower bounds, then also cleaning the resulting intersection.
+            std::optional<TypeId> removedLb = removeType(arena, builtinTypes, ft->lowerBound, freeTy);
+            if (!removedLb)
+                return {std::nullopt, false, true};
+            std::optional<TypeId> cleanedTy = removeType(arena, builtinTypes, arena->addType(IntersectionType{{*removedLb, ub}}), freeTy);
+            if (!cleanedTy)
+                return {std::nullopt, false, true};
+            emplaceType<BoundType>(asMutable(freeTy), *cleanedTy);
+        }
         else
         {
             // if the upper bound is the type in question, we don't actually have an upper bound.
@@ -1374,7 +1390,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    if (FFlag::LuauNonReentrantGeneralization2)
+    if (FFlag::LuauNonReentrantGeneralization3)
     {
         FunctionType* functionTy = getMutable<FunctionType>(ty);
         auto pushGeneric = [&](TypeId t)

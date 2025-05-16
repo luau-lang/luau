@@ -1479,16 +1479,6 @@ void lua_setuserdatametatable(lua_State* L, int tag)
     L->top--;
 }
 
-void lua_setuserdatametatable_DEPRECATED(lua_State* L, int tag, int idx)
-{
-    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
-    api_check(L, !L->global->udatamt[tag]); // reassignment not supported
-    StkId o = index2addr(L, idx);
-    api_check(L, ttistable(o));
-    L->global->udatamt[tag] = hvalue(o);
-    L->top--;
-}
-
 void lua_getuserdatametatable(lua_State* L, int tag)
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);

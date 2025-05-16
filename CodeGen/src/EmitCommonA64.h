@@ -27,26 +27,26 @@ namespace A64
 
 // Data that is very common to access is placed in non-volatile registers:
 // 1. Constant registers (only loaded during codegen entry)
-constexpr RegisterA64 rState = x19;         // lua_State* L
-constexpr RegisterA64 rNativeContext = x20; // NativeContext* context
-constexpr RegisterA64 rGlobalState = x21;   // global_State* L->global
+inline constexpr RegisterA64 rState = x19;         // lua_State* L
+inline constexpr RegisterA64 rNativeContext = x20; // NativeContext* context
+inline constexpr RegisterA64 rGlobalState = x21;   // global_State* L->global
 
 // 2. Frame registers (reloaded when call frame changes; rBase is also reloaded after all calls that may reallocate stack)
-constexpr RegisterA64 rConstants = x22; // TValue* k
-constexpr RegisterA64 rClosure = x23;   // Closure* cl
-constexpr RegisterA64 rCode = x24;      // Instruction* code
-constexpr RegisterA64 rBase = x25;      // StkId base
+inline constexpr RegisterA64 rConstants = x22; // TValue* k
+inline constexpr RegisterA64 rClosure = x23;   // Closure* cl
+inline constexpr RegisterA64 rCode = x24;      // Instruction* code
+inline constexpr RegisterA64 rBase = x25;      // StkId base
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // See CodeGenA64.cpp for layout
-constexpr unsigned kStashSlots = 9;  // stashed non-volatile registers
-constexpr unsigned kTempSlots = 1;   // 8 bytes of temporary space, such luxury!
-constexpr unsigned kSpillSlots = 22; // slots for spilling temporary registers
+inline constexpr unsigned kStashSlots = 9; // stashed non-volatile registers
+inline constexpr unsigned kTempSlots = 1;  // 8 bytes of temporary space, such luxury!
+inline constexpr unsigned kSpillSlots = 22; // slots for spilling temporary registers
 
-constexpr unsigned kStackSize = (kStashSlots + kTempSlots + kSpillSlots) * 8;
+inline constexpr unsigned kStackSize = (kStashSlots + kTempSlots + kSpillSlots) * 8;
 
-constexpr AddressA64 sSpillArea = mem(sp, (kStashSlots + kTempSlots) * 8);
-constexpr AddressA64 sTemporary = mem(sp, kStashSlots * 8);
+inline constexpr AddressA64 sSpillArea = mem(sp, (kStashSlots + kTempSlots) * 8);
+inline constexpr AddressA64 sTemporary = mem(sp, kStashSlots * 8);
 
 inline void emitUpdateBase(AssemblyBuilderA64& build)
 {

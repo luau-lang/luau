@@ -101,8 +101,18 @@ struct luarequire_Configuration
     // configuration file is present or NAVIGATE_FAILURE is returned (at root).
     bool (*is_config_present)(lua_State* L, void* ctx);
 
+    // Parses the configuration file in the current context for the given alias
+    // and returns its value or WRITE_FAILURE if not found. This function is
+    // only called if is_config_present returns true. If this function pointer
+    // is set, get_config must not be set. Opting in to this function pointer
+    // disables parsing configuration files internally and can be used for finer
+    // control over the configuration file parsing process.
+    luarequire_WriteResult (*get_alias)(lua_State* L, void* ctx, const char* alias, char* buffer, size_t buffer_size, size_t* size_out);
+
     // Provides the contents of the configuration file in the current context.
-    // This function is only called if is_config_present returns true.
+    // This function is only called if is_config_present returns true. If this
+    // function pointer is set, get_alias must not be set. Opting in to this
+    // function pointer enables parsing configuration files internally.
     luarequire_WriteResult (*get_config)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
 
     // Executes the module and places the result on the stack. Returns the

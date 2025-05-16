@@ -249,6 +249,8 @@ public:
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint);
 
+    bool tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint);
+
     // for a, ... in some_table do
     // also handles __iter metamethod
     bool tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);

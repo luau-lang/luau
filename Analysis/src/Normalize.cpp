@@ -21,8 +21,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauFixInfiniteRecursionInNormalization)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationCatchMetatableCycles)
 
 namespace Luau
 {
@@ -2606,60 +2604,22 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                 {
                     if (tprop.readTy.has_value())
                     {
-                        if (FFlag::LuauFixInfiniteRecursionInNormalization)
-                        {
-                            TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
+                        TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
 
-                            // If any property is going to get mapped to `never`, we can just call the entire table `never`.
-                            // Since this check is syntactic, we may sometimes miss simplifying tables with complex uninhabited properties.
-                            // Prior versions of this code attempted to do this semantically using the normalization machinery, but this
-                            // mistakenly causes infinite loops when giving more complex recursive table types. As it stands, this approach
-                            // will continue to scale as simplification is improved, but we may wish to reintroduce the semantic approach
-                            // once we have revisited the usage of seen sets systematically (and possibly with some additional guarding to recognize
-                            // when types are infinitely-recursive with non-pointer identical instances of them, or some guard to prevent that
-                            // construction altogether). See also: `gh1632_no_infinite_recursion_in_normalization`
-                            if (get<NeverType>(ty))
-                                return {builtinTypes->neverType};
+                        // If any property is going to get mapped to `never`, we can just call the entire table `never`.
+                        // Since this check is syntactic, we may sometimes miss simplifying tables with complex uninhabited properties.
+                        // Prior versions of this code attempted to do this semantically using the normalization machinery, but this
+                        // mistakenly causes infinite loops when giving more complex recursive table types. As it stands, this approach
+                        // will continue to scale as simplification is improved, but we may wish to reintroduce the semantic approach
+                        // once we have revisited the usage of seen sets systematically (and possibly with some additional guarding to recognize
+                        // when types are infinitely-recursive with non-pointer identical instances of them, or some guard to prevent that
+                        // construction altogether). See also: `gh1632_no_infinite_recursion_in_normalization`
+                        if (get<NeverType>(ty))
+                            return {builtinTypes->neverType};
 
-                            prop.readTy = ty;
-                            hereSubThere &= (ty == hprop.readTy);
-                            thereSubHere &= (ty == tprop.readTy);
-                        }
-                        else
-                        {
-                            // if the intersection of the read types of a property is uninhabited, the whole table is `never`.
-                            // We've seen these table prop elements before and we're about to ask if their intersection
-                            // is inhabited
-
-                            auto pair1 = std::pair{*hprop.readTy, *tprop.readTy};
-                            auto pair2 = std::pair{*tprop.readTy, *hprop.readTy};
-                            if (seenTablePropPairs.contains(pair1) || seenTablePropPairs.contains(pair2))
-                            {
-                                seenTablePropPairs.erase(pair1);
-                                seenTablePropPairs.erase(pair2);
-                                return {builtinTypes->neverType};
-                            }
-                            else
-                            {
-                                seenTablePropPairs.insert(pair1);
-                                seenTablePropPairs.insert(pair2);
-                            }
-
-                            // FIXME(ariel): this is being added in a flag removal, so not changing the semantics here, but worth noting that this
-                            // fresh `seenSet` is definitely a bug. we already have `seenSet` from the parameter that _should_ have been used here.
-                            Set<TypeId> seenSet{nullptr};
-                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy, seenTablePropPairs, seenSet);
-
-                            seenTablePropPairs.erase(pair1);
-                            seenTablePropPairs.erase(pair2);
-                            if (NormalizationResult::True != res)
-                                return {builtinTypes->neverType};
-
-                            TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
-                            prop.readTy = ty;
-                            hereSubThere &= (ty == hprop.readTy);
-                            thereSubHere &= (ty == tprop.readTy);
-                        }
+                        prop.readTy = ty;
+                        hereSubThere &= (ty == hprop.readTy);
+                        thereSubHere &= (ty == tprop.readTy);
                     }
                     else
                     {
@@ -3352,21 +3312,6 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     return NormalizationResult::True;
 }
 
-void makeTableShared_DEPRECATED(TypeId ty)
-{
-    ty = follow(ty);
-    if (auto tableTy = getMutable<TableType>(ty))
-    {
-        for (auto& [_, prop] : tableTy->props)
-            prop.makeShared();
-    }
-    else if (auto metatableTy = get<MetatableType>(ty))
-    {
-        makeTableShared_DEPRECATED(metatableTy->metatable);
-        makeTableShared_DEPRECATED(metatableTy->table);
-    }
-}
-
 void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     ty = follow(ty);
@@ -3490,10 +3435,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
         {
-            if (FFlag::LuauNormalizationCatchMetatableCycles)
-                makeTableShared(table);
-            else
-                makeTableShared_DEPRECATED(table);
+            makeTableShared(table);
             result.push_back(table);
         }
     }

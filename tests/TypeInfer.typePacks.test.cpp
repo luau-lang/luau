@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -1095,6 +1096,8 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     CheckResult result = check(R"(
         function foo<T...>(...: T...): T...
             return ...

@@ -18,7 +18,7 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 
 namespace Luau
@@ -329,7 +329,7 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
 
         for (TypePackId genericPack : subFn->genericPacks)
         {
-            if (FFlag::LuauNonReentrantGeneralization2)
+            if (FFlag::LuauNonReentrantGeneralization3)
             {
                 if (FFlag::DebugLuauGreedyGeneralization)
                     genericPack = follow(genericPack);
@@ -454,6 +454,12 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
     {
         result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+        if (FFlag::LuauNonReentrantGeneralization3)
+        {
+            // FIXME: We can probably do something more efficient here.
+            result &= unify(superTable->indexer->indexType, subTable->indexer->indexType);
+            result &= unify(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+        }
     }
 
     if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)

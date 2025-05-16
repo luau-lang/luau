@@ -78,7 +78,7 @@ Error Navigator::navigateImpl(std::string_view path)
         if (Error error = navigateToAndPopulateConfig(alias))
             return error;
 
-        if (!config.aliases.contains(alias))
+        if (!foundAliasValue)
         {
             if (alias != "self")
                 return "@" + alias + " is not a valid alias";
@@ -93,7 +93,7 @@ Error Navigator::navigateImpl(std::string_view path)
             return std::nullopt;
         }
 
-        if (Error error = navigateToAlias(alias, config.aliases[alias].value))
+        if (Error error = navigateToAlias(alias, *foundAliasValue))
             return error;
         if (Error error = navigateThroughPath(path))
             return error;
@@ -169,25 +169,37 @@ Error Navigator::navigateToAlias(const std::string& alias, const std::string& va
 
 Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias)
 {
-    while (!config.aliases.contains(desiredAlias))
+    Luau::Config config;
+
+    while (!foundAliasValue)
     {
         if (navigationContext.toParent() != NavigationContext::NavigateResult::Success)
             break;
 
         if (navigationContext.isConfigPresent())
         {
-            std::optional<std::string> configContents = navigationContext.getConfig();
-            if (!configContents)
-                return "could not get configuration file contents to resolve alias \"" + desiredAlias + "\"";
+            if (navigationContext.getConfigBehavior() == NavigationContext::ConfigBehavior::GetAlias)
+            {
+                foundAliasValue = navigationContext.getAlias(desiredAlias);
+            }
+            else
+            {
+                std::optional<std::string> configContents = navigationContext.getConfig();
+                if (!configContents)
+                    return "could not get configuration file contents to resolve alias \"" + desiredAlias + "\"";
 
-            Luau::ConfigOptions opts;
-            Luau::ConfigOptions::AliasOptions aliasOpts;
-            aliasOpts.configLocation = "unused";
-            aliasOpts.overwriteAliases = false;
-            opts.aliasOptions = std::move(aliasOpts);
+                Luau::ConfigOptions opts;
+                Luau::ConfigOptions::AliasOptions aliasOpts;
+                aliasOpts.configLocation = "unused";
+                aliasOpts.overwriteAliases = false;
+                opts.aliasOptions = std::move(aliasOpts);
 
-            if (Error error = Luau::parseConfig(*configContents, config, opts))
-                return error;
+                if (Error error = Luau::parseConfig(*configContents, config, opts))
+                    return error;
+
+                if (config.aliases.contains(desiredAlias))
+                    foundAliasValue = config.aliases[desiredAlias].value;
+            }
         }
     };
 

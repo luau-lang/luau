@@ -173,6 +173,8 @@ private:
     std::vector<std::vector<TypeId>> DEPRECATED_interiorTypes;
     std::vector<InteriorFreeTypes> interiorFreeTypes;
 
+    std::vector<TypeId> unionsToSimplify;
+
     /**
      * Fabricates a new free type belonging to a given scope.
      * @param scope the scope the free type belongs to.
@@ -447,6 +449,12 @@ private:
 
     // make a union type function of these two types
     TypeId makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
+
+    // Make a union type and add it to `unionsToSimplify`, ensuring that
+    // later we will attempt to simplify this union in order to keep types
+    // small.
+    TypeId makeUnion(std::vector<TypeId> options);
+
     // make an intersect type function of these two types
     TypeId makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
     void prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program);

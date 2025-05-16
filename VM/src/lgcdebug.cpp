@@ -14,6 +14,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauCurrentLineBounds)
+
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
     LUAU_ASSERT(!isdead(g, t));
@@ -462,7 +464,7 @@ static void dumpthread(FILE* f, lua_State* th)
             else if (isLua(ci))
             {
                 Proto* p = ci_func(ci)->l.p;
-                int pc = pcRel(ci->savedpc, p);
+                int pc = FFlag::LuauCurrentLineBounds ? pcRel(ci->savedpc, p) : pcRel_DEPRECATED(ci->savedpc, p);
                 const LocVar* var = luaF_findlocal(p, int(v - ci->base), pc);
 
                 if (var && var->varname)

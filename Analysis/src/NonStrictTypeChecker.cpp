@@ -22,8 +22,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauNonStrictVisitorImprovements)
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictWarnOnUnknownGlobals)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
@@ -368,26 +366,16 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatWhile* whileStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext condition = visit(whileStatement->condition, ValueContext::RValue);
-            NonStrictContext body = visit(whileStatement->body);
-            return NonStrictContext::disjunction(builtinTypes, arena, condition, body);
-        }
-        else
-            return {};
+        NonStrictContext condition = visit(whileStatement->condition, ValueContext::RValue);
+        NonStrictContext body = visit(whileStatement->body);
+        return NonStrictContext::disjunction(builtinTypes, arena, condition, body);
     }
 
     NonStrictContext visit(AstStatRepeat* repeatStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext body = visit(repeatStatement->body);
-            NonStrictContext condition = visit(repeatStatement->condition, ValueContext::RValue);
-            return NonStrictContext::disjunction(builtinTypes, arena, body, condition);
-        }
-        else
-            return {};
+        NonStrictContext body = visit(repeatStatement->body);
+        NonStrictContext condition = visit(repeatStatement->condition, ValueContext::RValue);
+        return NonStrictContext::disjunction(builtinTypes, arena, body, condition);
     }
 
     NonStrictContext visit(AstStatBreak* breakStatement)
@@ -402,13 +390,10 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatReturn* returnStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            // TODO: this is believing existing code, but i'm not sure if this makes sense
-            // for how the contexts are handled
-            for (AstExpr* expr : returnStatement->list)
-                visit(expr, ValueContext::RValue);
-        }
+        // TODO: this is believing existing code, but i'm not sure if this makes sense
+        // for how the contexts are handled
+        for (AstExpr* expr : returnStatement->list)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }
@@ -430,21 +415,14 @@ struct NonStrictTypeChecker
         if (FFlag::LuauNewNonStrictVisitTypes2)
             visit(forStatement->var->annotation);
 
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            // TODO: throwing out context based on same principle as existing code?
-            if (forStatement->from)
-                visit(forStatement->from, ValueContext::RValue);
-            if (forStatement->to)
-                visit(forStatement->to, ValueContext::RValue);
-            if (forStatement->step)
-                visit(forStatement->step, ValueContext::RValue);
-            return visit(forStatement->body);
-        }
-        else
-        {
-            return {};
-        }
+        // TODO: throwing out context based on same principle as existing code?
+        if (forStatement->from)
+            visit(forStatement->from, ValueContext::RValue);
+        if (forStatement->to)
+            visit(forStatement->to, ValueContext::RValue);
+        if (forStatement->step)
+            visit(forStatement->step, ValueContext::RValue);
+        return visit(forStatement->body);
     }
 
     NonStrictContext visit(AstStatForIn* forInStatement)
@@ -455,38 +433,25 @@ struct NonStrictTypeChecker
                 visit(var->annotation);
         }
 
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* rhs : forInStatement->values)
-                visit(rhs, ValueContext::RValue);
-            return visit(forInStatement->body);
-        }
-        else
-        {
-            return {};
-        }
+        for (AstExpr* rhs : forInStatement->values)
+            visit(rhs, ValueContext::RValue);
+        return visit(forInStatement->body);
     }
 
     NonStrictContext visit(AstStatAssign* assign)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* lhs : assign->vars)
-                visit(lhs, ValueContext::LValue);
-            for (AstExpr* rhs : assign->values)
-                visit(rhs, ValueContext::RValue);
-        }
+        for (AstExpr* lhs : assign->vars)
+            visit(lhs, ValueContext::LValue);
+        for (AstExpr* rhs : assign->values)
+            visit(rhs, ValueContext::RValue);
 
         return {};
     }
 
     NonStrictContext visit(AstStatCompoundAssign* compoundAssign)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            visit(compoundAssign->var, ValueContext::LValue);
-            visit(compoundAssign->value, ValueContext::RValue);
-        }
+        visit(compoundAssign->var, ValueContext::LValue);
+        visit(compoundAssign->value, ValueContext::RValue);
 
         return {};
     }
@@ -556,13 +521,10 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatError* error)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstStat* stat : error->statements)
-                visit(stat);
-            for (AstExpr* expr : error->expressions)
-                visit(expr, ValueContext::RValue);
-        }
+        for (AstStat* stat : error->statements)
+            visit(stat);
+        for (AstExpr* expr : error->expressions)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }
@@ -617,10 +579,7 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprGroup* group, ValueContext context)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(group->expr, context);
-        else
-            return {};
+        return visit(group->expr, context);
     }
 
     NonStrictContext visit(AstExprConstantNil* expr)
@@ -650,17 +609,14 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprGlobal* global, ValueContext context)
     {
-        if (FFlag::LuauNewNonStrictWarnOnUnknownGlobals)
-        {
-            // We don't file unknown symbols for LValues.
-            if (context == ValueContext::LValue)
-                return {};
+        // We don't file unknown symbols for LValues.
+        if (context == ValueContext::LValue)
+            return {};
 
-            NotNull<Scope> scope = stack.back();
-            if (!scope->lookup(global->name))
-            {
-                reportError(UnknownSymbol{global->name.value, UnknownSymbol::Binding}, global->location);
-            }
+        NotNull<Scope> scope = stack.back();
+        if (!scope->lookup(global->name))
+        {
+            reportError(UnknownSymbol{global->name.value, UnknownSymbol::Binding}, global->location);
         }
 
         return {};
@@ -783,23 +739,16 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprIndexName* indexName, ValueContext context)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(indexName->expr, context);
-        else
-            return {};
+        return visit(indexName->expr, context);
     }
 
     NonStrictContext visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext expr = visit(indexExpr->expr, context);
-            NonStrictContext index = visit(indexExpr->index, ValueContext::RValue);
-            return NonStrictContext::disjunction(builtinTypes, arena, expr, index);
-        }
-        else
-            return {};
+        NonStrictContext expr = visit(indexExpr->expr, context);
+        NonStrictContext index = visit(indexExpr->index, ValueContext::RValue);
+        return NonStrictContext::disjunction(builtinTypes, arena, expr, index);
     }
+
 
     NonStrictContext visit(AstExprFunction* exprFn)
     {
@@ -840,14 +789,11 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprTable* table)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
+        for (auto [_, key, value] : table->items)
         {
-            for (auto [_, key, value] : table->items)
-            {
-                if (key)
-                    visit(key, ValueContext::RValue);
-                visit(value, ValueContext::RValue);
-            }
+            if (key)
+                visit(key, ValueContext::RValue);
+            visit(value, ValueContext::RValue);
         }
 
         return {};
@@ -855,22 +801,14 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprUnary* unary)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(unary->expr, ValueContext::RValue);
-        else
-            return {};
+        return visit(unary->expr, ValueContext::RValue);
     }
 
     NonStrictContext visit(AstExprBinary* binary)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext lhs = visit(binary->left, ValueContext::RValue);
-            NonStrictContext rhs = visit(binary->right, ValueContext::RValue);
-            return NonStrictContext::disjunction(builtinTypes, arena, lhs, rhs);
-        }
-        else
-            return {};
+        NonStrictContext lhs = visit(binary->left, ValueContext::RValue);
+        NonStrictContext rhs = visit(binary->right, ValueContext::RValue);
+        return NonStrictContext::disjunction(builtinTypes, arena, lhs, rhs);
     }
 
     NonStrictContext visit(AstExprTypeAssertion* typeAssertion)
@@ -878,10 +816,7 @@ struct NonStrictTypeChecker
         if (FFlag::LuauNewNonStrictVisitTypes2)
             visit(typeAssertion->annotation);
 
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(typeAssertion->expr, ValueContext::RValue);
-        else
-            return {};
+        return visit(typeAssertion->expr, ValueContext::RValue);
     }
 
     NonStrictContext visit(AstExprIfElse* ifElse)
@@ -894,22 +829,16 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprInterpString* interpString)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* expr : interpString->expressions)
-                visit(expr, ValueContext::RValue);
-        }
+        for (AstExpr* expr : interpString->expressions)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }
 
     NonStrictContext visit(AstExprError* error)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* expr : error->expressions)
-                visit(expr, ValueContext::RValue);
-        }
+        for (AstExpr* expr : error->expressions)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }

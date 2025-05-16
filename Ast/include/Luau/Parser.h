@@ -245,8 +245,6 @@ private:
     };
 
     TableIndexerResult parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
-    // Remove with FFlagLuauStoreCSTData2
-    AstTableIndexer* parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
 
     AstTypeOrPack parseFunctionType(bool allowPack, const AstArray<AstAttr*>& attributes);
     AstType* parseFunctionTypeTail(
