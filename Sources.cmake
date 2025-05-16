@@ -398,9 +398,11 @@ target_sources(isocline PRIVATE
 target_sources(Luau.CLI.lib PRIVATE
     CLI/include/Luau/FileUtils.h
     CLI/include/Luau/Flags.h
+    CLI/include/Luau/VfsNavigator.h
 
     CLI/src/FileUtils.cpp
     CLI/src/Flags.cpp
+    CLI/src/VfsNavigator.cpp
 )
 
 if(TARGET Luau.Repl.CLI)
@@ -409,14 +411,12 @@ if(TARGET Luau.Repl.CLI)
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
-        CLI/include/Luau/RequirerUtils.h
 
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
         CLI/src/ReplEntry.cpp
         CLI/src/ReplRequirer.cpp
-        CLI/src/RequirerUtils.cpp
     )
 endif()
 
@@ -424,11 +424,9 @@ if(TARGET Luau.Analyze.CLI)
     # Luau.Analyze.CLI Sources
     target_sources(Luau.Analyze.CLI PRIVATE
         CLI/include/Luau/AnalyzeRequirer.h
-        CLI/include/Luau/RequirerUtils.h
 
         CLI/src/Analyze.cpp
         CLI/src/AnalyzeRequirer.cpp
-        CLI/src/RequirerUtils.cpp
     )
 endif()
 
@@ -563,13 +561,11 @@ if(TARGET Luau.CLI.Test)
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
-        CLI/include/Luau/RequirerUtils.h
 
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
         CLI/src/ReplRequirer.cpp
-        CLI/src/RequirerUtils.cpp
 
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp

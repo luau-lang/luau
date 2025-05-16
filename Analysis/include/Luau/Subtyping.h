@@ -60,7 +60,7 @@ struct SubtypingReasoningHash
 };
 
 using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
-static const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
+inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
 
 struct SubtypingResult
 {

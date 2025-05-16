@@ -25,7 +25,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteUsesModuleForTypeCompatibility)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteUnionCopyPreviousSeen)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMissingFollows)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
@@ -490,13 +489,10 @@ static void autocompleteProps(
             //  t1 where t1 = t1 | ExternType
             //
             // Then we are on a one way journey to a stack overflow.
-            if (FFlag::LuauAutocompleteUnionCopyPreviousSeen)
+            for (auto ty : seen)
             {
-                for (auto ty : seen)
-                {
-                    if (is<UnionType, IntersectionType>(ty))
-                        innerSeen.insert(ty);
-                }
+                if (is<UnionType, IntersectionType>(ty))
+                    innerSeen.insert(ty);
             }
 
             if (isNil(*iter))

@@ -4,6 +4,7 @@
 #include "Luau/Require.h"
 
 #include "Luau/Compiler.h"
+#include "Luau/VfsNavigator.h"
 
 #include "lua.h"
 
@@ -29,7 +30,5 @@ struct ReplRequirer
     BoolCheck codegenEnabled;
     Coverage coverageTrack;
 
-    std::string absPath;
-    std::string relPath;
-    std::string suffix;
+    VfsNavigator vfs;
 };

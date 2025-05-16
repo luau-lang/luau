@@ -366,7 +366,7 @@ static TValue* arrayornewkey(lua_State* L, LuaTable* t, const TValue* key)
         int k;
         double n = nvalue(key);
         luai_num2int(k, n);
-        if (luai_numeq(cast_num(k), n) && cast_to(unsigned int, k - 1) < cast_to(unsigned int, t->sizearray))
+        if (luai_numeq(cast_num(k), n) && unsigned(k) - 1 < unsigned(t->sizearray))
             return &t->array[k - 1];
     }
 
@@ -604,7 +604,7 @@ static TValue* newkey(lua_State* L, LuaTable* t, const TValue* key)
 const TValue* luaH_getnum(LuaTable* t, int key)
 {
     // (1 <= key && key <= t->sizearray)
-    if (cast_to(unsigned int, key - 1) < cast_to(unsigned int, t->sizearray))
+    if (unsigned(key) - 1 < unsigned(t->sizearray))
         return &t->array[key - 1];
     else if (t->node != dummynode)
     {
@@ -701,7 +701,7 @@ TValue* luaH_newkey(lua_State* L, LuaTable* t, const TValue* key)
 TValue* luaH_setnum(lua_State* L, LuaTable* t, int key)
 {
     // (1 <= key && key <= t->sizearray)
-    if (cast_to(unsigned int, key - 1) < cast_to(unsigned int, t->sizearray))
+    if (unsigned(key) - 1 < unsigned(t->sizearray))
         return &t->array[key - 1];
     // hash fallback
     const TValue* p = luaH_getnum(t, key);

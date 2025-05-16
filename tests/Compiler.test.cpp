@@ -23,6 +23,7 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
+LUAU_FASTFLAG(LuauCompileFixTypeFunctionSkip)
 
 using namespace Luau;
 
@@ -2969,6 +2970,33 @@ TEST_CASE("TypeFunction")
     Luau::CompileOptions options;
     Luau::ParseOptions parseOptions;
     CHECK_NOTHROW(Luau::compileOrThrow(bcb, "type function a() return types.any end", options, parseOptions));
+}
+
+TEST_CASE("NoTypeFunctionsInBytecode")
+{
+    ScopedFastFlag luauCompileFixTypeFunctionSkip{FFlag::LuauCompileFixTypeFunctionSkip, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, R"(
+type function a() return types.any end
+function b() return 2 end
+return b()
+)");
+
+    CHECK_EQ("\n" + bcb.dumpEverything(), R"(
+Function 0 (b):
+LOADN R0 2
+RETURN R0 1
+
+Function 1 (??):
+DUPCLOSURE R0 K0 ['b']
+SETGLOBAL R0 K1 ['b']
+GETGLOBAL R0 K1 ['b']
+CALL R0 0 -1
+RETURN R0 -1
+
+)");
 }
 
 TEST_CASE("DebugLineInfo")

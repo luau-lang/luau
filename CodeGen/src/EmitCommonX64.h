@@ -33,22 +33,22 @@ namespace X64
 
 struct IrRegAllocX64;
 
-constexpr uint32_t kFunctionAlignment = 32;
+inline constexpr uint32_t kFunctionAlignment = 32;
 
 // Data that is very common to access is placed in non-volatile registers
-constexpr RegisterX64 rState = r15;         // lua_State* L
-constexpr RegisterX64 rBase = r14;          // StkId base
-constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
-constexpr RegisterX64 rConstants = r12;     // TValue* k
+inline constexpr RegisterX64 rState = r15;         // lua_State* L
+inline constexpr RegisterX64 rBase = r14;          // StkId base
+inline constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
+inline constexpr RegisterX64 rConstants = r12;     // TValue* k
 
-constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
-constexpr unsigned kSpillSlots = 13; // Number of 8 byte slots available for register allocator to spill data into
+inline constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
+inline constexpr unsigned kSpillSlots = 13; // Number of 8 byte slots available for register allocator to spill data into
 static_assert((kExtraLocals + kSpillSlots) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
 
-constexpr uint8_t kWindowsFirstNonVolXmmReg = 6;
+inline constexpr uint8_t kWindowsFirstNonVolXmmReg = 6;
 
-constexpr uint8_t kWindowsUsableXmmRegs = 10; // Some xmm regs are non-volatile, we have to balance how many we want to use/preserve
-constexpr uint8_t kSystemVUsableXmmRegs = 16; // All xmm regs are volatile
+inline constexpr uint8_t kWindowsUsableXmmRegs = 10; // Some xmm regs are non-volatile, we have to balance how many we want to use/preserve
+inline constexpr uint8_t kSystemVUsableXmmRegs = 16; // All xmm regs are volatile
 
 inline uint8_t getXmmRegisterCount(ABIX64 abi)
 {
@@ -57,11 +57,11 @@ inline uint8_t getXmmRegisterCount(ABIX64 abi)
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // Stack is separated into sections for different data. See CodeGenX64.cpp for layout overview
-constexpr unsigned kStackAlign = 8; // Bytes we need to align the stack for non-vol xmm register storage
-constexpr unsigned kStackLocalStorage = 8 * kExtraLocals;
-constexpr unsigned kStackSpillStorage = 8 * kSpillSlots;
-constexpr unsigned kStackExtraArgumentStorage = 2 * 8; // Bytes for 5th and 6th function call arguments used under Windows ABI
-constexpr unsigned kStackRegHomeStorage = 4 * 8;       // Register 'home' locations that can be used by callees under Windows ABI
+inline constexpr unsigned kStackAlign = 8; // Bytes we need to align the stack for non-vol xmm register storage
+inline constexpr unsigned kStackLocalStorage = 8 * kExtraLocals;
+inline constexpr unsigned kStackSpillStorage = 8 * kSpillSlots;
+inline constexpr unsigned kStackExtraArgumentStorage = 2 * 8; // Bytes for 5th and 6th function call arguments used under Windows ABI
+inline constexpr unsigned kStackRegHomeStorage = 4 * 8;       // Register 'home' locations that can be used by callees under Windows ABI
 
 inline unsigned getNonVolXmmStorageSize(ABIX64 abi, uint8_t xmmRegCount)
 {
@@ -77,19 +77,19 @@ inline unsigned getNonVolXmmStorageSize(ABIX64 abi, uint8_t xmmRegCount)
 }
 
 // Useful offsets to specific parts
-constexpr unsigned kStackOffsetToLocals = kStackExtraArgumentStorage + kStackRegHomeStorage;
-constexpr unsigned kStackOffsetToSpillSlots = kStackOffsetToLocals + kStackLocalStorage;
+inline constexpr unsigned kStackOffsetToLocals = kStackExtraArgumentStorage + kStackRegHomeStorage;
+inline constexpr unsigned kStackOffsetToSpillSlots = kStackOffsetToLocals + kStackLocalStorage;
 
 inline unsigned getFullStackSize(ABIX64 abi, uint8_t xmmRegCount)
 {
     return kStackOffsetToSpillSlots + kStackSpillStorage + getNonVolXmmStorageSize(abi, xmmRegCount) + kStackAlign;
 }
 
-constexpr OperandX64 sClosure = qword[rsp + kStackOffsetToLocals + 0]; // Closure* cl
-constexpr OperandX64 sCode = qword[rsp + kStackOffsetToLocals + 8];    // Instruction* code
-constexpr OperandX64 sTemporarySlot = addr[rsp + kStackOffsetToLocals + 16];
+inline constexpr OperandX64 sClosure = qword[rsp + kStackOffsetToLocals + 0]; // Closure* cl
+inline constexpr OperandX64 sCode = qword[rsp + kStackOffsetToLocals + 8];    // Instruction* code
+inline constexpr OperandX64 sTemporarySlot = addr[rsp + kStackOffsetToLocals + 16];
 
-constexpr OperandX64 sSpillArea = addr[rsp + kStackOffsetToSpillSlots];
+inline constexpr OperandX64 sSpillArea = addr[rsp + kStackOffsetToSpillSlots];
 
 inline OperandX64 luauReg(int ri)
 {

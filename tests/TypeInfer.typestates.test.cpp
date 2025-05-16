@@ -8,7 +8,11 @@ LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
+LUAU_FASTFLAG(LuauDfgMatchCGScopes)
+LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 using namespace Luau;
 
@@ -66,6 +70,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_different_values_to_x")
 
 TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     // Parameter `x` has a fresh type `'x` bounded by `never` and `unknown`.
     // The first use of `x` constrains `x`'s upper bound by `string | number`.
     // The second use of `x`, aliased by `y`, constrains `x`'s upper bound by `string?`.
@@ -87,11 +93,10 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
         // as a type for `x`, but it's a limitation we can accept for now.
         LUAU_REQUIRE_ERRORS(result);
 
-        TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-        REQUIRE_MESSAGE(tpm, "Expected TypePackMismatch but got " << result.errors[0]);
-        CHECK("string?" == toString(tpm->wantedTp));
-        CHECK("number | string" == toString(tpm->givenTp));
-
+        TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+        REQUIRE_MESSAGE(tm, "Expected TypeMismatch but got " << result.errors[0]);
+        CHECK("string?" == toString(tm->wantedType));
+        CHECK("number | string" == toString(tm->givenType));
         CHECK("(number | string) -> string?" == toString(requireType("f")));
     }
     else
@@ -409,7 +414,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_future_assignments")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauNonReentrantGeneralization2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauNonReentrantGeneralization3, true}};
 
     CheckResult result = check(R"(
         local f
@@ -753,6 +758,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
+        {FFlag::LuauDfgAllowUpdatesInLoops,true}
     };
 
     CheckResult result = check(R"(
@@ -769,10 +775,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-
-    // CLI-142447: This should probably be `nil` given that the `while` loop
-    // unconditionally returns, but `number?` is sound, if incomplete.
-    CHECK_EQ("number?", toString(requireTypeAtPosition({10, 14})));
+    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 14})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_refinement_in_loop")
@@ -844,6 +847,57 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_in_an_if_branch_without_else")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string?", toString(requireTypeAtPosition({9, 14})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_binary_expr")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauPreprocessTypestatedArgument, true},
+        {FFlag::LuauDfgMatchCGScopes, true},
+    };
+
+    // Previously this would ICE due to mismatched scopes between the
+    // constraint generator and the data flow graph.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local _
+        if _ or table.freeze(_,_) or table.freeze(_,_) then
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_in_conditional")
+{
+    ScopedFastFlag _{FFlag::LuauDfgMatchCGScopes, true};
+    
+    // NOTE: This _probably_ should be disallowed, but it is representing that
+    // type stating functions in short circuiting binary expressions do not
+    // reflect their type states.
+    CheckResult result = check(R"(
+        local t = { x = 42 }
+        if math.random() > 0.5 and table.freeze(t) then
+        end
+        t.y = 13
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauPreprocessTypestatedArgument, true},
+        {FFlag::LuauDfgMatchCGScopes, true},
+    };
+
+    // Previously this would ICE due to mismatched scopes between the
+    // constraint generator and the data flow graph.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        --!strict
+        local _
+        if 
+            if table.freeze(_,_) then _ else _
+        then
+        end
+    )"));
 }
 
 TEST_SUITE_END();

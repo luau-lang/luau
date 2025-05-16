@@ -3240,7 +3240,7 @@ static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, 
     }
 }
 
-static const char* fuzzyMatch(std::string_view str, const char** array, size_t size)
+static const char* fuzzyMatch(std::string_view str, const char* const* array, size_t size)
 {
     if (FInt::LuauSuggestionDistance == 0)
         return nullptr;

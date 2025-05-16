@@ -30,11 +30,12 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
+LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
+LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck)
 
 namespace Luau
 {
@@ -710,14 +711,77 @@ void TypeChecker2::visit(AstStatReturn* ret)
 {
     Scope* scope = findInnermostScope(ret->location);
     TypePackId expectedRetType = scope->returnType;
+    if (FFlag::LuauTableLiteralSubtypeSpecificCheck)
+    {
+        if (ret->list.size == 0)
+        {
+            testIsSubtype(builtinTypes->emptyTypePack, expectedRetType, ret->location);
+            return;
+        }
 
-    TypeArena* arena = &module->internalTypes;
-    TypePackId actualRetType = reconstructPack(ret->list, *arena);
+        auto [head, _] = extendTypePack(module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
+        bool isSubtype = true;
+        std::vector<TypeId> actualHead;
+        std::optional<TypePackId> actualTail;
+        for (size_t idx = 0; idx < ret->list.size - 1; idx++)
+        {
+            if (idx < head.size())
+            {
+                isSubtype &= testPotentialLiteralIsSubtype(ret->list.data[idx], head[idx]);
+                actualHead.push_back(head[idx]);
+            }
+            else
+            {
+                actualHead.push_back(lookupType(ret->list.data[idx]));
+            }
+        }
 
-    testIsSubtype(actualRetType, expectedRetType, ret->location);
+        // This stanza is deconstructing what constraint generation does to
+        // return statements. If we have some statement like:
+        //
+        //  return E0, E1, E2, ... , EN
+        //
+        // All expressions *except* the last will be types, and the last can
+        // potentially be a pack. However, if the last expression is a function
+        // call or varargs (`...`), then we _could_ have a pack in the final
+        // position. Additionally, if we have an argument overflow, then we can't
+        // do anything interesting with subtyping.
+        //
+        // _If_ the last argument is not a function call or varargs and we have
+        // at least an argument underflow, then we grab the last type out of
+        // the type pack head and use that to check the subtype of
+        auto lastExpr = ret->list.data[ret->list.size - 1];
+        if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+        {
+            actualTail = lookupPack(lastExpr);
+        }
+        else
+        {
+            auto lastType = head[ret->list.size - 1];
+            isSubtype &= testPotentialLiteralIsSubtype(lastExpr, lastType);
+            actualHead.push_back(lastType);
+        }
+
+        // After all that, we still fire a pack subtype test to determine
+        // whether we have a well-formed return statement. We only fire
+        // this if all the previous subtype tests have succeeded, lest
+        // we double error.
+        if (isSubtype)
+        {
+            auto reconstructedRetType = module->internalTypes.addTypePack(TypePack{std::move(actualHead), std::move(actualTail)});
+            testIsSubtype(reconstructedRetType, expectedRetType, ret->location);
+        }
+    }
+    else
+    {
+        TypeArena* arena = &module->internalTypes;
+        TypePackId actualRetType = reconstructPack(ret->list, *arena);
+        testIsSubtype(actualRetType, expectedRetType, ret->location);
+    }
 
     for (AstExpr* expr : ret->list)
         visit(expr, ValueContext::RValue);
+
 }
 
 void TypeChecker2::visit(AstStatExpr* expr)
@@ -745,7 +809,12 @@ void TypeChecker2::visit(AstStatLocal* local)
                 TypeId annotationType = lookupAnnotation(var->annotation);
                 TypeId valueType = value ? lookupType(value) : nullptr;
                 if (valueType)
-                    testIsSubtype(valueType, annotationType, value->location);
+                {
+                    if (FFlag::LuauTableLiteralSubtypeSpecificCheck)
+                        testPotentialLiteralIsSubtype(value, annotationType);
+                    else
+                        testIsSubtype(valueType, annotationType, value->location);
+                }
 
                 visit(var->annotation);
             }
@@ -1154,14 +1223,26 @@ void TypeChecker2::visit(AstStatAssign* assign)
             continue;
         }
 
-        bool ok = testIsSubtype(rhsType, lhsType, rhs->location);
-
-        // If rhsType </: lhsType, then it's not useful to also report that rhsType </: bindingType
-        if (ok)
+        if (FFlag::LuauTableLiteralSubtypeSpecificCheck)
         {
-            std::optional<TypeId> bindingType = getBindingType(lhs);
-            if (bindingType)
-                testIsSubtype(rhsType, *bindingType, rhs->location);
+            // If rhsType </: lhsType, then it's not useful to also report that rhsType </: bindingType
+            if (testPotentialLiteralIsSubtype(rhs, lhsType))
+            {
+                if (std::optional<TypeId> bindingType = getBindingType(lhs))
+                    testPotentialLiteralIsSubtype(rhs, *bindingType);
+            }
+        }
+        else
+        {
+            bool ok = testIsSubtype(rhsType, lhsType, rhs->location);
+
+            // If rhsType </: lhsType, then it's not useful to also report that rhsType </: bindingType
+            if (ok)
+            {
+                std::optional<TypeId> bindingType = getBindingType(lhs);
+                if (bindingType)
+                    testIsSubtype(rhsType, *bindingType, rhs->location);
+            }
         }
     }
 }
@@ -1200,14 +1281,19 @@ void TypeChecker2::visit(const AstTypeList* typeList)
 
 void TypeChecker2::visit(AstStatTypeAlias* stat)
 {
+    // We will not visit type aliases that do not have an associated scope,
+    // this means that (probably) this was a duplicate type alias or a
+    // type alias with an illegal name (like `typeof`).
+    if (FFlag::LuauSkipMalformedTypeAliases && !module->astScopes.contains(stat))
+        return;
+
     visitGenerics(stat->generics, stat->genericPacks);
     visit(stat->type);
 }
 
 void TypeChecker2::visit(AstStatTypeFunction* stat)
 {
-    if (FFlag::LuauUserTypeFunTypecheck)
-        visit(stat->body);
+    visit(stat->body);
 }
 
 void TypeChecker2::visit(AstTypeList types)
@@ -2855,6 +2941,130 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
 
     if (!reasonings.suppressed)
         reportError(TypePackMismatch{superTy, subTy, reasonings.toString()}, location);
+}
+
+namespace
+{
+bool isRecord(const AstExprTable::Item& item)
+{
+    return item.kind == AstExprTable::Item::Record || (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>());
+}
+}
+
+bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType)
+{
+    auto exprType = follow(lookupType(expr));
+    expectedType = follow(expectedType);
+
+    auto exprTable = expr->as<AstExprTable>();
+    auto exprTableType = get<TableType>(exprType);
+    auto expectedTableType = get<TableType>(expectedType);
+
+    // If we don't have a table or the type of the expression isn't a
+    // table, then do a normal subtype test.
+    if (!exprTableType || !exprTable)
+        return testIsSubtype(exprType, expectedType, expr->location);
+
+    // At this point we *know* that the expression is a table and has a specific
+    // table type, but if there isn't an expected table type we should do something
+    // slightly different.
+    if (!expectedTableType)
+    {
+        if (auto utv = get<UnionType>(expectedType))
+        {
+            std::vector<TypeId> parts{begin(utv), end(utv)};
+            std::optional<TypeId> tt = extractMatchingTableType(parts, exprType, builtinTypes);
+            if (tt)
+                return testPotentialLiteralIsSubtype(expr, *tt);
+        }
+
+        return testIsSubtype(exprType, expectedType, expr->location);
+    }
+
+    Set<std::optional<std::string> > missingKeys{{}};
+    for (const auto& [name, prop] : expectedTableType->props)
+    {
+        LUAU_ASSERT(!prop.isWriteOnly());
+        auto readTy = *prop.readTy;
+        if (!isOptional(readTy))
+            missingKeys.insert(name);
+    }
+
+    bool isArrayLike = false;
+    if (expectedTableType->indexer)
+    {
+        NotNull<Scope> scope{findInnermostScope(expr->location)};
+        auto result = subtyping->isSubtype(expectedTableType->indexer->indexType, builtinTypes->numberType, scope);
+        isArrayLike = result.isSubtype;
+    }
+
+    bool isSubtype = true;
+
+    for (const auto& item : exprTable->items)
+    {
+        if (isRecord(item))
+        {
+            const AstArray<char>& s = item.key->as<AstExprConstantString>()->value;
+            std::string keyStr{s.data, s.data + s.size};
+
+            missingKeys.erase(keyStr);
+            auto expectedIt = expectedTableType->props.find(keyStr);
+            if (expectedIt == expectedTableType->props.end())
+            {
+                if (expectedTableType->indexer)
+                {
+                    module->astExpectedTypes[item.key] = expectedTableType->indexer->indexType;
+                    module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
+                    auto inferredKeyType = module->internalTypes.addType(SingletonType{StringSingleton{keyStr}});
+                    isSubtype &= testIsSubtype(inferredKeyType, expectedTableType->indexer->indexType, item.key->location);
+                    isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
+                }
+                // If there's not an indexer, then by width subtyping we can just do nothing :)
+            }
+            else
+            {
+                // TODO: What do we do for write only props?
+                LUAU_ASSERT(expectedIt->second.readTy);
+                // Some property is in the expected type: we can test against the specific type.
+                module->astExpectedTypes[item.value] = *expectedIt->second.readTy;
+                isSubtype &= testPotentialLiteralIsSubtype(item.value, *expectedIt->second.readTy);
+            }
+        }
+        else if (item.kind == AstExprTable::Item::List)
+        {
+            if (!isArrayLike)
+            {
+                isSubtype = false;
+                reportError(UnexpectedArrayLikeTableItem{}, item.value->location);
+            }
+            // if the indexer index type is not exactly `number`.
+            if (expectedTableType->indexer)
+            {
+                module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
+                isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
+            }
+        }
+        else if (item.kind == AstExprTable::Item::General && expectedTableType->indexer)
+        {
+            module->astExpectedTypes[item.key] = expectedTableType->indexer->indexType;
+            module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
+            isSubtype &= testPotentialLiteralIsSubtype(item.key, expectedTableType->indexer->indexType);
+            isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
+        }
+    }
+
+    if (!missingKeys.empty())
+    {
+        std::vector<Name> temp;
+        temp.reserve(missingKeys.size());
+        for (const auto& key : missingKeys)
+            if (key)
+                temp.push_back(*key);
+        reportError(MissingProperties{expectedType, exprType, std::move(temp)}, expr->location);
+        return false;
+    }
+
+    return isSubtype;
 }
 
 bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location)

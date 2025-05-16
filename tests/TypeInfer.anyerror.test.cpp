@@ -14,7 +14,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions);
+LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -343,6 +344,8 @@ TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_complex_function_with_any")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     CheckResult result = check(R"(
         local a: any
         local b
@@ -352,11 +355,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_comp
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("b")));
 
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("any?", toString(requireType("b")));
-    else
-        CHECK_EQ("any", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_to_any_yields_any")

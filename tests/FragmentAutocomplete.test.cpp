@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauClonedTableAndFunctionTypesMustHaveScopes)
 LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
 LUAU_FASTFLAG(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAG(LuauDoNotClonePersistentBindings)
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauBetterScopeSelection)
 LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAG(LuauFragmentAcMemoryLeak)
@@ -3065,8 +3064,6 @@ z = a.P.E
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "user_defined_type_function_local")
 {
-    ScopedFastFlag luauUserTypeFunTypecheck{FFlag::LuauUserTypeFunTypecheck, true};
-
     const std::string source = R"(--!strict
 type function foo(x: type): type
     if x.tag == "singleton" then

@@ -82,6 +82,18 @@ bool RuntimeNavigationContext::isConfigPresent() const
     return config->is_config_present(L, ctx);
 }
 
+NavigationContext::ConfigBehavior RuntimeNavigationContext::getConfigBehavior() const
+{
+    if (config->get_alias)
+        return ConfigBehavior::GetAlias;
+    return ConfigBehavior::GetConfig;
+}
+
+std::optional<std::string> RuntimeNavigationContext::getAlias(const std::string& alias) const
+{
+    return getStringFromCWriterWithInput(config->get_alias, alias, initalIdentifierBufferSize);
+}
+
 std::optional<std::string> RuntimeNavigationContext::getConfig() const
 {
     return getStringFromCWriter(config->get_config, initalFileBufferSize);
@@ -112,17 +124,45 @@ std::optional<std::string> RuntimeNavigationContext::getStringFromCWriter(
     return std::nullopt;
 }
 
+std::optional<std::string> RuntimeNavigationContext::getStringFromCWriterWithInput(
+    luarequire_WriteResult (*writer)(lua_State* L, void* ctx, const char* input, char* buffer, size_t buffer_size, size_t* size_out),
+    std::string input,
+    size_t initalBufferSize
+) const
+{
+    std::string buffer;
+    buffer.resize(initalBufferSize);
 
-RuntimeErrorHandler::RuntimeErrorHandler(lua_State* L, std::string requiredPath)
-    : L(L)
-    , errorPrefix("error requiring module \"" + std::move(requiredPath) + "\": ")
+    size_t size;
+    luarequire_WriteResult result = writer(L, ctx, input.c_str(), buffer.data(), buffer.size(), &size);
+    if (result == WRITE_BUFFER_TOO_SMALL)
+    {
+        buffer.resize(size);
+        result = writer(L, ctx, input.c_str(), buffer.data(), buffer.size(), &size);
+    }
+
+    if (result == WRITE_SUCCESS)
+    {
+        buffer.resize(size);
+        return buffer;
+    }
+
+    return std::nullopt;
+}
+
+RuntimeErrorHandler::RuntimeErrorHandler(std::string requiredPath)
+    : errorPrefix("error requiring module \"" + std::move(requiredPath) + "\": ")
 {
 }
 
 void RuntimeErrorHandler::reportError(std::string message)
 {
-    std::string fullError = errorPrefix + std::move(message);
-    luaL_errorL(L, "%s", fullError.c_str());
+    errorMessage = errorPrefix + std::move(message);
+}
+
+const std::string& RuntimeErrorHandler::getReportedError() const
+{
+    return errorMessage;
 }
 
 } // namespace Luau::Require

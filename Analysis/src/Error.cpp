@@ -839,6 +839,11 @@ struct ErrorConverter
 
         return result;
     }
+
+    std::string operator()(const UnexpectedArrayLikeTableItem&) const
+    {
+        return "Unexpected array-like table item: the indexer key type of this table is not `number`.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1431,6 +1436,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
 
         for (auto& ty : e.cause)
             ty = clone(ty);
+    }
+    else if constexpr (std::is_same_v<T, UnexpectedArrayLikeTableItem>)
+    {
     }
     else if constexpr (std::is_same_v<T, ReservedIdentifier>)
     {

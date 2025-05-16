@@ -33,8 +33,6 @@ LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
 LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
 LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
-LUAU_FASTFLAGVARIABLE(LuauFragmentNoTypeFunEval)
 LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
@@ -833,7 +831,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse_DEPRECATED(AstSt
                             }
                         }
                     }
-                    else if (auto typeFun = stat->as<AstStatTypeFunction>(); typeFun && FFlag::LuauUserTypeFunTypecheck)
+                    else if (auto typeFun = stat->as<AstStatTypeFunction>())
                     {
                         if (typeFun->location.contains(cursorPos))
                         {
@@ -1107,8 +1105,7 @@ FragmentTypeCheckResult typecheckFragment_(
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
-    if (FFlag::LuauFragmentNoTypeFunEval || FFlag::LuauUserTypeFunTypecheck)
-        typeFunctionRuntime.allowEvaluation = false;
+    typeFunctionRuntime.allowEvaluation = false;
 
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
@@ -1141,13 +1138,10 @@ FragmentTypeCheckResult typecheckFragment_(
     freshChildOfNearestScope->interiorFreeTypePacks.emplace();
     cg.rootScope = freshChildOfNearestScope.get();
 
-    if (FFlag::LuauUserTypeFunTypecheck)
-    {
-        // Create module-local scope for the type function environment
-        ScopePtr localTypeFunctionScope = std::make_shared<Scope>(cg.typeFunctionScope);
-        localTypeFunctionScope->location = root->location;
-        cg.typeFunctionRuntime->rootScope = localTypeFunctionScope;
-    }
+    // Create module-local scope for the type function environment
+    ScopePtr localTypeFunctionScope = std::make_shared<Scope>(cg.typeFunctionScope);
+    localTypeFunctionScope->location = root->location;
+    cg.typeFunctionRuntime->rootScope = localTypeFunctionScope;
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeStart);
     cloneTypesFromFragment(

@@ -59,7 +59,18 @@ public:
     virtual NavigateResult toParent() = 0;
     virtual NavigateResult toChild(const std::string& component) = 0;
 
+    enum class ConfigBehavior
+    {
+        GetAlias,
+        GetConfig
+    };
+
     virtual bool isConfigPresent() const = 0;
+
+    // The result of getConfigBehavior determines whether getAlias or getConfig
+    // is called when isConfigPresent returns true.
+    virtual ConfigBehavior getConfigBehavior() const = 0;
+    virtual std::optional<std::string> getAlias(const std::string& alias) const = 0;
     virtual std::optional<std::string> getConfig() const = 0;
 };
 
@@ -94,7 +105,8 @@ private:
 
     NavigationContext& navigationContext;
     ErrorHandler& errorHandler;
-    Luau::Config config;
+
+    std::optional<std::string> foundAliasValue;
 };
 
 } // namespace Luau::Require

@@ -95,10 +95,8 @@ static void moveelements(lua_State* L, int srct, int dstt, int f, int e, int t)
 
     int n = e - f + 1; // number of elements to move
 
-    if (cast_to(unsigned int, f - 1) < cast_to(unsigned int, src->sizearray) &&
-        cast_to(unsigned int, t - 1) < cast_to(unsigned int, dst->sizearray) &&
-        cast_to(unsigned int, f - 1 + n) <= cast_to(unsigned int, src->sizearray) &&
-        cast_to(unsigned int, t - 1 + n) <= cast_to(unsigned int, dst->sizearray))
+    if (unsigned(f) - 1 < unsigned(src->sizearray) && unsigned(t) - 1 < unsigned(dst->sizearray) &&
+        unsigned(f) - 1 + unsigned(n) <= unsigned(src->sizearray) && unsigned(t) - 1 + unsigned(n) <= unsigned(dst->sizearray))
     {
         TValue* srcarray = src->array;
         TValue* dstarray = dst->array;

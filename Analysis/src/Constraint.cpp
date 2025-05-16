@@ -143,10 +143,6 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
             rci.traverse(ty);
         // `UnpackConstraint` should not mutate `sourcePack`.
     }
-    else if (auto rpc = get<ReduceConstraint>(*this); FFlag::DebugLuauGreedyGeneralization && rpc)
-    {
-        rci.traverse(rpc->ty);
-    }
     else if (auto rpc = get<ReducePackConstraint>(*this))
     {
         rci.traverse(rpc->tp);
