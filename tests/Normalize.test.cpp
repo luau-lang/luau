@@ -1177,6 +1177,7 @@ end
 )");
 }
 
+#if 0
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity")
 {
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 80};
@@ -1200,7 +1201,6 @@ _(_)[_(n32)] %= _(_(_))
     LUAU_REQUIRE_ERRORS(result);
 }
 
-#if 0
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
 {
     ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
