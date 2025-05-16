@@ -15,6 +15,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
 LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -1210,6 +1211,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
         {FFlag::LuauSimplifyOutOfLine, true},
+        {FFlag::LuauNonReentrantGeneralization3, false},
         {FFlag::DebugLuauGreedyGeneralization, true},
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
         {FFlag::LuauSubtypeGenericsAndNegations, true},
