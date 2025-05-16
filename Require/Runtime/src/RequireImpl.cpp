@@ -21,6 +21,16 @@ static const char* requiredCacheTableKey = "_MODULES";
 
 struct ResolvedRequire
 {
+    static ResolvedRequire fromErrorHandler(const RuntimeErrorHandler& errorHandler)
+    {
+        return {ResolvedRequire::Status::ErrorReported, "", "", "", errorHandler.getReportedError()};
+    }
+
+    static ResolvedRequire fromErrorMessage(const char* message)
+    {
+        return {ResolvedRequire::Status::ErrorReported, "", "", "", message};
+    }
+
     enum class Status
     {
         Cached,
@@ -32,6 +42,7 @@ struct ResolvedRequire
     std::string chunkname;
     std::string loadname;
     std::string cacheKey;
+    std::string error;
 };
 
 static bool isCached(lua_State* L, const std::string& key)
@@ -47,30 +58,24 @@ static bool isCached(lua_State* L, const std::string& key)
 static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* L, void* ctx, const char* requirerChunkname, std::string path)
 {
     if (!lrc->is_require_allowed(L, ctx, requirerChunkname))
-        luaL_error(L, "require is not supported in this context");
+        return ResolvedRequire::fromErrorMessage("require is not supported in this context");
 
     RuntimeNavigationContext navigationContext{lrc, L, ctx, requirerChunkname};
-    RuntimeErrorHandler errorHandler{L, path}; // Errors reported directly to lua_State.
+    RuntimeErrorHandler errorHandler{path};
 
     Navigator navigator(navigationContext, errorHandler);
 
     // Updates navigationContext while navigating through the given path.
     Navigator::Status status = navigator.navigate(std::move(path));
     if (status == Navigator::Status::ErrorReported)
-        return {ResolvedRequire::Status::ErrorReported};
+        return ResolvedRequire::fromErrorHandler(errorHandler);
 
     if (!navigationContext.isModulePresent())
-    {
-        errorHandler.reportError("no module present at resolved path");
-        return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
-    }
+        return ResolvedRequire::fromErrorMessage("no module present at resolved path");
 
     std::optional<std::string> cacheKey = navigationContext.getCacheKey();
     if (!cacheKey)
-    {
-        errorHandler.reportError("could not get cache key for module");
-        return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
-    }
+        return ResolvedRequire::fromErrorMessage("could not get cache key for module");
 
     if (isCached(L, *cacheKey))
     {
@@ -84,17 +89,11 @@ static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* 
 
     std::optional<std::string> chunkname = navigationContext.getChunkname();
     if (!chunkname)
-    {
-        errorHandler.reportError("could not get chunkname for module");
-        return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
-    }
+        return ResolvedRequire::fromErrorMessage("could not get chunkname for module");
 
     std::optional<std::string> loadname = navigationContext.getLoadname();
     if (!loadname)
-    {
-        errorHandler.reportError("could not get loadname for module");
-        return ResolvedRequire{ResolvedRequire::Status::ErrorReported};
-    }
+        return ResolvedRequire::fromErrorMessage("could not get loadname for module");
 
     return ResolvedRequire{
         ResolvedRequire::Status::ModuleRead,
@@ -118,12 +117,14 @@ static int checkRegisteredModules(lua_State* L, const char* path)
     return 1;
 }
 
+static const int kRequireStackValues = 4;
+
 int lua_requirecont(lua_State* L, int status)
 {
     // Number of stack arguments present before this continuation is called.
-    const int numStackArgs = lua_tointeger(L, 1);
-    const int numResults = lua_gettop(L) - numStackArgs;
-    const char* cacheKey = luaL_checkstring(L, numStackArgs);
+    LUAU_ASSERT(lua_gettop(L) >= kRequireStackValues);
+    const int numResults = lua_gettop(L) - kRequireStackValues;
+    const char* cacheKey = luaL_checkstring(L, 2);
 
     if (numResults > 1)
         luaL_error(L, "module must return a single value");
@@ -152,10 +153,8 @@ int lua_requirecont(lua_State* L, int status)
 
 int lua_requireinternal(lua_State* L, const char* requirerChunkname)
 {
-    int stackTop = lua_gettop(L);
-
-    // If modifying the state of the stack, please update numStackArgs in the
-    // lua_requirecont continuation function.
+    // Discard extra arguments, we only use path
+    lua_settop(L, 1);
 
     luarequire_Configuration* lrc = static_cast<luarequire_Configuration*>(lua_touserdata(L, lua_upvalueindex(1)));
     if (!lrc)
@@ -169,22 +168,42 @@ int lua_requireinternal(lua_State* L, const char* requirerChunkname)
     if (checkRegisteredModules(L, path) == 1)
         return 1;
 
-    ResolvedRequire resolvedRequire = resolveRequire(lrc, L, ctx, requirerChunkname, path);
-    if (resolvedRequire.status == ResolvedRequire::Status::Cached)
-        return 1;
+    // ResolvedRequire will be destroyed and any string will be pinned to Luau stack, so that luaL_error doesn't need destructors
+    bool resolveError = false;
 
-    // (1) path, ..., cacheKey
-    lua_pushstring(L, resolvedRequire.cacheKey.c_str());
+    {
+        ResolvedRequire resolvedRequire = resolveRequire(lrc, L, ctx, requirerChunkname, path);
 
-    // Insert number of arguments before the continuation to check the results.
-    int numArgsBeforeLoad = stackTop + 2;
-    lua_pushinteger(L, numArgsBeforeLoad);
-    lua_insert(L, 1);
+        if (resolvedRequire.status == ResolvedRequire::Status::Cached)
+            return 1;
 
-    int numResults = lrc->load(L, ctx, path, resolvedRequire.chunkname.c_str(), resolvedRequire.loadname.c_str());
+        if (resolvedRequire.status == ResolvedRequire::Status::ErrorReported)
+        {
+            lua_pushstring(L, resolvedRequire.error.c_str());
+            resolveError = true;
+        }
+        else
+        {
+            // (1) path, ..., cacheKey, chunkname, loadname
+            lua_pushstring(L, resolvedRequire.cacheKey.c_str());
+            lua_pushstring(L, resolvedRequire.chunkname.c_str());
+            lua_pushstring(L, resolvedRequire.loadname.c_str());
+        }
+    }
+
+    if (resolveError)
+        lua_error(L); // Error already on top of the stack
+
+    int stackValues = lua_gettop(L);
+    LUAU_ASSERT(stackValues == kRequireStackValues);
+
+    const char* chunkname = lua_tostring(L, -2);
+    const char* loadname = lua_tostring(L, -1);
+
+    int numResults = lrc->load(L, ctx, path, chunkname, loadname);
     if (numResults == -1)
     {
-        if (lua_gettop(L) != numArgsBeforeLoad)
+        if (lua_gettop(L) != stackValues)
             luaL_error(L, "stack cannot be modified when require yields");
 
         return lua_yield(L, 0);

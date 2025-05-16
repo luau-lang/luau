@@ -14,7 +14,6 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunReadWriteParents)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
 
 namespace Luau
@@ -1138,28 +1137,6 @@ static int getFunctionGenerics(lua_State* L)
     return 1;
 }
 
-// Luau: `self:parent() -> type`
-// Returns the parent of a class type
-static int getClassParent_DEPRECATED(lua_State* L)
-{
-    int argumentCount = lua_gettop(L);
-    if (argumentCount != 1)
-        luaL_error(L, "type.parent: expected 1 arguments, but got %d", argumentCount);
-
-    TypeFunctionTypeId self = getTypeUserData(L, 1);
-    auto tfct = get<TypeFunctionExternType>(self);
-    if (!tfct)
-        luaL_error(L, "type.parent: expected self to be a class, but got %s instead", getTag(L, self).c_str());
-
-    // If the parent does not exist, we should return nil
-    if (!tfct->parent_DEPRECATED)
-        lua_pushnil(L);
-    else
-        allocTypeUserData(L, (*tfct->parent_DEPRECATED)->type);
-
-    return 1;
-}
-
 // Luau: `self:readparent() -> type`
 // Returns the read type of the class' parent
 static int getReadParent(lua_State* L)
@@ -1628,7 +1605,8 @@ void registerTypeUserData(lua_State* L)
         {"components", getComponents},
 
         //  Extern type methods
-        {FFlag::LuauTypeFunReadWriteParents ? "readparent" : "parent", FFlag::LuauTypeFunReadWriteParents ? getReadParent : getClassParent_DEPRECATED},
+        {"readparent", getReadParent},
+        {"writeparent", getWriteParent},
 
         // Function type methods (cont.)
         {"setgenerics", setFunctionGenerics},
@@ -1637,9 +1615,6 @@ void registerTypeUserData(lua_State* L)
         // Generic type methods
         {"name", getGenericName},
         {"ispack", getGenericIsPack},
-
-        // move this under extern type methods when removing FFlagLuauTypeFunReadWriteParents
-        {FFlag::LuauTypeFunReadWriteParents ? "writeparent" : nullptr, FFlag::LuauTypeFunReadWriteParents ? getWriteParent : nullptr},
 
         {nullptr, nullptr}
     };

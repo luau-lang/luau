@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 namespace
 {
@@ -876,6 +877,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     Frontend fe{&fileResolver, &configResolver, {false}};
 
     fileResolver.source["Module/A"] = R"(
@@ -892,13 +895,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
     if (FFlag::LuauSolverV2)
     {
-        REQUIRE_EQ(
-            "Type\n\t"
-            "'{ count: string }'"
-            "\ncould not be converted into\n\t"
-            "'{ Count: number }'",
-            toString(result.errors[0])
-        );
+        CHECK_EQ(
+            "Table type '{ count: string }' not compatible with type '{ Count: number }' because the former is missing field 'Count'",
+            toString(result.errors[0]));
     }
     else
         REQUIRE_EQ(

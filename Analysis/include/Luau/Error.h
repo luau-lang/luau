@@ -462,6 +462,11 @@ struct ReservedIdentifier
     bool operator==(const ReservedIdentifier& rhs) const;
 };
 
+struct UnexpectedArrayLikeTableItem
+{
+    bool operator==(const UnexpectedArrayLikeTableItem&) const { return true; }
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -512,7 +517,8 @@ using TypeErrorData = Variant<
     UnexpectedTypePackInSubtyping,
     ExplicitFunctionAnnotationRecommended,
     UserDefinedTypeFunctionError,
-    ReservedIdentifier>;
+    ReservedIdentifier,
+    UnexpectedArrayLikeTableItem>;
 
 struct TypeErrorSummary
 {

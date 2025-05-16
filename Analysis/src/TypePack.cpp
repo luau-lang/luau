@@ -6,8 +6,6 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauTypePackDetectCycles)
-
 namespace Luau
 {
 
@@ -149,7 +147,7 @@ TypePackIterator& TypePackIterator::operator++()
         currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
         tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
 
-        if (FFlag::LuauTypePackDetectCycles && tp)
+        if (tp)
         {
             // Step twice on each iteration to detect cycles
             tailCycleCheck = tp->tail ? log->follow(*tp->tail) : nullptr;

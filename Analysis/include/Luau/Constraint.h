@@ -276,6 +276,12 @@ struct ReducePackConstraint
     TypePackId tp;
 };
 
+// simplify ty
+struct SimplifyConstraint
+{
+    TypeId ty;
+};
+
 using ConstraintV = Variant<
     SubtypeConstraint,
     PackSubtypeConstraint,
@@ -294,7 +300,8 @@ using ConstraintV = Variant<
     ReduceConstraint,
     ReducePackConstraint,
     EqualityConstraint,
-    TableCheckConstraint>;
+    TableCheckConstraint,
+    SimplifyConstraint>;
 
 struct Constraint
 {

@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
+LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 
 using namespace Luau;
 
@@ -829,6 +830,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
     frontend.check("game/A");
 
     CHECK("module" == toString(frontend.moduleResolver.getModule("game/B")->returnType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_function_mutation")
+{
+    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true}};
+
+    fileResolver.source["game/A"] = R"(
+function test2(a: number, b: string)
+    return 1
+end
+
+return test2
+    )";
+
+    fileResolver.source["game/B"] = R"(
+function wrapper<A...>(f: (A...) -> number, ...: A...)
+end
+
+local test2 = require(game.A)
+
+return wrapper(test2, 1, "")
+    )";
+
+    CheckResult result = frontend.check("game/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -291,4 +291,14 @@ void trackInteriorFreeType(Scope* scope, TypeId ty);
 
 void trackInteriorFreeTypePack(Scope* scope, TypePackId tp);
 
+// A fast approximation of subTy <: superTy
+bool fastIsSubtype(TypeId subTy, TypeId superTy);
+
+/**
+ * @param tables A list of potential table parts of a union
+ * @param exprType Type of the expression to match
+ * @return An element of `tables` that best matches `exprType`.
+ */
+std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+
 } // namespace Luau

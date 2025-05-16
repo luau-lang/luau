@@ -10,10 +10,8 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauSimplyRefineNotNil)
 LUAU_FASTFLAG(LuauWeakNilRefinementType)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
@@ -741,7 +739,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSimplyRefineNotNil, true},
         {FFlag::LuauWeakNilRefinementType, true},
     };
 
@@ -2515,8 +2512,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonnil_refinement_on_generic")
 {
-    ScopedFastFlag sff{FFlag::LuauIntersectNotNil, true};
-
     CheckResult result = check(R"(
         local function printOptional<T>(item: T?, printer: (T) -> string): string
             if item ~= nil then
@@ -2536,8 +2531,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonnil_refinement_on_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "truthy_refinement_on_generic")
 {
-    ScopedFastFlag sff{FFlag::LuauIntersectNotNil, true};
-
     CheckResult result = check(R"(
         local function printOptional<T>(item: T?, printer: (T) -> string): string
             if item then

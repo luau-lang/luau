@@ -22,7 +22,6 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauSyntheticErrors)
 LUAU_FASTFLAGVARIABLE(LuauStringPartLengthLimit)
 
 /*
@@ -1092,7 +1091,7 @@ struct TypeStringifier
     {
         state.result.error = true;
 
-        if (FFlag::LuauSyntheticErrors && tv.synthetic)
+        if (tv.synthetic)
         {
             state.emit("*error-type<");
             stringify(*tv.synthetic);
@@ -1278,7 +1277,7 @@ struct TypePackStringifier
     {
         state.result.error = true;
 
-        if (FFlag::LuauSyntheticErrors && error.synthetic)
+        if (error.synthetic)
         {
             state.emit("*");
             stringify(*error.synthetic);
@@ -1965,6 +1964,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             return "equality: " + tos(c.resultType) + " ~ " + tos(c.assignmentType);
         else if constexpr (std::is_same_v<T, TableCheckConstraint>)
             return "table_check " + tos(c.expectedType) + " :> " + tos(c.exprType);
+        else if constexpr (std::is_same_v<T, SimplifyConstraint>)
+            return "simplify " + tos(c.ty);
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

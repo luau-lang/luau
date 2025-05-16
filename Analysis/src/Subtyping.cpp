@@ -17,12 +17,10 @@
 #include "Luau/TypePath.h"
 #include "Luau/TypeUtils.h"
 
-#include <algorithm>
-
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingEnableReasoningLimit)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeGenericsAndNegations)
+LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 
 namespace Luau
 {
@@ -101,7 +99,7 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
                 result.insert(r);
         }
 
-        if (FFlag::LuauSubtypingEnableReasoningLimit && result.size() >= size_t(FInt::LuauSubtypingReasoningLimit))
+        if (result.size() >= size_t(FInt::LuauSubtypingReasoningLimit))
             return result;
     }
 
@@ -120,7 +118,7 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
                 result.insert(r);
         }
 
-        if (FFlag::LuauSubtypingEnableReasoningLimit && result.size() >= size_t(FInt::LuauSubtypingReasoningLimit))
+        if (result.size() >= size_t(FInt::LuauSubtypingReasoningLimit))
             return result;
     }
 
@@ -815,7 +813,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     // <X>(X) -> () <: (T) -> ()
 
                     // Possible optimization: If headSize == 0 then we can just use subTp as-is.
-                    std::vector<TypeId> headSlice(begin(superHead), begin(superHead) + headSize);
+                    std::vector<TypeId> headSlice = FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2
+                                                        ? std::vector<TypeId>(begin(superHead) + headSize, end(superHead))
+                                                        : std::vector<TypeId>(begin(superHead), begin(superHead) + headSize);
                     TypePackId superTailPack = arena->addTypePack(std::move(headSlice), superTail);
 
                     if (TypePackId* other = env.getMappedPackBounds(*subTail))
@@ -870,12 +870,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     // <X...>(X...) -> () <: (T) -> ()
 
                     // Possible optimization: If headSize == 0 then we can just use subTp as-is.
-                    std::vector<TypeId> headSlice(begin(subHead), begin(subHead) + headSize);
+                    std::vector<TypeId> headSlice = FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2
+                                                        ? std::vector<TypeId>(begin(subHead) + headSize, end(subHead))
+                                                        : std::vector<TypeId>(begin(subHead), begin(subHead) + headSize);
                     TypePackId subTailPack = arena->addTypePack(std::move(headSlice), subTail);
 
                     if (TypePackId* other = env.getMappedPackBounds(*superTail))
                         // TODO: TypePath can't express "slice of a pack + its tail".
-                        results.push_back(isContravariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
+                        if (FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2)
+                            results.push_back(isCovariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
+                        else
+                            results.push_back(isContravariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
                     else
                         env.mappedGenericPacks.try_insert(*superTail, subTailPack);
 

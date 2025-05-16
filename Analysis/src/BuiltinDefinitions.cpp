@@ -30,9 +30,8 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAGVARIABLE(LuauFormatUseLastPosition)
 
@@ -292,8 +291,6 @@ void assignPropDocumentationSymbols(TableType::Props& props, const std::string& 
 
 static void finalizeGlobalBindings(ScopePtr scope)
 {
-    LUAU_ASSERT(FFlag::LuauUserTypeFunTypecheck);
-
     for (const auto& pair : scope->bindings)
     {
         persist(pair.second.typeId);
@@ -313,8 +310,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauNonReentrantGeneralization2
-    if (FFlag::LuauNonReentrantGeneralization2)
+    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauNonReentrantGeneralization3
+    if (FFlag::LuauNonReentrantGeneralization3)
         globalScope = globals.globalScope.get();
 
     if (FFlag::LuauSolverV2)
@@ -420,23 +417,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         // clang-format on
     }
 
-    if (FFlag::LuauUserTypeFunTypecheck)
-    {
-        finalizeGlobalBindings(globals.globalScope);
-    }
-    else
-    {
-        for (const auto& pair : globals.globalScope->bindings)
-        {
-            persist(pair.second.typeId);
-
-            if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
-            {
-                if (!ttv->name)
-                    ttv->name = "typeof(" + toString(pair.first) + ")";
-            }
-        }
-    }
+    finalizeGlobalBindings(globals.globalScope);
 
     attachMagicFunction(getGlobalBinding(globals, "assert"), std::make_shared<MagicAssert>());
 
@@ -500,58 +481,55 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     attachTag(requireTy, kRequireTagName);
     attachMagicFunction(requireTy, std::make_shared<MagicRequire>());
 
-    if (FFlag::LuauUserTypeFunTypecheck)
+    // Global scope cannot be the parent of the type checking environment because it can be changed by the embedder
+    globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
+    globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
+
+    // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
+    static const char* typeFunctionRuntimeBindings[] = {
+        // Libraries
+        "math",
+        "table",
+        "string",
+        "bit32",
+        "utf8",
+        "buffer",
+
+        // Globals
+        "assert",
+        "error",
+        "print",
+        "next",
+        "ipairs",
+        "pairs",
+        "select",
+        "unpack",
+        "getmetatable",
+        "setmetatable",
+        "rawget",
+        "rawset",
+        "rawlen",
+        "rawequal",
+        "tonumber",
+        "tostring",
+        "type",
+        "typeof",
+    };
+
+    for (auto& name : typeFunctionRuntimeBindings)
     {
-        // Global scope cannot be the parent of the type checking environment because it can be changed by the embedder
-        globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
-        globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
+        AstName astName = globals.globalNames.names->get(name);
+        LUAU_ASSERT(astName.value);
 
-        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
-        static const char* typeFunctionRuntimeBindings[] = {
-            // Libraries
-            "math",
-            "table",
-            "string",
-            "bit32",
-            "utf8",
-            "buffer",
-
-            // Globals
-            "assert",
-            "error",
-            "print",
-            "next",
-            "ipairs",
-            "pairs",
-            "select",
-            "unpack",
-            "getmetatable",
-            "setmetatable",
-            "rawget",
-            "rawset",
-            "rawlen",
-            "rawequal",
-            "tonumber",
-            "tostring",
-            "type",
-            "typeof",
-        };
-
-        for (auto& name : typeFunctionRuntimeBindings)
-        {
-            AstName astName = globals.globalNames.names->get(name);
-            LUAU_ASSERT(astName.value);
-
-            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
-        }
-
-        LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
-            globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(), "@luau", /* captureComments */ false, false
-        );
-        LUAU_ASSERT(typeFunctionLoadResult.success);
-
-        finalizeGlobalBindings(globals.globalTypeFunctionScope);
+        globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
     }
+
+    LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
+        globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(), "@luau", /* captureComments */ false, false
+    );
+    LUAU_ASSERT(typeFunctionLoadResult.success);
+
+    finalizeGlobalBindings(globals.globalTypeFunctionScope);
 }
 
 static std::vector<TypeId> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)

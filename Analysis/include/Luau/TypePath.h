@@ -183,7 +183,7 @@ struct PathHash
 };
 
 /// The canonical "empty" Path, meaning a Path with no components.
-static const Path kEmpty{};
+inline const Path kEmpty{};
 
 struct PathBuilder
 {

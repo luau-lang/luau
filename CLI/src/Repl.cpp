@@ -581,14 +581,7 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
     // new thread needs to have the globals sandboxed
     luaL_sandboxthread(L);
 
-    // ignore file extension when storing module's chunkname
-    std::string chunkname = "@";
-    std::string_view nameView = name;
-    if (size_t dotPos = nameView.find_last_of('.'); dotPos != std::string_view::npos)
-    {
-        nameView.remove_suffix(nameView.size() - dotPos);
-    }
-    chunkname += nameView;
+    std::string chunkname = "@" + normalizePath(name);
 
     std::string bytecode = Luau::compile(*source, copts());
     int status = 0;

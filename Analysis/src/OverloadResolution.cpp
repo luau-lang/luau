@@ -11,6 +11,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauArityMismatchOnUndersaturatedUnknownArguments)
+LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 
 namespace Luau
 {
@@ -286,6 +287,25 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             }
 
             return {Analysis::Ok, {}};
+        }
+
+        if (FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2)
+        {
+            if (reason.subPath == TypePath::Path{{TypePath::PackField::Arguments, TypePath::PackField::Tail}} && reason.superPath == justArguments)
+            {
+                // We have an arity mismatch if the argument tail is a generic type pack
+                if (auto fnArgs = get<TypePack>(fn->argTypes))
+                {
+                    // TODO: Determine whether arguments have incorrect type, incorrect count, or both (CLI-152070)
+                    if (get<GenericTypePack>(fnArgs->tail))
+                    {
+                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg}};
+
+                        return {Analysis::ArityMismatch, {error}};
+                    }
+                }
+            }
         }
     }
 

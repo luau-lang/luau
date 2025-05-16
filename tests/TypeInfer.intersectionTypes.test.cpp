@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNarrowIntersectionNevers)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -455,6 +456,8 @@ Type 'number' could not be converted into 'X')";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -470,18 +473,14 @@ end
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type pack "
-            "'X & Y & Z'"
-            " could not be converted into "
-            "'number'; \n"
-            "this is because \n\t"
-            " * in the 1st entry in the type pack has the 1st component of the intersection as `X` and the 1st entry in the "
-            "type pack is `number`, and `X` is not a subtype of `number`\n\t"
-            " * in the 1st entry in the type pack has the 2nd component of the intersection as `Y` and the 1st entry in the "
-            "type pack is `number`, and `Y` is not a subtype of `number`\n\t"
-            " * in the 1st entry in the type pack has the 3rd component of the intersection as `Z` and the 1st entry in the "
-            "type pack is `number`, and `Z` is not a subtype of `number`";
+        const std::string expected = "Type "
+                                     "'X & Y & Z'"
+                                     " could not be converted into "
+                                     "'number'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `X`, which is not a subtype of `number`\n\t"
+                                     " * the 2nd component of the intersection is `Y`, which is not a subtype of `number`\n\t"
+                                     " * the 3rd component of the intersection is `Z`, which is not a subtype of `number`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else

@@ -216,9 +216,6 @@ struct TypeFunctionExternType
 
     std::optional<TypeFunctionTypeId> metatable; // metaclass?
 
-    // this was mistaken, and we should actually be keeping separate read/write types here.
-    std::optional<TypeFunctionTypeId> parent_DEPRECATED;
-
     std::optional<TypeFunctionTypeId> readParent;
     std::optional<TypeFunctionTypeId> writeParent;
 

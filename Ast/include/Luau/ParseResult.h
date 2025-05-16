@@ -84,6 +84,6 @@ struct ParseExprResult
     CstNodeMap cstNodeMap{nullptr};
 };
 
-static constexpr const char* kParseNameError = "%error-id%";
+inline constexpr const char* kParseNameError = "%error-id%";
 
 } // namespace Luau

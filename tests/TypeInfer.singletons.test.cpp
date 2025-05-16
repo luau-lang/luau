@@ -7,7 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauPropagateExpectedTypesForCalls)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -154,8 +154,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters")
 {
-    ScopedFastFlag sff{FFlag::LuauPropagateExpectedTypesForCalls, true};
-
     CheckResult result = check(R"(
         type A = ("A") -> string
         type B = ("B") -> number
@@ -378,6 +376,11 @@ TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+    };
+
     CheckResult result = check(R"(
         --!strict
         local x: { ["<>"] : number }
@@ -386,23 +389,14 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
-    {
-        const std::string expected = "Type\n\t"
-                                     "'{ [\"\\n\"]: number }'"
-                                     "\ncould not be converted into\n\t"
-                                     "'{ [\"<>\"]: number }'";
-        CHECK(expected == toString(result.errors[0]));
-    }
-    else
-        CHECK_EQ(
-            R"(Table type '{ ["\n"]: number }' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
-            toString(result.errors[0])
-        );
+    const std::string expected = R"(Table type '{ ["\n"]: number }' not compatible with type '{ ["<>"]: number }' because the former is missing field '<>')";
+    CHECK(expected == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }
@@ -413,7 +407,9 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        CHECK("Type '{ cafood: string, tag: \"cat\" }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
+        // NOTE: This error is not great, it might be more helpful to indicate
+        // that tag _could_ have type 'cat'.
+        CHECK("Type '{ cafood: string, tag: string }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
     else
     {
         const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'

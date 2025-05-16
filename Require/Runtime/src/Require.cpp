@@ -29,8 +29,10 @@ static void validateConfig(lua_State* L, const luarequire_Configuration& config)
         luaL_error(L, "require configuration is missing required function pointer: get_cache_key");
     if (!config.is_config_present)
         luaL_error(L, "require configuration is missing required function pointer: is_config_present");
-    if (!config.get_config)
-        luaL_error(L, "require configuration is missing required function pointer: get_config");
+    if (config.get_alias && config.get_config)
+        luaL_error(L, "require configuration cannot define both get_alias and get_config");
+    if (!config.get_alias && !config.get_config)
+        luaL_error(L, "require configuration is missing required function pointer: either get_alias or get_config (not both)");
     if (!config.load)
         luaL_error(L, "require configuration is missing required function pointer: load");
 }

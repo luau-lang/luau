@@ -19,10 +19,7 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-
-LUAU_FASTFLAG(LuauAutocompleteUnionCopyPreviousSeen)
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
-LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
+LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
 
 using namespace Luau;
 
@@ -3121,6 +3118,20 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
     CHECK_EQ(ac.context, AutocompleteContext::String);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key_iso")
+{
+
+    check(R"(
+        type Direction = "up" | "down"
+        local b: {[Direction]: boolean} = {["@2"] = true}
+    )");
+
+    auto ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("up"));
+    CHECK(ac.entryMap.count("down"));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 {
     check(R"(
@@ -4431,7 +4442,6 @@ local x = 1 + result.
 
 TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
 {
-    ScopedFastFlag _{FFlag::LuauAutocompleteUnionCopyPreviousSeen, true};
     check(R"(
         local table1: {ChildClass} = {}
         local table2 = {}
@@ -4443,17 +4453,24 @@ TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
     )");
 
     auto ac = autocomplete('1');
-    // RIDE-11517: This should *really* be the members of `ChildClass`, but
-    // would previously stack overflow.
-    CHECK(ac.entryMap.empty());
+
+    if (FFlag::LuauSolverV2 && FFlag::LuauNonReentrantGeneralization3)
+    {
+        // This `if` statement is because `LuauNonReentrantGeneralization3`
+        // sets some flags 
+        CHECK(ac.entryMap.count("BaseMethod") > 0);
+        CHECK(ac.entryMap.count("Method") > 0);
+    }
+    else
+    {
+        // Otherwise, we don't infer anything for `value`, which is _fine_.
+        CHECK(ac.entryMap.empty());
+    }
+
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_has_types_definitions")
 {
-    // Needs new global initialization in the Fixture, but can't place the flag inside the base Fixture
-    if (!FFlag::LuauUserTypeFunTypecheck)
-        return;
-
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
     check(R"(
@@ -4468,10 +4485,6 @@ end
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_private_scope")
 {
-    // Needs new global initialization in the Fixture, but can't place the flag inside the base Fixture
-    if (!FFlag::LuauUserTypeFunTypecheck)
-        return;
-
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
     // Global scope polution by the embedder has no effect
@@ -4504,7 +4517,6 @@ this@2
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_eval_in_autocomplete")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauTypeFunResultInAutocomplete{FFlag::LuauTypeFunResultInAutocomplete, true};
 
     check(R"(
 type function foo(x)

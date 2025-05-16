@@ -11,6 +11,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -582,6 +583,8 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 
@@ -590,7 +593,7 @@ local a: X? = { w = 4 }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        CHECK("Type '{ w: number }' could not be converted into 'X?'" == toString(result.errors[0]));
+        CHECK("Table type '{ w: number }' not compatible with type 'X' because the former is missing field 'x'" == toString(result.errors[0]));
     else
     {
         const std::string expected = R"(Type 'a' could not be converted into 'X?'
