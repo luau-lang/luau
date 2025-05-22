@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauParseStringIndexer)
 LUAU_FASTFLAG(LuauDeclareExternType)
+LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -1260,8 +1261,6 @@ until false
 
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection_local_function")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     try
     {
         parse(R"(-- i am line 1
@@ -1295,8 +1294,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection_failsafe_earlier")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     try
     {
         parse(R"(-- i am line 1
@@ -2902,6 +2899,8 @@ TEST_CASE_FIXTURE(Fixture, "function_start_locations_are_before_attributes")
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size_zero")
 {
+    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
+
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 
@@ -3364,8 +3363,6 @@ TEST_CASE_FIXTURE(Fixture, "AstName_comparison")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_list_recovery")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     try
     {
         parse(R"(

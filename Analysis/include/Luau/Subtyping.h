@@ -72,6 +72,11 @@ struct SubtypingResult
     /// isSubtype is false, depending on the input types.
     SubtypingReasonings reasoning{kEmptyReasoning};
 
+    // If this subtype result required testing free types, we might be making
+    // assumptions about what the free type eventually resolves to.  If so,
+    // those assumptions are recorded here.
+    std::vector<SubtypeConstraint> assumedConstraints;
+
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
     SubtypingResult& withBothComponent(TypePath::Component component);

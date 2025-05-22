@@ -175,6 +175,10 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
+    // Used to keep track of when we are inside a large table and should
+    // opt *not* to do type inference for singletons. 
+    size_t largeTableDepth = 0;
+
     /**
      * Fabricates a new free type belonging to a given scope.
      * @param scope the scope the free type belongs to.

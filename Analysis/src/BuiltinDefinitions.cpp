@@ -30,7 +30,7 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAGVARIABLE(LuauFormatUseLastPosition)
@@ -310,8 +310,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauNonReentrantGeneralization3
-    if (FFlag::LuauNonReentrantGeneralization3)
+    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauEagerGeneralization
+    if (FFlag::LuauEagerGeneralization)
         globalScope = globals.globalScope.get();
 
     if (FFlag::LuauSolverV2)

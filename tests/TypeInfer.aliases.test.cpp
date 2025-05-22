@@ -12,7 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
-LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion)
+LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAG(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
@@ -355,8 +355,6 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 // Check that recursive intersection type doesn't generate an OOM
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function _(l0:(t0)&((t0)&(((t0)&((t0)->()))->(typeof(_),typeof(# _)))),l39,...):any
         end
@@ -970,9 +968,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_lose_track_of_PendingExpansionTypes_after_substitution")
 {
-    // CLI-114134 - We need egraphs to properly simplify these types.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     fileResolver.source["game/ReactCurrentDispatcher"] = R"(
         export type BasicStateAction<S> = ((S) -> S) | S
         export type Dispatch<A> = (A) -> ()
@@ -1258,7 +1253,7 @@ TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_mod
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion, true};
+    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2, true};
 
     // This used to crash under the new solver: we would like this to continue
     // to not crash.
@@ -1297,6 +1292,17 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_duplicate_with_typeof")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
 }
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_more_cursed_aliases")
+{
+    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+export type t138 = t0<t138>
+export type t0<t0,t10,t10,t109> = t0
+    )"));
+}
+
 
 
 TEST_SUITE_END();

@@ -671,6 +671,21 @@ void setNativeExecutionEnabled(lua_State* L, bool enabled)
         L->global->ecb.enter = enabled ? onEnter : onEnterDisabled;
 }
 
+void disableNativeExecutionForFunction(lua_State* L, const int level) noexcept
+{
+    CODEGEN_ASSERT(unsigned(level) < unsigned(L->ci - L->base_ci));
+
+    const CallInfo* ci = L->ci - level;
+    const TValue* o = ci->func;
+    CODEGEN_ASSERT(ttisfunction(o));
+
+    Proto* proto = clvalue(o)->l.p;
+    CODEGEN_ASSERT(proto);
+
+    CODEGEN_ASSERT(proto->codeentry != proto->code);
+    onDestroyFunction(L, proto);
+}
+
 static uint8_t userdataRemapperWrap(lua_State* L, const char* str, size_t len)
 {
     if (BaseCodeGenContext* codegenCtx = getCodeGenContext(L))

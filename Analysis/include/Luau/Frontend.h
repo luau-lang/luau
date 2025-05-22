@@ -166,6 +166,7 @@ struct Frontend
 
     // Parse module graph and prepare SourceNode/SourceModule data, including required dependencies without running typechecking
     void parse(const ModuleName& name);
+    void parseModules(const std::vector<ModuleName>& name);
 
     // Parse and typecheck module graph
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess

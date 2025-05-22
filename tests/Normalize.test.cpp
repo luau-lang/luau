@@ -14,8 +14,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -1177,57 +1176,6 @@ end
 )");
 }
 
-#if 0
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity")
-{
-    ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 80};
-    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
-    ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
-
-    ScopedFastFlag _[] = {
-        {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
-        {FFlag::DebugLuauGreedyGeneralization, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
-    };
-
-    CheckResult result = check(R"(
-function _(_).readu32(l0)
-return ({[_(_(_))]=_,[_(if _ then _)]=_,n0=_,})[_],nil
-end
-_(_)[_(n32)] %= _(_(_))
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
-{
-    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
-    ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
-
-    ScopedFastFlag _[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
-        {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
-        {FFlag::LuauSimplifyOutOfLine, true},
-        {FFlag::LuauNonReentrantGeneralization3, false},
-        {FFlag::DebugLuauGreedyGeneralization, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-    };
-
-    CheckResult result = check(R"(
-function _(_,"").readu32(l0)
-return ({[_(_(_))]=_,[_(if _ then _,_())]=_,[""]=_,})[_],nil
-end
-_().readu32 %= _(_(_(_),_))
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-#endif
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
 {
     ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}};
@@ -1258,7 +1206,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
-        {FFlag::DebugLuauGreedyGeneralization, true}
+        {FFlag::LuauEagerGeneralization, true}
     };
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 

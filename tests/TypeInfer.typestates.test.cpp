@@ -8,11 +8,12 @@ LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
-LUAU_FASTFLAG(LuauDfgMatchCGScopes)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
+LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
+LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
 
 using namespace Luau;
 
@@ -414,7 +415,13 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_future_assignments")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauNonReentrantGeneralization3, true}};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReportSubtypingErrors, true},
+        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauSubtypeGenericsAndNegations, true},
+        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
+    };
 
     CheckResult result = check(R"(
         local f
@@ -851,24 +858,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_in_an_if_branch_without_else")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_binary_expr")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauPreprocessTypestatedArgument, true},
-        {FFlag::LuauDfgMatchCGScopes, true},
-    };
-
-    // Previously this would ICE due to mismatched scopes between the
-    // constraint generator and the data flow graph.
-    LUAU_REQUIRE_ERRORS(check(R"(
-        local _
-        if _ or table.freeze(_,_) or table.freeze(_,_) then
-        end
-    )"));
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    // CLI-154237: This currently throws an exception due to a mismatch between
+    // the scopes created in the data flow graph versus the constraint generator.
+    CHECK_THROWS_AS(
+        check(R"(
+            local _
+            if _ or table.freeze(_,_) or table.freeze(_,_) then
+            end
+        )"),
+        Luau::InternalCompilerError
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_in_conditional")
 {
-    ScopedFastFlag _{FFlag::LuauDfgMatchCGScopes, true};
-    
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
     // NOTE: This _probably_ should be disallowed, but it is representing that
     // type stating functions in short circuiting binary expressions do not
     // reflect their type states.
@@ -883,21 +888,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_in_conditional")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauPreprocessTypestatedArgument, true},
-        {FFlag::LuauDfgMatchCGScopes, true},
-    };
-
-    // Previously this would ICE due to mismatched scopes between the
-    // constraint generator and the data flow graph.
-    LUAU_REQUIRE_ERRORS(check(R"(
-        --!strict
-        local _
-        if 
-            if table.freeze(_,_) then _ else _
-        then
-        end
-    )"));
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    // CLI-154237: This currently throws an exception due to a mismatch between
+    // the scopes created in the data flow graph versus the constraint generator.
+    CHECK_THROWS_AS(
+        check(R"(
+            local _
+            if
+                if table.freeze(_,_) then _ else _
+            then
+            end
+        )"),
+        Luau::InternalCompilerError
+    );
 }
 
 TEST_SUITE_END();

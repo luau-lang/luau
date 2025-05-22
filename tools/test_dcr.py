@@ -104,6 +104,12 @@ def main():
         "path", action="store", help="Path to the Luau.UnitTest executable"
     )
     parser.add_argument(
+        "--fflags",
+        dest="flags",
+        action="store",
+        help="Set extra FFlags",
+    )
+    parser.add_argument(
         "--dump",
         dest="dump",
         action="store_true",
@@ -136,9 +142,11 @@ def main():
 
     failList = loadFailList()
 
-    flags = ["true", "LuauSolverV2"]
+    flags = "true,LuauSolverV2"
+    if args.flags:
+        flags += "," + args.flags
 
-    commandLine = [args.path, "--reporters=xml", "--fflags=" + ",".join(flags)]
+    commandLine = [args.path, "--reporters=xml", "--fflags=" + flags]
 
     if args.random_seed:
         commandLine.append("--random-seed=" + str(args.random_seed))

@@ -13,6 +13,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
+LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
@@ -48,7 +49,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expected = R"(
+    const std::string expected = FFlag::LuauStoreCSTData2 ? R"(
         function f(a:{fn:()->(a,b...)}): ()
             if type(a) == 'boolean' then
                 local a1:boolean=a
@@ -56,9 +57,18 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
                 local a2:{fn:()->(a,b...)}=a
             end
         end
+    )"
+                                                          : R"(
+        function f(a:{fn:()->(a,b...)}): ()
+            if type(a) == 'boolean'then
+                local a1:boolean=a
+            elseif a.fn()then
+                local a2:{fn:()->(a,b...)}=a
+            end
+        end
     )";
 
-    const std::string expectedWithNewSolver = R"(
+    const std::string expectedWithNewSolver = FFlag::LuauStoreCSTData2 ? R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
@@ -66,13 +76,31 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
                 local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
             end
         end
+    )"
+                                                                       : R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean'then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn()then
+                local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
+            end
+        end
     )";
 
-    const std::string expectedWithEqSat = R"(
+    const std::string expectedWithEqSat = FFlag::LuauStoreCSTData2 ? R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
+                local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
+            end
+        end
+    )"
+                                                                   : R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean'then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn()then
                 local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
             end
         end

@@ -3,7 +3,6 @@
 #include "Luau/TypeArena.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena);
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
 
 namespace Luau
 {

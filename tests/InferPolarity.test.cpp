@@ -8,13 +8,13 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3);
+LUAU_FASTFLAG(LuauEagerGeneralization);
 
 TEST_SUITE_BEGIN("InferPolarity");
 
 TEST_CASE_FIXTURE(Fixture, "T where T = { m: <a>(a) -> T }")
 {
-    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization3, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization, true};
 
     TypeArena arena;
     ScopePtr globalScope = std::make_shared<Scope>(builtinTypes->anyTypePack);

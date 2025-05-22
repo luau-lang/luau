@@ -6,6 +6,7 @@
 #include "Fixture.h"
 
 #include "Luau/TypeChecker2.h"
+#include "Luau/TypePack.h"
 #include "ScopedFlags.h"
 #include "doctest.h"
 
@@ -14,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAttributeSyntax)
+LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("ToString");
@@ -490,6 +492,17 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
     ttv.props.clear();
     ttv.state = TableState::Unsealed;
     CHECK_EQ("{string}", toString(Type{ttv}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "the_empty_type_pack_should_be_parenthesized")
+{
+    ScopedFastFlag sff{FFlag::LuauFixEmptyTypePackStringification, true};
+
+    TypePackVar emptyTypePack{TypePack{}};
+    CHECK_EQ(toString(&emptyTypePack), "()");
+
+    auto unitToUnit = Type{FunctionType{&emptyTypePack, &emptyTypePack}};
+    CHECK_EQ(toString(&unitToUnit), "() -> ()");
 }
 
 

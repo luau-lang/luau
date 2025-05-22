@@ -40,6 +40,7 @@ LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 LUAU_FASTFLAG(LuauYieldableContinuations)
 LUAU_FASTFLAG(LuauCurrentLineBounds)
 LUAU_FASTFLAG(LuauLoadNoOomThrow)
+LUAU_FASTFLAG(LuauHeapNameDetails)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -2280,6 +2281,8 @@ TEST_CASE("StringConversion")
 
 TEST_CASE("GCDump")
 {
+    ScopedFastFlag luauHeapNameDetails{FFlag::LuauHeapNameDetails, true};
+
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
     extern void luaC_enumheap(
@@ -2320,7 +2323,19 @@ TEST_CASE("GCDump")
 
     lua_State* CL = lua_newthread(L);
 
-    lua_pushstring(CL, "local x x = {} local function f() x[1] = math.abs(42) end function foo() coroutine.yield() end foo() return f");
+    lua_pushstring(CL, R"(
+local x
+x = {}
+local function f()
+    x[1] = math.abs(42)
+end
+function foo()
+    coroutine.yield()
+end
+foo()
+return f
+)");
+    lua_pushstring(CL, "=GCDump");
     lua_loadstring(CL);
     lua_resume(CL, nullptr, 0);
 
@@ -2365,8 +2380,19 @@ TEST_CASE("GCDump")
         {
             EnumContext& context = *(EnumContext*)ctx;
 
-            if (tt == LUA_TUSERDATA)
-                CHECK(strcmp(name, "u42") == 0);
+            if (name)
+            {
+                std::string_view sv{name};
+
+                if (tt == LUA_TUSERDATA)
+                    CHECK(sv == "u42");
+                else if (tt == LUA_TPROTO)
+                    CHECK((sv == "proto unnamed:1 =GCDump" || sv == "proto foo:7 =GCDump" || sv == "proto f:4 =GCDump"));
+                else if (tt == LUA_TFUNCTION)
+                    CHECK((sv == "test" || sv == "unnamed:1 =GCDump" || sv == "foo:7 =GCDump" || sv == "f:4 =GCDump"));
+                else if (tt == LUA_TTHREAD)
+                    CHECK(sv == "thread at unnamed:1 =GCDump");
+            }
 
             context.nodes[gco] = {gco, tt, memcat, size, name ? name : ""};
         },
