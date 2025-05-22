@@ -17,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 
 using namespace Luau;
 
@@ -1645,6 +1646,21 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
     SubtypingResult result = isSubtype(genericFunctionTy, actualFunctionTy);
 
     CHECK(result.isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
+{
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization, true};
+
+    TypeId argTy = arena.freshType(builtinTypes, moduleScope.get());
+    FreeType* freeArg = getMutable<FreeType>(argTy);
+    REQUIRE(freeArg);
+    freeArg->lowerBound = arena.addType(SingletonType{StringSingleton{"five"}});
+    freeArg->upperBound = builtinTypes->stringType;
+
+    SubtypingResult result = isSubtype(builtinTypes->stringType, argTy);
+    CHECK(result.isSubtype);
+    REQUIRE(1 == result.assumedConstraints.size());
 }
 
 TEST_SUITE_END();

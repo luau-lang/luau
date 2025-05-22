@@ -280,8 +280,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     TypeArena arena;
     TypeId freeTy = freshType(NotNull{&arena}, builtinTypes, nullptr);
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});

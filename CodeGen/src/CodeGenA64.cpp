@@ -12,6 +12,8 @@
 
 #include "lstate.h"
 
+LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck);
+
 namespace Luau
 {
 namespace CodeGen
@@ -179,6 +181,14 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
 
+    if (DFFlag::AddReturnExectargetCheck)
+    {
+        // Get new instruction location
+        CODEGEN_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+        build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
+        build.cbz(x4, helpers.exitContinueVmClearNativeFlag);
+    }
+
     CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
@@ -188,9 +198,12 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // cip->savedpc
     build.sub(x2, x2, rCode);
 
-    // Get new instruction location and jump to it
-    CODEGEN_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
-    build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
+    if (!DFFlag::AddReturnExectargetCheck)
+    {
+        // Get new instruction location and jump to it
+        CODEGEN_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+        build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
+    }
     build.ldr(w2, mem(x3, x2));
     build.add(x4, x4, x2);
     build.br(x4);

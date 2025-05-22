@@ -18,7 +18,6 @@ LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAGVARIABLE(LuauDfgIfBlocksShouldRespectControlFlow)
-LUAU_FASTFLAGVARIABLE(LuauDfgMatchCGScopes)
 LUAU_FASTFLAGVARIABLE(LuauDfgAllowUpdatesInLoops)
 
 namespace Luau
@@ -1240,18 +1239,9 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprUnary* u)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprBinary* b)
 {
     visitExpr(b->left);
-    if (FFlag::LuauDfgMatchCGScopes)
-    {
-        PushScope _{scopeStack, makeChildScope()};
-        visitExpr(b->right);
-        return {defArena->freshCell(Symbol{}, b->location), nullptr};
-    }
-    else
-    {
-        visitExpr(b->right);
-        return {defArena->freshCell(Symbol{}, b->location), nullptr};
-    }
+    visitExpr(b->right);
 
+    return {defArena->freshCell(Symbol{}, b->location), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)
@@ -1264,29 +1254,9 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprIfElse* i)
 {
-    if (FFlag::LuauDfgMatchCGScopes)
-    {
-        // In the constraint generator, the condition, consequence, and
-        // alternative all have distinct scopes.
-        {
-            PushScope _{scopeStack, makeChildScope()};
-            visitExpr(i->condition);
-        }
-        {
-            PushScope _{scopeStack, makeChildScope()};
-            visitExpr(i->trueExpr);
-        }
-        {
-            PushScope _{scopeStack, makeChildScope()};
-            visitExpr(i->falseExpr);
-        }
-    }
-    else
-    {
-        visitExpr(i->condition);
-        visitExpr(i->trueExpr);
-        visitExpr(i->falseExpr);
-    }
+    visitExpr(i->condition);
+    visitExpr(i->trueExpr);
+    visitExpr(i->falseExpr);
 
     return {defArena->freshCell(Symbol{}, i->location), nullptr};
 }

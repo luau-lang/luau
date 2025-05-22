@@ -325,9 +325,6 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 {
-    // We report a spuriouus duplicate error here.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local bad_iter = 5
 
@@ -1130,7 +1127,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("nil" == toString(requireType("ans"))); 
+        CHECK("nil" == toString(requireType("ans")));
     else
         CHECK(toString(requireType("ans")) == "never");
 }
@@ -1404,7 +1401,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1413")
                 local bar = foo - foo + foo
                 foo = bar
             end
-        end    
+        end
     )"));
 }
 

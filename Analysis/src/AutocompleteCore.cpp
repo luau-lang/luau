@@ -24,7 +24,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteUsesModuleForTypeCompatibility)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMissingFollows)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
@@ -163,78 +162,39 @@ static bool checkTypeMatch(
     UnifierSharedState unifierState(&iceReporter);
     SimplifierPtr simplifier = newSimplifier(NotNull{typeArena}, builtinTypes);
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
-    if (FFlag::LuauAutocompleteUsesModuleForTypeCompatibility)
+    if (module.checkedInNewSolver)
     {
-        if (module.checkedInNewSolver)
-        {
-            TypeCheckLimits limits;
-            TypeFunctionRuntime typeFunctionRuntime{
-                NotNull{&iceReporter}, NotNull{&limits}
-            }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
+        TypeCheckLimits limits;
+        TypeFunctionRuntime typeFunctionRuntime{
+            NotNull{&iceReporter}, NotNull{&limits}
+        }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
+        unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+        unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
 
-            Subtyping subtyping{
-                builtinTypes,
-                NotNull{typeArena},
-                NotNull{simplifier.get()},
-                NotNull{&normalizer},
-                NotNull{&typeFunctionRuntime},
-                NotNull{&iceReporter}
-            };
+        Subtyping subtyping{
+            builtinTypes,
+            NotNull{typeArena},
+            NotNull{simplifier.get()},
+            NotNull{&normalizer},
+            NotNull{&typeFunctionRuntime},
+            NotNull{&iceReporter}
+        };
 
-            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
-        }
-        else
-        {
-            Unifier unifier(NotNull<Normalizer>{&normalizer}, scope, Location(), Variance::Covariant);
-
-            // Cost of normalization can be too high for autocomplete response time requirements
-            unifier.normalize = false;
-            unifier.checkInhabited = false;
-
-            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
-
-            return unifier.canUnify(subTy, superTy).empty();
-        }
+        return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
     }
     else
     {
-        if (FFlag::LuauSolverV2)
-        {
-            TypeCheckLimits limits;
-            TypeFunctionRuntime typeFunctionRuntime{
-                NotNull{&iceReporter}, NotNull{&limits}
-            }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
+        Unifier unifier(NotNull<Normalizer>{&normalizer}, scope, Location(), Variance::Covariant);
 
-            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
+        // Cost of normalization can be too high for autocomplete response time requirements
+        unifier.normalize = false;
+        unifier.checkInhabited = false;
 
-            Subtyping subtyping{
-                builtinTypes,
-                NotNull{typeArena},
-                NotNull{simplifier.get()},
-                NotNull{&normalizer},
-                NotNull{&typeFunctionRuntime},
-                NotNull{&iceReporter}
-            };
+        unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+        unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
 
-            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
-        }
-        else
-        {
-            Unifier unifier(NotNull<Normalizer>{&normalizer}, scope, Location(), Variance::Covariant);
-
-            // Cost of normalization can be too high for autocomplete response time requirements
-            unifier.normalize = false;
-            unifier.checkInhabited = false;
-            unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-            unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
-
-            return unifier.canUnify(subTy, superTy).empty();
-        }
+        return unifier.canUnify(subTy, superTy).empty();
     }
 }
 

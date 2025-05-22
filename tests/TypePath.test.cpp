@@ -17,7 +17,6 @@ using namespace Luau::TypePath;
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds);
 
 struct TypePathFixture : Fixture
 {
