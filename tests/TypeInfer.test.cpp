@@ -447,7 +447,7 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #endif
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
-    ScopedFastFlag _{FFlag::LuauNonReentrantGeneralization3, false};
+    ScopedFastFlag _{FFlag::LuauEagerGeneralization, false};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
