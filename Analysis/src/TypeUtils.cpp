@@ -12,8 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
-LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionTypeFunctionArgs)
 
 namespace Luau
@@ -307,7 +306,7 @@ TypePack extendTypePack(
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope, ftp->polarity);
 
-            if (FFlag::LuauNonReentrantGeneralization3)
+            if (FFlag::LuauEagerGeneralization)
                 trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
 
             if (FFlag::LuauSolverV2)
@@ -572,8 +571,6 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
 
 void trackInteriorFreeType(Scope* scope, TypeId ty)
 {
-    if (!FFlag::LuauDisableNewSolverAssertsInMixedMode)
-        LUAU_ASSERT(FFlag::LuauSolverV2);
     for (; scope; scope = scope->parent.get())
     {
         if (scope->interiorFreeTypes)
@@ -591,7 +588,7 @@ void trackInteriorFreeType(Scope* scope, TypeId ty)
 void trackInteriorFreeTypePack(Scope* scope, TypePackId tp)
 {
     LUAU_ASSERT(tp);
-    if (!FFlag::LuauNonReentrantGeneralization3)
+    if (!FFlag::LuauEagerGeneralization)
         return;
 
     for (; scope; scope = scope->parent.get())

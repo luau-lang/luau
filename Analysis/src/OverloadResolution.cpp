@@ -40,7 +40,7 @@ OverloadResolver::OverloadResolver(
 {
 }
 
-std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(TypeId ty, TypePackId argsPack)
+std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(TypeId ty, TypePackId argsPack, bool useFreeTypeBounds)
 {
     auto tryOne = [&](TypeId f)
     {
@@ -50,6 +50,9 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(T
             subtyping.variance = Subtyping::Variance::Contravariant;
             SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
             subtyping.variance = variance;
+
+            if (!useFreeTypeBounds && !r.assumedConstraints.empty())
+                return false;
 
             if (r.isSubtype)
                 return true;
@@ -461,7 +464,7 @@ static std::optional<TypeId> selectOverload(
 {
     auto resolver =
         std::make_unique<OverloadResolver>(builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
-    auto [status, overload] = resolver->selectOverload(fn, argsPack);
+    auto [status, overload] = resolver->selectOverload(fn, argsPack, /*useFreeTypeBounds*/ false);
 
     if (status == OverloadResolver::Analysis::Ok)
         return overload;

@@ -28,7 +28,7 @@ LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauStringPartLengthLimit)
@@ -37,6 +37,8 @@ LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauInsertErrorTypesIntoIndexerResult)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
+LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
+LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 using namespace Luau;
@@ -1257,9 +1259,6 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
 
 TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
 {
-    // CLI-114134
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local obj = {}
 
@@ -2041,8 +2040,10 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauHasPropProperBlock, true},
-        {FFlag::LuauNonReentrantGeneralization3, true},
-        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true}
+        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
+        {FFlag::LuauSubtypeGenericsAndNegations, true},
+        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
     };
 
     auto result = check(R"(
@@ -2077,8 +2078,10 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNonReentrantGeneralization3, true},
+        {FFlag::LuauEagerGeneralization, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
+        {FFlag::LuauSubtypeGenericsAndNegations, true},
+        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
     };
 
     CheckResult result = check(R"(
@@ -2110,10 +2113,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauHasPropProperBlock, true},
-        {FFlag::LuauNonReentrantGeneralization3, true},
+        {FFlag::LuauEagerGeneralization, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauStringPartLengthLimit, true},
         {FFlag::LuauSimplificationRecheckAssumption, true},
+        {FFlag::LuauSubtypeGenericsAndNegations, true},
+        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
     };
 
     LUAU_REQUIRE_ERRORS(check(R"(

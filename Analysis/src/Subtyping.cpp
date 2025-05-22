@@ -21,6 +21,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeGenericsAndNegations)
 LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 
 namespace Luau
 {
@@ -679,6 +680,44 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         bool ok = bindGeneric(env, subTy, superTy);
         result.isSubtype = ok;
         result.isCacheable = false;
+    }
+    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy); FFlag::LuauEagerGeneralization && pair)
+    {
+        // Any two free types are potentially subtypes of one another because
+        // both of them could be narrowed to never.
+        result = {true};
+        result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+    }
+    else if (auto superFree = get<FreeType>(superTy); superFree && FFlag::LuauEagerGeneralization)
+    {
+        // Given SubTy <: (LB <: SuperTy <: UB)
+        //
+        // If SubTy <: UB, then it is possible that SubTy <: SuperTy.
+        // If SubTy </: UB, then it is definitely the case that SubTy </: SuperTy.
+        //
+        // It's always possible for SuperTy's upper bound to later be
+        // constrained, so this relation may not actually hold.
+
+        result = isCovariantWith(env, subTy, superFree->upperBound, scope);
+
+        if (result.isSubtype)
+            result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+    }
+    else if (auto subFree = get<FreeType>(subTy); subFree && FFlag::LuauEagerGeneralization)
+    {
+        // Given (LB <: SubTy <: UB) <: SuperTy
+        //
+        // If UB <: SuperTy, then it is certainly the case that SubTy <: SuperTy.
+        // If SuperTy <: UB and LB <: SuperTy, then it is possible that UB will later be narrowed such that SubTy <: SuperTy.
+        // If LB </: SuperTy, then SubTy </: SuperTy
+
+        if (isCovariantWith(env, subFree->lowerBound, superTy, scope).isSubtype)
+        {
+            result = {true};
+            result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+        }
+        else
+            result = {false};
     }
     else if (auto p = get2<NegationType, NegationType>(subTy, superTy))
         result = isCovariantWith(env, p.first->ty, p.second->ty, scope).withBothComponent(TypePath::TypeField::Negated);
@@ -1411,8 +1450,24 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 {
     SubtypingResult result{true};
 
-    if (subTable->props.empty() && !subTable->indexer && superTable->indexer)
-        return {false};
+    if (FFlag::LuauEagerGeneralization)
+    {
+        if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
+        {
+            // While it is certainly the case that {} </: {T}, the story is a little bit different for {| |} <: {T}
+            // The shape of an unsealed tabel is still in flux, so it is probably the case that the unsealed table
+            // will later gain the necessary indexer as type inference proceeds.
+            //
+            // Unsealed tables are always sealed by the time inference completes, so this should never affect the
+            // type checking phase.
+            return {false};
+        }
+    }
+    else
+    {
+        if (subTable->props.empty() && !subTable->indexer && superTable->indexer)
+            return {false};
+    }
 
     for (const auto& [name, superProp] : superTable->props)
     {
@@ -1451,6 +1506,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
     {
         if (subTable->indexer)
             result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+        else if (FFlag::LuauEagerGeneralization && subTable->state != TableState::Sealed)
+        {
+            // As above, we assume that {| |} <: {T} because the unsealed table
+            // on the left will eventually gain the necessary indexer.
+            return {true};
+        }
         else
             return {false};
     }

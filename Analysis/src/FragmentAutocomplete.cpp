@@ -29,10 +29,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
-LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
-LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
-LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
-LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
 LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
@@ -1261,11 +1257,8 @@ FragmentAutocompleteStatusResult tryFragmentAutocomplete(
     StringCompletionCallback stringCompletionCB
 )
 {
-    if (FFlag::LuauBetterCursorInCommentDetection)
-    {
-        if (isWithinComment(context.freshParse.commentLocations, cursorPosition))
-            return {FragmentAutocompleteStatus::Success, std::nullopt};
-    }
+    if (isWithinComment(context.freshParse.commentLocations, cursorPosition))
+        return {FragmentAutocompleteStatus::Success, std::nullopt};
     // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
     try
     {

@@ -42,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauStringPartLengthLimit)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAGVARIABLE(LuauFixEmptyTypePackStringification)
 
 namespace Luau
 {
@@ -479,6 +480,9 @@ struct TypeStringifier
 
             bool wrap = !singleTp && get<TypePack>(follow(tp));
 
+            if (FFlag::LuauFixEmptyTypePackStringification)
+                wrap &= !isEmpty(tp);
+
             if (wrap)
                 state.emit("(");
 
@@ -687,14 +691,18 @@ struct TypeStringifier
 
         state.emit("(");
 
-        if (state.opts.functionTypeArguments)
+        if (FFlag::LuauFixEmptyTypePackStringification && isEmpty(ftv.argTypes))
+        {
+            // if we've got an empty argument pack, we're done.
+        }
+        else if (state.opts.functionTypeArguments)
             stringify(ftv.argTypes, ftv.argNames);
         else
             stringify(ftv.argTypes);
 
         state.emit(") -> ");
 
-        bool plural = true;
+        bool plural = FFlag::LuauFixEmptyTypePackStringification ? !isEmpty(ftv.retTypes) : true;
 
         auto retBegin = begin(ftv.retTypes);
         auto retEnd = end(ftv.retTypes);
@@ -1233,6 +1241,16 @@ struct TypePackStringifier
             state.result.cycle = true;
             state.emit("*CYCLETP*");
             return;
+        }
+
+        if (FFlag::LuauFixEmptyTypePackStringification)
+        {
+            if (tp.head.empty() && (!tp.tail || isEmpty(*tp.tail)))
+            {
+                state.emit("()");
+                state.unsee(&tp);
+                return;
+            }
         }
 
         bool first = true;
@@ -1782,17 +1800,34 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
 
     state.emit("): ");
 
-    size_t retSize = size(ftv.retTypes);
-    bool hasTail = !finite(ftv.retTypes);
-    bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize != 1);
+    if (FFlag::LuauFixEmptyTypePackStringification)
+    {
+        size_t retSize = size(ftv.retTypes);
+        bool hasTail = !finite(ftv.retTypes);
+        bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize > 1);
 
-    if (wrap)
-        state.emit("(");
+        if (wrap)
+            state.emit("(");
 
-    tvs.stringify(ftv.retTypes);
+        tvs.stringify(ftv.retTypes);
 
-    if (wrap)
-        state.emit(")");
+        if (wrap)
+            state.emit(")");
+    }
+    else
+    {
+        size_t retSize = size(ftv.retTypes);
+        bool hasTail = !finite(ftv.retTypes);
+        bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize != 1);
+
+        if (wrap)
+            state.emit("(");
+
+        tvs.stringify(ftv.retTypes);
+
+        if (wrap)
+            state.emit(")");
+    }
 
     return result.name;
 }

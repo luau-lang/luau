@@ -14,7 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
@@ -1725,7 +1725,7 @@ struct TFFixture
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
 
     const ScopedFastFlag sff[1] = {
-        {FFlag::DebugLuauGreedyGeneralization, true},
+        {FFlag::LuauEagerGeneralization, true},
     };
 
     BuiltinTypeFunctions builtinTypeFunctions;

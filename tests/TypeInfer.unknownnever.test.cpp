@@ -8,7 +8,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions);
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization);
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 

@@ -63,7 +63,7 @@ struct OverloadResolver
     InsertionOrderedMap<TypeId, std::pair<OverloadResolver::Analysis, size_t>> resolution;
 
 
-    std::pair<OverloadResolver::Analysis, TypeId> selectOverload(TypeId ty, TypePackId args);
+    std::pair<OverloadResolver::Analysis, TypeId> selectOverload(TypeId ty, TypePackId args, bool useFreeTypeBounds);
     void resolve(TypeId fnTy, const TypePack* args, AstExpr* selfExpr, const std::vector<AstExpr*>* argExprs);
 
 private:
