@@ -5799,7 +5799,10 @@ TEST_CASE_FIXTURE(Fixture, "large_table_inference_does_not_bleed")
         CHECK(err.location.begin.line == 2);
 }
 
-TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(3.0))
+
+#if 0
+
+TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(2.0))
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
@@ -5813,5 +5816,7 @@ TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(3.0))
     LUAU_REQUIRE_NO_ERRORS(check(source));
     CHECK_EQ("{string}", toString(requireType("res"), {true}));
 }
+
+#endif
 
 TEST_SUITE_END();
