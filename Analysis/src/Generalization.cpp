@@ -14,9 +14,9 @@
 #include "Luau/Substitution.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 
-LUAU_FASTFLAGVARIABLE(LuauNonReentrantGeneralization3)
+LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization)
 
 namespace Luau
 {
@@ -469,7 +469,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (FFlag::LuauNonReentrantGeneralization3)
+        if (FFlag::LuauEagerGeneralization)
         {
             if (!subsumes(scope, ft.scope))
                 return true;
@@ -520,7 +520,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
         {
-            if (FFlag::LuauNonReentrantGeneralization3)
+            if (FFlag::LuauEagerGeneralization)
                 unsealedTables.insert(ty);
             else
             {
@@ -544,22 +544,57 @@ struct FreeTypeSearcher : TypeVisitor
 
         for (const auto& [_name, prop] : tt.props)
         {
-            if (prop.isReadOnly())
-                traverse(*prop.readTy);
+            if (FFlag::LuauEnableWriteOnlyProperties)
+            {
+                if (prop.isReadOnly())
+                {
+                    traverse(*prop.readTy);
+                }
+                else if (prop.isWriteOnly())
+                {
+                    Polarity p = polarity;
+                    polarity = Polarity::Negative;
+                    traverse(*prop.writeTy);
+                    polarity = p;
+                }
+                else if (prop.isShared())
+                {
+                    Polarity p = polarity;
+                    polarity = Polarity::Mixed;
+                    traverse(prop.type());
+                    polarity = p;
+                }
+                else
+                {
+                    LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
+
+                    traverse(*prop.readTy);
+                    Polarity p = polarity;
+                    polarity = Polarity::Negative;
+                    traverse(*prop.writeTy);
+                    polarity = p;
+                }
+
+            }
             else
             {
-                LUAU_ASSERT(prop.isShared());
+                if (prop.isReadOnly())
+                    traverse(*prop.readTy);
+                else
+                {
+                    LUAU_ASSERT(prop.isShared());
 
-                Polarity p = polarity;
-                polarity = Polarity::Mixed;
-                traverse(prop.type());
-                polarity = p;
+                    Polarity p = polarity;
+                    polarity = Polarity::Mixed;
+                    traverse(prop.type());
+                    polarity = p;
+                }
             }
         }
 
         if (tt.indexer)
         {
-            if (FFlag::LuauNonReentrantGeneralization3)
+            if (FFlag::LuauEagerGeneralization)
             {
                 // {[K]: V} is equivalent to three functions: get, set, and iterate
                 //
@@ -617,7 +652,7 @@ struct FreeTypeSearcher : TypeVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        if (FFlag::LuauNonReentrantGeneralization3)
+        if (FFlag::LuauEagerGeneralization)
         {
             GeneralizationParams<TypePackId>& params = typePacks[tp];
             ++params.useCount;
@@ -1241,7 +1276,7 @@ GeneralizationResult<TypeId> generalizeType(
 
     if (!hasLowerBound && !hasUpperBound)
     {
-        if (!isWithinFunction || (!FFlag::DebugLuauGreedyGeneralization && (params.polarity != Polarity::Mixed && params.useCount == 1)))
+        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization && (params.polarity != Polarity::Mixed && params.useCount == 1)))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1273,7 +1308,7 @@ GeneralizationResult<TypeId> generalizeType(
 
         if (follow(lb) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), lb);
-        else if (!isWithinFunction || (!FFlag::DebugLuauGreedyGeneralization && params.useCount == 1))
+        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization && params.useCount == 1))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1390,7 +1425,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    if (FFlag::LuauNonReentrantGeneralization3)
+    if (FFlag::LuauEagerGeneralization)
     {
         FunctionType* functionTy = getMutable<FunctionType>(ty);
         auto pushGeneric = [&](TypeId t)
@@ -1521,15 +1556,51 @@ struct GenericCounter : TypeVisitor
 
         for (const auto& [_name, prop] : tt.props)
         {
-            if (prop.isReadOnly())
-                traverse(*prop.readTy);
+            if (FFlag::LuauEnableWriteOnlyProperties)
+            {
+                if (prop.isReadOnly())
+                {
+                    traverse(*prop.readTy);
+                }
+                else if (prop.isWriteOnly())
+                {
+                    Polarity p = polarity;
+                    polarity = Polarity::Negative;
+                    traverse(*prop.writeTy);
+                    polarity = p;
+                }
+                else if (prop.isShared())
+                {
+                    Polarity p = polarity;
+                    polarity = Polarity::Mixed;
+                    traverse(prop.type());
+                    polarity = p;
+                }
+                else
+                {
+                    LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
+
+                    traverse(*prop.readTy);
+                    Polarity p = polarity;
+                    polarity = Polarity::Negative;
+                    traverse(*prop.writeTy);
+                    polarity = p;
+                }
+
+            }
             else
             {
-                LUAU_ASSERT(prop.isShared());
+                if (prop.isReadOnly())
+                    traverse(*prop.readTy);
+                else
+                {
+                    LUAU_ASSERT(prop.isShared());
 
-                polarity = Polarity::Mixed;
-                traverse(prop.type());
-                polarity = previous;
+                    Polarity p = polarity;
+                    polarity = Polarity::Mixed;
+                    traverse(prop.type());
+                    polarity = p;
+                }
             }
         }
 
@@ -1582,7 +1653,7 @@ void pruneUnnecessaryGenerics(
     TypeId ty
 )
 {
-    if (!FFlag::DebugLuauGreedyGeneralization)
+    if (!FFlag::LuauEagerGeneralization)
         return;
 
     ty = follow(ty);

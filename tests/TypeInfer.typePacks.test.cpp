@@ -12,10 +12,11 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -99,7 +100,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization)
         CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
     else
         CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
@@ -339,7 +340,10 @@ local c: Packed<string, number, boolean>
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
-    CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
+    if (FFlag::LuauFixEmptyTypePackStringification)
+        CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "()");
+    else
+        CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
 
     auto ttvB = get<TableType>(requireType("b"));
     REQUIRE(ttvB);

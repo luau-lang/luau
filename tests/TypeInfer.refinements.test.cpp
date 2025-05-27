@@ -10,11 +10,13 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauWeakNilRefinementType)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
+LUAU_FASTFLAG(LuauBetterCannotCallFunctionPrimitive)
+LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 
 using namespace Luau;
@@ -108,6 +110,13 @@ struct RefinementExternTypeFixture : BuiltinsFixture
             {"IsA", Property{isA}},
         };
 
+        TypeId scriptConnection = arena.addType(ExternType("ExternScriptConnection", {}, inst, std::nullopt, {}, nullptr, "Test", {}));
+        TypePackId disconnectArgs = arena.addTypePack({scriptConnection});
+        TypeId disconnect = arena.addType(FunctionType{disconnectArgs, builtinTypes->emptyTypePack});
+        getMutable<ExternType>(scriptConnection)->props = {
+            {"Disconnect", Property{disconnect}},
+        };
+
         TypeId folder = frontend.globals.globalTypes.addType(ExternType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         TypeId part = frontend.globals.globalTypes.addType(ExternType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ExternType>(part)->props = {
@@ -123,6 +132,7 @@ struct RefinementExternTypeFixture : BuiltinsFixture
 
         frontend.globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
         frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
+        frontend.globals.globalScope->exportedTypeBindings["ExternScriptConnection"] = TypeFun{{}, scriptConnection};
         frontend.globals.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
         frontend.globals.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
         frontend.globals.globalScope->exportedTypeBindings["WeldConstraint"] = TypeFun{{}, weldConstraint};
@@ -760,7 +770,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization)
     {
         CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
         CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
@@ -2504,7 +2514,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
         end
     )"));
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization)
         CHECK_EQ("nil & string & unknown", toString(requireTypeAtPosition({4, 24})));
     else
         CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));
@@ -2648,5 +2658,77 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1451")
     )"));
 }
 
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        type Disconnectable = {
+            Disconnect: (self: Disconnectable) -> (...any);
+        } | {
+            disconnect: (self: Disconnectable) -> (...any)
+        } | ExternScriptConnection
+
+        local x: Disconnectable = workspace.ChildAdded:Connect(function()
+            print("child added")
+        end)
+
+        if type(x.Disconnect) == "function" then
+            x:Disconnect()
+        end
+    )");
+
+    if (FFlag::LuauTypeCheckerStricterIndexCheck)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+        CHECK_EQ(toString(result.errors[0]), "Key 'Disconnect' is missing from 't2 where t1 = ExternScriptConnection | t2 | { Disconnect: (t1) -> (...any) } ; t2 = { disconnect: (t1) -> (...any) }' in the type 't1 where t1 = ExternScriptConnection | { Disconnect: (t1) -> (...any) } | { disconnect: (t1) -> (...any) }'");
+
+        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
+            CHECK_EQ(toString(result.errors[1]), "The type function is not precise enough for us to determine the appropriate result type of this call.");
+        else
+            CHECK_EQ(toString(result.errors[1]), "Cannot call a value of type function");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
+            CHECK_EQ(toString(result.errors[0]), "The type function is not precise enough for us to determine the appropriate result type of this call.");
+        else
+            CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type function");
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1835")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local t: {name: string}? = nil
+
+        function f()
+            local name = if t then t.name else "name"
+        end
+    )"));
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local t: {name: string}? = nil
+
+        function f()
+            if t then end
+            local name = if t then t.name else "name"
+        end
+    )"));
+
+    CheckResult result = check(R"(
+        local t: {name: string}? = nil
+        if t then end
+        print(t.name)
+        local name = if t then t.name else "name"
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<OptionalValueAccess>(result.errors[0]));
+}
 
 TEST_SUITE_END();

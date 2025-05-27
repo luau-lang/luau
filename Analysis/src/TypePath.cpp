@@ -14,7 +14,6 @@
 #include <type_traits>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauDisableNewSolverAssertsInMixedMode)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -157,16 +156,12 @@ Path PathBuilder::build()
 
 PathBuilder& PathBuilder::readProp(std::string name)
 {
-    if (!FFlag::LuauDisableNewSolverAssertsInMixedMode)
-        LUAU_ASSERT(FFlag::LuauSolverV2);
     components.push_back(Property{std::move(name), true});
     return *this;
 }
 
 PathBuilder& PathBuilder::writeProp(std::string name)
 {
-    if (!FFlag::LuauDisableNewSolverAssertsInMixedMode)
-        LUAU_ASSERT(FFlag::LuauSolverV2);
     components.push_back(Property{std::move(name), false});
     return *this;
 }

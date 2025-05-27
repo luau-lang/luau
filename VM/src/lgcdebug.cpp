@@ -15,6 +15,7 @@
 #include <stdio.h>
 
 LUAU_FASTFLAG(LuauCurrentLineBounds)
+LUAU_FASTFLAGVARIABLE(LuauHeapNameDetails)
 
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
@@ -728,10 +729,20 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
 
         char buf[LUA_IDSIZE];
 
-        if (p->source)
-            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+        if (FFlag::LuauHeapNameDetails)
+        {
+            if (p->source)
+                snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined, getstr(p->source));
+            else
+                snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined);
+        }
         else
-            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+        {
+            if (p->source)
+                snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+            else
+                snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+        }
 
         enumnode(ctx, obj2gco(cl), sizeLclosure(cl->nupvalues), buf);
     }
@@ -799,10 +810,21 @@ static void enumthread(EnumContext* ctx, lua_State* th)
 
         char buf[LUA_IDSIZE];
 
-        if (p->source)
-            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+        if (FFlag::LuauHeapNameDetails)
+        {
+            if (p->source)
+                snprintf(buf, sizeof(buf), "thread at %s:%d %s", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined, getstr(p->source));
+            else
+                snprintf(buf, sizeof(buf), "thread at %s:%d", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined);
+        }
         else
-            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+        {
+
+            if (p->source)
+                snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+            else
+                snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+        }
 
         enumnode(ctx, obj2gco(th), size, buf);
     }
@@ -835,7 +857,21 @@ static void enumproto(EnumContext* ctx, Proto* p)
         ctx->edge(ctx->context, enumtopointer(obj2gco(p)), p->execdata, "[native]");
     }
 
-    enumnode(ctx, obj2gco(p), size, p->source ? getstr(p->source) : NULL);
+    if (FFlag::LuauHeapNameDetails)
+    {
+        char buf[LUA_IDSIZE];
+
+        if (p->source)
+            snprintf(buf, sizeof(buf), "proto %s:%d %s", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined, getstr(p->source));
+        else
+            snprintf(buf, sizeof(buf), "proto %s:%d", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined);
+
+        enumnode(ctx, obj2gco(p), size, buf);
+    }
+    else
+    {
+        enumnode(ctx, obj2gco(p), size, p->source ? getstr(p->source) : NULL);
+    }
 
     if (p->sizek)
         enumedges(ctx, obj2gco(p), p->k, p->sizek, "constants");

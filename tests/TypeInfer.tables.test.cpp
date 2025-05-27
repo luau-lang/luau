@@ -21,8 +21,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauBidirectionalInferenceElideAssert)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -30,6 +30,11 @@ LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauDisablePrimitiveInferenceInLargeTables)
+LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
+LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
+LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -594,9 +599,6 @@ TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_assignmen
 
 TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_function_call")
 {
-    // CLI-114873
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         --!strict
         function get(x) return x.opts["MYOPT"] end
@@ -700,7 +702,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauNonReentrantGeneralization3)
+    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization)
         CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
     else if (FFlag::LuauSolverV2)
         CHECK("({unknown}) -> ()" == toString(requireType("swap")));
@@ -1153,8 +1155,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add_inferred")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add_both_ways")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         type VectorMt = { __add: (Vector, number) -> Vector }
         local vectorMt: VectorMt
@@ -2210,7 +2210,6 @@ local Test: {Table} = {
 
 TEST_CASE_FIXTURE(Fixture, "common_table_element_general")
 {
-    // CLI-115275 - Bidirectional inference does not always propagate indexer types into the expression
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -2380,7 +2379,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::DebugLuauGreedyGeneralization && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(2, result);
@@ -2651,7 +2650,6 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
-    // Table properties like HasSuper.p must be invariant.  The new solver rightly rejects this program.
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
@@ -2702,9 +2700,6 @@ Table type '{ x: number, y: number }' not compatible with type 'Super' because t
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 {
-    // CLI-114791 Bidirectional inference should be able to cause the inference engine to forget that a table literal has some property
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         --!strict
         type Super = { x : number }
@@ -3752,7 +3747,12 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauNonReentrantGeneralization3, true}, {FFlag::LuauReportSubtypingErrors, true}};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauReportSubtypingErrors, true},
+        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauSubtypeGenericsAndNegations, true},
+        {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
+    };
 
     CheckResult result = check(R"(
         local function f(s)
@@ -4412,7 +4412,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
     CHECK(Location{{5, 18}, {5, 23}} == result.errors[3].location);
 }
 
-TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
+TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
 {
     CheckResult result = check(R"(
         type T = {read [string]: number}
@@ -4440,6 +4440,22 @@ TEST_CASE_FIXTURE(Fixture, "infer_write_property")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK("({ y: number }) -> ()" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "new_solver_supports_read_write_properties")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff2{FFlag::LuauEnableWriteOnlyProperties, true};
+
+    CheckResult result = check(R"(
+        type W = {read x: number}
+        type X = {write x: boolean}
+
+        type Y = {read ["prop"]: boolean}
+        type Z = {write ["prop"]: string}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
@@ -4495,6 +4511,59 @@ TEST_CASE_FIXTURE(Fixture, "write_to_read_only_property")
     CHECK(PropertyAccessViolation::CannotWrite == pav->context);
 }
 
+TEST_CASE_FIXTURE(Fixture, "write_to_write_only_property")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag writeOnly{FFlag::LuauEnableWriteOnlyProperties, true};
+
+    CheckResult result = check(R"(
+        function f(t: {write x: number})
+            t.x = 5
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_typechecking_with_write_only_property")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag writeOnly{FFlag::LuauEnableWriteOnlyProperties, true};
+
+    CheckResult result = check(R"(
+        function f(t: {write x: number})
+            t.x = 5
+        end
+
+        f({ x = 2 })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_from_write_only_property")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag writeOnly{FFlag::LuauEnableWriteOnlyProperties, true};
+
+    CheckResult result = check(R"(
+        function f(t: {write x: number})
+            local foo = t.x
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK("Property x of table '{ write x: number }' is write-only" == toString(result.errors[0]));
+
+    PropertyAccessViolation* pav = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav);
+
+    CHECK("{ write x: number }" == toString(pav->table, {true}));
+    CHECK("x" == pav->key);
+    CHECK(PropertyAccessViolation::CannotRead == pav->context);
+}
+
 TEST_CASE_FIXTURE(Fixture, "write_to_unusually_named_read_only_property")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
@@ -4510,7 +4579,7 @@ TEST_CASE_FIXTURE(Fixture, "write_to_unusually_named_read_only_property")
     CHECK("Property \"hello world\" of table '{ read [\"hello world\"]: number }' is read-only" == toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "write_annotations_are_unsupported_even_with_the_new_solver")
+TEST_CASE_FIXTURE(Fixture, "write_annotations_are_supported_with_the_new_solver")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
@@ -4519,10 +4588,15 @@ TEST_CASE_FIXTURE(Fixture, "write_annotations_are_unsupported_even_with_the_new_
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::LuauEnableWriteOnlyProperties)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK("write keyword is illegal here" == toString(result.errors[0]));
-    CHECK(Location{{1, 23}, {1, 28}} == result.errors[0].location);
+        CHECK("write keyword is illegal here" == toString(result.errors[0]));
+        CHECK(Location{{1, 23}, {1, 28}} == result.errors[0].location);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
@@ -4549,10 +4623,8 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
     CHECK(Location{{5, 18}, {5, 23}} == result.errors[3].location);
 }
 
-TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
+TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         type T = {read [string]: number}
         type U = {write [string]: boolean}
@@ -4571,7 +4643,11 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] = {{FFlag::LuauNonReentrantGeneralization3, true}};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauSubtypeGenericsAndNegations, true},
+        {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
+    };
 
     CheckResult result = check(R"(
         function oc(player, speaker)
@@ -4622,7 +4698,7 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && !FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauEagerGeneralization)
     {
         LUAU_CHECK_ERROR_COUNT(1, result);
         LUAU_CHECK_ERROR(result, NotATable);
@@ -4670,7 +4746,7 @@ TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // FIXME CLI-114134.  We need to simplify types more consistently.
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization)
         CHECK("({number} & {number}, unknown) -> ()" == toString(requireType("f")));
     else
         CHECK_EQ("(unknown & {number} & {number}, unknown) -> ()", toString(requireType("f")));
@@ -5212,8 +5288,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "write_only_table_field_duplicate")
         }
     )");
 
-    LUAU_CHECK_ERROR_COUNT(1, result);
-    CHECK_EQ("write keyword is illegal here", toString(result.errors[0]));
+    if (FFlag::LuauEnableWriteOnlyProperties)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("write keyword is illegal here", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_musnt_assert")
@@ -5661,5 +5742,81 @@ TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_assignment")
     CHECK_EQ("boolean", toString(tm->wantedType));
 }
 
+TEST_CASE_FIXTURE(Fixture, "disable_singleton_inference_on_large_tables")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauDisablePrimitiveInferenceInLargeTables, true},
+    };
+
+    ScopedFastInt _{FInt::LuauPrimitiveInferenceInTableLimit, 2};
+
+    CheckResult result = check(R"(
+        type Word = "foo" | "bar"
+        local words: { Word } = { "foo", "bar", "foo" }
+    )");
+    // We expect this to have errors now, as we've set the limit for inference
+    // in tables so low.
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "disable_singleton_inference_on_large_nested_tables")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauDisablePrimitiveInferenceInLargeTables, true},
+    };
+
+    ScopedFastInt _{FInt::LuauPrimitiveInferenceInTableLimit, 2};
+
+    CheckResult result = check(R"(
+        type Word = "foo" | "bar"
+        local words: {{ Word }} = {{ "foo", "bar", "foo" }}
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "large_table_inference_does_not_bleed")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauDisablePrimitiveInferenceInLargeTables, true},
+    };
+
+    ScopedFastInt _{FInt::LuauPrimitiveInferenceInTableLimit, 2};
+
+    CheckResult result = check(R"(
+        type Word = "foo" | "bar"
+        local words: { Word } = { "foo", "bar", "foo" }
+        local otherWords: { Word } = {"foo"}
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    for (const auto& err: result.errors)
+        // Check that all of the errors are localized to `words`, not `otherWords`
+        CHECK(err.location.begin.line == 2);
+}
+
+
+#if 0
+
+TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(2.0))
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDisablePrimitiveInferenceInLargeTables, true},
+    };
+
+    const std::string source = 
+        "local res = {\n" + 
+        rep("\"foo\",\n", 100'000) +
+        "}";
+    LUAU_REQUIRE_NO_ERRORS(check(source));
+    CHECK_EQ("{string}", toString(requireType("res"), {true}));
+}
+
+#endif
 
 TEST_SUITE_END();

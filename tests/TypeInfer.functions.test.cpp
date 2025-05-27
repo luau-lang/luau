@@ -22,7 +22,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -1038,9 +1038,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_lea
 
 TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 {
-    // FIXME: CLI-116157 variadic and generic type packs seem to be interacting incorrectly.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         --!strict
 
@@ -1472,9 +1469,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_any_is_compatible_with_a_generic_Ty
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments_outside_call")
 {
-    // FIXME: CLI-116133 bidirectional type inference needs to push expected types in for higher-order function calls
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
 type Table = { x: number, y: number }
 local f: (Table) -> number = function(t) return t.x + t.y end
@@ -1694,7 +1688,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::DebugLuauGreedyGeneralization && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(3, result);
@@ -1779,7 +1773,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::DebugLuauGreedyGeneralization && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(2, result);
@@ -1981,10 +1975,15 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization && FFlag::LuauSolverV2)
+    {
+        LUAU_CHECK_NO_ERRORS(result);
+        CHECK("<a>({ read p: { read q: a } }) -> (a & ~(false?))?" == toString(requireType("g")));
+    }
+    else if (FFlag::LuauSolverV2)
     {
         // FIXME CLI-143852: Depends on interleaving generalization and type function reduction.
-        LUAU_REQUIRE_ERRORS(result);
+        LUAU_CHECK_ERRORS(result);
         CHECK_EQ("({ read p: unknown }) -> (*error-type* | ~(false?))?", toString(requireType("g")));
     }
     else
@@ -2941,7 +2940,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
     {
         // The new solver should ideally be able to do better here, but this is no worse than the old solver.
 
-        if (FFlag::DebugLuauGreedyGeneralization)
+        if (FFlag::LuauEagerGeneralization)
         {
             LUAU_REQUIRE_ERROR_COUNT(2, result);
             auto tm1 = get<TypeMismatch>(result.errors[0]);

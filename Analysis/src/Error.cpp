@@ -18,7 +18,9 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization)
+
+LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -446,6 +448,12 @@ struct ErrorConverter
             return err;
         }
 
+        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
+        {
+            if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
+                return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
+        }
+
         return "Cannot call a value of type " + toString(e.ty);
     }
     std::string operator()(const Luau::ExtraInformation& e) const
@@ -655,7 +663,7 @@ struct ErrorConverter
         }
 
         // binary operators
-        const auto binaryOps = FFlag::DebugLuauGreedyGeneralization ? kBinaryOps : DEPRECATED_kBinaryOps;
+        const auto binaryOps = FFlag::LuauEagerGeneralization ? kBinaryOps : DEPRECATED_kBinaryOps;
         if (auto binaryString = binaryOps.find(tfit->function->name); binaryString != binaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
@@ -710,7 +718,7 @@ struct ErrorConverter
                        "'";
         }
 
-        if ((FFlag::DebugLuauGreedyGeneralization ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
+        if ((FFlag::LuauEagerGeneralization ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
                 "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
