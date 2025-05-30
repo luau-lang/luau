@@ -28,7 +28,7 @@ LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauStringPartLengthLimit)
@@ -447,7 +447,7 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #endif
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
-    ScopedFastFlag _{FFlag::LuauEagerGeneralization, false};
+    ScopedFastFlag _{FFlag::LuauEagerGeneralization2, false};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
@@ -1990,10 +1990,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_allows_singleton_union_or_intersection")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMagicFreezeCheckBlocked2, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauMagicFreezeCheckBlocked2, true}};
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local f = table.freeze
         f(table)
@@ -2002,10 +1999,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMagicFreezeCheckBlocked2, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauMagicFreezeCheckBlocked2, true}};
     // This is the original fuzzer version of the above issue.
     CheckResult results = check(R"(
         local function l0()
@@ -2041,7 +2035,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauHasPropProperBlock, true},
-        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauEagerGeneralization2, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauSubtypeGenericsAndNegations, true},
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
@@ -2079,7 +2073,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauEagerGeneralization2, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauSubtypeGenericsAndNegations, true},
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
@@ -2116,7 +2110,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauHasPropProperBlock, true},
-        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauEagerGeneralization2, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauStringPartLengthLimit, true},
         {FFlag::LuauSimplificationRecheckAssumption, true},

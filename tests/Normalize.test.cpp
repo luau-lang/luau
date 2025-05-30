@@ -14,7 +14,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -1206,7 +1206,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
         {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
-        {FFlag::LuauEagerGeneralization, true}
+        {FFlag::LuauEagerGeneralization2, true}
     };
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 
@@ -1221,6 +1221,6 @@ _[_] ^= _(_(_))
         InternalCompilerError
     );
 }
-#endif 
+#endif
 
 TEST_SUITE_END();

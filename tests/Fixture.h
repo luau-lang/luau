@@ -29,6 +29,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 
 LUAU_FASTFLAG(LuauTypeFunOptional)
+LUAU_FASTFLAG(LuauUpdateSetMetatableTypeSignature)
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::LuauSolverV2, FFlag::DebugLuauForceAllNewSolverTests};
 
@@ -148,6 +149,7 @@ struct Fixture
     // Most often those are changes related to builtin type definitions.
     // In that case, flag can be forced to 'true' using the example below:
     // ScopedFastFlag sff_LuauExampleFlagDefinition{FFlag::LuauExampleFlagDefinition, true};
+    ScopedFastFlag sff_LuauUpdateSetMetatableTypeSignature{FFlag::LuauUpdateSetMetatableTypeSignature, true};
 
     // Arena freezing marks the `TypeArena`'s underlying memory as read-only, raising an access violation whenever you mutate it.
     // This is useful for tracking down violations of Luau's memory model.

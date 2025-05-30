@@ -12,7 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
@@ -100,7 +100,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
         CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
     else
         CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
@@ -966,13 +966,12 @@ a = b
     if (FFlag::LuauSolverV2)
     {
 
-        const std::string expected =
-            "Type\n\t"
-            "'() -> (number, ...boolean)'"
-            "\ncould not be converted into\n\t"
-            "'() -> (number, ...string)'; \n"
-            "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
-            "type, and `boolean` is not a subtype of `string`";
+        const std::string expected = "Type\n\t"
+                                     "'() -> (number, ...boolean)'"
+                                     "\ncould not be converted into\n\t"
+                                     "'() -> (number, ...string)'; \n"
+                                     "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
+                                     "type, and `boolean` is not a subtype of `string`";
 
         CHECK(expected == toString(result.errors[0]));
     }

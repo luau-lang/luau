@@ -21,6 +21,8 @@ namespace Luau
 struct TypeArena;
 struct TxnLog;
 struct ConstraintSolver;
+struct TypeFunctionRuntimeBuilderState;
+struct TypeFunctionContext;
 class Normalizer;
 
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
@@ -53,6 +55,9 @@ struct TypeFunctionRuntime
 
     // Output created by 'print' function
     std::vector<std::string> messages;
+
+    // Type builder, valid for the duration of a single evaluation
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = nullptr;
 
 private:
     void prepareState();

@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAG(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAG(LuauFragmentAutocompleteIfRecommendations)
+LUAU_FASTFLAG(LuauPopulateRefinedTypesInFragmentFromOldSolver)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -65,6 +66,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     ScopedFastFlag luauFragmentAcMemoryLeak{FFlag::LuauFragmentAcMemoryLeak, true};
     ScopedFastFlag luauGlobalVariableModuleIsolation{FFlag::LuauGlobalVariableModuleIsolation, true};
     ScopedFastFlag luauFragmentAutocompleteIfRecommendations{FFlag::LuauFragmentAutocompleteIfRecommendations, true};
+    ScopedFastFlag luauPopulateRefinedTypesInFragmentFromOldSolver{FFlag::LuauPopulateRefinedTypesInFragmentFromOldSolver, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -146,6 +148,37 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         return Luau::tryFragmentAutocomplete(this->frontend, "MainModule", cursorPos, context, nullCallback);
     }
 
+    void autocompleteFragmentInNewSolver(
+        const std::string& document,
+        const std::string& updated,
+        Position cursorPos,
+        std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+        )
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        this->check(document, getOptions());
+
+        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
+        assertions(result);
+    }
+
+    void autocompleteFragmentInOldSolver(
+        const std::string& document,
+        const std::string& updated,
+        Position cursorPos,
+        std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+        )
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        this->check(document, getOptions());
+
+        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
+        assertions(result);
+    }
 
     void autocompleteFragmentInBothSolvers(
         const std::string& document,
@@ -3700,6 +3733,138 @@ end
             CHECK(!result.result->acResults.entryMap.count("then"));
         }
     );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_first_branch_of_union_old_solver")
+{
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+    result.
+end
+)";
+    autocompleteFragmentInOldSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
+    });
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_second_branch_of_union_old_solver")
+{
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+    result.
+end
+)";
+
+    autocompleteFragmentInOldSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
+    });
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_first_branch_of_union_new_solver" * doctest::skip(true))
+{
+    // TODO: CLI-155619 - Fragment autocomplete needs to use stale refinement information for modules typechecked in the new solver as well
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+    result.
+end
+)";
+    autocompleteFragmentInNewSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
+    });
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_second_branch_of_union_new_solver" * doctest::skip(true))
+{
+    // TODO: CLI-155619 - Fragment autocomplete needs to use stale refinement information for modules typechecked in the new solver as well
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+    result.
+end
+)";
+
+    autocompleteFragmentInNewSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
+    });
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

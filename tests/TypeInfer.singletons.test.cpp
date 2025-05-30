@@ -389,7 +389,8 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected = R"(Table type '{ ["\n"]: number }' not compatible with type '{ ["<>"]: number }' because the former is missing field '<>')";
+    const std::string expected =
+        R"(Table type '{ ["\n"]: number }' not compatible with type '{ ["<>"]: number }' because the former is missing field '<>')";
     CHECK(expected == toString(result.errors[0]));
 }
 
@@ -460,11 +461,10 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string expectedError = "Type\n\t"
-        "'{ result: string, success: boolean }'"
-        "\ncould not be converted into\n\t"
-        "'Err<number> | Ok<string>'";
+                                      "'{ result: string, success: boolean }'"
+                                      "\ncould not be converted into\n\t"
+                                      "'Err<number> | Ok<string>'";
     CHECK(toString(result.errors[0]) == expectedError);
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")

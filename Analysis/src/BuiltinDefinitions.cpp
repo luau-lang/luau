@@ -13,7 +13,6 @@
 #include "Luau/NotNull.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Symbol.h"
-#include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunction.h"
@@ -30,10 +29,11 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAGVARIABLE(LuauFormatUseLastPosition)
+LUAU_FASTFLAGVARIABLE(LuauUpdateSetMetatableTypeSignature)
 
 namespace Luau
 {
@@ -310,8 +310,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauEagerGeneralization
-    if (FFlag::LuauEagerGeneralization)
+    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauEagerGeneralization2
+    if (FFlag::LuauEagerGeneralization2)
         globalScope = globals.globalScope.get();
 
     if (FFlag::LuauSolverV2)
@@ -386,19 +386,30 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         TypeId genericT = arena.addType(GenericType{globalScope, "T"});
         TypeId tMetaMT = arena.addType(MetatableType{genericT, genericMT});
 
-        // clang-format off
-        // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
-        addGlobalBinding(globals, "setmetatable",
-            arena.addType(
-                FunctionType{
-                    {genericT, genericMT},
-                    {},
-                    arena.addTypePack(TypePack{{genericT, genericMT}}),
-                    arena.addTypePack(TypePack{{tMetaMT}})
-                }
-            ), "@luau"
-        );
-        // clang-format on
+        if (FFlag::LuauUpdateSetMetatableTypeSignature)
+        {
+            // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
+            TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().setmetatableFunc, {genericT, genericMT}});
+            addGlobalBinding(
+                globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
+            );
+        }
+        else
+        {
+            // clang-format off
+            // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
+            addGlobalBinding(globals, "setmetatable",
+                arena.addType(
+                    FunctionType{
+                        {genericT, genericMT},
+                        {},
+                        arena.addTypePack(TypePack{{genericT, genericMT}}),
+                        arena.addTypePack(TypePack{{tMetaMT}})
+                    }
+                ), "@luau"
+            );
+            // clang-format on
+        }
     }
     else
     {
@@ -701,9 +712,10 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
     {
         TypeId actualTy = params[i + paramOffset];
         TypeId expectedTy = expected[i];
-        Location location = FFlag::LuauFormatUseLastPosition
-            ? context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location
-            : context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
+        Location location =
+            FFlag::LuauFormatUseLastPosition
+                ? context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location
+                : context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
         // use subtyping instead here
         SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
 

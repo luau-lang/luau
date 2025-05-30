@@ -456,6 +456,14 @@ public:
  */
 std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints);
 
+std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments(
+    TypeArena* arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    const TypeFun& fn,
+    const std::vector<TypeId>& rawTypeArguments,
+    const std::vector<TypePackId>& rawPackArguments
+);
+
 void dump(NotNull<Scope> rootScope, struct ToStringOptions& opts);
 
 } // namespace Luau

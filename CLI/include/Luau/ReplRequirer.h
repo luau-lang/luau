@@ -14,16 +14,11 @@ void requireConfigInit(luarequire_Configuration* config);
 
 struct ReplRequirer
 {
-    using CompileOptions = Luau::CompileOptions(*)();
-    using BoolCheck = bool(*)();
-    using Coverage = void(*)(lua_State*, int);
+    using CompileOptions = Luau::CompileOptions (*)();
+    using BoolCheck = bool (*)();
+    using Coverage = void (*)(lua_State*, int);
 
-    ReplRequirer(
-        CompileOptions copts,
-        BoolCheck coverageActive,
-        BoolCheck codegenEnabled,
-        Coverage coverageTrack
-    );
+    ReplRequirer(CompileOptions copts, BoolCheck coverageActive, BoolCheck codegenEnabled, Coverage coverageTrack);
 
     CompileOptions copts;
     BoolCheck coverageActive;

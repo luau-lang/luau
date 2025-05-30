@@ -1079,7 +1079,7 @@ void persist(TypeId ty)
                 queue.push_back(ttv->indexer->indexResultType);
             }
         }
-        else if (auto etv= get<ExternType>(t))
+        else if (auto etv = get<ExternType>(t))
         {
             for (const auto& [_name, prop] : etv->props)
                 queue.push_back(prop.type());

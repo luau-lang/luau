@@ -24,6 +24,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
 
 namespace Luau
 {
@@ -1091,23 +1092,42 @@ struct NonStrictTypeChecker
         Scope* scope = findInnermostScope(tp->location);
         LUAU_ASSERT(scope);
 
-        std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
-        if (!alias.has_value())
+        if (FFlag::LuauNewNonStrictFixGenericTypePacks)
         {
+            if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+                return;
+
             if (scope->lookupType(tp->genericName.value))
-            {
-                reportError(
+                return reportError(
                     SwappedGenericTypeParameter{
                         tp->genericName.value,
                         SwappedGenericTypeParameter::Kind::Pack,
                     },
                     tp->location
                 );
-            }
+
+            reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
         }
         else
         {
-            reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
+            if (!alias.has_value())
+            {
+                if (scope->lookupType(tp->genericName.value))
+                {
+                    reportError(
+                        SwappedGenericTypeParameter{
+                            tp->genericName.value,
+                            SwappedGenericTypeParameter::Kind::Pack,
+                        },
+                        tp->location
+                    );
+                }
+            }
+            else
+            {
+                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            }
         }
     }
 

@@ -126,6 +126,9 @@ struct Module
     // we need a sentinel value for the map.
     DenseHashMap<const AstNode*, Scope*> astScopes{nullptr};
 
+    // Stable references for type aliases registered in the environment
+    std::vector<std::unique_ptr<TypeFun>> typeFunctionAliases;
+
     std::unordered_map<Name, TypeId> declaredGlobals;
     ErrorVec errors;
     LintResult lintResult;

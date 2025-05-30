@@ -5,7 +5,7 @@
 #include "Luau/Scope.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 
 namespace Luau
 {
@@ -133,7 +133,7 @@ struct InferPolarity : TypeVisitor
 template<typename TID>
 static void inferGenericPolarities_(NotNull<TypeArena> arena, NotNull<Scope> scope, TID ty)
 {
-    if (!FFlag::LuauEagerGeneralization)
+    if (!FFlag::LuauEagerGeneralization2)
         return;
 
     InferPolarity infer{arena, scope};
