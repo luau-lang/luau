@@ -56,7 +56,6 @@ struct DataFlowGraphFixture
         CHECK(phi->operands.size() == operandSet.size());
         for (auto o : phi->operands)
             CHECK(operandSet.contains(o.get()));
-
     }
 };
 

@@ -18,7 +18,7 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 
 LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
 
@@ -663,7 +663,7 @@ struct ErrorConverter
         }
 
         // binary operators
-        const auto binaryOps = FFlag::LuauEagerGeneralization ? kBinaryOps : DEPRECATED_kBinaryOps;
+        const auto binaryOps = FFlag::LuauEagerGeneralization2 ? kBinaryOps : DEPRECATED_kBinaryOps;
         if (auto binaryString = binaryOps.find(tfit->function->name); binaryString != binaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
@@ -718,10 +718,10 @@ struct ErrorConverter
                        "'";
         }
 
-        if ((FFlag::LuauEagerGeneralization ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
+        if ((FFlag::LuauEagerGeneralization2 ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
-                "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
+                   "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
         }
 
         // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type functions" explicitly.

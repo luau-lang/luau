@@ -189,6 +189,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/EqSatSimplification.h
+    Analysis/include/Luau/ExpectedTypeVisitor.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/FragmentAutocomplete.h
     Analysis/include/Luau/Frontend.h
@@ -237,6 +238,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeFunctionRuntime.h
     Analysis/include/Luau/TypeFunctionRuntimeBuilder.h
     Analysis/include/Luau/TypeFwd.h
+    Analysis/include/Luau/TypeIds.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypeOrPack.h
     Analysis/include/Luau/TypePack.h
@@ -267,6 +269,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/EqSatSimplification.cpp
+    Analysis/src/ExpectedTypeVisitor.cpp
     Analysis/src/FileResolver.cpp
     Analysis/src/FragmentAutocomplete.cpp
     Analysis/src/Frontend.cpp
@@ -306,6 +309,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeFunctionReductionGuesser.cpp
     Analysis/src/TypeFunctionRuntime.cpp
     Analysis/src/TypeFunctionRuntimeBuilder.cpp
+    Analysis/src/TypeIds.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypeOrPack.cpp
     Analysis/src/TypePack.cpp

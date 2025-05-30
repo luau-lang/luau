@@ -301,4 +301,21 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy);
  */
 std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
 
+/**
+ * @param item A member of a table in an AST
+ * @return Whether the item is a key-value pair with a statically defined string key.
+ *
+ * ```
+ * {
+ *      ["foo"] = ..., -- is a record
+ *      bar = ..., -- is a record
+ *      ..., -- not a record: non-string key (number)
+ *      [true] = ..., -- not a record: non-string key (boolean)
+ *      [ foobar() ] = ..., -- not a record: unknown key value.
+ *      ["foo" .. "bar"] = ..., -- not a record (don't make us handle it).
+ * }
+ * ```
+ */
+bool isRecord(const AstExprTable::Item& item);
+
 } // namespace Luau

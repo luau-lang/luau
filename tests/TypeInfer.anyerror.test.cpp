@@ -356,7 +356,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_comp
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("b")));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_to_any_yields_any")

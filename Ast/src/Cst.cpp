@@ -94,7 +94,11 @@ CstStatReturn::CstStatReturn(AstArray<Position> commaPositions)
 {
 }
 
-CstStatLocal::CstStatLocal(AstArray<Position> varsAnnotationColonPositions, AstArray<Position> varsCommaPositions, AstArray<Position> valuesCommaPositions)
+CstStatLocal::CstStatLocal(
+    AstArray<Position> varsAnnotationColonPositions,
+    AstArray<Position> varsCommaPositions,
+    AstArray<Position> valuesCommaPositions
+)
     : CstNode(CstClassIndex())
     , varsAnnotationColonPositions(varsAnnotationColonPositions)
     , varsCommaPositions(varsCommaPositions)
@@ -102,7 +106,12 @@ CstStatLocal::CstStatLocal(AstArray<Position> varsAnnotationColonPositions, AstA
 {
 }
 
-CstStatFor::CstStatFor(Position annotationColonPosition, Position equalsPosition, Position endCommaPosition, std::optional<Position> stepCommaPosition)
+CstStatFor::CstStatFor(
+    Position annotationColonPosition,
+    Position equalsPosition,
+    Position endCommaPosition,
+    std::optional<Position> stepCommaPosition
+)
     : CstNode(CstClassIndex())
     , annotationColonPosition(annotationColonPosition)
     , equalsPosition(equalsPosition)
@@ -111,7 +120,11 @@ CstStatFor::CstStatFor(Position annotationColonPosition, Position equalsPosition
 {
 }
 
-CstStatForIn::CstStatForIn(AstArray<Position> varsAnnotationColonPositions, AstArray<Position> varsCommaPositions, AstArray<Position> valuesCommaPositions)
+CstStatForIn::CstStatForIn(
+    AstArray<Position> varsAnnotationColonPositions,
+    AstArray<Position> varsCommaPositions,
+    AstArray<Position> valuesCommaPositions
+)
     : CstNode(CstClassIndex())
     , varsAnnotationColonPositions(varsAnnotationColonPositions)
     , varsCommaPositions(varsCommaPositions)

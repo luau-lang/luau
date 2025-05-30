@@ -14,7 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauHasPropProperBlock)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
@@ -1725,7 +1725,7 @@ struct TFFixture
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
 
     const ScopedFastFlag sff[1] = {
-        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauEagerGeneralization2, true},
     };
 
     BuiltinTypeFunctions builtinTypeFunctions;
@@ -1746,9 +1746,7 @@ TEST_CASE_FIXTURE(TFFixture, "refine<G, ~(false?)>")
 {
     TypeId g = arena->addType(GenericType{globalScope.get(), Polarity::Negative});
 
-    TypeId refineTy = arena->addType(TypeFunctionInstanceType{
-        builtinTypeFunctions.refineFunc, {g, builtinTypes->truthyType}
-    });
+    TypeId refineTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.refineFunc, {g, builtinTypes->truthyType}});
 
     FunctionGraphReductionResult res = reduceTypeFunctions(refineTy, Location{}, tfc);
 
@@ -1764,9 +1762,7 @@ TEST_CASE_FIXTURE(TFFixture, "or<'a, 'b>")
     TypeId aType = arena->freshType(builtinTypes, globalScope.get());
     TypeId bType = arena->freshType(builtinTypes, globalScope.get());
 
-    TypeId orType = arena->addType(TypeFunctionInstanceType{
-        builtinTypeFunctions.orFunc, {aType, bType}
-    });
+    TypeId orType = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.orFunc, {aType, bType}});
 
     FunctionGraphReductionResult res = reduceTypeFunctions(orType, Location{}, tfc);
 

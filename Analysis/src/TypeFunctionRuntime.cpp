@@ -63,7 +63,7 @@ std::optional<std::string> checkResultForError(lua_State* L, const char* typeFun
     }
 }
 
-static TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L)
+TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L)
 {
     return static_cast<TypeFunctionRuntime*>(lua_getthreaddata(lua_mainthread(L)));
 }

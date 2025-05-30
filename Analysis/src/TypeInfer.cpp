@@ -34,7 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
-LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
 
 namespace Luau
@@ -1664,10 +1663,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
             FreeType* ftv = getMutable<FreeType>(ty);
             LUAU_ASSERT(ftv);
             ftv->forwardedTypeAlias = true;
-            if (FFlag::LuauRetainDefinitionAliasLocations)
-                bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty, typealias.location};
-            else
-                bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
+            bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty, typealias.location};
 
             scope->typeAliasLocations[name] = typealias.location;
             scope->typeAliasNameLocations[name] = typealias.nameLocation;
@@ -1712,10 +1708,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareExternTyp
     TypeId metaTy = addType(TableType{TableState::Sealed, scope->level});
 
     etv->metatable = metaTy;
-    if (FFlag::LuauRetainDefinitionAliasLocations)
-        scope->exportedTypeBindings[className] = TypeFun{{}, classTy, declaredExternType.location};
-    else
-        scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+    scope->exportedTypeBindings[className] = TypeFun{{}, classTy, declaredExternType.location};
 }
 
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareExternType& declaredExternType)
@@ -4330,7 +4323,7 @@ void TypeChecker::checkArgumentList(
 
                     if (exceedsLoopCount())
                         return;
-        }
+                }
 
                 TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, argIter.tail()}});
                 state.tryUnify(varPack, tail);

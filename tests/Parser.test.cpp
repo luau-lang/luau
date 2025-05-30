@@ -2086,7 +2086,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
         declare extern type Bar extends Foo with
             prop2: string
         end
-    )").root;
+    )")
+                             .root;
 
     REQUIRE_EQ(stat->body.size, 2);
 
@@ -2194,7 +2195,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
         declare extern type Bar extends Foo with
             prop2: string
         end
-    )").root;
+    )")
+                             .root;
 
     REQUIRE_EQ(stat->body.size, 2);
 
@@ -2355,9 +2357,7 @@ TEST_CASE_FIXTURE(Fixture, "class_indexer")
             [number]: number
         end
         )",
-        (FFlag::LuauDeclareExternType)
-        ? "Cannot have more than one indexer on an extern type"
-        : "Cannot have more than one class indexer"
+        (FFlag::LuauDeclareExternType) ? "Cannot have more than one indexer on an extern type" : "Cannot have more than one class indexer"
     );
 
     REQUIRE_EQ(1, p1.root->body.size);
@@ -2904,10 +2904,13 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 
-    ParseResult result = parseEx(R"(
+    ParseResult result = parseEx(
+        R"(
         for value in tbl do
         end
-    )", parseOptions);
+    )",
+        parseOptions
+    );
     REQUIRE(result.root);
     REQUIRE_EQ(1, result.root->body.size);
 
@@ -4188,7 +4191,7 @@ TEST_CASE_FIXTURE(Fixture, "grouped_function_type")
     CHECK_EQ(unionTy->types.size, 2);
     auto groupTy = unionTy->types.data[0]->as<AstTypeGroup>(); // (() -> ())
     REQUIRE(groupTy);
-    CHECK(groupTy->type->is<AstTypeFunction>()); // () -> ()
+    CHECK(groupTy->type->is<AstTypeFunction>());          // () -> ()
     CHECK(unionTy->types.data[1]->is<AstTypeOptional>()); // ?
 }
 

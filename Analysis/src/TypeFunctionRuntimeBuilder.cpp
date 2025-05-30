@@ -209,9 +209,7 @@ private:
         {
             // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the original
             // class
-            target = typeFunctionRuntime->typeArena.allocate(
-                TypeFunctionExternType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty}
-            );
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionExternType{{}, std::nullopt, std::nullopt, std::nullopt, std::nullopt, ty});
         }
         else if (auto g = get<GenericType>(ty))
         {

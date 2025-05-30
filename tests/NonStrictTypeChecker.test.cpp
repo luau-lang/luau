@@ -16,6 +16,7 @@
 #include <iostream>
 
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
+LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 
 using namespace Luau;
 
@@ -556,6 +557,18 @@ optionalArgsAtTheEnd1("a")
 optionalArgsAtTheEnd1("a", 3)
 optionalArgsAtTheEnd1("a", nil, 3)
 )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_packs_in_non_strict")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictFixGenericTypePacks, true};
+
+    CheckResult result = checkNonStrict(R"(
+        --!nonstrict
+        local test: <T...>(T...) -> () -- TypeError: Unknown type 'T'
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

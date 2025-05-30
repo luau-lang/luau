@@ -822,7 +822,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_index_a_class_with_no_indexer")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_MESSAGE(
-        get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
+        get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]),
+        "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
     );
 
     CHECK(builtinTypes->errorType == requireType("c"));

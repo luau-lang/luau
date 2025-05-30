@@ -10,6 +10,7 @@
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/EqSatSimplification.h"
+#include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/FileResolver.h"
 #include "Luau/NonStrictTypeChecker.h"
 #include "Luau/NotNull.h"
@@ -39,13 +40,14 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverTypecheckCatchTimeouts)
+LUAU_FASTFLAGVARIABLE(LuauExpectedTypeVisitor)
 
 namespace Luau
 {
@@ -1436,13 +1438,13 @@ ModulePtr check(
         requireCycles
     };
 
-    // FIXME: Delete this flag when clipping FFlag::LuauEagerGeneralization.
+    // FIXME: Delete this flag when clipping FFlag::LuauEagerGeneralization2.
     //
     // This optional<> only exists so that we can run one constructor when the flag
     // is set, and another when it is unset.
     std::optional<ConstraintSolver> cs;
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
     {
         ConstraintSet constraintSet = cg.run(sourceModule.root);
         result->errors = std::move(constraintSet.errors);
@@ -1608,6 +1610,19 @@ ModulePtr check(
         case Mode::NoCheck:
             break;
         };
+    }
+
+    if (FFlag::LuauExpectedTypeVisitor)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&result->astTypes},
+            NotNull{&result->astExpectedTypes},
+            NotNull{&result->astResolvedTypes},
+            NotNull{&result->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
     }
 
     unfreeze(result->interfaceTypes);

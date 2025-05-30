@@ -3,7 +3,7 @@
 #pragma once
 
 #include "Luau/Constraint.h"
-#include "Luau/DenseHash.h"
+#include "Luau/TypeIds.h"
 #include "Luau/Error.h"
 
 #include <vector>
@@ -18,7 +18,7 @@ struct ConstraintSet
     std::vector<ConstraintPtr> constraints;
 
     // The set of all free types created during constraint generation
-    DenseHashSet<TypeId> freeTypes{nullptr};
+    TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.   Once we've
     // dispatched all of the constraints pertaining to a particular free type,
@@ -29,4 +29,4 @@ struct ConstraintSet
     std::vector<TypeError> errors;
 };
 
-}
+} // namespace Luau

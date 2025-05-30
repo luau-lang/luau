@@ -642,4 +642,3 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstGenericTypePackWithDefault")
 }
 
 TEST_SUITE_END();
-

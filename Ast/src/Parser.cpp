@@ -709,7 +709,8 @@ AstStat* Parser::parseFor()
             if (options.storeCstData)
             {
                 if (FFlag::LuauStoreLocalAnnotationColonPositions)
-                    cstNodeMap[node] = allocator.alloc<CstStatForIn>(extractAnnotationColonPositions(names), varsCommaPosition, copy(valuesCommaPositions));
+                    cstNodeMap[node] =
+                        allocator.alloc<CstStatForIn>(extractAnnotationColonPositions(names), varsCommaPosition, copy(valuesCommaPositions));
                 else
                     cstNodeMap[node] = allocator.alloc<CstStatForIn>(AstArray<Position>{}, varsCommaPosition, copy(valuesCommaPositions));
             }
@@ -1009,7 +1010,8 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
             if (options.storeCstData)
             {
                 if (FFlag::LuauStoreLocalAnnotationColonPositions)
-                    cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+                    cstNodeMap[node] =
+                        allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
                 else
                     cstNodeMap[node] = allocator.alloc<CstStatLocal>(AstArray<Position>{}, varsCommaPositions, copy(valuesCommaPositions));
             }
@@ -1333,7 +1335,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 foundExtern = true;
                 nextLexeme();
                 if (AstName(lexer.current().name) != "type")
-                    return reportStatError(lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().name);
+                    return reportStatError(
+                        lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().name
+                    );
             }
         }
 
@@ -1354,7 +1358,11 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             if (foundExtern)
             {
                 if (AstName(lexer.current().name) != "with")
-                    report(lexer.current().location, "Expected `with` keyword before listing properties of the external type, but got %s instead", lexer.current().name);
+                    report(
+                        lexer.current().location,
+                        "Expected `with` keyword before listing properties of the external type, but got %s instead",
+                        lexer.current().name
+                    );
                 else
                     nextLexeme();
             }
@@ -1452,9 +1460,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
                     expectAndConsume(':', "property type annotation");
                     AstType* propType = parseType();
-                    props.push_back(
-                        AstDeclaredExternTypeProperty{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
-                    );
+                    props.push_back(AstDeclaredExternTypeProperty{
+                        propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())
+                    });
                 }
             }
             else
@@ -1533,9 +1541,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
                     expectAndConsume(':', "property type annotation");
                     AstType* propType = parseType();
-                    props.push_back(
-                        AstDeclaredExternTypeProperty{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
-                    );
+                    props.push_back(AstDeclaredExternTypeProperty{
+                        propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())
+                    });
                 }
             }
         }
@@ -2618,7 +2626,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                             tableSeparator(),
                             lexer.current().location.begin,
                             allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth),
-                                stringPosition
+                            stringPosition
                         });
                 }
                 else

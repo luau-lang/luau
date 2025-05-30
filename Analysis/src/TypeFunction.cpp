@@ -27,6 +27,7 @@
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
+#include "Luau/ApplyTypeFunction.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -47,8 +48,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -56,6 +57,7 @@ LUAU_FASTFLAGVARIABLE(LuauNarrowIntersectionNevers)
 LUAU_FASTFLAGVARIABLE(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAGVARIABLE(LuauNoMoreInjectiveTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauNotAllBinaryTypeFunsHaveDefaults)
+LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 
 namespace Luau
 {
@@ -283,7 +285,7 @@ struct TypeFunctionReducer
         }
         else if (is<GenericType>(ty))
         {
-            if (FFlag::LuauEagerGeneralization)
+            if (FFlag::LuauEagerGeneralization2)
                 return SkipTestResult::Generic;
             else
                 return SkipTestResult::Irreducible;
@@ -305,7 +307,7 @@ struct TypeFunctionReducer
         }
         else if (is<GenericTypePack>(ty))
         {
-            if (FFlag::LuauEagerGeneralization)
+            if (FFlag::LuauEagerGeneralization2)
                 return SkipTestResult::Generic;
             else
                 return SkipTestResult::Irreducible;
@@ -569,6 +571,27 @@ struct LuauTempThreadPopper
     lua_State* L = nullptr;
 };
 
+template<typename T>
+class ScopedAssign
+{
+public:
+    ScopedAssign(T& target, const T& value)
+        : target(&target)
+        , oldValue(target)
+    {
+        target = value;
+    }
+
+    ~ScopedAssign()
+    {
+        *target = oldValue;
+    }
+
+private:
+    T* target = nullptr;
+    T oldValue;
+};
+
 static FunctionGraphReductionResult reduceFunctionsInternal(
     VecDeque<TypeId> queuedTys,
     VecDeque<TypePackId> queuedTps,
@@ -789,6 +812,97 @@ struct FindUserTypeFunctionBlockers : TypeOnceVisitor
     }
 };
 
+static int evaluateTypeAliasCall(lua_State* L)
+{
+    TypeFun* tf = (TypeFun*)lua_tolightuserdata(L, lua_upvalueindex(1));
+
+    TypeFunctionRuntime* runtime = getTypeFunctionRuntime(L);
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = runtime->runtimeBuilder;
+
+    ApplyTypeFunction applyTypeFunction{runtimeBuilder->ctx->arena};
+
+    int argumentCount = lua_gettop(L);
+    std::vector<TypeId> rawTypeArguments;
+
+    for (int i = 0; i < argumentCount; i++)
+    {
+        TypeFunctionTypeId tfty = getTypeUserData(L, i + 1);
+        TypeId ty = deserialize(tfty, runtimeBuilder);
+
+        if (!runtimeBuilder->errors.empty())
+            luaL_error(L, "failed to deserialize type at argument %d", i + 1);
+
+        rawTypeArguments.push_back(ty);
+    }
+
+    // Check if we have enough arguments, by typical typechecking rules
+    size_t typesRequired = tf->typeParams.size();
+    size_t packsRequired = tf->typePackParams.size();
+
+    size_t typesProvided = rawTypeArguments.size() > typesRequired ? typesRequired : rawTypeArguments.size();
+    size_t extraTypes = rawTypeArguments.size() > typesRequired ? rawTypeArguments.size() - typesRequired : 0;
+    size_t packsProvided = 0;
+
+    if (extraTypes != 0 && packsProvided == 0)
+    {
+        // Extra types are only collected into a pack if a pack is expected
+        if (packsRequired != 0)
+            packsProvided += 1;
+        else
+            typesProvided += extraTypes;
+    }
+
+    for (size_t i = typesProvided; i < typesRequired; ++i)
+    {
+        if (tf->typeParams[i].defaultValue)
+            typesProvided += 1;
+    }
+
+    for (size_t i = packsProvided; i < packsRequired; ++i)
+    {
+        if (tf->typePackParams[i].defaultValue)
+            packsProvided += 1;
+    }
+
+    if (extraTypes == 0 && packsProvided + 1 == packsRequired)
+        packsProvided += 1;
+
+    if (typesProvided != typesRequired || packsProvided != packsRequired)
+        luaL_error(L, "not enough arguments to call");
+
+    // Prepare final types and packs
+    auto [types, packs] = saturateArguments(runtimeBuilder->ctx->arena, runtimeBuilder->ctx->builtins, *tf, rawTypeArguments, {});
+
+    for (size_t i = 0; i < types.size(); ++i)
+        applyTypeFunction.typeArguments[tf->typeParams[i].ty] = types[i];
+
+    for (size_t i = 0; i < packs.size(); ++i)
+        applyTypeFunction.typePackArguments[tf->typePackParams[i].tp] = packs[i];
+
+    std::optional<TypeId> maybeInstantiated = applyTypeFunction.substitute(tf->type);
+
+    if (!maybeInstantiated.has_value())
+    {
+        luaL_error(L, "failed to instantiate type alias");
+        return true;
+    }
+
+    TypeId target = follow(*maybeInstantiated);
+
+    FunctionGraphReductionResult result = reduceTypeFunctions(target, Location{}, *runtimeBuilder->ctx);
+
+    if (!result.errors.empty())
+        luaL_error(L, "failed to reduce type function with: %s", toString(result.errors.front()).c_str());
+
+    TypeFunctionTypeId serializedTy = serialize(follow(target), runtimeBuilder);
+
+    if (!runtimeBuilder->errors.empty())
+        luaL_error(L, "%s", runtimeBuilder->errors.front().c_str());
+
+    allocTypeUserData(L, serializedTy->type);
+    return 1;
+}
+
 TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -819,11 +933,21 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     for (auto typeParam : typeParams)
         check.traverse(follow(typeParam));
 
+    if (FFlag::LuauUserTypeFunctionAliases)
+    {
+        // Check that our environment doesn't depend on any type aliases that are blocked
+        for (auto& [name, definition] : typeFunction->userFuncData.environmentAlias)
+        {
+            if (definition.first->typeParams.empty() && definition.first->typePackParams.empty())
+                check.traverse(follow(definition.first->type));
+        }
+    }
+
     if (!check.blockingTypes.empty())
         return {std::nullopt, Reduction::MaybeOk, check.blockingTypes, {}};
 
     // Ensure that whole type function environment is registered
-    for (auto& [name, definition] : typeFunction->userFuncData.environment)
+    for (auto& [name, definition] : typeFunction->userFuncData.environmentFunction)
     {
         // Cannot evaluate if a potential dependency couldn't be parsed
         if (definition.first->hasErrors)
@@ -849,8 +973,13 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     lua_State* L = lua_newthread(global);
     LuauTempThreadPopper popper(global);
 
+    std::unique_ptr<TypeFunctionRuntimeBuilderState> runtimeBuilder = std::make_unique<TypeFunctionRuntimeBuilderState>(ctx);
+
+    ScopedAssign setRuntimeBuilder(ctx->typeFunctionRuntime->runtimeBuilder, runtimeBuilder.get());
+    ScopedAssign enableReduction(ctx->normalizer->sharedState->reentrantTypeReduction, false);
+
     // Build up the environment table of each function we have visible
-    for (auto& [_, curr] : typeFunction->userFuncData.environment)
+    for (auto& [_, curr] : typeFunction->userFuncData.environmentFunction)
     {
         // Environment table has to be filled only once in the current execution context
         if (ctx->typeFunctionRuntime->initialized.find(curr.first))
@@ -870,7 +999,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
         lua_getfenv(L, -1);
         lua_setreadonly(L, -1, false);
 
-        for (auto& [name, definition] : typeFunction->userFuncData.environment)
+        for (auto& [name, definition] : typeFunction->userFuncData.environmentFunction)
         {
             // Filter visibility based on original scope depth
             if (definition.second >= curr.second)
@@ -882,6 +1011,39 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
                     break; // Don't have to report an error here, we will visit each function in outer loop
 
                 lua_setfield(L, -2, name.c_str());
+            }
+        }
+
+        if (FFlag::LuauUserTypeFunctionAliases)
+        {
+            for (auto& [name, definition] : typeFunction->userFuncData.environmentAlias)
+            {
+                // Filter visibility based on original scope depth
+                if (definition.second >= curr.second)
+                {
+                    if (definition.first->typeParams.empty() && definition.first->typePackParams.empty())
+                    {
+                        TypeId ty = follow(definition.first->type);
+
+                        // This is checked at the top of the function, and should still be true.
+                        LUAU_ASSERT(!isPending(ty, ctx->solver));
+
+                        TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
+
+                        // Only register aliases that are representable in type environment
+                        if (runtimeBuilder->errors.empty())
+                        {
+                            allocTypeUserData(L, serializedTy->type);
+                            lua_setfield(L, -2, name.c_str());
+                        }
+                    }
+                    else
+                    {
+                        lua_pushlightuserdata(L, definition.first);
+                        lua_pushcclosure(L, evaluateTypeAliasCall, name.c_str(), 1);
+                        lua_setfield(L, -2, name.c_str());
+                    }
+                }
             }
         }
 
@@ -900,8 +1062,6 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     }
 
     resetTypeFunctionState(L);
-
-    std::unique_ptr<TypeFunctionRuntimeBuilderState> runtimeBuilder = std::make_unique<TypeFunctionRuntimeBuilderState>(ctx);
 
     // Push serialized arguments onto the stack
     for (auto typeParam : typeParams)
@@ -1101,7 +1261,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
         operandTy = follow(operandTy);
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
@@ -1698,7 +1858,7 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
         return {rhsTy, Reduction::MaybeOk, {}, {}};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
     {
         if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
             return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
@@ -1745,7 +1905,7 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (lhsTy == instance || rhsTy == instance)
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
     {
         if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
             return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
@@ -2099,7 +2259,7 @@ bool isSimpleDiscriminant(TypeId ty)
     return isApproximateTruthy(ty) || isApproximateFalsy(ty);
 }
 
-}
+} // namespace
 
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
     TypeId instance,
@@ -2119,9 +2279,8 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     for (size_t i = 1; i < typeParams.size(); i++)
         discriminantTypes.push_back(follow(typeParams.at(i)));
 
-    const bool targetIsPending = FFlag::LuauEagerGeneralization
-        ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
-        : isPending(targetTy, ctx->solver);
+    const bool targetIsPending = FFlag::LuauEagerGeneralization2 ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
+                                                                 : isPending(targetTy, ctx->solver);
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (targetIsPending)
@@ -2206,7 +2365,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
                 if (is<TableType>(target) || isSimpleDiscriminant(discriminant))
                 {
                     SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                    if (FFlag::LuauEagerGeneralization)
+                    if (FFlag::LuauEagerGeneralization2)
                     {
                         // Simplification considers free and generic types to be
                         // 'blocking', but that's not suitable for refine<>.
@@ -2615,8 +2774,8 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
     if (!normTy)
         return {std::nullopt, Reduction::MaybeOk, {}, {}};
 
-    // if we don't have either just tables or just extern types, we've got nothing to get keys of (at least until a future version perhaps adds extern types
-    // as well)
+    // if we don't have either just tables or just extern types, we've got nothing to get keys of (at least until a future version perhaps adds extern
+    // types as well)
     if (normTy->hasTables() == normTy->hasExternTypes())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
@@ -2985,7 +3144,8 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
         // at least one class is guaranteed to be in the iterator by .hasExternTypes()
-        for (auto externTypeIter = indexeeNormTy->externTypes.ordering.begin(); externTypeIter != indexeeNormTy->externTypes.ordering.end(); ++externTypeIter)
+        for (auto externTypeIter = indexeeNormTy->externTypes.ordering.begin(); externTypeIter != indexeeNormTy->externTypes.ordering.end();
+             ++externTypeIter)
         {
             auto externTy = get<ExternType>(*externTypeIter);
             if (!externTy)
@@ -3335,7 +3495,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
     , eqFunc{"eq", eqTypeFunction}
-    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization}
+    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization2}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}

@@ -34,6 +34,7 @@ using ScopePtr = std::shared_ptr<Scope>;
 struct Module;
 
 struct TypeFunction;
+struct TypeFun;
 struct Constraint;
 struct Subtyping;
 struct TypeChecker2;
@@ -608,7 +609,8 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environment{""};
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction{""};
+    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias{""};
 };
 
 /**

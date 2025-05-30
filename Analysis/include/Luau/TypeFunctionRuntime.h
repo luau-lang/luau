@@ -15,6 +15,8 @@ using lua_State = struct lua_State;
 namespace Luau
 {
 
+struct TypeFunctionRuntime;
+
 void* typeFunctionAlloc(void* ud, void* ptr, size_t osize, size_t nsize);
 
 // Replica of types from Type.h
@@ -273,6 +275,8 @@ T* getMutable(TypeFunctionTypeId tv)
 }
 
 std::optional<std::string> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
+
+TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L);
 
 TypeFunctionType* allocateTypeFunctionType(lua_State* L, TypeFunctionTypeVariant type);
 TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunctionTypePackVariant type);

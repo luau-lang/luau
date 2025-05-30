@@ -6,6 +6,7 @@
 #include "Luau/Autocomplete.h"
 #include "Luau/Common.h"
 #include "Luau/EqSatSimplification.h"
+#include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
@@ -35,6 +36,8 @@ LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAGVARIABLE(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteIfRecommendations)
+LUAU_FASTFLAG(LuauExpectedTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauPopulateRefinedTypesInFragmentFromOldSolver)
 
 namespace Luau
 {
@@ -669,6 +672,7 @@ void cloneTypesFromFragment(
             destScope->lvalueTypes[d] = Luau::cloneIncremental(*lValue, *destArena, cloneState, destScope);
         }
     }
+
     for (const auto& [d, loc] : f.localBindingsReferenced)
     {
         if (std::optional<std::pair<Symbol, Binding>> pair = staleScope->linearSearchForBindingPair(loc->name.value, true))
@@ -682,6 +686,21 @@ void cloneTypesFromFragment(
             Binding b;
             b.typeId = builtins->unknownType;
             destScope->bindings[Symbol(loc)] = b;
+        }
+    }
+
+    if (FFlag::LuauPopulateRefinedTypesInFragmentFromOldSolver && !staleModule->checkedInNewSolver)
+    {
+        for (const auto& [d, loc] : f.localBindingsReferenced)
+        {
+            for (const Scope* stale = staleScope; stale; stale = stale->parent.get())
+            {
+                if (auto res = stale->refinements.find(Symbol(loc)); res != stale->refinements.end())
+                {
+                    destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
+                    break;
+                }
+            }
         }
     }
 
@@ -1191,6 +1210,19 @@ FragmentTypeCheckResult typecheckFragment_(
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverEnd);
 
+    if (FFlag::LuauExpectedTypeVisitor)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&incrementalModule->astTypes},
+            NotNull{&incrementalModule->astExpectedTypes},
+            NotNull{&incrementalModule->astResolvedTypes},
+            NotNull{&incrementalModule->internalTypes},
+            frontend.builtinTypes,
+            NotNull{freshChildOfNearestScope.get()}
+        };
+        root->visit(&etv);
+    }
+
     // In frontend we would forbid internal types
     // because this is just for autocomplete, we don't actually care
     // We also don't even need to typecheck - just synthesize types as best as we can
@@ -1243,7 +1275,8 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     FrontendOptions frontendOptions = opts.value_or(frontend.options);
     const ScopePtr& closestScope = FFlag::LuauBetterScopeSelection ? findClosestScope(module, parseResult.scopePos)
                                                                    : findClosestScope_DEPRECATED(module, parseResult.nearestStatement);
-    FragmentTypeCheckResult result = typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
+    FragmentTypeCheckResult result =
+        typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
     result.ancestry = std::move(parseResult.ancestry);
     reportFragmentString(reporter, tryParse->fragmentToParse);
     return {FragmentTypeCheckStatus::Success, result};
