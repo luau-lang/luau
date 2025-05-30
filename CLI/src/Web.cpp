@@ -6,6 +6,7 @@
 #include "Luau/Common.h"
 
 #include <string>
+#include <memory>
 
 #include <string.h>
 
