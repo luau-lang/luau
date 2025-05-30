@@ -234,8 +234,14 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const ExternType* subExternType, const ExternType* superExternType, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ExternType* subExternType, TypeId superTy, const TableType* superTable, NotNull<Scope>);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const ExternType* subExternType,
+        const ExternType* superExternType,
+        NotNull<Scope> scope
+    );
+    SubtypingResult
+    isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ExternType* subExternType, TypeId superTy, const TableType* superTable, NotNull<Scope>);
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const FunctionType* subFunction,
@@ -267,7 +273,12 @@ private:
         const NormalizedExternType& superExternType,
         NotNull<Scope> scope
     );
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedExternType& subExternType, const TypeIds& superTables, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const NormalizedExternType& subExternType,
+        const TypeIds& superTables,
+        NotNull<Scope> scope
+    );
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const NormalizedStringType& subString,

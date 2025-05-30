@@ -13,7 +13,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 
@@ -467,10 +467,9 @@ local b: B.T = a
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; \n"
-            "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
-            "`number` is not exactly `string`";
+        const std::string expected = "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; \n"
+                                     "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
+                                     "`number` is not exactly `string`";
         CHECK(expected == toString(result.errors[0]));
     }
     else
@@ -514,10 +513,9 @@ local b: B.T = a
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; \n"
-            "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
-            "`number` is not exactly `string`";
+        const std::string expected = "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; \n"
+                                     "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
+                                     "`number` is not exactly `string`";
         CHECK(expected == toString(result.errors[0]));
     }
     else
@@ -787,7 +785,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
     {
         CHECK_EQ("(unknown) -> unknown", toString(requireTypeAtPosition({13, 23})));
     }

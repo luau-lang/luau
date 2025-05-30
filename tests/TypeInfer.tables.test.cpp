@@ -21,8 +21,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauEagerGeneralization)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauBidirectionalInferenceElideAssert)
 LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
@@ -702,7 +702,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization2)
         CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
     else if (FFlag::LuauSolverV2)
         CHECK("({unknown}) -> ()" == toString(requireType("swap")));
@@ -925,9 +925,9 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
 
     if (FFlag::LuauSolverV2)
     {
-        std::string expected =  "Type '{number}' could not be converted into '{string}'; \n"
-                                "this is because the result of indexing is `number` in the former type and `string` in the latter type, "
-                                "and `number` is not exactly `string`";
+        std::string expected = "Type '{number}' could not be converted into '{string}'; \n"
+                               "this is because the result of indexing is `number` in the former type and `string` in the latter type, "
+                               "and `number` is not exactly `string`";
         auto actual = toString(result.errors[0]);
         CHECK_EQ(expected, actual);
     }
@@ -2379,7 +2379,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::LuauEagerGeneralization && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization2 && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(2, result);
@@ -3749,7 +3749,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauReportSubtypingErrors, true},
-        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauEagerGeneralization2, true},
         {FFlag::LuauSubtypeGenericsAndNegations, true},
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
     };
@@ -4298,7 +4298,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_84607_missing_prop_in_array_or_dict")
 
     if (FFlag::LuauSolverV2)
     {
-        for (const auto& err: result.errors)
+        for (const auto& err : result.errors)
         {
             const auto* error = get<MissingProperties>(err);
             REQUIRE(error);
@@ -4644,9 +4644,7 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
         return;
 
     ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
+        {FFlag::LuauEagerGeneralization2, true}, {FFlag::LuauSubtypeGenericsAndNegations, true}, {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
     };
 
     CheckResult result = check(R"(
@@ -4698,7 +4696,7 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && !FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauEagerGeneralization2)
     {
         LUAU_CHECK_ERROR_COUNT(1, result);
         LUAU_CHECK_ERROR(result, NotATable);
@@ -4746,7 +4744,7 @@ TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // FIXME CLI-114134.  We need to simplify types more consistently.
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
         CHECK("({number} & {number}, unknown) -> ()" == toString(requireType("f")));
     else
         CHECK_EQ("(unknown & {number} & {number}, unknown) -> ()", toString(requireType("f")));
@@ -5088,8 +5086,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
-
     CheckResult result = check(R"(
         type self = {} & {}
         type Class = typeof(setmetatable())
@@ -5098,18 +5094,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    // We shouldn't allow `setmetatable()` to type check
+    CHECK_EQ(result.errors[0].location, Location{{2, 21}, {2, 43}});
+    CHECK_EQ("Type function instance setmetatable<nil, nil> is uninhabited", toString(result.errors[0]));
+
+    CHECK_EQ(result.errors[1].location, Location{{3, 8}, {5, 11}});
+    CHECK_EQ("Type function instance setmetatable<nil, nil> is uninhabited", toString(result.errors[1]));
 
     CHECK_EQ(
-        "Type pack '{ @metatable {  }, {  } & {  } }' could not be converted into 'Class'; \n"
-        "this is because \n\t"
-        " * in the 1st entry in the type pack, the metatable portion is `{  }` in the former type and `nil` in the latter type, and `{  }` "
-        "is not a subtype of `nil`\n\t"
-        " * in the 1st entry in the type pack, the table portion has the 1st component of the intersection as `{  }` and in the 1st entry "
-        "in the type pack, the table portion is `nil`, and `{  }` is not a subtype of `nil`\n\t"
-        " * in the 1st entry in the type pack, the table portion has the 2nd component of the intersection as `{  }` and in the 1st entry "
-        "in the type pack, the table portion is `nil`, and `{  }` is not a subtype of `nil`",
-        toString(result.errors[0])
+        "Type pack '{ @metatable {  }, {  } & {  } }' could not be converted into 'setmetatable<nil, nil>'; \n"
+        "this is because the 1st entry in the type pack is `{ @metatable {  }, {  } & {  } }` and in the 1st entry in the type packreduces to "
+        "`never`, and `{ @metatable {  }, {  } & {  } }` is not a subtype of `never`",
+        toString(result.errors[2])
     );
 }
 
@@ -5399,10 +5397,7 @@ TEST_CASE_FIXTURE(Fixture, "returning_mismatched_optional_in_table")
 
 TEST_CASE_FIXTURE(Fixture, "optional_function_in_table")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableLiteralSubtypeSpecificCheck, true}};
 
     LUAU_CHECK_NO_ERRORS(check(R"(
         local t: { (() -> ())? } = {
@@ -5551,10 +5546,7 @@ TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
 
 TEST_CASE_FIXTURE(Fixture, "bigger_nested_table_causes_big_type_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableLiteralSubtypeSpecificCheck, true}};
 
     auto result = check(R"(
         type File = {
@@ -5794,7 +5786,7 @@ TEST_CASE_FIXTURE(Fixture, "large_table_inference_does_not_bleed")
         local otherWords: { Word } = {"foo"}
     )");
     LUAU_REQUIRE_ERROR_COUNT(3, result);
-    for (const auto& err: result.errors)
+    for (const auto& err : result.errors)
         // Check that all of the errors are localized to `words`, not `otherWords`
         CHECK(err.location.begin.line == 2);
 }
@@ -5809,10 +5801,7 @@ TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(2.0))
         {FFlag::LuauDisablePrimitiveInferenceInLargeTables, true},
     };
 
-    const std::string source = 
-        "local res = {\n" + 
-        rep("\"foo\",\n", 100'000) +
-        "}";
+    const std::string source = "local res = {\n" + rep("\"foo\",\n", 100'000) + "}";
     LUAU_REQUIRE_NO_ERRORS(check(source));
     CHECK_EQ("{string}", toString(requireType("res"), {true}));
 }

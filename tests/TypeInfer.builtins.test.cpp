@@ -11,7 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -146,20 +146,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Type\n\t"
-        "'(number, number) -> boolean'"
-        "\ncould not be converted into\n\t"
-        "'((string, string) -> boolean)?'"
-        "\ncaused by:\n"
-        "  None of the union options are compatible. For example:\n"
-        "Type\n\t"
-        "'(number, number) -> boolean'"
-        "\ncould not be converted into\n\t"
-        "'(string, string) -> boolean'"
-        "\ncaused by:\n"
-        "  Argument #1 type is not compatible.\n"
-        "Type 'string' could not be converted into 'number'";
+    const std::string expected = "Type\n\t"
+                                 "'(number, number) -> boolean'"
+                                 "\ncould not be converted into\n\t"
+                                 "'((string, string) -> boolean)?'"
+                                 "\ncaused by:\n"
+                                 "  None of the union options are compatible. For example:\n"
+                                 "Type\n\t"
+                                 "'(number, number) -> boolean'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(string, string) -> boolean'"
+                                 "\ncaused by:\n"
+                                 "  Argument #1 type is not compatible.\n"
+                                 "Type 'string' could not be converted into 'number'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -460,7 +459,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization2)
         CHECK("{ [number]: string | string | string, n: number }" == toString(requireType("t")));
     else if (FFlag::LuauSolverV2)
         CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));

@@ -464,7 +464,10 @@ struct ReservedIdentifier
 
 struct UnexpectedArrayLikeTableItem
 {
-    bool operator==(const UnexpectedArrayLikeTableItem&) const { return true; }
+    bool operator==(const UnexpectedArrayLikeTableItem&) const
+    {
+        return true;
+    }
 };
 
 using TypeErrorData = Variant<

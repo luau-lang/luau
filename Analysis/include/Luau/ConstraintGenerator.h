@@ -10,12 +10,12 @@
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
+#include "Luau/TypeIds.h"
 #include "Luau/TypeUtils.h"
 
 #include <memory>
@@ -93,7 +93,7 @@ struct ConstraintGenerator
     std::vector<ConstraintPtr> constraints;
 
     // The set of all free types introduced during constraint generation.
-    DenseHashSet<TypeId> freeTypes{nullptr};
+    TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
     DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
@@ -176,7 +176,7 @@ private:
     std::vector<TypeId> unionsToSimplify;
 
     // Used to keep track of when we are inside a large table and should
-    // opt *not* to do type inference for singletons. 
+    // opt *not* to do type inference for singletons.
     size_t largeTableDepth = 0;
 
     /**

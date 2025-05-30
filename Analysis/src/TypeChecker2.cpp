@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeCheckerAcceptNumberConcats)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
 LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck)
@@ -782,7 +783,6 @@ void TypeChecker2::visit(AstStatReturn* ret)
 
     for (AstExpr* expr : ret->list)
         visit(expr, ValueContext::RValue);
-
 }
 
 void TypeChecker2::visit(AstStatExpr* expr)
@@ -2796,22 +2796,41 @@ void TypeChecker2::visit(AstTypePackGeneric* tp)
     Scope* scope = findInnermostScope(tp->location);
     LUAU_ASSERT(scope);
 
-    std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
-    if (!alias.has_value())
+    if (FFlag::LuauNewNonStrictFixGenericTypePacks)
     {
+        if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+            return;
+
         if (scope->lookupType(tp->genericName.value))
-        {
-            reportError(
+            return reportError(
                 SwappedGenericTypeParameter{
                     tp->genericName.value,
                     SwappedGenericTypeParameter::Kind::Pack,
                 },
                 tp->location
             );
-        }
-        else
+
+        reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+    }
+    else
+    {
+        std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
+        if (!alias.has_value())
         {
-            reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            if (scope->lookupType(tp->genericName.value))
+            {
+                reportError(
+                    SwappedGenericTypeParameter{
+                        tp->genericName.value,
+                        SwappedGenericTypeParameter::Kind::Pack,
+                    },
+                    tp->location
+                );
+            }
+            else
+            {
+                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            }
         }
     }
 }
@@ -2944,14 +2963,6 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
         reportError(TypePackMismatch{superTy, subTy, reasonings.toString()}, location);
 }
 
-namespace
-{
-bool isRecord(const AstExprTable::Item& item)
-{
-    return item.kind == AstExprTable::Item::Record || (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>());
-}
-}
-
 bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType)
 {
     auto exprType = follow(lookupType(expr));
@@ -2982,7 +2993,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         return testIsSubtype(exprType, expectedType, expr->location);
     }
 
-    Set<std::optional<std::string> > missingKeys{{}};
+    Set<std::optional<std::string>> missingKeys{{}};
     for (const auto& [name, prop] : expectedTableType->props)
     {
         if (FFlag::LuauEnableWriteOnlyProperties)

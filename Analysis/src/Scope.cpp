@@ -255,6 +255,29 @@ bool Scope::shouldWarnGlobal(std::string name) const
     return false;
 }
 
+NotNull<Scope> Scope::findNarrowestScopeContaining(Location location)
+{
+    Scope* bestScope = this;
+
+    bool didNarrow;
+    do
+    {
+        didNarrow = false;
+        for (auto scope : bestScope->children)
+        {
+            if (scope->location.encloses(location))
+            {
+                bestScope = scope.get();
+                didNarrow = true;
+                break;
+            }
+        }
+    } while (didNarrow && bestScope->children.size() > 0);
+
+    return NotNull{bestScope};
+}
+
+
 bool subsumesStrict(Scope* left, Scope* right)
 {
     while (right)

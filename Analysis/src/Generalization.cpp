@@ -16,7 +16,7 @@
 
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 
-LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization)
+LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization2)
 
 namespace Luau
 {
@@ -469,7 +469,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (FFlag::LuauEagerGeneralization)
+        if (FFlag::LuauEagerGeneralization2)
         {
             if (!subsumes(scope, ft.scope))
                 return true;
@@ -520,7 +520,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
         {
-            if (FFlag::LuauEagerGeneralization)
+            if (FFlag::LuauEagerGeneralization2)
                 unsealedTables.insert(ty);
             else
             {
@@ -574,7 +574,6 @@ struct FreeTypeSearcher : TypeVisitor
                     traverse(*prop.writeTy);
                     polarity = p;
                 }
-
             }
             else
             {
@@ -594,7 +593,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if (tt.indexer)
         {
-            if (FFlag::LuauEagerGeneralization)
+            if (FFlag::LuauEagerGeneralization2)
             {
                 // {[K]: V} is equivalent to three functions: get, set, and iterate
                 //
@@ -652,7 +651,7 @@ struct FreeTypeSearcher : TypeVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        if (FFlag::LuauEagerGeneralization)
+        if (FFlag::LuauEagerGeneralization2)
         {
             GeneralizationParams<TypePackId>& params = typePacks[tp];
             ++params.useCount;
@@ -1247,8 +1246,7 @@ struct RemoveType : Substitution // NOLINT
  * @param needle The type to be removed.
  */
 [[nodiscard]]
-static std::optional<
-    TypeId> removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId haystack, TypeId needle)
+static std::optional<TypeId> removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId haystack, TypeId needle)
 {
     RemoveType rt{builtinTypes, arena, needle};
     return rt.substitute(haystack);
@@ -1276,7 +1274,7 @@ GeneralizationResult<TypeId> generalizeType(
 
     if (!hasLowerBound && !hasUpperBound)
     {
-        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization && (params.polarity != Polarity::Mixed && params.useCount == 1)))
+        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization2 && (params.polarity != Polarity::Mixed && params.useCount == 1)))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1308,7 +1306,7 @@ GeneralizationResult<TypeId> generalizeType(
 
         if (follow(lb) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), lb);
-        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization && params.useCount == 1))
+        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization2 && params.useCount == 1))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1425,7 +1423,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
     {
         FunctionType* functionTy = getMutable<FunctionType>(ty);
         auto pushGeneric = [&](TypeId t)
@@ -1586,7 +1584,6 @@ struct GenericCounter : TypeVisitor
                     traverse(*prop.writeTy);
                     polarity = p;
                 }
-
             }
             else
             {
@@ -1653,7 +1650,7 @@ void pruneUnnecessaryGenerics(
     TypeId ty
 )
 {
-    if (!FFlag::LuauEagerGeneralization)
+    if (!FFlag::LuauEagerGeneralization2)
         return;
 
     ty = follow(ty);

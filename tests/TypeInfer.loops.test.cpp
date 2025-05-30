@@ -1519,7 +1519,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_is_linearish")
     )"));
 
     CHECK_EQ("nil", toString(requireType("y")));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "ensure_local_in_loop_does_not_escape")
@@ -1539,7 +1538,6 @@ TEST_CASE_FIXTURE(Fixture, "ensure_local_in_loop_does_not_escape")
     )"));
 
     CHECK_EQ("number", toString(requireType("y")));
-
 }
 
 TEST_SUITE_END();

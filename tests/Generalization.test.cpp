@@ -15,7 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
 
@@ -115,7 +115,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_traverse_into_class_types_when_ge
 {
     auto [propTy, _] = freshType();
 
-    TypeId cursedExternType = arena.addType(ExternType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
+    TypeId cursedExternType =
+        arena.addType(ExternType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
 
     auto genExternType = generalize(cursedExternType);
     REQUIRE(genExternType);
@@ -226,7 +227,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization2, true};
 
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
@@ -260,7 +261,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization2, true};
 
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
@@ -341,10 +342,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForbidInternalTypes, true},
-        {FFlag::LuauTrackInferredFunctionTypeFromCall, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForbidInternalTypes, true}, {FFlag::LuauTrackInferredFunctionTypeFromCall, true}};
 
     // This test case should just not assert
     CheckResult result = check(R"(

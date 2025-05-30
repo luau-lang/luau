@@ -897,7 +897,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     {
         CHECK_EQ(
             "Table type '{ count: string }' not compatible with type '{ Count: number }' because the former is missing field 'Count'",
-            toString(result.errors[0]));
+            toString(result.errors[0])
+        );
     }
     else
         REQUIRE_EQ(

@@ -19,16 +19,6 @@ LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 namespace Luau
 {
 
-static bool isRecord(const AstExprTable::Item& item)
-{
-    if (item.kind == AstExprTable::Item::Record)
-        return true;
-    else if (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>())
-        return true;
-    else
-        return false;
-}
-
 TypeId matchLiteralType(
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,

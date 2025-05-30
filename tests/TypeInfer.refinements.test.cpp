@@ -10,7 +10,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauWeakNilRefinementType)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
@@ -770,12 +770,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
     {
-        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
+        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
         CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
 
-        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
         CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
     else
@@ -1273,7 +1273,10 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
         // time, sometimes this is due to hitting the simplifier rather than
         // normalization.
         CHECK("{ tag: \"exists\", x: string } & { x: ~(false?) }" == toString(requireTypeAtPosition({5, 28})));
-        CHECK(R"(({ tag: "exists", x: string } & { x: false? }) | ({ tag: "missing", x: nil } & { x: false? }))" == toString(requireTypeAtPosition({7, 28})));
+        CHECK(
+            R"(({ tag: "exists", x: string } & { x: false? }) | ({ tag: "missing", x: nil } & { x: false? }))" ==
+            toString(requireTypeAtPosition({7, 28}))
+        );
     }
     else
     {
@@ -2514,7 +2517,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
         end
     )"));
 
-    if (FFlag::LuauEagerGeneralization)
+    if (FFlag::LuauEagerGeneralization2)
         CHECK_EQ("nil & string & unknown", toString(requireTypeAtPosition({4, 24})));
     else
         CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));
@@ -2636,10 +2639,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1687_equality_shouldnt_leak_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1451")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauWeakNilRefinementType, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauWeakNilRefinementType, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Part = {
@@ -2682,10 +2682,17 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function")
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        CHECK_EQ(toString(result.errors[0]), "Key 'Disconnect' is missing from 't2 where t1 = ExternScriptConnection | t2 | { Disconnect: (t1) -> (...any) } ; t2 = { disconnect: (t1) -> (...any) }' in the type 't1 where t1 = ExternScriptConnection | { Disconnect: (t1) -> (...any) } | { disconnect: (t1) -> (...any) }'");
+        CHECK_EQ(
+            toString(result.errors[0]),
+            "Key 'Disconnect' is missing from 't2 where t1 = ExternScriptConnection | t2 | { Disconnect: (t1) -> (...any) } ; t2 = { disconnect: "
+            "(t1) -> (...any) }' in the type 't1 where t1 = ExternScriptConnection | { Disconnect: (t1) -> (...any) } | { disconnect: (t1) -> "
+            "(...any) }'"
+        );
 
         if (FFlag::LuauBetterCannotCallFunctionPrimitive)
-            CHECK_EQ(toString(result.errors[1]), "The type function is not precise enough for us to determine the appropriate result type of this call.");
+            CHECK_EQ(
+                toString(result.errors[1]), "The type function is not precise enough for us to determine the appropriate result type of this call."
+            );
         else
             CHECK_EQ(toString(result.errors[1]), "Cannot call a value of type function");
     }
@@ -2694,7 +2701,9 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function")
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
         if (FFlag::LuauBetterCannotCallFunctionPrimitive)
-            CHECK_EQ(toString(result.errors[0]), "The type function is not precise enough for us to determine the appropriate result type of this call.");
+            CHECK_EQ(
+                toString(result.errors[0]), "The type function is not precise enough for us to determine the appropriate result type of this call."
+            );
         else
             CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type function");
     }

@@ -456,7 +456,7 @@ private:
         AstType* annotation;
         Position colonPosition;
 
-        explicit Binding(const Name& name, AstType* annotation = nullptr, Position colonPosition = {0,0})
+        explicit Binding(const Name& name, AstType* annotation = nullptr, Position colonPosition = {0, 0})
             : name(name)
             , annotation(annotation)
             , colonPosition(colonPosition)

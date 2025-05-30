@@ -17,7 +17,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 
 using namespace Luau;
 
@@ -1629,19 +1629,13 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
     TypeId bTy = arena.addType(GenericType{"B"});
     getMutable<GenericType>(bTy)->scope = moduleScope.get();
 
-    TypeId genericFunctionTy = arena.addType(FunctionType{
-        {aTy, bTy},
-        {},
-        arena.addTypePack({aTy, bTy}),
-        arena.addTypePack({join(meet(aTy, builtinTypes->truthyType), bTy)})
-    });
+    TypeId genericFunctionTy =
+        arena.addType(FunctionType{{aTy, bTy}, {}, arena.addTypePack({aTy, bTy}), arena.addTypePack({join(meet(aTy, builtinTypes->truthyType), bTy)})}
+        );
 
     const TypeId truthyTy = builtinTypes->truthyType;
 
-    TypeId actualFunctionTy = fn(
-        {truthyTy, truthyTy},
-        {join(meet(truthyTy, builtinTypes->truthyType), truthyTy)}
-    );
+    TypeId actualFunctionTy = fn({truthyTy, truthyTy}, {join(meet(truthyTy, builtinTypes->truthyType), truthyTy)});
 
     SubtypingResult result = isSubtype(genericFunctionTy, actualFunctionTy);
 
@@ -1650,7 +1644,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization2, true};
 
     TypeId argTy = arena.freshType(builtinTypes, moduleScope.get());
     FreeType* freeArg = getMutable<FreeType>(argTy);

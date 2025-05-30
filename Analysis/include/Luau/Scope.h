@@ -101,6 +101,8 @@ struct Scope
 
     std::optional<std::vector<TypeId>> interiorFreeTypes;
     std::optional<std::vector<TypePackId>> interiorFreeTypePacks;
+
+    NotNull<Scope> findNarrowestScopeContaining(Location);
 };
 
 // Returns true iff the left scope encloses the right scope.  A Scope* equal to

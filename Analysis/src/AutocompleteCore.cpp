@@ -173,12 +173,7 @@ static bool checkTypeMatch(
         unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
 
         Subtyping subtyping{
-            builtinTypes,
-            NotNull{typeArena},
-            NotNull{simplifier.get()},
-            NotNull{&normalizer},
-            NotNull{&typeFunctionRuntime},
-            NotNull{&iceReporter}
+            builtinTypes, NotNull{typeArena}, NotNull{simplifier.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}
         };
 
         return subtyping.isSubtype(subTy, superTy, scope).isSubtype;

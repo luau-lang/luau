@@ -12,7 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionTypeFunctionArgs)
 
 namespace Luau
@@ -306,7 +306,7 @@ TypePack extendTypePack(
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope, ftp->polarity);
 
-            if (FFlag::LuauEagerGeneralization)
+            if (FFlag::LuauEagerGeneralization2)
                 trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
 
             if (FFlag::LuauSolverV2)
@@ -588,7 +588,7 @@ void trackInteriorFreeType(Scope* scope, TypeId ty)
 void trackInteriorFreeTypePack(Scope* scope, TypePackId tp)
 {
     LUAU_ASSERT(tp);
-    if (!FFlag::LuauEagerGeneralization)
+    if (!FFlag::LuauEagerGeneralization2)
         return;
 
     for (; scope; scope = scope->parent.get())
@@ -684,5 +684,16 @@ std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, Type
 
     return std::nullopt;
 }
+
+bool isRecord(const AstExprTable::Item& item)
+{
+    if (item.kind == AstExprTable::Item::Record)
+        return true;
+    else if (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>())
+        return true;
+    else
+        return false;
+}
+
 
 } // namespace Luau

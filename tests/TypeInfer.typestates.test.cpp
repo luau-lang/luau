@@ -8,7 +8,7 @@ LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauEagerGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization2)
 LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
@@ -418,7 +418,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauReportSubtypingErrors, true},
-        {FFlag::LuauEagerGeneralization, true},
+        {FFlag::LuauEagerGeneralization2, true},
         {FFlag::LuauSubtypeGenericsAndNegations, true},
         {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
     };
@@ -763,9 +763,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring")
 TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
-        {FFlag::LuauDfgAllowUpdatesInLoops,true}
+        {FFlag::LuauSolverV2, true}, {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true}, {FFlag::LuauDfgAllowUpdatesInLoops, true}
     };
 
     CheckResult result = check(R"(

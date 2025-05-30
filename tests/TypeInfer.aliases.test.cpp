@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAG(LuauSkipMalformedTypeAliases)
@@ -1217,8 +1216,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalizatio
 
 TEST_CASE_FIXTURE(Fixture, "exported_alias_location_is_accessible_on_module")
 {
-    ScopedFastFlag sff{FFlag::LuauRetainDefinitionAliasLocations, true};
-
     CheckResult result = check(R"(
         export type Value = string
     )");
@@ -1235,7 +1232,6 @@ TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_mod
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRetainDefinitionAliasLocations, true},
     };
 
     CheckResult result = check(R"(
