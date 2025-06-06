@@ -21,20 +21,16 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauBidirectionalInferenceElideAssert)
-LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauDisablePrimitiveInferenceInLargeTables)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
-LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
+LUAU_FASTFLAG(LuauAutocompleteMissingFollows)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -702,7 +698,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization3)
         CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
     else if (FFlag::LuauSolverV2)
         CHECK("({unknown}) -> ()" == toString(requireType("swap")));
@@ -762,7 +758,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_quantification_2")
 
 TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_array_like_table")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine, true};
+    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
 
     CheckResult result = check(R"(
         local t = {"one", "two", "three"}
@@ -2062,7 +2058,7 @@ TEST_CASE_FIXTURE(Fixture, "explicit_nil_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "ok_to_provide_a_subtype_during_construction")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine, true};
+    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
 
     CheckResult result = check(R"(
         local a: string | number = 1
@@ -2379,7 +2375,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::LuauEagerGeneralization2 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(2, result);
@@ -3176,9 +3172,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
     CHECK_EQ(follow(newRet->metatable), follow(requireType("Counter")));
 }
 
-// TODO: CLI-39624
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_tables_at_scope_level")
 {
+    ScopedFastFlag sff1{FFlag::LuauSimplifyOutOfLine2, true};
+
     CheckResult result = check(R"(
         --!strict
         local Option = {}
@@ -3749,9 +3746,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauReportSubtypingErrors, true},
-        {FFlag::LuauEagerGeneralization2, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
+        {FFlag::LuauEagerGeneralization3, true},
     };
 
     CheckResult result = check(R"(
@@ -4644,7 +4639,7 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
         return;
 
     ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization2, true}, {FFlag::LuauSubtypeGenericsAndNegations, true}, {FFlag::LuauNoMoreInjectiveTypeFunctions, true}
+        {FFlag::LuauEagerGeneralization3, true},
     };
 
     CheckResult result = check(R"(
@@ -4684,8 +4679,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tables_can_have_both_metatables_and_indexers
 
 TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
 {
-    ScopedFastFlag _{FFlag::LuauOptimizeFalsyAndTruthyIntersect, true};
-
     CheckResult result = check(R"(
         function foo(x, y)
             if x then
@@ -4696,7 +4689,7 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && !FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauEagerGeneralization3)
     {
         LUAU_CHECK_ERROR_COUNT(1, result);
         LUAU_CHECK_ERROR(result, NotATable);
@@ -4744,7 +4737,7 @@ TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // FIXME CLI-114134.  We need to simplify types more consistently.
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
         CHECK("({number} & {number}, unknown) -> ()" == toString(requireType("f")));
     else
         CHECK_EQ("(unknown & {number} & {number}, unknown) -> ()", toString(requireType("f")));
@@ -5038,7 +5031,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine, true};
+    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
 
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
@@ -5639,8 +5632,6 @@ TEST_CASE_FIXTURE(Fixture, "stop_refining_new_table_indices_for_non_primitive_ta
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_match_literal_type_crash_again")
 {
-    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceElideAssert, true};
-
     CheckResult result = check(R"(
         function f(_: { [string]: {unknown}} ) end
         f(

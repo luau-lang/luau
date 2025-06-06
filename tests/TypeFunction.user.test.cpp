@@ -9,7 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 
@@ -409,7 +409,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optional_works_on_unions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
 
     CheckResult result = check(R"(
@@ -458,7 +460,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
 
     CheckResult result = check(R"(
@@ -649,7 +653,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_methods_work")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
 
     CheckResult result = check(R"(
@@ -892,7 +898,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_complex_cyclic_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
         type function errors_if_string(arg)
@@ -913,7 +920,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_call_metamethod")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
         type function hello(arg)
@@ -1098,7 +1106,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
         type function foo(x)
@@ -1112,7 +1121,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
 
     CheckResult result = check(R"(
@@ -1164,7 +1175,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_recursion_and_gc")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
 
     CheckResult result = check(R"(
@@ -1211,7 +1224,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_recovery_no_upvalues")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_follow")
 {
-    ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
         type t0 = any
@@ -1226,7 +1240,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strip_indexer")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
 
     CheckResult result = check(R"(
@@ -1251,7 +1267,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strip_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_type_methods_on_types")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
         type function test(x)
@@ -1377,7 +1394,8 @@ local a: foo<> = "a"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "implicit_export")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     fileResolver.source["game/A"] = R"(
 type function concat(a: type, b: type)
@@ -1430,7 +1448,8 @@ local a = test()
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     fileResolver.source["game/A"] = R"(
 export type function concat(a: type, b: type)
@@ -1478,7 +1497,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
 {
-    ScopedFastFlag solverV2{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
         type function t0(a)
@@ -1665,7 +1685,8 @@ local function ok(idx: pass<test>): <T>(T, T) -> (T) return idx end
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_3")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
 type function pass()
@@ -1968,7 +1989,10 @@ local function ok(idx: pass<test>): (number, ...string) -> (string, ...number) r
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::DebugLuauEqSatSimplification, true}};
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauEqSatSimplification, true}};
 
     CheckResult _ = check(R"(
         type function t0(a)
@@ -1988,7 +2012,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_bool")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: CLI-151985
         // This test breaks because we can't see that eq<type?, b> is already fully reduced.
@@ -2011,7 +2035,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_string")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: CLI-151985
         // This test breaks because we can't see that eq<type?, b> is already fully reduced.

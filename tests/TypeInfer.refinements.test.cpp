@@ -10,13 +10,13 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauWeakNilRefinementType)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
 LUAU_FASTFLAG(LuauBetterCannotCallFunctionPrimitive)
 LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
+LUAU_FASTFLAG(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 
 using namespace Luau;
@@ -690,8 +690,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
 
 TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
 {
-    ScopedFastFlag _{FFlag::LuauWeakNilRefinementType, true};
-
     CheckResult result = check(R"(
         local t: {string} = {"hello"}
 
@@ -748,10 +746,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauWeakNilRefinementType, true},
-    };
-
     CheckResult result = check(R"(
         local t = {"hello"}
         local v = t[2]
@@ -770,7 +764,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
         CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
@@ -1655,7 +1649,37 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
         local pos = part1.Position
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && !FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
+    {
+        // CLI-142467: this is a major regression that we need to address.
+        CHECK_EQ("never", toString(requireTypeAtPosition({3, 15})));
+        CHECK_EQ("any", toString(requireTypeAtPosition({6, 29})));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
+        CHECK_EQ("Vector3", toString(requireTypeAtPosition({6, 29})));
+    }
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_properties_should_not_refine_extern_types_to_never")
+{
+
+    CheckResult result = check(R"(
+        local weld: WeldConstraint = nil :: any
+        assert(weld.Part8)
+        print(weld) -- hover type should become `never`
+        assert(weld.Part8.Name == "RootPart")
+        local part8 = assert(weld.Part8)
+        local pos = part8.Position
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]), "Key 'Part8' not found in class 'WeldConstraint'");
+
+    if (FFlag::LuauSolverV2 && !FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
     {
         // CLI-142467: this is a major regression that we need to address.
         CHECK_EQ("never", toString(requireTypeAtPosition({3, 15})));
@@ -1664,7 +1688,10 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
     else
     {
         CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
-        CHECK_EQ("Vector3", toString(requireTypeAtPosition({6, 29})));
+        if (FFlag::LuauSolverV2)
+            CHECK_EQ("any", toString(requireTypeAtPosition({6, 29})));
+        else
+            CHECK_EQ("*error-type*", toString(requireTypeAtPosition({6, 29})));
     }
 }
 
@@ -2223,6 +2250,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_variant")
 {
+    // FIXME CLI-141364: An underlying bug in normalization means the type of
+    // `isIndexKey` is platform dependent.
     CheckResult result = check(R"(
         local function isIndexKey(k, contiguousLength: number)
             return type(k) == "number"
@@ -2231,7 +2260,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
                 and math.floor(k) == k -- no float keys
         end
     )");
-
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2505,7 +2533,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauWeakNilRefinementType, true},
         {FFlag::DebugLuauEqSatSimplification, true},
     };
 
@@ -2517,7 +2544,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
         end
     )"));
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
+        // FIXME CLI-114134.  We need to simplify types more consistently.
         CHECK_EQ("nil & string & unknown", toString(requireTypeAtPosition({4, 24})));
     else
         CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));
@@ -2617,8 +2645,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1528_method_calls_are_not_nillable")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1687_equality_shouldnt_leak_nil")
 {
-    ScopedFastFlag _{FFlag::LuauWeakNilRefinementType, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         function returns_two(): number
@@ -2639,7 +2665,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1687_equality_shouldnt_leak_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1451")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauWeakNilRefinementType, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Part = {
@@ -2738,6 +2764,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1835")
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<OptionalValueAccess>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "limit_complexity_of_arithmetic_type_functions" * doctest::timeout(0.5))
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        local Hermite = {}
+
+        function Hermite:__init(p0, p1, m0, m1)
+            self[1] = {
+                p0.x;
+                p0.y;
+                p0.z;
+            }
+            self[2] = {
+                m0.x;
+                m0.y;
+                m0.z;
+            }
+            self[3] = {
+                3*(p1.x - p0.x) - 2*m0.x - m1.x;
+                3*(p1.y - p0.y) - 2*m0.y - m1.y;
+                3*(p1.z - p0.z) - 2*m0.z - m1.z;
+            }
+        end
+
+        return Hermite
+    )");
+
+    // We do not care what the errors are, only that this type checks in a
+    // reasonable amount of time.
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

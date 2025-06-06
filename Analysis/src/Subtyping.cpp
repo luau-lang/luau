@@ -8,7 +8,6 @@
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
 #include "Luau/Substitution.h"
-#include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
@@ -19,9 +18,9 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauSubtypeGenericsAndNegations)
 LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingCheckFunctionGenericCounts)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 namespace Luau
 {
@@ -669,27 +668,26 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = {false};
     else if (get<ErrorType>(subTy))
         result = {true};
-    else if (auto subGeneric = get<GenericType>(subTy); FFlag::LuauSubtypeGenericsAndNegations && subGeneric && variance == Variance::Covariant)
+    else if (auto subGeneric = get<GenericType>(subTy); subGeneric && variance == Variance::Covariant)
     {
         bool ok = bindGeneric(env, subTy, superTy);
         result.isSubtype = ok;
         result.isCacheable = false;
     }
-    else if (auto superGeneric = get<GenericType>(superTy);
-             FFlag::LuauSubtypeGenericsAndNegations && superGeneric && variance == Variance::Contravariant)
+    else if (auto superGeneric = get<GenericType>(superTy); superGeneric && variance == Variance::Contravariant)
     {
         bool ok = bindGeneric(env, subTy, superTy);
         result.isSubtype = ok;
         result.isCacheable = false;
     }
-    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy); FFlag::LuauEagerGeneralization2 && pair)
+    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy); FFlag::LuauEagerGeneralization3 && pair)
     {
         // Any two free types are potentially subtypes of one another because
         // both of them could be narrowed to never.
         result = {true};
         result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
     }
-    else if (auto superFree = get<FreeType>(superTy); superFree && FFlag::LuauEagerGeneralization2)
+    else if (auto superFree = get<FreeType>(superTy); superFree && FFlag::LuauEagerGeneralization3)
     {
         // Given SubTy <: (LB <: SuperTy <: UB)
         //
@@ -704,7 +702,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (result.isSubtype)
             result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
     }
-    else if (auto subFree = get<FreeType>(subTy); subFree && FFlag::LuauEagerGeneralization2)
+    else if (auto subFree = get<FreeType>(subTy); subFree && FFlag::LuauEagerGeneralization3)
     {
         // Given (LB <: SubTy <: UB) <: SuperTy
         //
@@ -761,19 +759,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
 
         result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
-    }
-    else if (auto subGeneric = get<GenericType>(subTy); !FFlag::LuauSubtypeGenericsAndNegations && subGeneric && variance == Variance::Covariant)
-    {
-        bool ok = bindGeneric(env, subTy, superTy);
-        result.isSubtype = ok;
-        result.isCacheable = false;
-    }
-    else if (auto superGeneric = get<GenericType>(superTy);
-             !FFlag::LuauSubtypeGenericsAndNegations && superGeneric && variance == Variance::Contravariant)
-    {
-        bool ok = bindGeneric(env, subTy, superTy);
-        result.isSubtype = ok;
-        result.isCacheable = false;
     }
     else if (auto p = get2<PrimitiveType, PrimitiveType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
@@ -1452,7 +1437,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 {
     SubtypingResult result{true};
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
         {
@@ -1508,7 +1493,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
     {
         if (subTable->indexer)
             result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
-        else if (FFlag::LuauEagerGeneralization2 && subTable->state != TableState::Sealed)
+        else if (FFlag::LuauEagerGeneralization3 && subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
             // on the left will eventually gain the necessary indexer.
@@ -1619,6 +1604,21 @@ SubtypingResult Subtyping::isCovariantWith(
     }
 
     result.andAlso(isCovariantWith(env, subFunction->retTypes, superFunction->retTypes, scope).withBothComponent(TypePath::PackField::Returns));
+
+    if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
+    {
+        if (*subFunction->argTypes == *superFunction->argTypes && *subFunction->retTypes == *superFunction->retTypes)
+        {
+            if (superFunction->generics.size() != subFunction->generics.size())
+                result.andAlso({false}).withError(
+                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
+                );
+            if (superFunction->genericPacks.size() != subFunction->genericPacks.size())
+                result.andAlso({false}).withError(
+                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
+                );
+        }
+    }
 
     return result;
 }

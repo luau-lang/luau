@@ -16,8 +16,6 @@
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
-LUAU_FASTFLAGVARIABLE(LuauSimplificationRecheckAssumption)
-LUAU_FASTFLAGVARIABLE(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAGVARIABLE(LuauSimplificationTableExternType)
 
 namespace Luau
@@ -771,12 +769,9 @@ TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
 
         newParts.insert(simplified);
 
-        if (FFlag::LuauSimplificationRecheckAssumption)
-        {
-            // Initial combination size check could not predict nested union iteration
-            if (newParts.size() > maxSize)
-                return arena->addType(IntersectionType{{left, right}});
-        }
+        // Initial combination size check could not predict nested union iteration
+        if (newParts.size() > maxSize)
+            return arena->addType(IntersectionType{{left, right}});
     }
 
     if (!changed)
@@ -818,12 +813,9 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
 
             newParts.insert(simplified);
 
-            if (FFlag::LuauSimplificationRecheckAssumption)
-            {
-                // Initial combination size check could not predict nested union iteration
-                if (newParts.size() > maxSize)
-                    return arena->addType(IntersectionType{{left, right}});
-            }
+            // Initial combination size check could not predict nested union iteration
+            if (newParts.size() > maxSize)
+                return arena->addType(IntersectionType{{left, right}});
         }
     }
 
@@ -1310,24 +1302,21 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
         return std::nullopt;
     }
 
-    if (FFlag::LuauOptimizeFalsyAndTruthyIntersect)
-    {
-        if (isTruthyType(left))
-            if (auto res = basicIntersectWithTruthy(right))
-                return res;
+    if (isTruthyType(left))
+        if (auto res = basicIntersectWithTruthy(right))
+            return res;
 
-        if (isTruthyType(right))
-            if (auto res = basicIntersectWithTruthy(left))
-                return res;
+    if (isTruthyType(right))
+        if (auto res = basicIntersectWithTruthy(left))
+            return res;
 
-        if (isFalsyType(left))
-            if (auto res = basicIntersectWithFalsy(right))
-                return res;
+    if (isFalsyType(left))
+        if (auto res = basicIntersectWithFalsy(right))
+            return res;
 
-        if (isFalsyType(right))
-            if (auto res = basicIntersectWithFalsy(left))
-                return res;
-    }
+    if (isFalsyType(right))
+        if (auto res = basicIntersectWithFalsy(left))
+            return res;
 
     Relation relation = relate(left, right);
     if (left == right || Relation::Coincident == relation)

@@ -318,4 +318,7 @@ std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, Type
  */
 bool isRecord(const AstExprTable::Item& item);
 
+// Unwraps any grouping expressions iteratively.
+AstExpr* unwrapGroup(AstExpr* expr);
+
 } // namespace Luau

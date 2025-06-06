@@ -17,7 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -29,7 +29,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: Regression
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
@@ -51,7 +51,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: Regression.
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
@@ -72,7 +72,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: Regression
         CHECK("(string & ~(false?)) | string" == toString(requireType("s")));
@@ -634,7 +634,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
         local a = -foo
     )");
 
-    if (FFlag::LuauEagerGeneralization2 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 

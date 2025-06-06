@@ -3,7 +3,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 namespace Luau
 {
@@ -51,7 +51,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypeId, const TypeFunctionInstanceType&) override
     {
-        return FFlag::LuauEagerGeneralization2 && traverseIntoTypeFunctions;
+        return FFlag::LuauEagerGeneralization3 && traverseIntoTypeFunctions;
     }
 };
 
@@ -104,7 +104,7 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(fchc->argsPack);
     }
-    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::LuauEagerGeneralization2)
+    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::LuauEagerGeneralization3)
     {
         rci.traverseIntoTypeFunctions = false;
         rci.traverse(fcc->fn);
@@ -118,12 +118,12 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     else if (auto hpc = get<HasPropConstraint>(*this))
     {
         rci.traverse(hpc->resultType);
-        if (FFlag::LuauEagerGeneralization2)
+        if (FFlag::LuauEagerGeneralization3)
             rci.traverse(hpc->subjectType);
     }
     else if (auto hic = get<HasIndexerConstraint>(*this))
     {
-        if (FFlag::LuauEagerGeneralization2)
+        if (FFlag::LuauEagerGeneralization3)
             rci.traverse(hic->subjectType);
         rci.traverse(hic->resultType);
         // `HasIndexerConstraint` should not mutate `indexType`.
