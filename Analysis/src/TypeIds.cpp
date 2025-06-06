@@ -150,4 +150,11 @@ bool TypeIds::operator==(const TypeIds& there) const
     return true;
 }
 
+std::vector<TypeId> TypeIds::take()
+{
+    hash = 0;
+    types.clear();
+    return std::move(order);
+}
+
 }

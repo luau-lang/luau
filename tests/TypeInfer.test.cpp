@@ -24,22 +24,16 @@ LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauTypeCheckerAcceptNumberConcats)
-LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked2)
-LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
-LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
-LUAU_FASTFLAG(LuauHasPropProperBlock)
-LUAU_FASTFLAG(LuauStringPartLengthLimit)
-LUAU_FASTFLAG(LuauSimplificationRecheckAssumption)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauInsertErrorTypesIntoIndexerResult)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine)
-LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
-LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
+LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
+LUAU_FASTFLAG(LuauSkipLvalueForCompoundAssignment)
+LUAU_FASTFLAG(LuauMissingFollowInAssignIndexConstraint)
 
 using namespace Luau;
 
@@ -447,7 +441,7 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #endif
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
-    ScopedFastFlag _{FFlag::LuauEagerGeneralization2, false};
+    ScopedFastFlag _{FFlag::LuauEagerGeneralization3, false};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
@@ -1865,16 +1859,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_ret")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_param")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
-
     auto result = check(R"(
         local function check(x): any
             return getmetatable(x)
         end
     )");
 
-    // CLI-144695: We're leaking the `MT` generic here.
-    CHECK_EQ("({ @metatable MT, {+  +} }) -> any", toString(requireType("check")));
+    if (FFlag::LuauSolverV2)
+        CHECK_EQ("(unknown) -> any", toString(requireType("check")));
+    else
+        CHECK_EQ("({ @metatable any, {+  +} }) -> any", toString(requireType("check")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_pack_check_missing_follow")
@@ -1929,7 +1923,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_derived_unsound_loops")
 TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    ScopedFastFlag fixNumberConcats{FFlag::LuauTypeCheckerAcceptNumberConcats, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function concat_stuff(x: string, y : string | number)
@@ -1940,10 +1933,7 @@ TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_local_before_declaration_ice")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPreprocessTypestatedArgument, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local _
@@ -2034,11 +2024,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauHasPropProperBlock, true},
-        {FFlag::LuauEagerGeneralization2, true},
-        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
+        {FFlag::LuauEagerGeneralization3, true},
     };
 
     auto result = check(R"(
@@ -2073,10 +2059,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization2, true},
-        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
+        {FFlag::LuauEagerGeneralization3, true},
     };
 
     CheckResult result = check(R"(
@@ -2109,13 +2092,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauHasPropProperBlock, true},
         {FFlag::LuauEagerGeneralization2, true},
-        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
-        {FFlag::LuauStringPartLengthLimit, true},
-        {FFlag::LuauSimplificationRecheckAssumption, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
     };
 
     LUAU_REQUIRE_ERRORS(check(R"(
@@ -2154,7 +2131,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_double_negation" * doctest::tim
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauOptimizeFalsyAndTruthyIntersect, true},
         {FFlag::LuauAvoidDoubleNegation, true},
     };
     // We don't care about errors, only that we don't OOM during typechecking.
@@ -2207,7 +2183,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_has_indexer_can_create_cyclic_union")
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_simplify_table_indexer" * doctest::timeout(0.5))
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine, true};
+    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         _[_] += true
@@ -2287,6 +2263,154 @@ for i, v in ipairs(outln)do
         end
     end
 end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "self_bound_due_to_compound_assign")
+{
+    ScopedFastFlag _{FFlag::LuauSkipLvalueForCompoundAssignment, true};
+
+    loadDefinition(R"(
+        declare class Camera
+            CameraType: string
+            CFrame: number
+        end
+    )");
+
+    CheckResult result = check(R"(
+        --!strict
+        function MT_UPDATE(CAMERA: Camera, Enum: any, totalOffsets: number, focusToCFrame: number, magnitude: number)
+            if CAMERA.CameraType ~= Enum.CameraType.Custom then
+                return
+            end
+
+            local goalCFrame = (CAMERA.CFrame) * totalOffsets
+            if goalCFrame ~= CAMERA.CFrame then
+                goalCFrame -= (focusToCFrame * magnitude) -- Offset the goalCFrame the raycast direction based on the cutoff distance.
+            end
+        end
+
+        return {}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "config_reader_example")
+{
+    // If this flag isn't set, then we do not do the requisite setup when the
+    // test suite starts, which will cause an assert if we try to eagerly
+    // generalize _after_ the test is set up. Additionally, this code block
+    // crashes under the new solver without flags.
+    if (!FFlag::LuauEagerGeneralization3)
+        return;
+
+    fileResolver.source["game/ConfigReader"] = R"(
+        --!strict
+        local ConfigReader = {}
+        ConfigReader.Defaults = {}
+
+        local Defaults = ConfigReader.Defaults
+        local Config = ConfigReader.Defaults
+
+        function ConfigReader:read(config_name: string)
+            if Config[config_name] ~= nil then
+                return Config[config_name]
+            elseif Defaults[config_name] ~= nil then
+                return Defaults[config_name]
+            else
+                error(config_name .. " must be defined in Config")
+            end
+        end
+
+
+        function ConfigReader:getFullConfigWithDefaults()
+            local config = {}
+            for key, val in pairs(ConfigReader.Defaults) do
+                config[key] = val
+            end
+            for key, val in pairs(Config) do
+                config[key] = val
+            end
+            return config
+        end
+
+        return ConfigReader
+    )";
+
+    fileResolver.source["game/Util"] = R"(
+        --!strict
+        local ConfigReader = require(script.Parent.ConfigReader)
+        local _ = ConfigReader:read("foobar")()
+    )";
+
+    LUAU_REQUIRE_ERRORS(frontend.check("game/Util"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "is_safe_integer_example")
+{
+    if (!FFlag::LuauEagerGeneralization3)
+        return;
+
+    fileResolver.source["game/isInteger"] = R"(
+        --!strict
+        return function(value)
+            return type(value) == "number" and value ~= math.huge and value == math.floor(value)
+        end
+    )";
+
+    fileResolver.source["game/MAX_SAFE_INTEGER"] = R"(
+        --!strict
+        return 42
+    )";
+
+    fileResolver.source["game/Util"] = R"(
+        --!strict
+        local isInteger = require(script.Parent.isInteger)
+        local MAX_SAFE_INTEGER = require(script.Parent.MAX_SAFE_INTEGER)
+        return function(value)
+        	return isInteger(value) and math.abs(value) <= MAX_SAFE_INTEGER
+        end
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(frontend.check("game/Util"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_remover_heap_use_after_free")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+        _ = if l0.n0.n0 then {n4(...,setmetatable(setmetatable(_),_)),_ == _,} elseif _.ceil._ then _ elseif _ then not _
+    )"));
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        do
+        _ = if _[_] then {[_(``)]="y",} elseif _ then _ elseif _[_] then "" elseif _ then _ elseif _[_] then {} elseif _[_] then false else ""
+        end
+    )"));
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local l249 = require(module0)
+        _,_ = {[`{_}`]=_,[_._G._]=(_)(),[_["" + _]._G]={_=_,_=_,[_._G[_]._]=_G,},},_,(_)()
+    )"));
+
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_assign_index_constraint")
+{
+    ScopedFastFlag _{FFlag::LuauMissingFollowInAssignIndexConstraint, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        _._G = nil
+        for _ in ... do
+        break
+        end
+        for _ in function<t0,t0,t0>(l0)
+        _,_._,l0 = l0,_,_._
+        local _ = l0,{[_]=_,}
+        _[{nil=_,}](_)
+        end,{[_]=_,} do
+        end
+        _ -= _
     )"));
 }
 

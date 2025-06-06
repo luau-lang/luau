@@ -1,7 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IostreamHelpers.h"
+#include "Luau/Error.h"
 #include "Luau/ToString.h"
 #include "Luau/TypePath.h"
+
+#include <type_traits>
 
 namespace Luau
 {
@@ -250,6 +253,18 @@ static void errorToString(std::ostream& stream, const T& err)
     }
     else if constexpr (std::is_same_v<T, UnexpectedArrayLikeTableItem>)
         stream << "UnexpectedArrayLikeTableItem {}";
+    else if constexpr (std::is_same_v<T, CannotCheckDynamicStringFormatCalls>)
+        stream << "CannotCheckDynamicStringFormatCalls {}";
+    else if constexpr (std::is_same_v<T, GenericTypeCountMismatch>)
+    {
+        stream << "GenericTypeCountMismatch { subTyGenericCount = " << err.subTyGenericCount << ", superTyGenericCount = " << err.superTyGenericCount
+               << " }";
+    }
+    else if constexpr (std::is_same_v<T, GenericTypePackCountMismatch>)
+    {
+        stream << "GenericTypePackCountMismatch { subTyGenericPackCount = " << err.subTyGenericPackCount
+               << ", superTyGenericPackCount = " << err.superTyGenericPackCount << " }";
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

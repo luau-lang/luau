@@ -22,7 +22,6 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauStringPartLengthLimit)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -959,34 +958,21 @@ struct TypeStringifier
             if (needParens)
                 state.emit(")");
 
-            if (FFlag::LuauStringPartLengthLimit)
-                resultsLength += state.result.name.length();
-
+            resultsLength += state.result.name.length();
             results.push_back(std::move(state.result.name));
 
             state.result.name = std::move(saved);
 
-            if (FFlag::LuauStringPartLengthLimit)
-            {
-                lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
+            lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
 
-                if (lengthLimitHit)
-                    break;
-            }
+            if (lengthLimitHit)
+                break;
         }
 
         state.unsee(&uv);
 
-        if (FFlag::LuauStringPartLengthLimit)
-        {
-            if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
-                std::sort(results.begin(), results.end());
-        }
-        else
-        {
-            if (!FFlag::DebugLuauToStringNoLexicalSort)
-                std::sort(results.begin(), results.end());
-        }
+        if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
+            std::sort(results.begin(), results.end());
 
         if (optional && results.size() > 1)
             state.emit("(");
@@ -1049,34 +1035,21 @@ struct TypeStringifier
             if (needParens)
                 state.emit(")");
 
-            if (FFlag::LuauStringPartLengthLimit)
-                resultsLength += state.result.name.length();
-
+            resultsLength += state.result.name.length();
             results.push_back(std::move(state.result.name));
 
             state.result.name = std::move(saved);
 
-            if (FFlag::LuauStringPartLengthLimit)
-            {
-                lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
+            lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
 
-                if (lengthLimitHit)
-                    break;
-            }
+            if (lengthLimitHit)
+                break;
         }
 
         state.unsee(&uv);
 
-        if (FFlag::LuauStringPartLengthLimit)
-        {
-            if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
-                std::sort(results.begin(), results.end());
-        }
-        else
-        {
-            if (!FFlag::DebugLuauToStringNoLexicalSort)
-                std::sort(results.begin(), results.end());
-        }
+        if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
+            std::sort(results.begin(), results.end());
 
         bool first = true;
         bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);

@@ -16,8 +16,7 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 using namespace Luau;
 
@@ -1619,8 +1618,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypeGenericsAndNegations, true};
-
     // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
     // (~(false?), ~(false?)) -> (~(false?) & ~(false?)) | ~(false?)
 
@@ -1644,7 +1641,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization2, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization3, true};
 
     TypeId argTy = arena.freshType(builtinTypes, moduleScope.get());
     FreeType* freeArg = getMutable<FreeType>(argTy);

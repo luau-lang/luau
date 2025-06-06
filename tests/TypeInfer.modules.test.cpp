@@ -13,8 +13,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
-LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 
 using namespace Luau;
@@ -746,14 +745,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
         local _ = require(game.A);
     )");
 
-    if (FFlag::LuauAddCallConstraintForIterableFunctions && !FFlag::LuauOptimizeFalsyAndTruthyIntersect)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(3, result);
-    }
-    else
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
@@ -785,7 +777,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         CHECK_EQ("(unknown) -> unknown", toString(requireTypeAtPosition({13, 23})));
     }

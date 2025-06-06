@@ -62,6 +62,12 @@ public:
     bool operator==(const TypeIds& there) const;
     size_t getHash() const;
     bool isNever() const;
+
+    /**
+     * Moves the contents of this container into a `std::vector` and returns it.
+     * This container will be empty after `take` is called.
+     */
+    std::vector<TypeId> take();
 };
 
 } // namespace Luau

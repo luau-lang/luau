@@ -4,16 +4,12 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRefineWaitForBlockedTypesInTarget)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
-LUAU_FASTFLAG(LuauPreprocessTypestatedArgument)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
-LUAU_FASTFLAG(LuauSubtypeGenericsAndNegations)
-LUAU_FASTFLAG(LuauNoMoreInjectiveTypeFunctions)
 
 using namespace Luau;
 
@@ -418,9 +414,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauReportSubtypingErrors, true},
-        {FFlag::LuauEagerGeneralization2, true},
-        {FFlag::LuauSubtypeGenericsAndNegations, true},
-        {FFlag::LuauNoMoreInjectiveTypeFunctions, true},
+        {FFlag::LuauEagerGeneralization3, true},
     };
 
     CheckResult result = check(R"(
@@ -553,7 +547,6 @@ TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(0.5))
 {
-    ScopedFastFlag _{FFlag::LuauRefineWaitForBlockedTypesInTarget, true};
     // We do not care about the errors here, only that this finishes typing
     // in a sensible amount of time.
     LUAU_REQUIRE_ERRORS(check(R"(

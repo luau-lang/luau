@@ -10,7 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -558,7 +558,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSimplifyOutOfLine, true},
+        {FFlag::LuauSimplifyOutOfLine2, true},
     };
 
     CheckResult result = check(R"(

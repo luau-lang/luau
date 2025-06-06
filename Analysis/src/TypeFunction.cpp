@@ -48,16 +48,14 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAG(LuauOptimizeFalsyAndTruthyIntersect)
 LUAU_FASTFLAGVARIABLE(LuauNarrowIntersectionNevers)
-LUAU_FASTFLAGVARIABLE(LuauRefineWaitForBlockedTypesInTarget)
-LUAU_FASTFLAGVARIABLE(LuauNoMoreInjectiveTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauNotAllBinaryTypeFunsHaveDefaults)
 LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
+LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
 
 namespace Luau
 {
@@ -285,7 +283,7 @@ struct TypeFunctionReducer
         }
         else if (is<GenericType>(ty))
         {
-            if (FFlag::LuauEagerGeneralization2)
+            if (FFlag::LuauEagerGeneralization3)
                 return SkipTestResult::Generic;
             else
                 return SkipTestResult::Irreducible;
@@ -307,7 +305,7 @@ struct TypeFunctionReducer
         }
         else if (is<GenericTypePack>(ty))
         {
-            if (FFlag::LuauEagerGeneralization2)
+            if (FFlag::LuauEagerGeneralization3)
                 return SkipTestResult::Generic;
             else
                 return SkipTestResult::Irreducible;
@@ -1261,7 +1259,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
         operandTy = follow(operandTy);
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
@@ -1858,7 +1856,7 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
         return {rhsTy, Reduction::MaybeOk, {}, {}};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
             return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
@@ -1905,7 +1903,7 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (lhsTy == instance || rhsTy == instance)
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
             return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
@@ -1938,16 +1936,6 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
             emplaceType<BoundType>(asMutable(lhsTy), ctx->builtins->numberType);
         else if (rhsFree && isNumber(lhsTy))
             emplaceType<BoundType>(asMutable(rhsTy), ctx->builtins->numberType);
-        else if (!FFlag::LuauNoMoreInjectiveTypeFunctions && lhsFree && ctx->normalizer->isInhabited(rhsTy) != NormalizationResult::False)
-        {
-            auto c1 = ctx->pushConstraint(EqualityConstraint{lhsTy, rhsTy});
-            const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
-        }
-        else if (!FFlag::LuauNoMoreInjectiveTypeFunctions && rhsFree && ctx->normalizer->isInhabited(lhsTy) != NormalizationResult::False)
-        {
-            auto c1 = ctx->pushConstraint(EqualityConstraint{rhsTy, lhsTy});
-            const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
-        }
     }
 
     // The above might have caused the operand types to be rebound, we need to follow them again
@@ -2279,7 +2267,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     for (size_t i = 1; i < typeParams.size(); i++)
         discriminantTypes.push_back(follow(typeParams.at(i)));
 
-    const bool targetIsPending = FFlag::LuauEagerGeneralization2 ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
+    const bool targetIsPending = FFlag::LuauEagerGeneralization3 ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
                                                                  : isPending(targetTy, ctx->solver);
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
@@ -2294,16 +2282,13 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         }
     }
 
-    if (FFlag::LuauRefineWaitForBlockedTypesInTarget)
-    {
-        // If we have a blocked type in the target, we *could* potentially
-        // refine it, but more likely we end up with some type explosion in
-        // normalization.
-        FindRefinementBlockers frb;
-        frb.traverse(targetTy);
-        if (!frb.found.empty())
-            return {std::nullopt, Reduction::MaybeOk, {frb.found.begin(), frb.found.end()}, {}};
-    }
+    // If we have a blocked type in the target, we *could* potentially
+    // refine it, but more likely we end up with some type explosion in
+    // normalization.
+    FindRefinementBlockers frb;
+    frb.traverse(targetTy);
+    if (!frb.found.empty())
+        return {std::nullopt, Reduction::MaybeOk, {frb.found.begin(), frb.found.end()}, {}};
 
     // Refine a target type and a discriminant one at a time.
     // Returns result : TypeId, toBlockOn : vector<TypeId>
@@ -2353,59 +2338,43 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
                 }
             }
 
-            if (FFlag::LuauOptimizeFalsyAndTruthyIntersect)
+            // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
+            // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
+            // We also fire for simple discriminants such as false? and ~(false?): the falsy and truthy types respectively
+            // NOTE: It would be nice to be able to do a simple intersection for something like:
+            //
+            //  { a: A, b: B, ... } & { x: X }
+            //
+            if (is<TableType>(target) || isSimpleDiscriminant(discriminant))
             {
-                // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
-                // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
-                // We also fire for simple discriminants such as false? and ~(false?): the falsy and truthy types respectively
-                // NOTE: It would be nice to be able to do a simple intersection for something like:
-                //
-                //  { a: A, b: B, ... } & { x: X }
-                //
-                if (is<TableType>(target) || isSimpleDiscriminant(discriminant))
+                SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+                if (FFlag::LuauEagerGeneralization3)
                 {
-                    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                    if (FFlag::LuauEagerGeneralization2)
+                    // Simplification considers free and generic types to be
+                    // 'blocking', but that's not suitable for refine<>.
+                    //
+                    // If we are only blocked on those types, we consider
+                    // the simplification a success and reduce.
+                    if (std::all_of(
+                            begin(result.blockedTypes),
+                            end(result.blockedTypes),
+                            [](auto&& v)
+                            {
+                                return is<FreeType, GenericType>(follow(v));
+                            }
+                        ))
                     {
-                        // Simplification considers free and generic types to be
-                        // 'blocking', but that's not suitable for refine<>.
-                        //
-                        // If we are only blocked on those types, we consider
-                        // the simplification a success and reduce.
-                        if (std::all_of(
-                                begin(result.blockedTypes),
-                                end(result.blockedTypes),
-                                [](auto&& v)
-                                {
-                                    return is<FreeType, GenericType>(follow(v));
-                                }
-                            ))
-                        {
-                            return {result.result, {}};
-                        }
-                        else
-                            return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+                        return {result.result, {}};
                     }
                     else
-                    {
-                        if (!result.blockedTypes.empty())
-                            return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
-                    }
-                    return {result.result, {}};
+                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
                 }
-            }
-            else
-            {
-                // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
-                // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
-                if (get<TableType>(target))
+                else
                 {
-                    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
                     if (!result.blockedTypes.empty())
                         return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
-
-                    return {result.result, {}};
                 }
+                return {result.result, {}};
             }
 
 
@@ -3333,7 +3302,7 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
 {
     targetTy = follow(targetTy);
 
-    std::optional<TypeId> metatable = std::nullopt;
+    std::optional<TypeId> result = std::nullopt;
     bool erroneous = true;
 
     if (auto table = get<TableType>(targetTy))
@@ -3341,19 +3310,19 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
 
     if (auto mt = get<MetatableType>(targetTy))
     {
-        metatable = mt->metatable;
+        result = mt->metatable;
         erroneous = false;
     }
 
     if (auto clazz = get<ExternType>(targetTy))
     {
-        metatable = clazz->metatable;
+        result = clazz->metatable;
         erroneous = false;
     }
 
     if (auto primitive = get<PrimitiveType>(targetTy))
     {
-        metatable = primitive->metatable;
+        result = primitive->metatable;
         erroneous = false;
     }
 
@@ -3362,8 +3331,15 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
         if (get<StringSingleton>(singleton))
         {
             auto primitiveString = get<PrimitiveType>(ctx->builtins->stringType);
-            metatable = primitiveString->metatable;
+            result = primitiveString->metatable;
         }
+        erroneous = false;
+    }
+
+    if (FFlag::LuauUpdateGetMetatableTypeSignature && get<AnyType>(targetTy))
+    {
+        // getmetatable<any> ~ any
+        result = targetTy;
         erroneous = false;
     }
 
@@ -3379,8 +3355,8 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
     if (metatableMetamethod)
         return {metatableMetamethod, Reduction::MaybeOk, {}, {}};
 
-    if (metatable)
-        return {metatable, Reduction::MaybeOk, {}, {}};
+    if (result)
+        return {result, Reduction::MaybeOk, {}, {}};
 
     return {ctx->builtins->nilType, Reduction::MaybeOk, {}, {}};
 }
@@ -3428,15 +3404,33 @@ TypeFunctionReductionResult<TypeId> getmetatableTypeFunction(
         std::vector<TypeId> parts{};
         parts.reserve(it->parts.size());
 
+        bool erroredWithUnknown = false;
+
         for (auto part : it->parts)
         {
             TypeFunctionReductionResult<TypeId> result = getmetatableHelper(part, location, ctx);
 
             if (!result.result)
-                return result;
+            {
+                // Don't immediately error if part is unknown
+                if (FFlag::LuauUpdateGetMetatableTypeSignature && get<UnknownType>(follow(part)))
+                {
+                    erroredWithUnknown = true;
+                    continue;
+                }
+                else
+                    return result;
+            }
 
             parts.push_back(*result.result);
         }
+
+        // If all parts are unknown, return erroneous reduction
+        if (FFlag::LuauUpdateGetMetatableTypeSignature && erroredWithUnknown && parts.empty())
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        if (FFlag::LuauUpdateGetMetatableTypeSignature && parts.size() == 1)
+            return {parts.front(), Reduction::MaybeOk, {}, {}};
 
         return {ctx->arena->addType(IntersectionType{std::move(parts)}), Reduction::MaybeOk, {}, {}};
     }
@@ -3495,7 +3489,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
     , eqFunc{"eq", eqTypeFunction}
-    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization2}
+    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization3}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}

@@ -19,7 +19,7 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 
 using namespace Luau;
@@ -4468,7 +4468,7 @@ TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
 
     auto ac = autocomplete('1');
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization3)
     {
         // This `if` statement is because `LuauEagerGeneralization2`
         // sets some flags
