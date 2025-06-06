@@ -10,13 +10,14 @@
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
+#include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
-#include "Luau/Substitution.h"
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 
-LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization2)
+LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization3)
+LUAU_FASTFLAGVARIABLE(LuauGeneralizationCannotMutateAcrossModules)
 
 namespace Luau
 {
@@ -469,7 +470,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (FFlag::LuauEagerGeneralization2)
+        if (FFlag::LuauEagerGeneralization3)
         {
             if (!subsumes(scope, ft.scope))
                 return true;
@@ -520,7 +521,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
         {
-            if (FFlag::LuauEagerGeneralization2)
+            if (FFlag::LuauEagerGeneralization3)
                 unsealedTables.insert(ty);
             else
             {
@@ -593,7 +594,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if (tt.indexer)
         {
-            if (FFlag::LuauEagerGeneralization2)
+            if (FFlag::LuauEagerGeneralization3)
             {
                 // {[K]: V} is equivalent to three functions: get, set, and iterate
                 //
@@ -651,7 +652,7 @@ struct FreeTypeSearcher : TypeVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        if (FFlag::LuauEagerGeneralization2)
+        if (FFlag::LuauEagerGeneralization3)
         {
             GeneralizationParams<TypePackId>& params = typePacks[tp];
             ++params.useCount;
@@ -1127,129 +1128,77 @@ struct TypeCacher : TypeOnceVisitor
     }
 };
 
-struct RemoveType : Substitution // NOLINT
+namespace
+{
+
+struct TypeRemover
 {
     NotNull<BuiltinTypes> builtinTypes;
+    NotNull<TypeArena> arena;
+
     TypeId needle;
+    DenseHashSet<TypeId> seen{nullptr};
 
-    RemoveType(NotNull<BuiltinTypes> builtinTypes, TypeArena* arena, TypeId needle)
-        : Substitution(arena)
-        , builtinTypes(builtinTypes)
-        , needle(needle)
+    void process(TypeId item)
     {
-    }
+        item = follow(item);
 
-    bool ignoreChildren(TypeId ty) override
-    {
-        if (get<UnionType>(ty) || get<IntersectionType>(ty))
-            return false;
-        else
-            return true;
-    }
+        // If we've already visited this item, or it's outside our arena, then
+        // do not try to mutate it.
+        if (seen.contains(item) || item->owningArena != arena || item->persistent)
+            return;
+        seen.insert(item);
 
-    bool isDirty(TypeId ty) override
-    {
-        // A union or intersection is dirty if it contains the needle or if it has any duplicate members.
-        if (auto ut = get<UnionType>(ty))
+        if (auto ut = getMutable<UnionType>(item))
         {
-            DenseHashSet<TypeId> distinctParts{nullptr};
-            size_t count = 0;
-            for (TypeId part : ut)
+            TypeIds newOptions;
+            for (TypeId option : ut->options)
             {
-                ++count;
-                if (part == needle)
-                    return true;
-                distinctParts.insert(follow(part));
+                process(option);
+                option = follow(option);
+                if (option != needle && !is<NeverType>(option) && option != item)
+                    newOptions.insert(option);
             }
-            return distinctParts.size() != count;
+            if (ut->options.size() != newOptions.size())
+            {
+                if (newOptions.empty())
+                    emplaceType<BoundType>(asMutable(item), builtinTypes->neverType);
+                else if (newOptions.size() == 1)
+                    emplaceType<BoundType>(asMutable(item), *newOptions.begin());
+                else
+                    emplaceType<BoundType>(asMutable(item), arena->addType(UnionType{newOptions.take()}));
+            }
         }
-        else if (auto it = get<IntersectionType>(ty))
+        else if (auto it = getMutable<IntersectionType>(item))
         {
-            DenseHashSet<TypeId> distinctParts{nullptr};
-            size_t count = 0;
-            for (TypeId part : it)
+            TypeIds newParts;
+            for (TypeId part : it->parts)
             {
-                ++count;
-                if (part == needle)
-                    return true;
-                distinctParts.insert(follow(part));
+                process(part);
+                part = follow(part);
+                if (part != needle && !is<UnknownType>(part) && part != item)
+                    newParts.insert(part);
             }
-            return distinctParts.size() != count;
+            if (it->parts.size() != newParts.size())
+            {
+                if (newParts.empty())
+                    emplaceType<BoundType>(asMutable(item), builtinTypes->unknownType);
+                else if (newParts.size() == 1)
+                    emplaceType<BoundType>(asMutable(item), *newParts.begin());
+                else
+                    emplaceType<BoundType>(asMutable(item), arena->addType(IntersectionType{newParts.take()}));
+            }
         }
-
-        return false;
     }
 
-    bool isDirty(TypePackId tp) override
-    {
-        return false;
-    }
-
-    TypeId clean(TypeId ty) override
-    {
-        if (auto ut = get<UnionType>(ty))
-        {
-            OrderedSet<TypeId> newParts;
-
-            for (TypeId ty : ut)
-            {
-                if (ty != needle && !is<NeverType>(ty))
-                    newParts.insert(ty);
-            }
-
-            if (newParts.empty())
-                return builtinTypes->neverType;
-            else if (newParts.size() == 1)
-            {
-                TypeId onlyType = *newParts.begin();
-                LUAU_ASSERT(onlyType != needle);
-                return onlyType;
-            }
-            else
-                return arena->addType(UnionType{newParts.takeVector()});
-        }
-        else if (auto it = get<IntersectionType>(ty))
-        {
-            OrderedSet<TypeId> newParts;
-
-            for (TypeId ty : it)
-            {
-                if (ty != needle && !is<UnknownType>(ty))
-                    newParts.insert(ty);
-            }
-
-            if (newParts.empty())
-                return builtinTypes->unknownType;
-            else if (newParts.size() == 1)
-            {
-                TypeId onlyType = *newParts.begin();
-                LUAU_ASSERT(onlyType != needle);
-                return onlyType;
-            }
-            else
-                return arena->addType(IntersectionType{newParts.takeVector()});
-        }
-        else
-            return ty;
-    }
-
-    TypePackId clean(TypePackId tp) override
-    {
-        return tp;
-    }
 };
 
-/**
- * Remove occurrences of `needle` within `haystack`.  This is used to cull cyclic bounds from free types.
- *
- * @param haystack Either the upper or lower bound of a free type.
- * @param needle The type to be removed.
- */
-[[nodiscard]]
-static std::optional<TypeId> removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId haystack, TypeId needle)
+void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId haystack, TypeId needle)
 {
-    RemoveType rt{builtinTypes, arena, needle};
-    return rt.substitute(haystack);
+    TypeRemover tr{builtinTypes, arena, needle};
+    tr.process(haystack);
+}
+
 }
 
 GeneralizationResult<TypeId> generalizeType(
@@ -1274,7 +1223,7 @@ GeneralizationResult<TypeId> generalizeType(
 
     if (!hasLowerBound && !hasUpperBound)
     {
-        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization2 && (params.polarity != Polarity::Mixed && params.useCount == 1)))
+        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization3 && (params.polarity != Polarity::Mixed && params.useCount == 1)))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1294,19 +1243,11 @@ GeneralizationResult<TypeId> generalizeType(
         if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == freeTy)
             lowerFree->upperBound = builtinTypes->unknownType;
         else
-        {
-            std::optional<TypeId> removed = removeType(arena, builtinTypes, lb, freeTy);
-            if (removed)
-                lb = *removed;
-            else
-                return {std::nullopt, false, /*resourceLimitsExceeded*/ true};
-
-            ft->lowerBound = lb;
-        }
+            removeType(arena, builtinTypes, lb, freeTy);
 
         if (follow(lb) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), lb);
-        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization2 && params.useCount == 1))
+        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization3 && params.useCount == 1))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1321,15 +1262,7 @@ GeneralizationResult<TypeId> generalizeType(
         if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == freeTy)
             upperFree->lowerBound = builtinTypes->neverType;
         else
-        {
-            // If the free type appears within its own upper bound, cull that cycle.
-            std::optional<TypeId> removed = removeType(arena, builtinTypes, ub, freeTy);
-            if (removed)
-                ub = *removed;
-            else
-                return {std::nullopt, false, /*resourceLimitsExceeded*/ true};
-            ft->upperBound = ub;
-        }
+            removeType(arena, builtinTypes, ub, freeTy);
 
         if (follow(ub) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), ub);
@@ -1339,17 +1272,14 @@ GeneralizationResult<TypeId> generalizeType(
             //
             //  A <: 'b < C
             //
-            // We can approximately generalize this to the intersection of it's
+            // We can approximately generalize this to the intersection of its
             // bounds, taking care to avoid constructing a degenerate
             // union or intersection by clipping the free type from the upper
             // and lower bounds, then also cleaning the resulting intersection.
-            std::optional<TypeId> removedLb = removeType(arena, builtinTypes, ft->lowerBound, freeTy);
-            if (!removedLb)
-                return {std::nullopt, false, true};
-            std::optional<TypeId> cleanedTy = removeType(arena, builtinTypes, arena->addType(IntersectionType{{*removedLb, ub}}), freeTy);
-            if (!cleanedTy)
-                return {std::nullopt, false, true};
-            emplaceType<BoundType>(asMutable(freeTy), *cleanedTy);
+            removeType(arena, builtinTypes, ft->lowerBound, freeTy);
+            TypeId cleanedTy = arena->addType(IntersectionType{{ft->lowerBound, ub}});
+            removeType(arena, builtinTypes, cleanedTy, freeTy);
+            emplaceType<BoundType>(asMutable(freeTy), cleanedTy);
         }
         else
         {
@@ -1423,7 +1353,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    if (FFlag::LuauEagerGeneralization2)
+    if (FFlag::LuauEagerGeneralization3)
     {
         FunctionType* functionTy = getMutable<FunctionType>(ty);
         auto pushGeneric = [&](TypeId t)
@@ -1521,6 +1451,12 @@ struct GenericCounter : TypeVisitor
         Polarity polarity = Polarity::None;
     };
 
+    // This traversal does need to walk into types multiple times because we
+    // care about generics that are only refererd to once. If a type is present
+    // more than once, however, we don't care exactly how many times, so we also
+    // track counts in our "seen set."
+    DenseHashMap<TypeId, size_t> seenCounts{nullptr};
+
     NotNull<DenseHashSet<TypeId>> cachedTypes;
     DenseHashMap<TypeId, CounterState> generics{nullptr};
     DenseHashMap<TypePackId, CounterState> genericPacks{nullptr};
@@ -1537,6 +1473,12 @@ struct GenericCounter : TypeVisitor
         if (ty->persistent)
             return false;
 
+        size_t& seenCount = seenCounts[ty];
+        if (seenCount > 1)
+            return false;
+
+        ++seenCount;
+
         polarity = invert(polarity);
         traverse(ft.argTypes);
         polarity = invert(polarity);
@@ -1549,6 +1491,11 @@ struct GenericCounter : TypeVisitor
     {
         if (ty->persistent)
             return false;
+
+        size_t& seenCount = seenCounts[ty];
+        if (seenCount > 1)
+            return false;
+        ++seenCount;
 
         const Polarity previous = polarity;
 
@@ -1650,7 +1597,7 @@ void pruneUnnecessaryGenerics(
     TypeId ty
 )
 {
-    if (!FFlag::LuauEagerGeneralization2)
+    if (!FFlag::LuauEagerGeneralization3)
         return;
 
     ty = follow(ty);
@@ -1696,7 +1643,11 @@ void pruneUnnecessaryGenerics(
     for (const auto& [generic, state] : counter.generics)
     {
         if (state.count == 1 && state.polarity != Polarity::Mixed)
+        {
+            if (FFlag::LuauGeneralizationCannotMutateAcrossModules && arena.get() != generic->owningArena)
+                continue;
             emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
+        }
     }
 
     // Remove duplicates and types that aren't actually generics.

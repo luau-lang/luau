@@ -21,6 +21,8 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
 
 namespace Luau
 {
@@ -2897,6 +2899,24 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     if (here.functions.parts.size() * there.functions.parts.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
         return NormalizationResult::HitLimits;
 
+    if (FFlag::LuauNormalizationReorderFreeTypeIntersect)
+    {
+        for (auto& [tyvar, inter] : there.tyvars)
+        {
+            int index = tyvarIndex(tyvar);
+            if (ignoreSmallerTyvars < index)
+            {
+                auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
+                if (fresh)
+                {
+                    NormalizationResult res = unionNormals(*found->second, here, index);
+                    if (res != NormalizationResult::True)
+                        return res;
+                }
+            }
+        }
+    }
+
     here.booleans = intersectionOfBools(here.booleans, there.booleans);
 
     intersectExternTypes(here.externTypes, there.externTypes);
@@ -2909,20 +2929,24 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     intersectFunctions(here.functions, there.functions);
     intersectTables(here.tables, there.tables);
 
-    for (auto& [tyvar, inter] : there.tyvars)
+    if (!FFlag::LuauNormalizationReorderFreeTypeIntersect)
     {
-        int index = tyvarIndex(tyvar);
-        if (ignoreSmallerTyvars < index)
+        for (auto& [tyvar, inter] : there.tyvars)
         {
-            auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
-            if (fresh)
+            int index = tyvarIndex(tyvar);
+            if (ignoreSmallerTyvars < index)
             {
-                NormalizationResult res = unionNormals(*found->second, here, index);
-                if (res != NormalizationResult::True)
-                    return res;
+                auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
+                if (fresh)
+                {
+                    NormalizationResult res = unionNormals(*found->second, here, index);
+                    if (res != NormalizationResult::True)
+                        return res;
+                }
             }
         }
     }
+
     for (auto it = here.tyvars.begin(); it != here.tyvars.end();)
     {
         TypeId tyvar = it->first;
@@ -3016,10 +3040,22 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     }
     else if (get<TableType>(there) || get<MetatableType>(there))
     {
-        TypeIds tables = std::move(here.tables);
-        clearNormal(here);
-        intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
-        here.tables = std::move(tables);
+        if (FFlag::LuauSolverV2 && FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
+        {
+            NormalizedExternType externTypes = std::move(here.externTypes);
+            TypeIds tables = std::move(here.tables);
+            clearNormal(here);
+            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            here.tables = std::move(tables);
+            here.externTypes = std::move(externTypes);
+        }
+        else
+        {
+            TypeIds tables = std::move(here.tables);
+            clearNormal(here);
+            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            here.tables = std::move(tables);
+        }
     }
     else if (get<ExternType>(there))
     {

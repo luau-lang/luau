@@ -1,14 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
 
 #include "Fixture.h"
-#include "DiffAsserts.h"
 
 #include "doctest.h"
 
@@ -32,7 +27,7 @@ TEST_CASE_FIXTURE(Fixture, "string_length")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ_DIFF(builtinTypes->numberType, requireType("t"));
+    CHECK_EQ(builtinTypes->numberType, requireType("t"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_index")

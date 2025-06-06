@@ -13,7 +13,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceElideAssert)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 namespace Luau
@@ -297,9 +296,6 @@ TypeId matchLiteralType(
             }
             else if (item.kind == AstExprTable::Item::List)
             {
-                if (!FFlag::LuauBidirectionalInferenceElideAssert)
-                    LUAU_ASSERT(tableTy->indexer);
-
                 if (expectedTableTy->indexer)
                 {
                     const TypeId* propTy = astTypes->find(item.value);

@@ -14,6 +14,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcAgainstOom, false)
+
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
  *
@@ -446,6 +448,21 @@ static void shrinkstack(lua_State* L)
     condhardstacktests(luaD_reallocstack(L, s_used, 0));
 }
 
+static void shrinkstackprotected(lua_State* L)
+{
+    struct CallContext
+    {
+        static void run(lua_State* L, void* ud)
+        {
+            shrinkstack(L);
+        }
+    } ctx = {};
+
+    // the resize call can fail on exception, in which case we will continue with original size
+    int status = luaD_rawrunprotected(L, &CallContext::run, &ctx);
+    LUAU_ASSERT(status == LUA_OK || status == LUA_ERRMEM);
+}
+
 /*
 ** traverse one gray object, turning it to black.
 ** Returns `quantity' traversed.
@@ -497,7 +514,12 @@ static size_t propagatemark(global_State* g)
 
         // we could shrink stack at any time but we opt to do it during initial mark to do that just once per cycle
         if (g->gcstate == GCSpropagate)
-            shrinkstack(th);
+        {
+            if (DFFlag::LuauGcAgainstOom)
+                shrinkstackprotected(th);
+            else
+                shrinkstack(th);
+        }
 
         return sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
     }
@@ -544,6 +566,26 @@ static int isobjcleared(GCObject* o)
 }
 
 #define iscleared(o) (iscollectable(o) && isobjcleared(gcvalue(o)))
+
+static void tableresizeprotected(lua_State* L, LuaTable* t, int nhsize)
+{
+    struct CallContext
+    {
+        LuaTable* t;
+        int nhsize;
+
+        static void run(lua_State* L, void* ud)
+        {
+            CallContext* ctx = (CallContext*)ud;
+
+            luaH_resizehash(L, ctx->t, ctx->nhsize);
+        }
+    } ctx = {t, nhsize};
+
+    // the resize call can fail on exception, in which case we will continue with original size
+    int status = luaD_rawrunprotected(L, &CallContext::run, &ctx);
+    LUAU_ASSERT(status == LUA_OK || status == LUA_ERRMEM);
+}
 
 /*
 ** clear collected entries from weaktables
@@ -592,7 +634,12 @@ static size_t cleartable(lua_State* L, GCObject* l)
             {
                 // shrink at 37.5% occupancy
                 if (activevalues < sizenode(h) * 3 / 8)
-                    luaH_resizehash(L, h, activevalues);
+                {
+                    if (DFFlag::LuauGcAgainstOom)
+                        tableresizeprotected(L, h, activevalues);
+                    else
+                        luaH_resizehash(L, h, activevalues);
+                }
             }
         }
 
@@ -635,12 +682,36 @@ static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
     }
 }
 
+static void stringresizeprotected(lua_State* L, int newsize)
+{
+    struct CallContext
+    {
+        int newsize;
+
+        static void run(lua_State* L, void* ud)
+        {
+            CallContext* ctx = (CallContext*)ud;
+
+            luaS_resize(L, ctx->newsize);
+        }
+    } ctx = {newsize};
+
+    // the resize call can fail on exception, in which case we will continue with original size
+    int status = luaD_rawrunprotected(L, &CallContext::run, &ctx);
+    LUAU_ASSERT(status == LUA_OK || status == LUA_ERRMEM);
+}
+
 static void shrinkbuffers(lua_State* L)
 {
     global_State* g = L->global;
     // check size of string hash
     if (g->strt.nuse < cast_to(uint32_t, g->strt.size / 4) && g->strt.size > LUA_MINSTRTABSIZE * 2)
-        luaS_resize(L, g->strt.size / 2); // table is too big
+    {
+        if (DFFlag::LuauGcAgainstOom)
+            stringresizeprotected(L, g->strt.size / 2); // table is too big
+        else
+            luaS_resize(L, g->strt.size / 2); // table is too big
+    }
 }
 
 static void shrinkbuffersfull(lua_State* L)
@@ -651,7 +722,12 @@ static void shrinkbuffersfull(lua_State* L)
     while (g->strt.nuse < cast_to(uint32_t, hashsize / 4) && hashsize > LUA_MINSTRTABSIZE * 2)
         hashsize /= 2;
     if (hashsize != g->strt.size)
-        luaS_resize(L, hashsize); // table is too big
+    {
+        if (DFFlag::LuauGcAgainstOom)
+            stringresizeprotected(L, hashsize); // table is too big
+        else
+            luaS_resize(L, hashsize); // table is too big
+    }
 }
 
 static bool deletegco(void* context, lua_Page* page, GCObject* gco)

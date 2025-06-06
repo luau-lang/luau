@@ -16,7 +16,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
@@ -188,7 +188,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements"
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauAddCallConstraintForIterableFunctions, true},
-        {FFlag::LuauSimplifyOutOfLine, true},
+        {FFlag::LuauSimplifyOutOfLine2, true},
         {FFlag::LuauDfgAllowUpdatesInLoops, true},
     };
 
@@ -1407,8 +1407,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1413")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_error_in_body")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
         {FFlag::LuauDfgAllowUpdatesInLoops, true},
     };
 
@@ -1499,8 +1501,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_unconditionally_fires_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_is_linearish")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
         {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
         {FFlag::LuauDfgAllowUpdatesInLoops, true},
     };

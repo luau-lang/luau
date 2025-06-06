@@ -14,9 +14,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization2)
-LUAU_FASTFLAG(LuauHasPropProperBlock)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 LUAU_FASTFLAG(LuauErrorSuppressionTypeFunctionArgs)
 
@@ -159,7 +158,7 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine, true};
+    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
 
     if (!FFlag::LuauSolverV2)
         return;
@@ -1652,7 +1651,8 @@ type foo<T> = { a: add<T, T>, b : add<T, T> }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "len_typefun_on_metatable")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    if (!FFlag::LuauSolverV2)
+        return;
 
     CheckResult result = check(R"(
 local t = setmetatable({}, { __mode = "v" })
@@ -1669,7 +1669,6 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "has_prop_on_irreducible_type_function")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauHasPropProperBlock{FFlag::LuauHasPropProperBlock, true};
 
     CheckResult result = check(R"(
 local test = "a" + "b"
@@ -1725,7 +1724,7 @@ struct TFFixture
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
 
     const ScopedFastFlag sff[1] = {
-        {FFlag::LuauEagerGeneralization2, true},
+        {FFlag::LuauEagerGeneralization3, true},
     };
 
     BuiltinTypeFunctions builtinTypeFunctions;

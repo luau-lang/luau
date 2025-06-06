@@ -8,8 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauStringFormatFixC, false)
-
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
 
@@ -1001,17 +999,9 @@ static int str_format(lua_State* L)
             {
             case 'c':
             {
-                if (DFFlag::LuauStringFormatFixC)
-                {
-                    int count = snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
-                    luaL_addlstring(&b, buff, count);
-                    continue; // skip the 'luaL_addlstring' at the end
-                }
-                else
-                {
-                    snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
-                    break;
-                }
+                int count = snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
+                luaL_addlstring(&b, buff, count);
+                continue; // skip the 'luaL_addlstring' at the end
             }
             case 'd':
             case 'i':

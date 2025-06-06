@@ -36,11 +36,11 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 LUAU_FASTFLAG(LuauYieldableContinuations)
 LUAU_FASTFLAG(LuauCurrentLineBounds)
 LUAU_FASTFLAG(LuauLoadNoOomThrow)
 LUAU_FASTFLAG(LuauHeapNameDetails)
+LUAU_DYNAMIC_FASTFLAG(LuauGcAgainstOom)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -713,8 +713,6 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
-    ScopedFastFlag luauStringFormatFixC{DFFlag::LuauStringFormatFixC, true};
-
     runConformance("strings.luau");
 }
 
@@ -768,9 +766,48 @@ TEST_CASE("Attrib")
     runConformance("attrib.luau");
 }
 
+static bool blockableReallocAllowed = true;
+
+static void* blockableRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
+{
+    if (nsize == 0)
+    {
+        free(ptr);
+        return nullptr;
+    }
+    else
+    {
+        if (!blockableReallocAllowed)
+            return nullptr;
+
+        return realloc(ptr, nsize);
+    }
+}
+
 TEST_CASE("GC")
 {
-    runConformance("gc.luau");
+    ScopedFastFlag luauGcAgainstOom{DFFlag::LuauGcAgainstOom, true};
+
+    runConformance(
+        "gc.luau",
+        [](lua_State* L)
+        {
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L)
+                {
+                    blockableReallocAllowed = !luaL_checkboolean(L, 1);
+                    return 0;
+                },
+                "setblockallocations",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "setblockallocations");
+        },
+        nullptr,
+        lua_newstate(blockableRealloc, nullptr)
+    );
 }
 
 TEST_CASE("Bitwise")

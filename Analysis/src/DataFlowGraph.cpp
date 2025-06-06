@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauPreprocessTypestatedArgument)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAddUpvalueTypesToLocalType)
@@ -1069,11 +1068,8 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 {
     visitExpr(c->func);
 
-    if (FFlag::LuauPreprocessTypestatedArgument)
-    {
-        for (AstExpr* arg : c->args)
-            visitExpr(arg);
-    }
+    for (AstExpr* arg : c->args)
+        visitExpr(arg);
 
     if (shouldTypestateForFirstArgument(*c) && c->args.size > 1 && isLValue(*c->args.begin()))
     {
@@ -1103,12 +1099,6 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
             graph.astRefinementKeys[firstArg] = key;
 
         visitLValue(firstArg, def);
-    }
-
-    if (!FFlag::LuauPreprocessTypestatedArgument)
-    {
-        for (AstExpr* arg : c->args)
-            visitExpr(arg);
     }
 
     // We treat function calls as "subscripted" as they could potentially
