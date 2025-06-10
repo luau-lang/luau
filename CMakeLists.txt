@@ -23,6 +23,7 @@ endif()
 
 project(Luau LANGUAGES CXX C)
 add_library(Luau.Common INTERFACE)
+add_library(Luau.Flow INTERFACE)
 add_library(Luau.CLI.lib STATIC)
 add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
@@ -67,6 +68,9 @@ add_library(Luau.VM.Internals INTERFACE)
 
 include(Sources.cmake)
 
+target_include_directories(Luau.Flow INTERFACE Flow/include)
+target_link_libraries(Luau.Flow INTERFACE Luau.Common)
+
 target_include_directories(Luau.Common INTERFACE Common/include)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
@@ -101,7 +105,7 @@ target_link_libraries(Luau.CodeGen PUBLIC Luau.Common)
 
 target_compile_features(Luau.VM PRIVATE cxx_std_11)
 target_include_directories(Luau.VM PUBLIC VM/include)
-target_link_libraries(Luau.VM PUBLIC Luau.Common)
+target_link_libraries(Luau.VM PUBLIC Luau.Common Luau.Flow)
 
 target_compile_features(Luau.Require PUBLIC cxx_std_17)
 target_include_directories(Luau.Require PUBLIC Require/Runtime/include)

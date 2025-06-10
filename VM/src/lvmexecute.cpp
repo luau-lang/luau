@@ -15,6 +15,8 @@
 #include "lbytecode.h"
 
 #include <string.h>
+#include <Flow/Flow.hpp>
+#include <limits>
 
 LUAU_FASTFLAG(LuauCurrentLineBounds)
 
@@ -126,7 +128,9 @@ LUAU_FASTFLAG(LuauCurrentLineBounds)
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else
 #define VM_CASE(op) case op:
-#define VM_NEXT() goto dispatch
+#define VM_NEXT() \
+Flow::getInstance().do_post_op(insn); \
+goto dispatch
 #define VM_CONTINUE(op) \
     dispatchOp = uint8_t(op); \
     goto dispatchContinue
@@ -258,6 +262,7 @@ reentry:
     base = L->base;
     k = cl->l.p->k;
 
+    Instruction insn = std::numeric_limits<std::uint32_t>::max();
     VM_NEXT(); // starts the interpreter "loop"
 
     {
