@@ -138,9 +138,9 @@ LUAU_FASTFLAG(LuauCurrentLineBounds)
  * Trigger a pre-op run
  */
 #define VM_PRE(L, instr) \
-    if (!Flow::getInstance().do_pre_op(L, instr)) \
-        VM_POST(L, insn); \
-    VM_NEXT();
+    if (!Flow::getInstance().do_pre_op(L, instr)) { \
+        VM_NEXT(); \
+    }
 
 /**
  * Trigger a post-op run
@@ -311,7 +311,6 @@ reentry:
                 Instruction insn = *pc++;
                 VM_PRE(L, insn);
                 LUAU_ASSERT(insn == 0);
-                VM_POST(L, insn);
                 VM_POST(L, insn);
                 VM_NEXT();
             }
