@@ -140,6 +140,7 @@ LUAU_FASTFLAG(LuauCurrentLineBounds)
 #define VM_PRE(L, pc) \
     if (!Flow::getInstance().do_pre_op(L, (std::uint32_t*)pc)) \
     { \
+        pc++; \
         VM_NEXT(); \
     }
 
