@@ -6,6 +6,7 @@
 #include "Luau/Autocomplete.h"
 #include "Luau/Common.h"
 #include "Luau/EqSatSimplification.h"
+#include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
@@ -29,18 +30,14 @@ LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
-LUAU_FASTFLAGVARIABLE(LuauBetterCursorInCommentDetection)
-LUAU_FASTFLAGVARIABLE(LuauAllFreeTypesHaveScopes)
-LUAU_FASTFLAGVARIABLE(LuauPersistConstraintGenerationScopes)
-LUAU_FASTFLAGVARIABLE(LuauCloneTypeAliasBindings)
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
-LUAU_FASTFLAGVARIABLE(LuauFragmentNoTypeFunEval)
 LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAGVARIABLE(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteIfRecommendations)
+LUAU_FASTFLAG(LuauExpectedTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauPopulateRefinedTypesInFragmentFromOldSolver)
 
 namespace Luau
 {
@@ -675,6 +672,7 @@ void cloneTypesFromFragment(
             destScope->lvalueTypes[d] = Luau::cloneIncremental(*lValue, *destArena, cloneState, destScope);
         }
     }
+
     for (const auto& [d, loc] : f.localBindingsReferenced)
     {
         if (std::optional<std::pair<Symbol, Binding>> pair = staleScope->linearSearchForBindingPair(loc->name.value, true))
@@ -688,6 +686,21 @@ void cloneTypesFromFragment(
             Binding b;
             b.typeId = builtins->unknownType;
             destScope->bindings[Symbol(loc)] = b;
+        }
+    }
+
+    if (FFlag::LuauPopulateRefinedTypesInFragmentFromOldSolver && !staleModule->checkedInNewSolver)
+    {
+        for (const auto& [d, loc] : f.localBindingsReferenced)
+        {
+            for (const Scope* stale = staleScope; stale; stale = stale->parent.get())
+            {
+                if (auto res = stale->refinements.find(Symbol(loc)); res != stale->refinements.end())
+                {
+                    destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
+                    break;
+                }
+            }
         }
     }
 
@@ -833,7 +846,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse_DEPRECATED(AstSt
                             }
                         }
                     }
-                    else if (auto typeFun = stat->as<AstStatTypeFunction>(); typeFun && FFlag::LuauUserTypeFunTypecheck)
+                    else if (auto typeFun = stat->as<AstStatTypeFunction>())
                     {
                         if (typeFun->location.contains(cursorPos))
                         {
@@ -1107,8 +1120,7 @@ FragmentTypeCheckResult typecheckFragment_(
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
-    if (FFlag::LuauFragmentNoTypeFunEval || FFlag::LuauUserTypeFunTypecheck)
-        typeFunctionRuntime.allowEvaluation = false;
+    typeFunctionRuntime.allowEvaluation = false;
 
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
@@ -1141,13 +1153,10 @@ FragmentTypeCheckResult typecheckFragment_(
     freshChildOfNearestScope->interiorFreeTypePacks.emplace();
     cg.rootScope = freshChildOfNearestScope.get();
 
-    if (FFlag::LuauUserTypeFunTypecheck)
-    {
-        // Create module-local scope for the type function environment
-        ScopePtr localTypeFunctionScope = std::make_shared<Scope>(cg.typeFunctionScope);
-        localTypeFunctionScope->location = root->location;
-        cg.typeFunctionRuntime->rootScope = localTypeFunctionScope;
-    }
+    // Create module-local scope for the type function environment
+    ScopePtr localTypeFunctionScope = std::make_shared<Scope>(cg.typeFunctionScope);
+    localTypeFunctionScope->location = root->location;
+    cg.typeFunctionRuntime->rootScope = localTypeFunctionScope;
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::CloneAndSquashScopeStart);
     cloneTypesFromFragment(
@@ -1201,6 +1210,19 @@ FragmentTypeCheckResult typecheckFragment_(
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverEnd);
 
+    if (FFlag::LuauExpectedTypeVisitor)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&incrementalModule->astTypes},
+            NotNull{&incrementalModule->astExpectedTypes},
+            NotNull{&incrementalModule->astResolvedTypes},
+            NotNull{&incrementalModule->internalTypes},
+            frontend.builtinTypes,
+            NotNull{freshChildOfNearestScope.get()}
+        };
+        root->visit(&etv);
+    }
+
     // In frontend we would forbid internal types
     // because this is just for autocomplete, we don't actually care
     // We also don't even need to typecheck - just synthesize types as best as we can
@@ -1253,7 +1275,8 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     FrontendOptions frontendOptions = opts.value_or(frontend.options);
     const ScopePtr& closestScope = FFlag::LuauBetterScopeSelection ? findClosestScope(module, parseResult.scopePos)
                                                                    : findClosestScope_DEPRECATED(module, parseResult.nearestStatement);
-    FragmentTypeCheckResult result = typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
+    FragmentTypeCheckResult result =
+        typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
     result.ancestry = std::move(parseResult.ancestry);
     reportFragmentString(reporter, tryParse->fragmentToParse);
     return {FragmentTypeCheckStatus::Success, result};
@@ -1267,11 +1290,8 @@ FragmentAutocompleteStatusResult tryFragmentAutocomplete(
     StringCompletionCallback stringCompletionCB
 )
 {
-    if (FFlag::LuauBetterCursorInCommentDetection)
-    {
-        if (isWithinComment(context.freshParse.commentLocations, cursorPosition))
-            return {FragmentAutocompleteStatus::Success, std::nullopt};
-    }
+    if (isWithinComment(context.freshParse.commentLocations, cursorPosition))
+        return {FragmentAutocompleteStatus::Success, std::nullopt};
     // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
     try
     {

@@ -10,10 +10,10 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauFixInfiniteRecursionInNormalization)
-LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
-LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion)
+LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
+LUAU_FASTFLAG(LuauSkipMalformedTypeAliases)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -210,7 +210,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
     };
+
     CheckResult result = check(R"(
         type T<a> = { v: a }
         local x: T<number> = { v = 123 }
@@ -219,18 +221,15 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Type '{ v: string }' could not be converted into 'T<number>'; \n"
-        "this is because accessing `v` results in `string` in the former type and `number` in the latter type, and "
-        "`string` is not exactly `number`";
-    CHECK(result.errors[0].location == Location{{4, 31}, {4, 44}});
-    CHECK_EQ(expected, toString(result.errors[0]));
+    CHECK(result.errors[0].location == Location{{4, 37}, {4, 42}});
+    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
     };
 
     CheckResult result = check(R"(
@@ -241,13 +240,8 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Type '{ t: { v: string } }' could not be converted into 'U<number>'; \n"
-        "this is because accessing `t.v` results in `string` in the former type and `number` in the latter type, and `string` is not exactly "
-        "`number`";
-
-    CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
-    CHECK_EQ(expected, toString(result.errors[0]));
+    CHECK(result.errors[0].location == Location{{4, 43}, {4, 48}});
+    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
@@ -360,8 +354,6 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 // Check that recursive intersection type doesn't generate an OOM
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function _(l0:(t0)&((t0)&(((t0)&((t0)->()))->(typeof(_),typeof(# _)))),l39,...):any
         end
@@ -975,9 +967,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_lose_track_of_PendingExpansionTypes_after_substitution")
 {
-    // CLI-114134 - We need egraphs to properly simplify these types.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     fileResolver.source["game/ReactCurrentDispatcher"] = R"(
         export type BasicStateAction<S> = ((S) -> S) | S
         export type Dispatch<A> = (A) -> ()
@@ -1201,7 +1190,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalizatio
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauFixInfiniteRecursionInNormalization, true},
     };
 
     CheckResult result = check(R"(
@@ -1228,8 +1216,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalizatio
 
 TEST_CASE_FIXTURE(Fixture, "exported_alias_location_is_accessible_on_module")
 {
-    ScopedFastFlag sff{FFlag::LuauRetainDefinitionAliasLocations, true};
-
     CheckResult result = check(R"(
         export type Value = string
     )");
@@ -1246,7 +1232,6 @@ TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_mod
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRetainDefinitionAliasLocations, true},
     };
 
     CheckResult result = check(R"(
@@ -1264,7 +1249,7 @@ TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_mod
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion, true};
+    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2, true};
 
     // This used to crash under the new solver: we would like this to continue
     // to not crash.
@@ -1273,6 +1258,47 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
         export type t4<t2, t0...> = t4<t0...>
     )"));
 }
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_bad_name")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSkipMalformedTypeAliases, true},
+    };
+
+    CheckResult result = check(R"(
+        type typeof = typeof(nil :: any)
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<ReservedIdentifier>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_duplicate_with_typeof")
+{
+    // NOTE: This pattern looks quite silly, but it's pretty common in the old
+    // solver in:
+    //
+    //  type Foo = typeof(setmetatable({} :: SomeType, {} :: SomeMetatableType))
+    //
+    ScopedFastFlag _{FFlag::LuauSkipMalformedTypeAliases, true};
+    CheckResult result = check(R"(
+        type A = typeof(nil :: any)
+        type A = typeof(nil :: any)
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_more_cursed_aliases")
+{
+    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+export type t138 = t0<t138>
+export type t0<t0,t10,t10,t109> = t0
+    )"));
+}
+
 
 
 TEST_SUITE_END();

@@ -832,7 +832,7 @@ enum class IrOpKind : uint32_t
 
 // VmExit uses a special value to indicate that pcpos update should be skipped
 // This is only used during type checking at function entry
-constexpr uint32_t kVmExitEntryGuardPc = (1u << 28) - 1;
+inline constexpr uint32_t kVmExitEntryGuardPc = (1u << 28) - 1;
 
 struct IrOp
 {
@@ -900,7 +900,7 @@ struct IrInst
 };
 
 // When IrInst operands are used, current instruction index is often required to track lifetime
-constexpr uint32_t kInvalidInstIdx = ~0u;
+inline constexpr uint32_t kInvalidInstIdx = ~0u;
 
 struct IrInstHash
 {

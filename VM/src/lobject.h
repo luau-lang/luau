@@ -265,11 +265,9 @@ typedef struct Udata
 
     struct LuaTable* metatable;
 
-    union
-    {
-        char data[1];      // userdata is allocated right after the header
-        L_Umaxalign dummy; // ensures maximum alignment for data
-    };
+    // userdata is allocated right after the header
+    // while the alignment is only 8 here, for sizes starting at 16 bytes, 16 byte alignment is provided
+    alignas(8) char data[1];
 } Udata;
 
 typedef struct LuauBuffer
@@ -278,11 +276,7 @@ typedef struct LuauBuffer
 
     unsigned int len;
 
-    union
-    {
-        char data[1];      // buffer is allocated right after the header
-        L_Umaxalign dummy; // ensures maximum alignment for data
-    };
+    alignas(8) char data[1];
 } Buffer;
 
 /*

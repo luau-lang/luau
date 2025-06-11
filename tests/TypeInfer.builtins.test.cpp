@@ -11,8 +11,9 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
+LUAU_FASTFLAG(LuauStringFormatImprovements)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -146,20 +147,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Type\n\t"
-        "'(number, number) -> boolean'"
-        "\ncould not be converted into\n\t"
-        "'((string, string) -> boolean)?'"
-        "\ncaused by:\n"
-        "  None of the union options are compatible. For example:\n"
-        "Type\n\t"
-        "'(number, number) -> boolean'"
-        "\ncould not be converted into\n\t"
-        "'(string, string) -> boolean'"
-        "\ncaused by:\n"
-        "  Argument #1 type is not compatible.\n"
-        "Type 'string' could not be converted into 'number'";
+    const std::string expected = "Type\n\t"
+                                 "'(number, number) -> boolean'"
+                                 "\ncould not be converted into\n\t"
+                                 "'((string, string) -> boolean)?'"
+                                 "\ncaused by:\n"
+                                 "  None of the union options are compatible. For example:\n"
+                                 "Type\n\t"
+                                 "'(number, number) -> boolean'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(string, string) -> boolean'"
+                                 "\ncaused by:\n"
+                                 "  Argument #1 type is not compatible.\n"
+                                 "Type 'string' could not be converted into 'number'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -460,9 +460,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2 && FFlag::DebugLuauGreedyGeneralization)
-        CHECK("{ [number]: string | string | string, n: number }" == toString(requireType("t")));
-    else if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));
     else
         CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));
@@ -1664,6 +1662,59 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any_2")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauStringFormatImprovements, true};
+
+    CheckResult result = check(R"(
+        local fmt = "Hello, %s!" :: any
+        local x = "world" :: any
+        print(string.format(fmt, x))
+        print(string.format(fmt, "hello"))
+        print(string.format(fmt, 5)) -- unchecked because the format string is `any`!
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_singleton_types")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauStringFormatImprovements, true};
+
+    CheckResult result = check(R"(
+        local fmt: "Hello, %s!" = "Hello, %s!"
+        print(string.format(fmt, "hello"))
+        print(string.format(fmt, 5)) -- should still produce an error since the expected type is `string`!
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(tm->wantedType, builtinTypes->stringType);
+    CHECK_EQ(tm->givenType, builtinTypes->numberType);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "better_string_format_error_when_format_string_is_dynamic")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauStringFormatImprovements, true};
+
+    CheckResult result = check(R"(
+        local fmt: string = "Hello, %s!"
+        print(string.format(fmt, "hello"))
+        print(string.format(fmt :: any, "hello")) -- no error
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "We cannot statically check the type of `string.format` when called with a format string that is not statically known.\n"
+        "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.",
+        toString(result.errors[0])
+    );
 }
 
 TEST_SUITE_END();

@@ -31,10 +31,16 @@ extern int optimizationLevel;
 void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
+// internal functions, declared in lvm.h - not exposed via lua.h
+void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
+
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauStringFormatFixC)
 LUAU_FASTFLAG(LuauYieldableContinuations)
+LUAU_FASTFLAG(LuauCurrentLineBounds)
+LUAU_FASTFLAG(LuauLoadNoOomThrow)
+LUAU_FASTFLAG(LuauHeapNameDetails)
+LUAU_DYNAMIC_FASTFLAG(LuauGcAgainstOom)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -707,8 +713,6 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
-    ScopedFastFlag luauStringFormatFixC{DFFlag::LuauStringFormatFixC, true};
-
     runConformance("strings.luau");
 }
 
@@ -762,9 +766,48 @@ TEST_CASE("Attrib")
     runConformance("attrib.luau");
 }
 
+static bool blockableReallocAllowed = true;
+
+static void* blockableRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
+{
+    if (nsize == 0)
+    {
+        free(ptr);
+        return nullptr;
+    }
+    else
+    {
+        if (!blockableReallocAllowed)
+            return nullptr;
+
+        return realloc(ptr, nsize);
+    }
+}
+
 TEST_CASE("GC")
 {
-    runConformance("gc.luau");
+    ScopedFastFlag luauGcAgainstOom{DFFlag::LuauGcAgainstOom, true};
+
+    runConformance(
+        "gc.luau",
+        [](lua_State* L)
+        {
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L)
+                {
+                    blockableReallocAllowed = !luaL_checkboolean(L, 1);
+                    return 0;
+                },
+                "setblockallocations",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "setblockallocations");
+        },
+        nullptr,
+        lua_newstate(blockableRealloc, nullptr)
+    );
 }
 
 TEST_CASE("Bitwise")
@@ -1422,6 +1465,119 @@ TEST_CASE("Debugger")
 
     if (singlestep)
         CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often
+}
+
+TEST_CASE("InterruptInspection")
+{
+    ScopedFastFlag luauCurrentLineBounds{FFlag::LuauCurrentLineBounds, true};
+
+    static bool skipbreak = false;
+
+    runConformance(
+        "basic.luau",
+        [](lua_State* L)
+        {
+            lua_Callbacks* cb = lua_callbacks(L);
+
+            cb->interrupt = [](lua_State* L, int gc)
+            {
+                if (gc >= 0)
+                    return;
+
+                if (!lua_isyieldable(L))
+                    return;
+
+                if (!skipbreak)
+                    lua_break(L);
+
+                skipbreak = !skipbreak;
+            };
+        },
+        [](lua_State* L)
+        {
+            // Debug info can be retrieved from every location
+            lua_Debug ar = {};
+            CHECK(lua_getinfo(L, 0, "nsl", &ar));
+
+            // Simulating a hook being called from the original break location
+            luau_callhook(
+                L,
+                [](lua_State* L, lua_Debug* ar)
+                {
+                    CHECK(lua_getinfo(L, 0, "nsl", ar));
+                },
+                nullptr
+            );
+        },
+        nullptr,
+        nullptr,
+        /* skipCodegen */ true
+    );
+}
+
+TEST_CASE("InterruptErrorInspection")
+{
+    ScopedFastFlag luauCurrentLineBounds{FFlag::LuauCurrentLineBounds, true};
+
+    // for easy access in no-capture lambda
+    static int target = 0;
+    static int step = 0;
+
+    std::string source = R"(
+function fib(n)
+    return n < 2 and 1 or fib(n - 1) + fib(n - 2)
+end
+
+fib(5)
+)";
+
+    for (target = 0; target < 20; target++)
+    {
+        step = 0;
+
+        StateRef globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+
+        luaL_openlibs(L);
+        luaL_sandbox(L);
+        luaL_sandboxthread(L);
+
+        size_t bytecodeSize = 0;
+        char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+        int result = luau_load(L, "=InterruptErrorInspection", bytecode, bytecodeSize, 0);
+        free(bytecode);
+
+        REQUIRE(result == LUA_OK);
+
+        lua_Callbacks* cb = lua_callbacks(L);
+
+        cb->interrupt = [](lua_State* L, int gc)
+        {
+            if (gc >= 0)
+                return;
+
+            if (step == target)
+                luaL_error(L, "test");
+
+            step++;
+        };
+
+        lua_resume(L, nullptr, 0);
+
+        // Debug info can be retrieved from every location
+        lua_Debug ar = {};
+        CHECK(lua_getinfo(L, 0, "nsl", &ar));
+
+        // Simulating a hook being called from the original break location
+        luau_callhook(
+            L,
+            [](lua_State* L, lua_Debug* ar)
+            {
+                CHECK(lua_getinfo(L, 0, "nsl", ar));
+            },
+            nullptr
+        );
+    }
 }
 
 TEST_CASE("NDebugGetUpValue")
@@ -2162,6 +2318,8 @@ TEST_CASE("StringConversion")
 
 TEST_CASE("GCDump")
 {
+    ScopedFastFlag luauHeapNameDetails{FFlag::LuauHeapNameDetails, true};
+
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
     extern void luaC_enumheap(
@@ -2202,7 +2360,19 @@ TEST_CASE("GCDump")
 
     lua_State* CL = lua_newthread(L);
 
-    lua_pushstring(CL, "local x x = {} local function f() x[1] = math.abs(42) end function foo() coroutine.yield() end foo() return f");
+    lua_pushstring(CL, R"(
+local x
+x = {}
+local function f()
+    x[1] = math.abs(42)
+end
+function foo()
+    coroutine.yield()
+end
+foo()
+return f
+)");
+    lua_pushstring(CL, "=GCDump");
     lua_loadstring(CL);
     lua_resume(CL, nullptr, 0);
 
@@ -2247,8 +2417,19 @@ TEST_CASE("GCDump")
         {
             EnumContext& context = *(EnumContext*)ctx;
 
-            if (tt == LUA_TUSERDATA)
-                CHECK(strcmp(name, "u42") == 0);
+            if (name)
+            {
+                std::string_view sv{name};
+
+                if (tt == LUA_TUSERDATA)
+                    CHECK(sv == "u42");
+                else if (tt == LUA_TPROTO)
+                    CHECK((sv == "proto unnamed:1 =GCDump" || sv == "proto foo:7 =GCDump" || sv == "proto f:4 =GCDump"));
+                else if (tt == LUA_TFUNCTION)
+                    CHECK((sv == "test" || sv == "unnamed:1 =GCDump" || sv == "foo:7 =GCDump" || sv == "f:4 =GCDump"));
+                else if (tt == LUA_TTHREAD)
+                    CHECK(sv == "thread at unnamed:1 =GCDump");
+            }
 
             context.nodes[gco] = {gco, tt, memcat, size, name ? name : ""};
         },
@@ -2493,6 +2674,46 @@ TEST_CASE("UserdataApi")
     globalState.reset();
 
     CHECK(dtorhits == 42);
+}
+
+// provide alignment of 16 for userdata objects with size of 16 and up as long as the Luau allocation functions supports it
+TEST_CASE("UserdataAlignment")
+{
+    const auto testAllocate = [](void* ud, void* ptr, size_t osize, size_t nsize) -> void*
+    {
+        if (nsize == 0)
+        {
+            ::operator delete(ptr, std::align_val_t(16));
+            return nullptr;
+        }
+        else if (osize == 0)
+        {
+            return ::operator new(nsize, std::align_val_t(16));
+        }
+
+        // resize is unreachable in this test and is omitted
+        return nullptr;
+    };
+
+    StateRef globalState(lua_newstate(testAllocate, nullptr), lua_close);
+    lua_State* L = globalState.get();
+
+    for (int size = 16; size <= 4096; size += 4)
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            void* data = lua_newuserdata(L, size);
+            LUAU_ASSERT(uintptr_t(data) % 16 == 0);
+            lua_pop(L, 1);
+        }
+
+        for (int i = 0; i < 10; i++)
+        {
+            void* data = lua_newuserdatadtor(L, size, [](void*) {});
+            LUAU_ASSERT(uintptr_t(data) % 16 == 0);
+            lua_pop(L, 1);
+        }
+    }
 }
 
 TEST_CASE("LightuserdataApi")
@@ -3016,6 +3237,8 @@ TEST_CASE("HugeFunction")
 
 TEST_CASE("HugeFunctionLoadFailure")
 {
+    ScopedFastFlag luauLoadNoOomThrow{FFlag::LuauLoadNoOomThrow, true};
+
     // This test case verifies that if an out-of-memory error occurs inside of
     // luau_load, we are not left with any GC objects in inconsistent states
     // that would cause issues during garbage collection.
@@ -3066,15 +3289,11 @@ TEST_CASE("HugeFunctionLoadFailure")
         luaL_sandbox(L);
         luaL_sandboxthread(L);
 
-        try
-        {
-            luau_load(L, "=HugeFunction", bytecode, bytecodeSize, 0);
-            REQUIRE(false); // The luau_load should fail with an exception
-        }
-        catch (const std::exception& ex)
-        {
-            REQUIRE(strcmp(ex.what(), "lua_exception: not enough memory") == 0);
-        }
+        int status = luau_load(L, "=HugeFunction", bytecode, bytecodeSize, 0);
+        REQUIRE(status == 1);
+
+        const char* error = lua_tostring(L, -1);
+        CHECK(strcmp(error, "not enough memory") == 0);
 
         luaC_fullgc(L);
     }
@@ -3219,7 +3438,7 @@ TEST_CASE("NativeAttribute")
             local function subHelper(z)
                 return (x+y-z)
             end
-			return subHelper
+            return subHelper
         end)R";
 
     StateRef globalState(luaL_newstate(), lua_close);

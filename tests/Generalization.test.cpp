@@ -15,9 +15,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
+LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -115,7 +115,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_traverse_into_class_types_when_ge
 {
     auto [propTy, _] = freshType();
 
-    TypeId cursedExternType = arena.addType(ExternType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
+    TypeId cursedExternType =
+        arena.addType(ExternType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
 
     auto genExternType = generalize(cursedExternType);
     REQUIRE(genExternType);
@@ -226,7 +227,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization2, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization3, true};
 
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
@@ -260,7 +261,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff{FFlag::LuauNonReentrantGeneralization2, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization3, true};
 
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
@@ -341,10 +342,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForbidInternalTypes, true},
-        {FFlag::LuauTrackInferredFunctionTypeFromCall, true}
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForbidInternalTypes, true};
 
     // This test case should just not assert
     CheckResult result = check(R"(
@@ -374,6 +372,95 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
             end
         end
     )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local func: <T>(T, (T) -> ()) -> () = nil :: any
+        func({}, function(obj)
+            local _ = obj
+        end)
+    )"));
+
+    // `unknown` is correct here
+    // - The lambda given can be generalized to `(unknown) -> ()`
+    // - We can substitute the `T` in `func` for either `{}` or `unknown` and
+    //   still have a well typed program.
+    // We *probably* can do a better job bidirectionally inferring the types.
+    CHECK_EQ("unknown", toString(requireTypeAtPosition(Position{3, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+    };
+
+    // FIXME: CLI-156389: this is clearly wrong, but also predates this PR.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local func: <T>(T, (T) -> ()) -> () = nil :: any
+        local foobar: (number) -> () = nil :: any
+        func({}, function(obj)
+            foobar(obj)
+        end)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
+{
+    ScopedFastFlag _{FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true};
+    // All we care about here is that this has no errors, and we correctly
+    // infer that the `false` literal should be typed as `false`.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function test<T>(value: false | (T) -> T)
+            return value
+        end
+        test(false)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional_inference")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+        {FFlag::LuauEagerGeneralization3, true},
+    };
+
+    fileResolver.source["Module/ListFns"] = R"(
+        local mod = {}
+        function mod.findWhere(list, predicate): number?
+            for i = 1, #list do
+                if predicate(list[i], i) then
+                    return i
+                end
+            end
+            return nil
+        end
+        return mod
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        local funs = require(script.Parent.ListFns)
+        local accessories = funs.findWhere(getList(), function(accessory)
+            return accessory.AccessoryType ~= accessoryTypeEnum
+        end)
+        return {}
+    )";
+
+    CheckResult result = frontend.check("Module/ListFns");
+    auto modListFns = frontend.moduleResolver.getModule("Module/ListFns");
+    freeze(modListFns->interfaceTypes);
+    freeze(modListFns->internalTypes);
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result2 = frontend.check("Module/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -13,7 +13,6 @@
 #include "Luau/NotNull.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Symbol.h"
-#include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunction.h"
@@ -22,6 +21,7 @@
 #include "Luau/TypeUtils.h"
 
 #include <algorithm>
+#include <string_view>
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -30,11 +30,12 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunTypecheck)
+LUAU_FASTFLAGVARIABLE(LuauStringFormatImprovements)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
-LUAU_FASTFLAGVARIABLE(LuauFormatUseLastPosition)
+LUAU_FASTFLAGVARIABLE(LuauUpdateSetMetatableTypeSignature)
+LUAU_FASTFLAGVARIABLE(LuauUpdateGetMetatableTypeSignature)
 
 namespace Luau
 {
@@ -292,8 +293,6 @@ void assignPropDocumentationSymbols(TableType::Props& props, const std::string& 
 
 static void finalizeGlobalBindings(ScopePtr scope)
 {
-    LUAU_ASSERT(FFlag::LuauUserTypeFunTypecheck);
-
     for (const auto& pair : scope->bindings)
     {
         persist(pair.second.typeId);
@@ -313,8 +312,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauNonReentrantGeneralization2
-    if (FFlag::LuauNonReentrantGeneralization2)
+    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauEagerGeneralization2
+    if (FFlag::LuauEagerGeneralization3)
         globalScope = globals.globalScope.get();
 
     if (FFlag::LuauSolverV2)
@@ -381,27 +380,48 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeId tableMetaMT = arena.addType(MetatableType{tabTy, genericMT});
 
-    // getmetatable : <MT>({ @metatable MT, {+ +} }) -> MT
-    addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
+    TypeId genericT = arena.addType(GenericType{globalScope, "T"});
+
+    if (FFlag::LuauSolverV2 && FFlag::LuauUpdateGetMetatableTypeSignature)
+    {
+        // getmetatable : <T>(T) -> getmetatable<T>
+        TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().getmetatableFunc, {genericT}});
+        addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericT}, {}, {genericT}, {getmtReturn}), "@luau");
+    }
+    else
+    {
+        // getmetatable : <MT>({ @metatable MT, {+ +} }) -> MT
+        addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
+    }
 
     if (FFlag::LuauSolverV2)
     {
-        TypeId genericT = arena.addType(GenericType{globalScope, "T"});
         TypeId tMetaMT = arena.addType(MetatableType{genericT, genericMT});
 
-        // clang-format off
-        // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
-        addGlobalBinding(globals, "setmetatable",
-            arena.addType(
-                FunctionType{
-                    {genericT, genericMT},
-                    {},
-                    arena.addTypePack(TypePack{{genericT, genericMT}}),
-                    arena.addTypePack(TypePack{{tMetaMT}})
-                }
-            ), "@luau"
-        );
-        // clang-format on
+        if (FFlag::LuauUpdateSetMetatableTypeSignature)
+        {
+            // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
+            TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().setmetatableFunc, {genericT, genericMT}});
+            addGlobalBinding(
+                globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
+            );
+        }
+        else
+        {
+            // clang-format off
+            // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
+            addGlobalBinding(globals, "setmetatable",
+                arena.addType(
+                    FunctionType{
+                        {genericT, genericMT},
+                        {},
+                        arena.addTypePack(TypePack{{genericT, genericMT}}),
+                        arena.addTypePack(TypePack{{tMetaMT}})
+                    }
+                ), "@luau"
+            );
+            // clang-format on
+        }
     }
     else
     {
@@ -420,23 +440,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         // clang-format on
     }
 
-    if (FFlag::LuauUserTypeFunTypecheck)
-    {
-        finalizeGlobalBindings(globals.globalScope);
-    }
-    else
-    {
-        for (const auto& pair : globals.globalScope->bindings)
-        {
-            persist(pair.second.typeId);
-
-            if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
-            {
-                if (!ttv->name)
-                    ttv->name = "typeof(" + toString(pair.first) + ")";
-            }
-        }
-    }
+    finalizeGlobalBindings(globals.globalScope);
 
     attachMagicFunction(getGlobalBinding(globals, "assert"), std::make_shared<MagicAssert>());
 
@@ -500,58 +504,55 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     attachTag(requireTy, kRequireTagName);
     attachMagicFunction(requireTy, std::make_shared<MagicRequire>());
 
-    if (FFlag::LuauUserTypeFunTypecheck)
+    // Global scope cannot be the parent of the type checking environment because it can be changed by the embedder
+    globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
+    globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
+
+    // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
+    static const char* typeFunctionRuntimeBindings[] = {
+        // Libraries
+        "math",
+        "table",
+        "string",
+        "bit32",
+        "utf8",
+        "buffer",
+
+        // Globals
+        "assert",
+        "error",
+        "print",
+        "next",
+        "ipairs",
+        "pairs",
+        "select",
+        "unpack",
+        "getmetatable",
+        "setmetatable",
+        "rawget",
+        "rawset",
+        "rawlen",
+        "rawequal",
+        "tonumber",
+        "tostring",
+        "type",
+        "typeof",
+    };
+
+    for (auto& name : typeFunctionRuntimeBindings)
     {
-        // Global scope cannot be the parent of the type checking environment because it can be changed by the embedder
-        globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
-        globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
+        AstName astName = globals.globalNames.names->get(name);
+        LUAU_ASSERT(astName.value);
 
-        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
-        static const char* typeFunctionRuntimeBindings[] = {
-            // Libraries
-            "math",
-            "table",
-            "string",
-            "bit32",
-            "utf8",
-            "buffer",
-
-            // Globals
-            "assert",
-            "error",
-            "print",
-            "next",
-            "ipairs",
-            "pairs",
-            "select",
-            "unpack",
-            "getmetatable",
-            "setmetatable",
-            "rawget",
-            "rawset",
-            "rawlen",
-            "rawequal",
-            "tonumber",
-            "tostring",
-            "type",
-            "typeof",
-        };
-
-        for (auto& name : typeFunctionRuntimeBindings)
-        {
-            AstName astName = globals.globalNames.names->get(name);
-            LUAU_ASSERT(astName.value);
-
-            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
-        }
-
-        LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
-            globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(), "@luau", /* captureComments */ false, false
-        );
-        LUAU_ASSERT(typeFunctionLoadResult.success);
-
-        finalizeGlobalBindings(globals.globalTypeFunctionScope);
+        globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
     }
+
+    LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
+        globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(), "@luau", /* captureComments */ false, false
+    );
+    LUAU_ASSERT(typeFunctionLoadResult.success);
+
+    finalizeGlobalBindings(globals.globalTypeFunctionScope);
 }
 
 static std::vector<TypeId> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
@@ -644,109 +645,251 @@ bool MagicFormat::infer(const MagicFunctionCallContext& context)
 {
     TypeArena* arena = context.solver->arena;
 
-    AstExprConstantString* fmt = nullptr;
-    if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+    if (FFlag::LuauStringFormatImprovements)
     {
-        if (auto group = index->expr->as<AstExprGroup>())
-            fmt = group->expr->as<AstExprConstantString>();
-        else
-            fmt = index->expr->as<AstExprConstantString>();
+        auto iter = begin(context.arguments);
+
+        // we'll suppress any errors for `string.format` if the format string is error suppressing.
+        if (iter == end(context.arguments) || shouldSuppressErrors(context.solver->normalizer, follow(*iter)) == ErrorSuppression::Suppress)
+        {
+            TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
+            asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
+            return true;
+        }
+
+        AstExprConstantString* fmt = nullptr;
+        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+            fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
+
+        if (!context.callSite->self && context.callSite->args.size > 0)
+            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+        std::optional<std::string_view> formatString;
+        if (fmt)
+            formatString = {fmt->value.data, fmt->value.size};
+        else if (auto singleton = get<SingletonType>(follow(*iter)))
+        {
+            if (auto stringSingleton = get<StringSingleton>(singleton))
+                formatString = {stringSingleton->value};
+        }
+
+        if (!formatString)
+            return false;
+
+        std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, formatString->data(), formatString->size());
+        const auto& [params, tail] = flatten(context.arguments);
+
+        size_t paramOffset = 1;
+
+        // unify the prefix one argument at a time - needed if any of the involved types are free
+        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+        {
+            context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
+        }
+
+        // if we know the argument count or if we have too many arguments for sure, we can issue an error
+        size_t numActualParams = params.size();
+        size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
+
+        if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
+            context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
+
+        // This is invoked at solve time, so we just need to provide a type for the result of :/.format
+        TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
+        asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
+
+        return true;
     }
-
-    if (!context.callSite->self && context.callSite->args.size > 0)
-        fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-    if (!fmt)
-        return false;
-
-    std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, fmt->value.data, fmt->value.size);
-    const auto& [params, tail] = flatten(context.arguments);
-
-    size_t paramOffset = 1;
-
-    // unify the prefix one argument at a time - needed if any of the involved types are free
-    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+    else
     {
-        context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
+        AstExprConstantString* fmt = nullptr;
+        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+        {
+            if (auto group = index->expr->as<AstExprGroup>())
+                fmt = group->expr->as<AstExprConstantString>();
+            else
+                fmt = index->expr->as<AstExprConstantString>();
+        }
+
+        if (!context.callSite->self && context.callSite->args.size > 0)
+            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+        if (!fmt)
+            return false;
+
+        std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, fmt->value.data, fmt->value.size);
+        const auto& [params, tail] = flatten(context.arguments);
+
+        size_t paramOffset = 1;
+
+        // unify the prefix one argument at a time - needed if any of the involved types are free
+        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+        {
+            context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
+        }
+
+        // if we know the argument count or if we have too many arguments for sure, we can issue an error
+        size_t numActualParams = params.size();
+        size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
+
+        if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
+            context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
+
+        // This is invoked at solve time, so we just need to provide a type for the result of :/.format
+        TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
+        asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
+
+        return true;
     }
-
-    // if we know the argument count or if we have too many arguments for sure, we can issue an error
-    size_t numActualParams = params.size();
-    size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
-
-    if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-        context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
-
-    // This is invoked at solve time, so we just need to provide a type for the result of :/.format
-    TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
-    asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
-
-    return true;
 }
 
 bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 {
-    AstExprConstantString* fmt = nullptr;
-    if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+    if (FFlag::LuauStringFormatImprovements)
     {
-        if (auto group = index->expr->as<AstExprGroup>())
-            fmt = group->expr->as<AstExprConstantString>();
-        else
-            fmt = index->expr->as<AstExprConstantString>();
-    }
+        auto iter = begin(context.arguments);
 
-    if (!context.callSite->self && context.callSite->args.size > 0)
-        fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-    if (!fmt)
-    {
-        context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
-        return true;
-    }
-
-    // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
-    // This does _not_ handle cases like:
-    //
-    //  local foo : () -> (...string) = (nil :: any)
-    //  print(string.format("%s %d %s", foo()))
-    //
-    // ... which should be disallowed.
-
-    std::vector<TypeId> expected = parseFormatString(context.builtinTypes, fmt->value.data, fmt->value.size);
-    const auto& [params, tail] = flatten(context.arguments);
-
-    size_t paramOffset = 1;
-    // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
-    bool calledWithSelf = expected.size() == context.callSite->args.size;
-    // unify the prefix one argument at a time
-    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
-    {
-        TypeId actualTy = params[i + paramOffset];
-        TypeId expectedTy = expected[i];
-        Location location = FFlag::LuauFormatUseLastPosition
-            ? context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location
-            : context.callSite->args.data[i + (calledWithSelf ? 0 : paramOffset)]->location;
-        // use subtyping instead here
-        SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
-
-        if (!result.isSubtype)
+        if (iter == end(context.arguments))
         {
-            switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
-            {
-            case ErrorSuppression::Suppress:
-                break;
-            case ErrorSuppression::NormalizationFailed:
-                break;
-            case ErrorSuppression::DoNotSuppress:
-                Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+            context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+            return true;
+        }
 
-                if (!reasonings.suppressed)
-                    context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+        // we'll suppress any errors for `string.format` if the format string is error suppressing.
+        if (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, follow(*iter)) == ErrorSuppression::Suppress)
+        {
+            return true;
+        }
+
+        AstExprConstantString* fmt = nullptr;
+        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+            fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
+
+        if (!context.callSite->self && context.callSite->args.size > 0)
+            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+        std::optional<std::string_view> formatString;
+        if (fmt)
+            formatString = {fmt->value.data, fmt->value.size};
+        else if (auto singleton = get<SingletonType>(follow(*iter)))
+        {
+            if (auto stringSingleton = get<StringSingleton>(singleton))
+                formatString = {stringSingleton->value};
+        }
+
+        if (!formatString)
+        {
+            context.typechecker->reportError(CannotCheckDynamicStringFormatCalls{}, context.callSite->location);
+            return true;
+        }
+
+        // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
+        // This does _not_ handle cases like:
+        //
+        //  local foo : () -> (...string) = (nil :: any)
+        //  print(string.format("%s %d %s", foo()))
+        //
+        // ... which should be disallowed.
+
+        std::vector<TypeId> expected = parseFormatString(context.builtinTypes, formatString->data(), formatString->size());
+
+        const auto& [params, tail] = flatten(context.arguments);
+
+        size_t paramOffset = 1;
+        // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
+        bool calledWithSelf = expected.size() == context.callSite->args.size;
+        // unify the prefix one argument at a time
+        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+        {
+            TypeId actualTy = params[i + paramOffset];
+            TypeId expectedTy = expected[i];
+            Location location = context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
+            // use subtyping instead here
+            SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
+
+            if (!result.isSubtype)
+            {
+                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
+                {
+                    case ErrorSuppression::Suppress:
+                        break;
+                    case ErrorSuppression::NormalizationFailed:
+                        break;
+                    case ErrorSuppression::DoNotSuppress:
+                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+
+                        if (!reasonings.suppressed)
+                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+                }
             }
         }
-    }
 
-    return true;
+        return true;
+
+    }
+    else
+    {
+        AstExprConstantString* fmt = nullptr;
+        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+        {
+            if (auto group = index->expr->as<AstExprGroup>())
+                fmt = group->expr->as<AstExprConstantString>();
+            else
+                fmt = index->expr->as<AstExprConstantString>();
+        }
+
+        if (!context.callSite->self && context.callSite->args.size > 0)
+            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+        if (!fmt)
+        {
+            context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+            return true;
+        }
+
+        // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
+        // This does _not_ handle cases like:
+        //
+        //  local foo : () -> (...string) = (nil :: any)
+        //  print(string.format("%s %d %s", foo()))
+        //
+        // ... which should be disallowed.
+
+        std::vector<TypeId> expected = parseFormatString(context.builtinTypes, fmt->value.data, fmt->value.size);
+
+        const auto& [params, tail] = flatten(context.arguments);
+
+        size_t paramOffset = 1;
+        // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
+        bool calledWithSelf = expected.size() == context.callSite->args.size;
+        // unify the prefix one argument at a time
+        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+        {
+            TypeId actualTy = params[i + paramOffset];
+            TypeId expectedTy = expected[i];
+            Location location = context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
+            // use subtyping instead here
+            SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
+
+            if (!result.isSubtype)
+            {
+                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
+                {
+                    case ErrorSuppression::Suppress:
+                        break;
+                    case ErrorSuppression::NormalizationFailed:
+                        break;
+                    case ErrorSuppression::DoNotSuppress:
+                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+
+                        if (!reasonings.suppressed)
+                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+                }
+            }
+        }
+
+        return true;
+    }
 }
 
 static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)

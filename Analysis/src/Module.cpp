@@ -15,7 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
+LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 
 namespace Luau
 {
@@ -265,10 +265,7 @@ struct ClonePublicInterface : Substitution
 
         TypeId type = cloneType(tf.type);
 
-        if (FFlag::LuauRetainDefinitionAliasLocations)
-            return TypeFun{typeParams, typePackParams, type, tf.definitionLocation};
-        else
-            return TypeFun{typeParams, typePackParams, type};
+        return TypeFun{typeParams, typePackParams, type, tf.definitionLocation};
     }
 };
 
@@ -307,6 +304,14 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     for (auto& [name, ty] : declaredGlobals)
     {
         ty = clonePublicInterface.cloneType(ty);
+    }
+
+    if (FFlag::LuauUserTypeFunctionAliases)
+    {
+        for (auto& tf : typeFunctionAliases)
+        {
+            *tf = clonePublicInterface.cloneTypeFun(*tf);
+        }
     }
 
     // Copy external stuff over to Module itself

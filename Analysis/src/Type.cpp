@@ -23,11 +23,13 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
+LUAU_FASTFLAG(LuauSolverV2)
+
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauFreeTypesMustHaveBounds)
+LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 
 namespace Luau
 {
@@ -832,7 +834,25 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
         if (l->first != r->first)
             return false;
 
-        if (!areEqual(seen, *l->second.type(), *r->second.type()))
+        if (FFlag::LuauSolverV2 && FFlag::LuauSubtypingCheckFunctionGenericCounts)
+        {
+            if (l->second.readTy && r->second.readTy)
+            {
+                if (!areEqual(seen, **l->second.readTy, **r->second.readTy))
+                    return false;
+            }
+            else if (l->second.readTy || r->second.readTy)
+                return false;
+
+            if (l->second.writeTy && r->second.writeTy)
+            {
+                if (!areEqual(seen, **l->second.writeTy, **r->second.writeTy))
+                    return false;
+            }
+            else if (l->second.writeTy || r->second.writeTy)
+                return false;
+        }
+        else if (!areEqual(seen, *l->second.type(), *r->second.type()))
             return false;
         ++l;
         ++r;
@@ -1080,7 +1100,7 @@ void persist(TypeId ty)
                 queue.push_back(ttv->indexer->indexResultType);
             }
         }
-        else if (auto etv= get<ExternType>(t))
+        else if (auto etv = get<ExternType>(t))
         {
             for (const auto& [_name, prop] : etv->props)
                 queue.push_back(prop.type());

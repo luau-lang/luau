@@ -19,10 +19,8 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-
-LUAU_FASTFLAG(LuauAutocompleteUnionCopyPreviousSeen)
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
-LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 
 using namespace Luau;
 
@@ -44,6 +42,9 @@ struct ACFixtureImpl : BaseType
         FrontendOptions opts;
         opts.forAutocomplete = true;
         opts.retainFullTypeGraphs = true;
+        // NOTE: Autocomplete does *not* require strict checking, meaning we should
+        // try to check all of these examples in `--!nocheck` mode.
+        this->configResolver.defaultConfig.mode = Mode::NoCheck;
         this->frontend.check("MainModule", opts);
 
         return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
@@ -54,6 +55,9 @@ struct ACFixtureImpl : BaseType
         FrontendOptions opts;
         opts.forAutocomplete = true;
         opts.retainFullTypeGraphs = true;
+        // NOTE: Autocomplete does *not* require strict checking, meaning we should
+        // try to check all of these examples in `--!nocheck` mode.
+        this->configResolver.defaultConfig.mode = Mode::NoCheck;
         this->frontend.check("MainModule", opts);
 
         return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), callback);
@@ -64,6 +68,9 @@ struct ACFixtureImpl : BaseType
         FrontendOptions opts;
         opts.forAutocomplete = true;
         opts.retainFullTypeGraphs = true;
+        // NOTE: Autocomplete does *not* require strict checking, meaning we should
+        // try to check all of these examples in `--!nocheck` mode.
+        this->configResolver.defaultConfig.mode = Mode::NoCheck;
         this->frontend.check(name, opts);
 
         return Luau::autocomplete(this->frontend, name, pos, callback);
@@ -106,7 +113,9 @@ struct ACFixtureImpl : BaseType
         }
         LUAU_ASSERT("Digit expected after @ symbol" && prevChar != '@');
 
-        return BaseType::check(filteredSource);
+        // NOTE: Autocomplete does *not* require strict checking, meaning we should
+        // try to check all of these examples in `--!nocheck` mode.
+        return BaseType::check(Mode::NoCheck, filteredSource, std::nullopt);
     }
 
     LoadDefinitionFileResult loadDefinition(const std::string& source)
@@ -2194,7 +2203,10 @@ local fp: @1= f
     if (FFlag::LuauSolverV2)
         REQUIRE_EQ("({ x: number, y: number }) -> number", toString(requireType("f")));
     else
-        REQUIRE_EQ("({| x: number, y: number |}) -> number", toString(requireType("f")));
+    {
+        // NOTE: All autocomplete tests occur under no-check mode.
+        REQUIRE_EQ("({| x: number, y: number |}) -> (...any)", toString(requireType("f")));
+    }
     CHECK(ac.entryMap.count("({ x: number, y: number }) -> number"));
 }
 
@@ -3119,6 +3131,19 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
     CHECK(ac.entryMap.count("cat"));
     CHECK(ac.entryMap.count("dog"));
     CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key_iso")
+{
+    check(R"(
+        type Direction = "up" | "down"
+        local b: {[Direction]: boolean} = {["@2"] = true}
+    )");
+
+    auto ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("up"));
+    CHECK(ac.entryMap.count("down"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
@@ -4431,7 +4456,6 @@ local x = 1 + result.
 
 TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
 {
-    ScopedFastFlag _{FFlag::LuauAutocompleteUnionCopyPreviousSeen, true};
     check(R"(
         local table1: {ChildClass} = {}
         local table2 = {}
@@ -4443,17 +4467,23 @@ TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
     )");
 
     auto ac = autocomplete('1');
-    // RIDE-11517: This should *really* be the members of `ChildClass`, but
-    // would previously stack overflow.
-    CHECK(ac.entryMap.empty());
+
+    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization3)
+    {
+        // This `if` statement is because `LuauEagerGeneralization2`
+        // sets some flags
+        CHECK(ac.entryMap.count("BaseMethod") > 0);
+        CHECK(ac.entryMap.count("Method") > 0);
+    }
+    else
+    {
+        // Otherwise, we don't infer anything for `value`, which is _fine_.
+        CHECK(ac.entryMap.empty());
+    }
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_has_types_definitions")
 {
-    // Needs new global initialization in the Fixture, but can't place the flag inside the base Fixture
-    if (!FFlag::LuauUserTypeFunTypecheck)
-        return;
-
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
     check(R"(
@@ -4468,10 +4498,6 @@ end
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_private_scope")
 {
-    // Needs new global initialization in the Fixture, but can't place the flag inside the base Fixture
-    if (!FFlag::LuauUserTypeFunTypecheck)
-        return;
-
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
     // Global scope polution by the embedder has no effect
@@ -4504,7 +4530,6 @@ this@2
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_eval_in_autocomplete")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauTypeFunResultInAutocomplete{FFlag::LuauTypeFunResultInAutocomplete, true};
 
     check(R"(
 type function foo(x)
@@ -4522,6 +4547,64 @@ end
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("boolean"), 1);
     CHECK_EQ(ac.entryMap.count("number"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
+{
+    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
+
+    check(R"(
+        local function foobar(tbl: { tag: "left" | "right" })
+            tbl.tag = "@1"
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("left"), 1);
+    CHECK_EQ(ac.entryMap.count("right"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_local_table")
+{
+    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
+
+    check(R"(
+        type Entry = { field: number, prop: string }
+        local x : {Entry} = {}
+        x[1] = {
+           f@1,
+           p@2,
+        }
+
+        local t : { key1: boolean, thing2: CFrame, aaa3: vector } = {
+            k@3,
+            th@4,
+        }
+    )");
+
+    auto ac1 = autocomplete('1');
+    CHECK_EQ(ac1.entryMap.count("field"), 1);
+    auto ac2 = autocomplete('2');
+    CHECK_EQ(ac2.entryMap.count("prop"), 1);
+    auto ac3 = autocomplete('3');
+    CHECK_EQ(ac3.entryMap.count("key1"), 1);
+    auto ac4 = autocomplete('4');
+    CHECK_EQ(ac4.entryMap.count("thing2"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_type_assertion")
+{
+    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
+
+    check(R"(
+        type Entry = { field: number, prop: string }
+        return ( { f@1, p@2 } :: Entry )
+    )");
+
+    auto ac1 = autocomplete('1');
+    CHECK_EQ(ac1.entryMap.count("field"), 1);
+    auto ac2 = autocomplete('2');
+    CHECK_EQ(ac2.entryMap.count("prop"), 1);
 }
 
 TEST_SUITE_END();

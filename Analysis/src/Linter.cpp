@@ -2294,36 +2294,36 @@ private:
 
     bool visit(AstExprLocal* node) override
     {
-            const FunctionType* fty = getFunctionType(node);
-            bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
+        const FunctionType* fty = getFunctionType(node);
+        bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
 
-            if (shouldReport)
-                report(node->location, node->local->name.value);
+        if (shouldReport)
+            report(node->location, node->local->name.value);
 
         return true;
     }
 
     bool visit(AstExprGlobal* node) override
     {
-            const FunctionType* fty = getFunctionType(node);
-            bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
+        const FunctionType* fty = getFunctionType(node);
+        bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
 
-            if (shouldReport)
-                report(node->location, node->name.value);
+        if (shouldReport)
+            report(node->location, node->name.value);
 
         return true;
     }
 
     bool visit(AstStatLocalFunction* node) override
     {
-            check(node->func);
-            return false;
+        check(node->func);
+        return false;
     }
 
     bool visit(AstStatFunction* node) override
     {
-            check(node->func);
-            return false;
+        check(node->func);
+        return false;
     }
 
     bool visit(AstExprIndexName* node) override
@@ -3240,7 +3240,7 @@ static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, 
     }
 }
 
-static const char* fuzzyMatch(std::string_view str, const char** array, size_t size)
+static const char* fuzzyMatch(std::string_view str, const char* const* array, size_t size)
 {
     if (FInt::LuauSuggestionDistance == 0)
         return nullptr;

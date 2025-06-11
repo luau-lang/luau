@@ -12,10 +12,11 @@ inline bool isAnalysisFlagExperimental(const char* flag)
     // or critical bugs that are found after the code has been submitted. This list is intended _only_ for flags that affect
     // Luau's type checking. Flags that may change runtime behavior (e.g.: parser or VM flags) are not appropriate for this list.
     static const char* const kList[] = {
-        "LuauInstantiateInSubtyping",      // requires some fixes to lua-apps code
-        "LuauFixIndexerSubtypingOrdering", // requires some small fixes to lua-apps code since this fixes a false negative
-        "StudioReportLuauAny2",            // takes telemetry data for usage of any types
-        "LuauTableCloneClonesType3",       // requires fixes in lua-apps code, terrifyingly
+        "LuauInstantiateInSubtyping",                   // requires some fixes to lua-apps code
+        "LuauFixIndexerSubtypingOrdering",              // requires some small fixes to lua-apps code since this fixes a false negative
+        "StudioReportLuauAny2",                         // takes telemetry data for usage of any types
+        "LuauTableCloneClonesType3",                    // requires fixes in lua-apps code, terrifyingly
+        "LuauNormalizationReorderFreeTypeIntersect",    // requires fixes in lua-apps code, also terrifyingly
         "LuauSolverV2",
         // makes sure we always have at least one entry
         nullptr,

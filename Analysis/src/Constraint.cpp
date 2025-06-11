@@ -3,7 +3,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 namespace Luau
 {
@@ -17,8 +17,8 @@ Constraint::Constraint(NotNull<Scope> scope, const Location& location, Constrain
 
 struct ReferenceCountInitializer : TypeOnceVisitor
 {
-
     DenseHashSet<TypeId>* result;
+    bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer(DenseHashSet<TypeId>* result)
         : result(result)
@@ -51,7 +51,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypeId, const TypeFunctionInstanceType&) override
     {
-        return FFlag::DebugLuauGreedyGeneralization;
+        return FFlag::LuauEagerGeneralization3 && traverseIntoTypeFunctions;
     }
 };
 
@@ -104,10 +104,12 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(fchc->argsPack);
     }
-    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::DebugLuauGreedyGeneralization)
+    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::LuauEagerGeneralization3)
     {
+        rci.traverseIntoTypeFunctions = false;
         rci.traverse(fcc->fn);
         rci.traverse(fcc->argsPack);
+        rci.traverseIntoTypeFunctions = true;
     }
     else if (auto ptc = get<PrimitiveTypeConstraint>(*this))
     {
@@ -116,12 +118,12 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     else if (auto hpc = get<HasPropConstraint>(*this))
     {
         rci.traverse(hpc->resultType);
-        if (FFlag::DebugLuauGreedyGeneralization)
+        if (FFlag::LuauEagerGeneralization3)
             rci.traverse(hpc->subjectType);
     }
     else if (auto hic = get<HasIndexerConstraint>(*this))
     {
-        if (FFlag::DebugLuauGreedyGeneralization)
+        if (FFlag::LuauEagerGeneralization3)
             rci.traverse(hic->subjectType);
         rci.traverse(hic->resultType);
         // `HasIndexerConstraint` should not mutate `indexType`.
@@ -142,10 +144,6 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
         for (TypeId ty : uc->resultPack)
             rci.traverse(ty);
         // `UnpackConstraint` should not mutate `sourcePack`.
-    }
-    else if (auto rpc = get<ReduceConstraint>(*this); FFlag::DebugLuauGreedyGeneralization && rpc)
-    {
-        rci.traverse(rpc->ty);
     }
     else if (auto rpc = get<ReducePackConstraint>(*this))
     {

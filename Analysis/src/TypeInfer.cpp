@@ -34,8 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
-LUAU_FASTFLAG(LuauRetainDefinitionAliasLocations)
-LUAU_FASTFLAGVARIABLE(LuauStatForInFix)
 LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
 
 namespace Luau
@@ -1319,22 +1317,14 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             // and check them against the parameter types of the iterator function.
             auto [types, tail] = flatten(callRetPack);
 
-            if (FFlag::LuauStatForInFix)
-            {
-                if (!types.empty())
-                {
-                    std::vector<TypeId> argTypes = std::vector<TypeId>(types.begin() + 1, types.end());
-                    argPack = addTypePack(TypePackVar{TypePack{std::move(argTypes), tail}});
-                }
-                else
-                {
-                    argPack = addTypePack(TypePack{});
-                }
-            }
-            else
+            if (!types.empty())
             {
                 std::vector<TypeId> argTypes = std::vector<TypeId>(types.begin() + 1, types.end());
                 argPack = addTypePack(TypePackVar{TypePack{std::move(argTypes), tail}});
+            }
+            else
+            {
+                argPack = addTypePack(TypePack{});
             }
         }
         else
@@ -1673,10 +1663,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
             FreeType* ftv = getMutable<FreeType>(ty);
             LUAU_ASSERT(ftv);
             ftv->forwardedTypeAlias = true;
-            if (FFlag::LuauRetainDefinitionAliasLocations)
-                bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty, typealias.location};
-            else
-                bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
+            bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty, typealias.location};
 
             scope->typeAliasLocations[name] = typealias.location;
             scope->typeAliasNameLocations[name] = typealias.nameLocation;
@@ -1721,10 +1708,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareExternTyp
     TypeId metaTy = addType(TableType{TableState::Sealed, scope->level});
 
     etv->metatable = metaTy;
-    if (FFlag::LuauRetainDefinitionAliasLocations)
-        scope->exportedTypeBindings[className] = TypeFun{{}, classTy, declaredExternType.location};
-    else
-        scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+    scope->exportedTypeBindings[className] = TypeFun{{}, classTy, declaredExternType.location};
 }
 
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareExternType& declaredExternType)
@@ -4339,7 +4323,7 @@ void TypeChecker::checkArgumentList(
 
                     if (exceedsLoopCount())
                         return;
-        }
+                }
 
                 TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, argIter.tail()}});
                 state.tryUnify(varPack, tail);

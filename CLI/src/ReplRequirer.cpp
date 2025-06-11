@@ -5,8 +5,8 @@
 #include "Luau/CodeGenOptions.h"
 #include "Luau/FileUtils.h"
 #include "Luau/Require.h"
+#include "Luau/VfsNavigator.h"
 
-#include "Luau/RequirerUtils.h"
 #include "lua.h"
 #include "lualib.h"
 
@@ -32,19 +32,14 @@ static luarequire_WriteResult write(std::optional<std::string> contents, char* b
     return luarequire_WriteResult::WRITE_SUCCESS;
 }
 
-static luarequire_NavigateResult storePathResult(ReplRequirer* req, PathResult result)
+static luarequire_NavigateResult convert(NavigationStatus status)
 {
-    if (result.status == PathResult::Status::AMBIGUOUS)
+    if (status == NavigationStatus::Success)
+        return NAVIGATE_SUCCESS;
+    else if (status == NavigationStatus::Ambiguous)
         return NAVIGATE_AMBIGUOUS;
-
-    if (result.status == PathResult::Status::NOT_FOUND)
+    else
         return NAVIGATE_NOT_FOUND;
-
-    req->absPath = result.absPath;
-    req->relPath = result.relPath;
-    req->suffix = result.suffix;
-
-    return NAVIGATE_SUCCESS;
 }
 
 static bool is_require_allowed(lua_State* L, void* ctx, const char* requirer_chunkname)
@@ -59,13 +54,9 @@ static luarequire_NavigateResult reset(lua_State* L, void* ctx, const char* requ
 
     std::string chunkname = requirer_chunkname;
     if (chunkname == "=stdin")
-    {
-        return storePathResult(req, getStdInResult());
-    }
+        return convert(req->vfs.resetToStdIn());
     else if (!chunkname.empty() && chunkname[0] == '@')
-    {
-        return storePathResult(req, tryGetRelativePathResult(chunkname.substr(1)));
-    }
+        return convert(req->vfs.resetToPath(chunkname.substr(1)));
 
     return NAVIGATE_NOT_FOUND;
 }
@@ -74,62 +65,58 @@ static luarequire_NavigateResult jump_to_alias(lua_State* L, void* ctx, const ch
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
 
-    luarequire_NavigateResult result = storePathResult(req, getAbsolutePathResult(path));
-    if (result != NAVIGATE_SUCCESS)
-        return result;
+    if (!isAbsolutePath(path))
+        return NAVIGATE_NOT_FOUND;
 
-    // Jumping to an absolute path breaks the relative-require chain. The best
-    // we can do is to store the absolute path itself.
-    req->relPath = req->absPath;
-    return NAVIGATE_SUCCESS;
+    return convert(req->vfs.resetToPath(path));
 }
 
 static luarequire_NavigateResult to_parent(lua_State* L, void* ctx)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return storePathResult(req, getParent(req->absPath, req->relPath));
+    return convert(req->vfs.toParent());
 }
 
 static luarequire_NavigateResult to_child(lua_State* L, void* ctx, const char* name)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return storePathResult(req, getChild(req->absPath, req->relPath, name));
+    return convert(req->vfs.toChild(name));
 }
 
 static bool is_module_present(lua_State* L, void* ctx)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return isFilePresent(req->absPath, req->suffix);
+    return isFile(req->vfs.getFilePath());
 }
 
 static luarequire_WriteResult get_chunkname(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return write("@" + req->relPath, buffer, buffer_size, size_out);
+    return write("@" + req->vfs.getFilePath(), buffer, buffer_size, size_out);
 }
 
 static luarequire_WriteResult get_loadname(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return write(req->absPath + req->suffix, buffer, buffer_size, size_out);
+    return write(req->vfs.getAbsoluteFilePath(), buffer, buffer_size, size_out);
 }
 
 static luarequire_WriteResult get_cache_key(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return write(req->absPath + req->suffix, buffer, buffer_size, size_out);
+    return write(req->vfs.getAbsoluteFilePath(), buffer, buffer_size, size_out);
 }
 
 static bool is_config_present(lua_State* L, void* ctx)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return isFilePresent(req->absPath, "/.luaurc");
+    return isFile(req->vfs.getLuaurcPath());
 }
 
 static luarequire_WriteResult get_config(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return write(getFileContents(req->absPath, "/.luaurc"), buffer, buffer_size, size_out);
+    return write(readFile(req->vfs.getLuaurcPath()), buffer, buffer_size, size_out);
 }
 
 static int load(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname)
@@ -145,13 +132,26 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
     // new thread needs to have the globals sandboxed
     luaL_sandboxthread(ML);
 
-    std::optional<std::string> contents = readFile(loadname);
-    if (!contents)
+    bool hadContents = false;
+    int status = LUA_OK;
+
+    // Handle C++ RAII objects in a scope which doesn't cause a Luau error
+    {
+        std::optional<std::string> contents = readFile(loadname);
+        hadContents = contents.has_value();
+
+        if (contents)
+        {
+            // now we can compile & run module on the new thread
+            std::string bytecode = Luau::compile(*contents, req->copts());
+            status = luau_load(ML, chunkname, bytecode.data(), bytecode.size(), 0);
+        }
+    }
+
+    if (!hadContents)
         luaL_error(L, "could not read file '%s'", loadname);
 
-    // now we can compile & run module on the new thread
-    std::string bytecode = Luau::compile(*contents, req->copts());
-    if (luau_load(ML, chunkname, bytecode.data(), bytecode.size(), 0) == 0)
+    if (status == 0)
     {
         if (req->codegenEnabled())
         {
@@ -208,6 +208,7 @@ void requireConfigInit(luarequire_Configuration* config)
     config->get_chunkname = get_chunkname;
     config->get_loadname = get_loadname;
     config->get_cache_key = get_cache_key;
+    config->get_alias = nullptr;
     config->get_config = get_config;
     config->load = load;
 }

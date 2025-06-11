@@ -17,7 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -29,7 +29,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: Regression
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
@@ -51,11 +51,11 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: Regression.
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
-        CHECK("number | string | string" == toString(*requireType("y")));
+        CHECK("number | string" == toString(*requireType("y")));
     }
     else
     {
@@ -72,7 +72,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization3)
     {
         // FIXME: Regression
         CHECK("(string & ~(false?)) | string" == toString(requireType("s")));
@@ -634,7 +634,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
         local a = -foo
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK("string" == toString(requireType("a")));
+
+        TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+        REQUIRE(tm);
+
+        // FIXME: This error is a bit weird.
+        CHECK("({ @metatable { __unm: (boolean) -> string }, { value: number } }) -> string" == toString(tm->wantedType, {true}));
+        CHECK("(boolean) -> string" == toString(tm->givenType));
+    }
+    else if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 

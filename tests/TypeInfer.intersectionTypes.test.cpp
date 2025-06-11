@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNarrowIntersectionNevers)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -333,9 +334,6 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
-    // CLI-116476 Subtyping between type alias and an equivalent but not named type isn't working.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
         type Y = { y: (string) -> string }
@@ -359,13 +357,12 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     {
         LUAU_REQUIRE_ERROR_COUNT(4, result);
 
-        const std::string expected =
-            "Type\n\t"
-            "'(string, number) -> string'"
-            "\ncould not be converted into\n\t"
-            "'(string) -> string'\n"
-            "caused by:\n"
-            "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
+        const std::string expected = "Type\n\t"
+                                     "'(string, number) -> string'"
+                                     "\ncould not be converted into\n\t"
+                                     "'(string) -> string'\n"
+                                     "caused by:\n"
+                                     "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
 
         CHECK_EQ(expected, toString(result.errors[0]));
         CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
@@ -391,13 +388,12 @@ TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    const std::string expected =
-        "Type\n\t"
-        "'(string, number) -> string'"
-        "\ncould not be converted into\n\t"
-        "'(string) -> string'\n"
-        "caused by:\n"
-        "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
+    const std::string expected = "Type\n\t"
+                                 "'(string, number) -> string'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(string) -> string'\n"
+                                 "caused by:\n"
+                                 "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
     CHECK_EQ(expected, toString(result.errors[0]));
 
     CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'XY'");
@@ -430,15 +426,14 @@ local a: XYZ = 3
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type "
-            "'number'"
-            " could not be converted into "
-            "'X & Y & Z'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `X`, and `number` is not a subtype of `X`\n\t"
-            " * the 2nd component of the intersection is `Y`, and `number` is not a subtype of `Y`\n\t"
-            " * the 3rd component of the intersection is `Z`, and `number` is not a subtype of `Z`";
+        const std::string expected = "Type "
+                                     "'number'"
+                                     " could not be converted into "
+                                     "'X & Y & Z'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `X`, and `number` is not a subtype of `X`\n\t"
+                                     " * the 2nd component of the intersection is `Y`, and `number` is not a subtype of `Y`\n\t"
+                                     " * the 3rd component of the intersection is `Z`, and `number` is not a subtype of `Z`";
 
         CHECK_EQ(expected, toString(result.errors[0]));
     }
@@ -455,6 +450,8 @@ Type 'number' could not be converted into 'X')";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -470,18 +467,14 @@ end
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type pack "
-            "'X & Y & Z'"
-            " could not be converted into "
-            "'number'; \n"
-            "this is because \n\t"
-            " * in the 1st entry in the type pack has the 1st component of the intersection as `X` and the 1st entry in the "
-            "type pack is `number`, and `X` is not a subtype of `number`\n\t"
-            " * in the 1st entry in the type pack has the 2nd component of the intersection as `Y` and the 1st entry in the "
-            "type pack is `number`, and `Y` is not a subtype of `number`\n\t"
-            " * in the 1st entry in the type pack has the 3rd component of the intersection as `Z` and the 1st entry in the "
-            "type pack is `number`, and `Z` is not a subtype of `number`";
+        const std::string expected = "Type "
+                                     "'X & Y & Z'"
+                                     " could not be converted into "
+                                     "'number'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `X`, which is not a subtype of `number`\n\t"
+                                     " * the 2nd component of the intersection is `Y`, which is not a subtype of `number`\n\t"
+                                     " * the 3rd component of the intersection is `Z`, which is not a subtype of `number`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -531,14 +524,13 @@ TEST_CASE_FIXTURE(Fixture, "intersect_bool_and_false")
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type "
-            "'boolean & false'"
-            " could not be converted into "
-            "'true'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
-            " * the 2nd component of the intersection is `false`, which is not a subtype of `true`";
+        const std::string expected = "Type "
+                                     "'boolean & false'"
+                                     " could not be converted into "
+                                     "'true'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
+                                     " * the 2nd component of the intersection is `false`, which is not a subtype of `true`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -561,15 +553,14 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
     // TODO: odd stringification of `false & (boolean & false)`.)
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type "
-            "'boolean & false & false'"
-            " could not be converted into "
-            "'true'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `false`, which is not a subtype of `true`\n\t"
-            " * the 2nd component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
-            " * the 3rd component of the intersection is `false`, which is not a subtype of `true`";
+        const std::string expected = "Type "
+                                     "'boolean & false & false'"
+                                     " could not be converted into "
+                                     "'true'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `false`, which is not a subtype of `true`\n\t"
+                                     " * the 2nd component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
+                                     " * the 3rd component of the intersection is `false`, which is not a subtype of `true`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -644,13 +635,11 @@ TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        "Type\n\t"
-        "'((number) -> number) & ((string) -> string)'"
-        "\ncould not be converted into\n\t"
-        "'(boolean | number) -> boolean | number'; none of the intersection parts are compatible";
+    const std::string expected = "Type\n\t"
+                                 "'((number) -> number) & ((string) -> string)'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(boolean | number) -> boolean | number'; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
@@ -666,16 +655,15 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type "
-            "'{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
-            " could not be converted into "
-            "'{ p: nil }'; \n"
-            "this is because \n\t"
-            " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
-            "accessing `p` results in `nil`, and `number` is not exactly `nil`\n\t"
-            " * in the 2nd component of the intersection, accessing `p` has the 1st component of the union as `number` and "
-            "accessing `p` results in `nil`, and `number` is not exactly `nil`";
+        const std::string expected = "Type "
+                                     "'{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
+                                     " could not be converted into "
+                                     "'{ p: nil }'; \n"
+                                     "this is because \n\t"
+                                     " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
+                                     "accessing `p` results in `nil`, and `number` is not exactly `nil`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `p` has the 1st component of the union as `number` and "
+                                     "accessing `p` results in `nil`, and `number` is not exactly `nil`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -700,24 +688,23 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type\n\t"
-            "'{ p: number?, q: any } & { p: unknown, q: string? }'"
-            "\ncould not be converted into\n\t"
-            "'{ p: string?, q: number? }'; \n"
-            "this is because \n\t"
-            " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
-            "accessing `p` results in `string?`, and `number` is not exactly `string?`\n\t"
-            " * in the 1st component of the intersection, accessing `p` results in `number?` and accessing `p` has the 1st "
-            "component of the union as `string`, and `number?` is not exactly `string`\n\t"
-            " * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` results in "
-            "`number?`, and `any` is not exactly `number?`\n\t"
-            " * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` results in "
-            "`string?`, and `unknown` is not exactly `string?`\n\t"
-            " * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and "
-            "accessing `q` results in `number?`, and `string` is not exactly `number?`\n\t"
-            " * in the 2nd component of the intersection, accessing `q` results in `string?` and accessing `q` has the 1st "
-            "component of the union as `number`, and `string?` is not exactly `number`";
+        const std::string expected = "Type\n\t"
+                                     "'{ p: number?, q: any } & { p: unknown, q: string? }'"
+                                     "\ncould not be converted into\n\t"
+                                     "'{ p: string?, q: number? }'; \n"
+                                     "this is because \n\t"
+                                     " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
+                                     "accessing `p` results in `string?`, and `number` is not exactly `string?`\n\t"
+                                     " * in the 1st component of the intersection, accessing `p` results in `number?` and accessing `p` has the 1st "
+                                     "component of the union as `string`, and `number?` is not exactly `string`\n\t"
+                                     " * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` results in "
+                                     "`number?`, and `any` is not exactly `number?`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` results in "
+                                     "`string?`, and `unknown` is not exactly `string?`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and "
+                                     "accessing `q` results in `number?`, and `string` is not exactly `number?`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `q` results in `string?` and accessing `q` has the 1st "
+                                     "component of the union as `number`, and `string?` is not exactly `number`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -928,9 +915,9 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string expected = "Type\n\t"
-        "'((nil) -> unknown) & ((number) -> number)'"
-        "\ncould not be converted into\n\t"
-        "'(number?) -> number?'; none of the intersection parts are compatible";
+                                 "'((nil) -> unknown) & ((number) -> number)'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(number?) -> number?'; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -950,11 +937,10 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        "Type\n\t"
-        "'((number) -> number?) & ((unknown) -> string?)'"
-        "\ncould not be converted into\n\t"
-        "'(number?) -> nil'; none of the intersection parts are compatible";
+    const std::string expected = "Type\n\t"
+                                 "'((number) -> number?) & ((unknown) -> string?)'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(number?) -> nil'; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1079,9 +1065,9 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string expected = "Type\n\t"
-        "'((number?) -> (...number)) & ((string?) -> number | string)'"
-        "\ncould not be converted into\n\t"
-        "'(number | string) -> (number, number?)'; none of the intersection parts are compatible";
+                                 "'((number?) -> (...number)) & ((string?) -> number | string)'"
+                                 "\ncould not be converted into\n\t"
+                                 "'(number | string) -> (number, number?)'; none of the intersection parts are compatible";
     CHECK(expected == toString(result.errors[0]));
 }
 
@@ -1176,16 +1162,15 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected =
-            "Type\n\t"
-            "'((a...) -> ()) & ((number, a...) -> number)'"
-            "\ncould not be converted into\n\t"
-            "'((a...) -> ()) & ((number, a...) -> number)'; \n"
-            "this is because \n\t"
-            " * in the 1st component of the intersection, the function returns is `()` in the former type and `number` in "
-            "the latter type, and `()` is not a subtype of `number`\n\t"
-            " * in the 2nd component of the intersection, the function takes a tail of `a...` and in the 1st component of "
-            "the intersection, the function takes a tail of `a...`, and `a...` is not a supertype of `a...`";
+        const std::string expected = "Type\n\t"
+                                     "'((a...) -> ()) & ((number, a...) -> number)'"
+                                     "\ncould not be converted into\n\t"
+                                     "'((a...) -> ()) & ((number, a...) -> number)'; \n"
+                                     "this is because \n\t"
+                                     " * in the 1st component of the intersection, the function returns is `()` in the former type and `number` in "
+                                     "the latter type, and `()` is not a subtype of `number`\n\t"
+                                     " * in the 2nd component of the intersection, the function takes a tail of `a...` and in the 1st component of "
+                                     "the intersection, the function takes a tail of `a...`, and `a...` is not a supertype of `a...`";
         CHECK(expected == toString(result.errors[0]));
     }
     else

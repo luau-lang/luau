@@ -18,7 +18,9 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
+
+LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -446,6 +448,12 @@ struct ErrorConverter
             return err;
         }
 
+        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
+        {
+            if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
+                return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
+        }
+
         return "Cannot call a value of type " + toString(e.ty);
     }
     std::string operator()(const Luau::ExtraInformation& e) const
@@ -655,7 +663,7 @@ struct ErrorConverter
         }
 
         // binary operators
-        const auto binaryOps = FFlag::DebugLuauGreedyGeneralization ? kBinaryOps : DEPRECATED_kBinaryOps;
+        const auto binaryOps = FFlag::LuauEagerGeneralization3 ? kBinaryOps : DEPRECATED_kBinaryOps;
         if (auto binaryString = binaryOps.find(tfit->function->name); binaryString != binaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
@@ -710,10 +718,10 @@ struct ErrorConverter
                        "'";
         }
 
-        if ((FFlag::DebugLuauGreedyGeneralization ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
+        if ((FFlag::LuauEagerGeneralization3 ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
-                "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
+                   "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
         }
 
         // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type functions" explicitly.
@@ -838,6 +846,30 @@ struct ErrorConverter
         }
 
         return result;
+    }
+
+    std::string operator()(const UnexpectedArrayLikeTableItem&) const
+    {
+        return "Unexpected array-like table item: the indexer key type of this table is not `number`.";
+    }
+
+    std::string operator()(const CannotCheckDynamicStringFormatCalls& e) const
+    {
+        return "We cannot statically check the type of `string.format` when called with a format string that is not statically known.\n"
+            "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.";
+    }
+
+
+    std::string operator()(const GenericTypeCountMismatch& e) const
+    {
+        return "Different number of generic type parameters: subtype had " + std::to_string(e.subTyGenericCount) + ", supertype had " +
+               std::to_string(e.superTyGenericCount) + ".";
+    }
+
+    std::string operator()(const GenericTypePackCountMismatch& e) const
+    {
+        return "Different number of generic type pack parameters: subtype had " + std::to_string(e.subTyGenericPackCount) + ", supertype had " +
+               std::to_string(e.superTyGenericPackCount) + ".";
     }
 };
 
@@ -1227,6 +1259,16 @@ bool CannotAssignToNever::operator==(const CannotAssignToNever& rhs) const
     return *rhsType == *rhs.rhsType && reason == rhs.reason;
 }
 
+bool GenericTypeCountMismatch::operator==(const GenericTypeCountMismatch& rhs) const
+{
+    return subTyGenericCount == rhs.subTyGenericCount && superTyGenericCount == rhs.superTyGenericCount;
+}
+
+bool GenericTypePackCountMismatch::operator==(const GenericTypePackCountMismatch& rhs) const
+{
+    return subTyGenericPackCount == rhs.subTyGenericPackCount && superTyGenericPackCount == rhs.superTyGenericPackCount;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1432,7 +1474,19 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         for (auto& ty : e.cause)
             ty = clone(ty);
     }
+    else if constexpr (std::is_same_v<T, UnexpectedArrayLikeTableItem>)
+    {
+    }
     else if constexpr (std::is_same_v<T, ReservedIdentifier>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CannotCheckDynamicStringFormatCalls>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, GenericTypeCountMismatch>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, GenericTypePackCountMismatch>)
     {
     }
     else

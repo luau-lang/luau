@@ -12,9 +12,10 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauTrackInferredFunctionTypeFromCall)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -98,7 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization3)
         CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
     else
         CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
@@ -338,7 +339,10 @@ local c: Packed<string, number, boolean>
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
-    CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
+    if (FFlag::LuauFixEmptyTypePackStringification)
+        CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "()");
+    else
+        CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
 
     auto ttvB = get<TableType>(requireType("b"));
     REQUIRE(ttvB);
@@ -961,13 +965,12 @@ a = b
     if (FFlag::LuauSolverV2)
     {
 
-        const std::string expected =
-            "Type\n\t"
-            "'() -> (number, ...boolean)'"
-            "\ncould not be converted into\n\t"
-            "'() -> (number, ...string)'; \n"
-            "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
-            "type, and `boolean` is not a subtype of `string`";
+        const std::string expected = "Type\n\t"
+                                     "'() -> (number, ...boolean)'"
+                                     "\ncould not be converted into\n\t"
+                                     "'() -> (number, ...string)'; \n"
+                                     "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
+                                     "type, and `boolean` is not a subtype of `string`";
 
         CHECK(expected == toString(result.errors[0]));
     }
@@ -1060,7 +1063,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauTrackInferredFunctionTypeFromCall, true}};
+    ScopedFastFlag _{FFlag::LuauReportSubtypingErrors, true};
 
     CheckResult result = check(R"(
         function _(l0:((typeof((pcall)))|((((t0)->())|(typeof(-67108864)))|(any)))|(any),...):(((typeof(0))|(any))|(any),typeof(-67108864),any)
@@ -1095,6 +1098,8 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+
     CheckResult result = check(R"(
         function foo<T...>(...: T...): T...
             return ...

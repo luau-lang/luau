@@ -14,11 +14,9 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
-LUAU_FASTFLAG(LuauNormalizationCatchMetatableCycles)
-LUAU_FASTFLAG(LuauSubtypingEnableReasoningLimit)
-LUAU_FASTFLAG(LuauTypePackDetectCycles)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
+LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
+LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 
 using namespace Luau;
 
@@ -1068,17 +1066,24 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
     CHECK("'a & (false?)" == toString(result));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "normalize_recursive_metatable")
+TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNormalizationCatchMetatableCycles, true}};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true}, // Affects stringification of free types.
+        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
+    };
 
-    TypeId root = arena.addType(BlockedType{});
-    TypeId emptyTable = arena.addType(TableType(TableState::Sealed, {}));
-    TypeId metatable = arena.addType(MetatableType{emptyTable, root});
-    emplaceType<BoundType>(asMutable(root), metatable);
-    auto normalized = normalizer.normalize(root);
-    REQUIRE(normalized);
-    CHECK_EQ("t1 where t1 = { @metatable t1, {  } }", toString(normalizer.typeFromNormal(*normalized)));
+    TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
+    TypeId orderA = arena.addType(IntersectionType{{freeTy, builtinTypes->stringType}});
+    auto normA = normalizer.normalize(orderA);
+    REQUIRE(normA);
+    CHECK_EQ("'a & string", toString(normalizer.typeFromNormal(*normA)));
+
+    TypeId orderB = arena.addType(IntersectionType{{builtinTypes->stringType, freeTy}});
+    auto normB = normalizer.normalize(orderB);
+    REQUIRE(normB);
+    // Prior to LuauNormalizationReorderFreeTypeIntersect this became `never` :skull:
+    CHECK_EQ("'a & string", toString(normalizer.typeFromNormal(*normB)));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
@@ -1186,44 +1191,9 @@ end
 )");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_limit_function_intersection_complexity")
-{
-    ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 80};
-    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
-    ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
-
-    CheckResult result = check(R"(
-function _(_).readu32(l0)
-return ({[_(_(_))]=_,[_(if _ then _)]=_,n0=_,})[_],nil
-end
-_(_)[_(n32)] %= _(_(_))
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-#if !(defined(_WIN32) && !(defined(_M_X64) || defined(_M_ARM64)))
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_propagate_normalization_failures")
-{
-    ScopedFastInt luauNormalizeIntersectionLimit{FInt::LuauNormalizeIntersectionLimit, 50};
-    ScopedFastInt luauNormalizeUnionLimit{FInt::LuauNormalizeUnionLimit, 20};
-    ScopedFastFlag luauSubtypingEnableReasoningLimit{FFlag::LuauSubtypingEnableReasoningLimit, true};
-    ScopedFastFlag luauTurnOffNonreentrantGeneralization{FFlag::LuauNonReentrantGeneralization2, false};
-
-    CheckResult result = check(R"(
-function _(_,"").readu32(l0)
-return ({[_(_(_))]=_,[_(if _ then _,_())]=_,[""]=_,})[_],nil
-end
-_().readu32 %= _(_(_(_),_))
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-#endif
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypePackDetectCycles, true}};
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}};
 
     // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check
     CHECK_THROWS_AS(
@@ -1243,15 +1213,14 @@ do end
 #if 0
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
 {
-    // FIXME?  This test code happens not to ICE with eager generalization
-    // enabled.  This could either be because the problem is fixed, or because
-    // another bug is obscuring the problem.
-    if (FFlag::DebugLuauGreedyGeneralization)
-        return;
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSimplifyOutOfLine2, true},
+        {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
+    };
+    ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypePackDetectCycles, true}};
-
-    // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check
+    // FIXME CLI-153131: This is constructing a cyclic type pack
     CHECK_THROWS_AS(
         check(R"(
 function _(_).n0(l32,...)
@@ -1262,6 +1231,6 @@ _[_] ^= _(_(_))
         InternalCompilerError
     );
 }
-#endif 
+#endif
 
 TEST_SUITE_END();

@@ -18,8 +18,8 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauNonReentrantGeneralization2)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 
 namespace Luau
 {
@@ -329,12 +329,12 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
 
         for (TypePackId genericPack : subFn->genericPacks)
         {
-            if (FFlag::LuauNonReentrantGeneralization2)
+            if (FFlag::LuauEagerGeneralization3)
             {
-                if (FFlag::DebugLuauGreedyGeneralization)
+                if (FFlag::LuauEagerGeneralization3)
                     genericPack = follow(genericPack);
 
-                // TODO: Clip this follow() with DebugLuauGreedyGeneralization
+                // TODO: Clip this follow() with LuauEagerGeneralization2
                 const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
                 if (gen)
                     genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
@@ -413,16 +413,27 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
         {
             const Property& superProp = superPropOpt->second;
 
-            if (subProp.isReadOnly() && superProp.isReadOnly())
-                result &= unify(*subProp.readTy, *superPropOpt->second.readTy);
-            else if (subProp.isReadOnly())
-                result &= unify(*subProp.readTy, superProp.type());
-            else if (superProp.isReadOnly())
-                result &= unify(subProp.type(), *superProp.readTy);
+            if (FFlag::LuauEnableWriteOnlyProperties)
+            {
+                if (subProp.readTy && superProp.readTy)
+                    result &= unify(*subProp.readTy, *superProp.readTy);
+
+                if (subProp.writeTy && superProp.writeTy)
+                    result &= unify(*superProp.writeTy, *subProp.writeTy);
+            }
             else
             {
-                result &= unify(subProp.type(), superProp.type());
-                result &= unify(superProp.type(), subProp.type());
+                if (subProp.isReadOnly() && superProp.isReadOnly())
+                    result &= unify(*subProp.readTy, *superPropOpt->second.readTy);
+                else if (subProp.isReadOnly())
+                    result &= unify(*subProp.readTy, superProp.type());
+                else if (superProp.isReadOnly())
+                    result &= unify(subProp.type(), *superProp.readTy);
+                else
+                {
+                    result &= unify(subProp.type(), superProp.type());
+                    result &= unify(superProp.type(), subProp.type());
+                }
             }
         }
     }
@@ -454,6 +465,12 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
     {
         result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+        if (FFlag::LuauEagerGeneralization3)
+        {
+            // FIXME: We can probably do something more efficient here.
+            result &= unify(superTable->indexer->indexType, subTable->indexer->indexType);
+            result &= unify(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+        }
     }
 
     if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)

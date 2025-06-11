@@ -96,7 +96,7 @@
 #endif
 
 /*
- * The sizes of Luau objects aren't crucial for code correctness, but they are crucial for memory efficiency
+ * The sizes of most Luau objects aren't crucial for code correctness, but they are crucial for memory efficiency
  * To prevent some of them accidentally growing and us losing memory without realizing it, we're going to lock
  * the sizes of all critical structures down.
  */
@@ -120,9 +120,11 @@ static_assert(sizeof(LuaNode) == ABISWITCH(32, 32, 32), "size mismatch for table
 #endif
 
 static_assert(offsetof(TString, data) == ABISWITCH(24, 20, 20), "size mismatch for string header");
-static_assert(offsetof(Udata, data) == ABISWITCH(16, 16, 12), "size mismatch for userdata header");
 static_assert(sizeof(LuaTable) == ABISWITCH(48, 32, 32), "size mismatch for table header");
 static_assert(offsetof(Buffer, data) == ABISWITCH(8, 8, 8), "size mismatch for buffer header");
+
+// The userdata is designed to provide 16 byte alignment for 16 byte and larger userdata sizes
+static_assert(offsetof(Udata, data) == 16, "data must be at precise offset provide proper alignment");
 
 const size_t kSizeClasses = LUA_SIZECLASSES;
 
@@ -221,13 +223,14 @@ struct lua_Page
     int freeNext;   // next free block offset in this page, in bytes; when negative, freeList is used instead
     int busyBlocks; // number of blocks allocated out of this page
 
-    union
-    {
-        char data[1];
-        double align1;
-        void* align2;
-    };
+    // provide additional padding based on current object size to provide 16 byte alignment of data
+    // later static_assert checks that this requirement is held
+    char padding[sizeof(void*) == 8 ? 8 : 12];
+
+    char data[1];
 };
+
+static_assert(offsetof(lua_Page, data) % 16 == 0, "data must be 16 byte aligned to provide properly aligned allocation of userdata objects");
 
 l_noret luaM_toobig(lua_State* L)
 {

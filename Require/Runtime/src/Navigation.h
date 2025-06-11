@@ -27,6 +27,8 @@ public:
     NavigateResult toChild(const std::string& component) override;
 
     bool isConfigPresent() const override;
+    NavigationContext::ConfigBehavior getConfigBehavior() const override;
+    std::optional<std::string> getAlias(const std::string& alias) const override;
     std::optional<std::string> getConfig() const override;
 
     // Custom capabilities
@@ -40,6 +42,11 @@ private:
         luarequire_WriteResult (*writer)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out),
         size_t initalBufferSize
     ) const;
+    std::optional<std::string> getStringFromCWriterWithInput(
+        luarequire_WriteResult (*writer)(lua_State* L, void* ctx, const char* input, char* buffer, size_t buffer_size, size_t* size_out),
+        std::string input,
+        size_t initalBufferSize
+    ) const;
 
     luarequire_Configuration* config;
     lua_State* L;
@@ -47,15 +54,18 @@ private:
     std::string requirerChunkname;
 };
 
+// Non-throwing error reporter
 class RuntimeErrorHandler : public ErrorHandler
 {
 public:
-    RuntimeErrorHandler(lua_State* L, std::string requiredPath);
+    RuntimeErrorHandler(std::string requiredPath);
     void reportError(std::string message) override;
 
+    const std::string& getReportedError() const;
+
 private:
-    lua_State* L;
     std::string errorPrefix;
+    std::string errorMessage;
 };
 
 } // namespace Luau::Require

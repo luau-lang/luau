@@ -186,6 +186,49 @@ for i=1,lim do a[{}] = i end
 collectgarbage()
 assert(next(a) == nil)
 
+-- shrinking a table should be robust against an OOM
+do
+    local count = 100000
+    local extra = 1000
+    a = {}
+    setmetatable(a, {__mode = 'ks'})
+
+    -- items to be collected
+    for i = 1,count do a[{}] = i end
+
+    -- items that will still be reachable
+    for i = 1,extra do a[tostring(i)] = {} end
+
+    setblockallocations(true)
+    collectgarbage()
+    setblockallocations(false)
+
+    for k,v in a do assert(type(k) == "string") end
+end
+
+-- shrinking strings should be robust against an OOM
+do
+    local count = 100000
+    a = {}
+
+    for i = 1,count do a[tostring(count)] = i end
+    table.clear(a);
+
+    setblockallocations(true)
+    collectgarbage()
+    setblockallocations(false)
+end
+
+-- shrinking thread stacks should be robust against an OOM
+do
+    function recurse(n, ...) return n <= 1 and (1 + #{...}) or recurse(n-1, table.unpack(table.create(4000, 1))) + 1 end
+    recurse(100)
+
+    setblockallocations(true)
+    collectgarbage()
+    setblockallocations(false)
+end
+
 -- testing userdata
 collectgarbage("stop")   -- stop collection
 local u = newproxy(true)

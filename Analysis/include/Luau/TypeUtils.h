@@ -291,4 +291,34 @@ void trackInteriorFreeType(Scope* scope, TypeId ty);
 
 void trackInteriorFreeTypePack(Scope* scope, TypePackId tp);
 
+// A fast approximation of subTy <: superTy
+bool fastIsSubtype(TypeId subTy, TypeId superTy);
+
+/**
+ * @param tables A list of potential table parts of a union
+ * @param exprType Type of the expression to match
+ * @return An element of `tables` that best matches `exprType`.
+ */
+std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+
+/**
+ * @param item A member of a table in an AST
+ * @return Whether the item is a key-value pair with a statically defined string key.
+ *
+ * ```
+ * {
+ *      ["foo"] = ..., -- is a record
+ *      bar = ..., -- is a record
+ *      ..., -- not a record: non-string key (number)
+ *      [true] = ..., -- not a record: non-string key (boolean)
+ *      [ foobar() ] = ..., -- not a record: unknown key value.
+ *      ["foo" .. "bar"] = ..., -- not a record (don't make us handle it).
+ * }
+ * ```
+ */
+bool isRecord(const AstExprTable::Item& item);
+
+// Unwraps any grouping expressions iteratively.
+AstExpr* unwrapGroup(AstExpr* expr);
+
 } // namespace Luau

@@ -11,6 +11,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauArityMismatchOnUndersaturatedUnknownArguments)
+LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 
 namespace Luau
 {
@@ -39,7 +40,7 @@ OverloadResolver::OverloadResolver(
 {
 }
 
-std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(TypeId ty, TypePackId argsPack)
+std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(TypeId ty, TypePackId argsPack, bool useFreeTypeBounds)
 {
     auto tryOne = [&](TypeId f)
     {
@@ -49,6 +50,9 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(T
             subtyping.variance = Subtyping::Variance::Contravariant;
             SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
             subtyping.variance = variance;
+
+            if (!useFreeTypeBounds && !r.assumedConstraints.empty())
+                return false;
 
             if (r.isSubtype)
                 return true;
@@ -287,6 +291,25 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 
             return {Analysis::Ok, {}};
         }
+
+        if (FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2)
+        {
+            if (reason.subPath == TypePath::Path{{TypePath::PackField::Arguments, TypePath::PackField::Tail}} && reason.superPath == justArguments)
+            {
+                // We have an arity mismatch if the argument tail is a generic type pack
+                if (auto fnArgs = get<TypePack>(fn->argTypes))
+                {
+                    // TODO: Determine whether arguments have incorrect type, incorrect count, or both (CLI-152070)
+                    if (get<GenericTypePack>(fnArgs->tail))
+                    {
+                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg}};
+
+                        return {Analysis::ArityMismatch, {error}};
+                    }
+                }
+            }
+        }
     }
 
     ErrorVec errors;
@@ -441,7 +464,7 @@ static std::optional<TypeId> selectOverload(
 {
     auto resolver =
         std::make_unique<OverloadResolver>(builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
-    auto [status, overload] = resolver->selectOverload(fn, argsPack);
+    auto [status, overload] = resolver->selectOverload(fn, argsPack, /*useFreeTypeBounds*/ false);
 
     if (status == OverloadResolver::Analysis::Ok)
         return overload;

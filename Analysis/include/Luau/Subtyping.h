@@ -60,7 +60,7 @@ struct SubtypingReasoningHash
 };
 
 using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
-static const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
+inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
 
 struct SubtypingResult
 {
@@ -71,6 +71,11 @@ struct SubtypingResult
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
     SubtypingReasonings reasoning{kEmptyReasoning};
+
+    // If this subtype result required testing free types, we might be making
+    // assumptions about what the free type eventually resolves to.  If so,
+    // those assumptions are recorded here.
+    std::vector<SubtypeConstraint> assumedConstraints;
 
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
@@ -229,8 +234,14 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const ExternType* subExternType, const ExternType* superExternType, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ExternType* subExternType, TypeId superTy, const TableType* superTable, NotNull<Scope>);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const ExternType* subExternType,
+        const ExternType* superExternType,
+        NotNull<Scope> scope
+    );
+    SubtypingResult
+    isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ExternType* subExternType, TypeId superTy, const TableType* superTable, NotNull<Scope>);
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const FunctionType* subFunction,
@@ -262,7 +273,12 @@ private:
         const NormalizedExternType& superExternType,
         NotNull<Scope> scope
     );
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedExternType& subExternType, const TypeIds& superTables, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const NormalizedExternType& subExternType,
+        const TypeIds& superTables,
+        NotNull<Scope> scope
+    );
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const NormalizedStringType& subString,

@@ -19,6 +19,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1356,6 +1357,23 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
         CHECK("<T, b>({T}, b) -> number" == toString(requireType("find_first")));
     }
 #endif
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
+    // This is a tactical unsoundness we're introducing to resolve issues around
+    // cyclic types. You can see that if this loop were to run more than once,
+    // we'd error as we'd try to call a number.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local f = function () return 42 end
+        while true do
+            f = f()
+        end
+    )"));
 }
 
 TEST_SUITE_END();

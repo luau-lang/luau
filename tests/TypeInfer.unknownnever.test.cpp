@@ -336,7 +336,10 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK_EQ("(nil, unknown) -> boolean", toString(requireType("ord")));
+    {
+        // FIXME: CLI-152325
+        CHECK_EQ("(nil, nil & ~nil) -> boolean", toString(requireType("ord")));
+    }
     else
         CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
 }

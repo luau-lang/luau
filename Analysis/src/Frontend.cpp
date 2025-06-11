@@ -10,6 +10,7 @@
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/EqSatSimplification.h"
+#include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/FileResolver.h"
 #include "Luau/NonStrictTypeChecker.h"
 #include "Luau/NotNull.h"
@@ -39,15 +40,14 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRethrowKnownExceptions, false)
-LUAU_FASTFLAG(DebugLuauGreedyGeneralization)
+LUAU_FASTFLAG(LuauEagerGeneralization3)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-
-LUAU_FASTFLAG(LuauTypeFunResultInAutocomplete)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverTypecheckCatchTimeouts)
+LUAU_FASTFLAGVARIABLE(LuauExpectedTypeVisitor)
 
 namespace Luau
 {
@@ -409,6 +409,38 @@ void Frontend::parse(const ModuleName& name)
 
     std::vector<ModuleName> buildQueue;
     parseGraph(buildQueue, name, false);
+}
+
+void Frontend::parseModules(const std::vector<ModuleName>& names)
+{
+    LUAU_TIMETRACE_SCOPE("Frontend::parseModules", "Frontend");
+
+    DenseHashSet<Luau::ModuleName> seen{{}};
+
+    for (const ModuleName& name : names)
+    {
+        if (seen.contains(name))
+            continue;
+
+        if (auto it = sourceNodes.find(name); it != sourceNodes.end() && !it->second->hasDirtySourceModule())
+        {
+            seen.insert(name);
+            continue;
+        }
+
+        std::vector<ModuleName> queue;
+        parseGraph(
+            queue,
+            name,
+            false,
+            [&seen](const ModuleName& name)
+            {
+                return seen.contains(name);
+            }
+        );
+
+        seen.insert(name);
+    }
 }
 
 CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOptions> optionOverride)
@@ -1098,27 +1130,13 @@ void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, 
 {
     BuildQueueItem& item = state->buildQueueItems[itemPos];
 
-    if (DFFlag::LuauRethrowKnownExceptions)
+    try
     {
-        try
-        {
-            checkBuildQueueItem(item);
-        }
-        catch (const Luau::InternalCompilerError&)
-        {
-            item.exception = std::current_exception();
-        }
+        checkBuildQueueItem(item);
     }
-    else
+    catch (const Luau::InternalCompilerError&)
     {
-        try
-        {
-            checkBuildQueueItem(item);
-        }
-        catch (...)
-        {
-            item.exception = std::current_exception();
-        }
+        item.exception = std::current_exception();
     }
 
     {
@@ -1402,7 +1420,7 @@ ModulePtr check(
     SimplifierPtr simplifier = newSimplifier(NotNull{&result->internalTypes}, builtinTypes);
     TypeFunctionRuntime typeFunctionRuntime{iceHandler, NotNull{&limits}};
 
-    typeFunctionRuntime.allowEvaluation = FFlag::LuauTypeFunResultInAutocomplete || sourceModule.parseErrors.empty();
+    typeFunctionRuntime.allowEvaluation = true;
 
     ConstraintGenerator cg{
         result,
@@ -1420,13 +1438,13 @@ ModulePtr check(
         requireCycles
     };
 
-    // FIXME: Delete this flag when clipping FFlag::DebugLuauGreedyGeneralization.
+    // FIXME: Delete this flag when clipping FFlag::LuauEagerGeneralization2.
     //
     // This optional<> only exists so that we can run one constructor when the flag
     // is set, and another when it is unset.
     std::optional<ConstraintSolver> cs;
 
-    if (FFlag::DebugLuauGreedyGeneralization)
+    if (FFlag::LuauEagerGeneralization3)
     {
         ConstraintSet constraintSet = cg.run(sourceModule.root);
         result->errors = std::move(constraintSet.errors);
@@ -1512,6 +1530,52 @@ ModulePtr check(
         for (auto& [name, tf] : result->exportedTypeBindings)
             tf.type = builtinTypes->errorRecoveryType();
     }
+    else if (FFlag::LuauNewSolverTypecheckCatchTimeouts)
+    {
+        try
+        {
+            switch (mode)
+            {
+            case Mode::Nonstrict:
+                Luau::checkNonStrict(
+                    builtinTypes,
+                    NotNull{simplifier.get()},
+                    NotNull{&typeFunctionRuntime},
+                    iceHandler,
+                    NotNull{&unifierState},
+                    NotNull{&dfg},
+                    NotNull{&limits},
+                    sourceModule,
+                    result.get()
+                );
+                break;
+            case Mode::Definition:
+                // fallthrough intentional
+            case Mode::Strict:
+                Luau::check(
+                    builtinTypes,
+                    NotNull{simplifier.get()},
+                    NotNull{&typeFunctionRuntime},
+                    NotNull{&unifierState},
+                    NotNull{&limits},
+                    logger.get(),
+                    sourceModule,
+                    result.get()
+                );
+                break;
+            case Mode::NoCheck:
+                break;
+            };
+        }
+        catch (const TimeLimitError&)
+        {
+            result->timeout = true;
+        }
+        catch (const UserCancelError&)
+        {
+            result->cancelled = true;
+        }
+    }
     else
     {
         switch (mode)
@@ -1546,6 +1610,19 @@ ModulePtr check(
         case Mode::NoCheck:
             break;
         };
+    }
+
+    if (FFlag::LuauExpectedTypeVisitor)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&result->astTypes},
+            NotNull{&result->astExpectedTypes},
+            NotNull{&result->astResolvedTypes},
+            NotNull{&result->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
     }
 
     unfreeze(result->interfaceTypes);

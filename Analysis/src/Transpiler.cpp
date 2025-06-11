@@ -11,7 +11,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauStoreCSTData2)
-LUAU_FASTFLAG(LuauFixFunctionWithAttributesStartLocation)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauStoreLocalAnnotationColonPositions)
 
@@ -1382,7 +1381,11 @@ struct Printer
             LUAU_ASSERT(!forVarArg);
             if (const auto cstNode = lookupCstNode<CstTypePackExplicit>(explicitTp))
                 visualizeTypeList(
-                    explicitTp->typeList, FFlag::LuauStoreReturnTypesAsPackOnAst ? cstNode->hasParentheses : true, cstNode->openParenthesesPosition, cstNode->closeParenthesesPosition, cstNode->commaPositions
+                    explicitTp->typeList,
+                    FFlag::LuauStoreReturnTypesAsPackOnAst ? cstNode->hasParentheses : true,
+                    cstNode->openParenthesesPosition,
+                    cstNode->closeParenthesesPosition,
+                    cstNode->commaPositions
                 );
             else
                 visualizeTypeList(explicitTp->typeList, unconditionallyParenthesize);
@@ -1490,8 +1493,7 @@ struct Printer
 
     void visualize(AstExpr& expr)
     {
-        if (!expr.is<AstExprFunction>() || FFlag::LuauFixFunctionWithAttributesStartLocation)
-            advance(expr.location.begin);
+        advance(expr.location.begin);
 
         if (const auto& a = expr.as<AstExprGroup>())
         {
@@ -1627,15 +1629,8 @@ struct Printer
         {
             for (const auto& attribute : a->attributes)
                 visualizeAttribute(*attribute);
-            if (FFlag::LuauFixFunctionWithAttributesStartLocation)
-            {
-                if (const auto cstNode = lookupCstNode<CstExprFunction>(a))
-                    advance(cstNode->functionKeywordPosition);
-            }
-            else
-            {
-                advance(a->location.begin);
-            }
+            if (const auto cstNode = lookupCstNode<CstExprFunction>(a))
+                advance(cstNode->functionKeywordPosition);
             writer.keyword("function");
             visualizeFunctionBody(*a);
         }
@@ -1887,8 +1882,7 @@ struct Printer
 
     void visualize(AstStat& program)
     {
-        if ((!program.is<AstStatLocalFunction>() && !program.is<AstStatFunction>()) || FFlag::LuauFixFunctionWithAttributesStartLocation)
-            advance(program.location.begin);
+        advance(program.location.begin);
 
         if (const auto& block = program.as<AstStatBlock>())
         {
@@ -1996,7 +1990,7 @@ struct Printer
             if (FFlag::LuauStoreLocalAnnotationColonPositions)
                 visualize(*a->var, cstNode ? cstNode->annotationColonPosition : Position{0, 0});
             else
-                visualize(*a->var, Position{0,0});
+                visualize(*a->var, Position{0, 0});
 
             if (cstNode)
                 advance(cstNode->equalsPosition);
@@ -2143,15 +2137,8 @@ struct Printer
         {
             for (const auto& attribute : a->func->attributes)
                 visualizeAttribute(*attribute);
-            if (FFlag::LuauFixFunctionWithAttributesStartLocation)
-            {
-                if (const auto cstNode = lookupCstNode<CstStatFunction>(a))
-                    advance(cstNode->functionKeywordPosition);
-            }
-            else
-            {
-                advance(a->location.begin);
-            }
+            if (const auto cstNode = lookupCstNode<CstStatFunction>(a))
+                advance(cstNode->functionKeywordPosition);
             writer.keyword("function");
             visualize(*a->name);
             visualizeFunctionBody(*a->func);
@@ -2162,15 +2149,9 @@ struct Printer
                 visualizeAttribute(*attribute);
 
             const auto cstNode = lookupCstNode<CstStatLocalFunction>(a);
-            if (FFlag::LuauFixFunctionWithAttributesStartLocation)
-            {
-                if (cstNode)
-                    advance(cstNode->localKeywordPosition);
-            }
-            else
-            {
-                advance(a->location.begin);
-            }
+
+            if (cstNode)
+                advance(cstNode->localKeywordPosition);
 
             writer.keyword("local");
 

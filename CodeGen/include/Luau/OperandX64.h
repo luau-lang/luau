@@ -72,13 +72,13 @@ struct OperandX64
     }
 };
 
-constexpr OperandX64 addr{SizeX64::none, noreg, 1, noreg, 0};
-constexpr OperandX64 byte{SizeX64::byte, noreg, 1, noreg, 0};
-constexpr OperandX64 word{SizeX64::word, noreg, 1, noreg, 0};
-constexpr OperandX64 dword{SizeX64::dword, noreg, 1, noreg, 0};
-constexpr OperandX64 qword{SizeX64::qword, noreg, 1, noreg, 0};
-constexpr OperandX64 xmmword{SizeX64::xmmword, noreg, 1, noreg, 0};
-constexpr OperandX64 ymmword{SizeX64::ymmword, noreg, 1, noreg, 0};
+inline constexpr OperandX64 addr{SizeX64::none, noreg, 1, noreg, 0};
+inline constexpr OperandX64 byte{SizeX64::byte, noreg, 1, noreg, 0};
+inline constexpr OperandX64 word{SizeX64::word, noreg, 1, noreg, 0};
+inline constexpr OperandX64 dword{SizeX64::dword, noreg, 1, noreg, 0};
+inline constexpr OperandX64 qword{SizeX64::qword, noreg, 1, noreg, 0};
+inline constexpr OperandX64 xmmword{SizeX64::xmmword, noreg, 1, noreg, 0};
+inline constexpr OperandX64 ymmword{SizeX64::ymmword, noreg, 1, noreg, 0};
 
 constexpr OperandX64 operator*(RegisterX64 reg, uint8_t scale)
 {

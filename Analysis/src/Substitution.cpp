@@ -10,7 +10,6 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
-LUAU_FASTFLAG(LuauSyntheticErrors)
 
 namespace Luau
 {
@@ -57,25 +56,17 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
         }
         else if constexpr (std::is_same_v<T, ErrorType>)
         {
-            if (FFlag::LuauSyntheticErrors)
-            {
-                LUAU_ASSERT(ty->persistent || a.synthetic);
+            LUAU_ASSERT(ty->persistent || a.synthetic);
 
-                if (ty->persistent)
-                    return ty;
-
-                // While this code intentionally works (and clones) even if `a.synthetic` is `std::nullopt`,
-                // we still assert above because we consider it a bug to have a non-persistent error type
-                // without any associated metadata. We should always use the persistent version in such cases.
-                ErrorType clone = ErrorType{};
-                clone.synthetic = a.synthetic;
-                return dest.addType(clone);
-            }
-            else
-            {
-                LUAU_ASSERT(ty->persistent);
+            if (ty->persistent)
                 return ty;
-            }
+
+            // While this code intentionally works (and clones) even if `a.synthetic` is `std::nullopt`,
+            // we still assert above because we consider it a bug to have a non-persistent error type
+            // without any associated metadata. We should always use the persistent version in such cases.
+            ErrorType clone = ErrorType{};
+            clone.synthetic = a.synthetic;
+            return dest.addType(clone);
         }
         else if constexpr (std::is_same_v<T, UnknownType>)
         {

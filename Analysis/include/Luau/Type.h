@@ -34,6 +34,7 @@ using ScopePtr = std::shared_ptr<Scope>;
 struct Module;
 
 struct TypeFunction;
+struct TypeFun;
 struct Constraint;
 struct Subtyping;
 struct TypeChecker2;
@@ -608,7 +609,8 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environment{""};
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction{""};
+    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias{""};
 };
 
 /**
@@ -1206,7 +1208,7 @@ std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 
 // A tag to mark a type which doesn't derive directly from the root type as overriding the return of `typeof`.
 // Any classes which derive from this type will have typeof return this type.
-static constexpr char kTypeofRootTag[] = "typeofRoot";
+inline constexpr char kTypeofRootTag[] = "typeofRoot";
 
 void attachTag(TypeId ty, const std::string& tagName);
 void attachTag(Property& prop, const std::string& tagName);

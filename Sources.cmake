@@ -185,10 +185,10 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/DataFlowGraph.h
     Analysis/include/Luau/DcrLogger.h
     Analysis/include/Luau/Def.h
-    Analysis/include/Luau/Differ.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/EqSatSimplification.h
+    Analysis/include/Luau/ExpectedTypeVisitor.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/FragmentAutocomplete.h
     Analysis/include/Luau/Frontend.h
@@ -237,6 +237,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeFunctionRuntime.h
     Analysis/include/Luau/TypeFunctionRuntimeBuilder.h
     Analysis/include/Luau/TypeFwd.h
+    Analysis/include/Luau/TypeIds.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypeOrPack.h
     Analysis/include/Luau/TypePack.h
@@ -263,10 +264,10 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/DataFlowGraph.cpp
     Analysis/src/DcrLogger.cpp
     Analysis/src/Def.cpp
-    Analysis/src/Differ.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/EqSatSimplification.cpp
+    Analysis/src/ExpectedTypeVisitor.cpp
     Analysis/src/FileResolver.cpp
     Analysis/src/FragmentAutocomplete.cpp
     Analysis/src/Frontend.cpp
@@ -306,6 +307,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeFunctionReductionGuesser.cpp
     Analysis/src/TypeFunctionRuntime.cpp
     Analysis/src/TypeFunctionRuntimeBuilder.cpp
+    Analysis/src/TypeIds.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypeOrPack.cpp
     Analysis/src/TypePack.cpp
@@ -398,9 +400,11 @@ target_sources(isocline PRIVATE
 target_sources(Luau.CLI.lib PRIVATE
     CLI/include/Luau/FileUtils.h
     CLI/include/Luau/Flags.h
+    CLI/include/Luau/VfsNavigator.h
 
     CLI/src/FileUtils.cpp
     CLI/src/Flags.cpp
+    CLI/src/VfsNavigator.cpp
 )
 
 if(TARGET Luau.Repl.CLI)
@@ -409,14 +413,12 @@ if(TARGET Luau.Repl.CLI)
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
-        CLI/include/Luau/RequirerUtils.h
 
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
         CLI/src/ReplEntry.cpp
         CLI/src/ReplRequirer.cpp
-        CLI/src/RequirerUtils.cpp
     )
 endif()
 
@@ -424,11 +426,9 @@ if(TARGET Luau.Analyze.CLI)
     # Luau.Analyze.CLI Sources
     target_sources(Luau.Analyze.CLI PRIVATE
         CLI/include/Luau/AnalyzeRequirer.h
-        CLI/include/Luau/RequirerUtils.h
 
         CLI/src/Analyze.cpp
         CLI/src/AnalyzeRequirer.cpp
-        CLI/src/RequirerUtils.cpp
     )
 endif()
 
@@ -462,9 +462,6 @@ if(TARGET Luau.UnitTest)
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
         tests/DenseHash.test.cpp
-        tests/DiffAsserts.cpp
-        tests/DiffAsserts.h
-        tests/Differ.test.cpp
         tests/EqSat.language.test.cpp
         tests/EqSat.propositional.test.cpp
         tests/EqSat.slice.test.cpp
@@ -563,13 +560,11 @@ if(TARGET Luau.CLI.Test)
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
-        CLI/include/Luau/RequirerUtils.h
 
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
         CLI/src/ReplRequirer.cpp
-        CLI/src/RequirerUtils.cpp
 
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp

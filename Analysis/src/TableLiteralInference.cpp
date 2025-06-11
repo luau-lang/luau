@@ -13,101 +13,10 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceElideAssert)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
 
 namespace Luau
 {
-
-// A fast approximation of subTy <: superTy
-static bool fastIsSubtype(TypeId subTy, TypeId superTy)
-{
-    Relation r = relate(superTy, subTy);
-    return r == Relation::Coincident || r == Relation::Superset;
-}
-
-static bool isRecord(const AstExprTable::Item& item)
-{
-    if (item.kind == AstExprTable::Item::Record)
-        return true;
-    else if (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>())
-        return true;
-    else
-        return false;
-}
-
-static std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
-{
-    if (tables.empty())
-        return std::nullopt;
-
-    const TableType* exprTable = get<TableType>(follow(exprType));
-    if (!exprTable)
-        return std::nullopt;
-
-    size_t tableCount = 0;
-    std::optional<TypeId> firstTable;
-
-    for (TypeId ty : tables)
-    {
-        ty = follow(ty);
-        if (auto tt = get<TableType>(ty))
-        {
-            // If the expected table has a key whose type is a string or boolean
-            // singleton and the corresponding exprType property does not match,
-            // then skip this table.
-
-            if (!firstTable)
-                firstTable = ty;
-            ++tableCount;
-
-            for (const auto& [name, expectedProp] : tt->props)
-            {
-                if (!expectedProp.readTy)
-                    continue;
-
-                const TypeId expectedType = follow(*expectedProp.readTy);
-
-                auto st = get<SingletonType>(expectedType);
-                if (!st)
-                    continue;
-
-                auto it = exprTable->props.find(name);
-                if (it == exprTable->props.end())
-                    continue;
-
-                const auto& [_name, exprProp] = *it;
-
-                if (!exprProp.readTy)
-                    continue;
-
-                const TypeId propType = follow(*exprProp.readTy);
-
-                const FreeType* ft = get<FreeType>(propType);
-
-                if (ft && get<SingletonType>(ft->lowerBound))
-                {
-                    if (fastIsSubtype(builtinTypes->booleanType, ft->upperBound) && fastIsSubtype(expectedType, builtinTypes->booleanType))
-                    {
-                        return ty;
-                    }
-
-                    if (fastIsSubtype(builtinTypes->stringType, ft->upperBound) && fastIsSubtype(expectedType, ft->lowerBound))
-                    {
-                        return ty;
-                    }
-                }
-            }
-        }
-    }
-
-    if (tableCount == 1)
-    {
-        LUAU_ASSERT(firstTable);
-        return firstTable;
-    }
-
-    return std::nullopt;
-}
 
 TypeId matchLiteralType(
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
@@ -257,7 +166,6 @@ TypeId matchLiteralType(
                 if (tt)
                 {
                     TypeId res = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, subtyping, *tt, exprType, expr, toBlock);
-
                     parts.push_back(res);
                     return arena->addType(UnionType{std::move(parts)});
                 }
@@ -388,9 +296,6 @@ TypeId matchLiteralType(
             }
             else if (item.kind == AstExprTable::Item::List)
             {
-                if (!FFlag::LuauBidirectionalInferenceElideAssert)
-                    LUAU_ASSERT(tableTy->indexer);
-
                 if (expectedTableTy->indexer)
                 {
                     const TypeId* propTy = astTypes->find(item.value);

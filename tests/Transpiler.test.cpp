@@ -15,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauStoreLocalAnnotationColonPositions)
+LUAU_FASTFLAG(LuauCSTForReturnTypeFunctionTail)
 
 TEST_SUITE_BEGIN("TranspilerTests");
 
@@ -2261,6 +2262,23 @@ TEST_CASE("transpile_type_function_return_types")
     CHECK_EQ(code, transpile(code, {}, true).code);
 
     code = R"( type Foo = () -> (string, number  ) )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_chained_function_types")
+{
+    ScopedFastFlag fflags[] = {
+        {FFlag::LuauStoreCSTData2, true},
+        {FFlag::LuauStoreReturnTypesAsPackOnAst, true},
+        {FFlag::LuauCSTForReturnTypeFunctionTail, true},
+    };
+    std::string code = R"( type Foo = () -> () -> () )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> ()   -> () )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = R"( type Foo = () -> () ->   () )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 

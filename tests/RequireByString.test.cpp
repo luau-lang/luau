@@ -368,11 +368,32 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireInitLua")
     assertOutputContainsAll({"true", "result from init.lua"});
 }
 
-TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelf")
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelfIndirectly")
 {
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested_module_requirer";
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from submodule"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelfDirectly")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true", "result from submodule"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "CannotRequireInitLuauDirectly")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested/init";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "could not resolve child component \"init\""});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireNestedInits")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested_inits_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true", "result from nested_inits/init", "required into module"});
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithFileAmbiguity")
@@ -639,6 +660,10 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireFromLuauBinary")
         getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/dependency.luau",
         getLuauDirectory(PathType::Relative) + "/tests/require/without_config/module.luau",
         getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/module.luau",
+        getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested/init.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/nested/init.luau",
+        getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/submodule/init.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/with_config/src/submodule/init.luau",
     };
 
     for (const std::string& path : paths)

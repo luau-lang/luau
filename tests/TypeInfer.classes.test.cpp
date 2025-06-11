@@ -129,8 +129,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_infer_that_a_parameter_must_be_a_pa
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function makeClone(o)
             return BaseClass.Clone(o)
@@ -472,9 +470,6 @@ Type 'number' could not be converted into 'string')";
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "class_type_mismatch_with_name_conflict")
 {
-    // CLI-116433
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
 local i = ChildClass.New()
 type ChildClass = { x: number }
@@ -827,7 +822,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_index_a_class_with_no_indexer")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_MESSAGE(
-        get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
+        get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]),
+        "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
     );
 
     CHECK(builtinTypes->errorType == requireType("c"));

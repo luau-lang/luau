@@ -15,9 +15,8 @@
 #include "doctest.h"
 #include <iostream>
 
-LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
-LUAU_FASTFLAG(LuauNonStrictVisitorImprovements)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
+LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 
 using namespace Luau;
 
@@ -362,8 +361,6 @@ end
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_sequencing_errors_2")
 {
-    ScopedFastFlag luauNonStrictVisitorImprovements{FFlag::LuauNonStrictVisitorImprovements, true};
-
     CheckResult result = checkNonStrict(R"(
 local t = {function(x)
     abs(x)
@@ -510,8 +507,6 @@ foo.bar("hi")
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "exprgroup_is_checked")
 {
-    ScopedFastFlag sff{FFlag::LuauNonStrictVisitorImprovements, true};
-
     CheckResult result = checkNonStrict(R"(
         local foo = (abs("foo"))
     )");
@@ -527,8 +522,6 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "exprgroup_is_checked")
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "binop_is_checked")
 {
-    ScopedFastFlag sff{FFlag::LuauNonStrictVisitorImprovements, true};
-
     CheckResult result = checkNonStrict(R"(
         local foo = 4 + abs("foo")
     )");
@@ -564,6 +557,18 @@ optionalArgsAtTheEnd1("a")
 optionalArgsAtTheEnd1("a", 3)
 optionalArgsAtTheEnd1("a", nil, 3)
 )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_packs_in_non_strict")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictFixGenericTypePacks, true};
+
+    CheckResult result = checkNonStrict(R"(
+        --!nonstrict
+        local test: <T...>(T...) -> () -- TypeError: Unknown type 'T'
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -653,8 +658,6 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
 {
-    ScopedFastFlag flags[] = {{FFlag::LuauNonStrictVisitorImprovements, true}, {FFlag::LuauNewNonStrictWarnOnUnknownGlobals, true}};
-
     CheckResult result = check(Mode::Nonstrict, R"(
         foo = 5
         local wrong1 = foob

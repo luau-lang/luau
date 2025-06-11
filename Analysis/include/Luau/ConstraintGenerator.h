@@ -10,12 +10,12 @@
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
+#include "Luau/TypeIds.h"
 #include "Luau/TypeUtils.h"
 
 #include <memory>
@@ -93,7 +93,7 @@ struct ConstraintGenerator
     std::vector<ConstraintPtr> constraints;
 
     // The set of all free types introduced during constraint generation.
-    DenseHashSet<TypeId> freeTypes{nullptr};
+    TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
     DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
@@ -172,6 +172,12 @@ private:
 
     std::vector<std::vector<TypeId>> DEPRECATED_interiorTypes;
     std::vector<InteriorFreeTypes> interiorFreeTypes;
+
+    std::vector<TypeId> unionsToSimplify;
+
+    // Used to keep track of when we are inside a large table and should
+    // opt *not* to do type inference for singletons.
+    size_t largeTableDepth = 0;
 
     /**
      * Fabricates a new free type belonging to a given scope.
@@ -447,6 +453,12 @@ private:
 
     // make a union type function of these two types
     TypeId makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
+
+    // Make a union type and add it to `unionsToSimplify`, ensuring that
+    // later we will attempt to simplify this union in order to keep types
+    // small.
+    TypeId makeUnion(std::vector<TypeId> options);
+
     // make an intersect type function of these two types
     TypeId makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
     void prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program);

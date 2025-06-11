@@ -26,19 +26,12 @@ using namespace Luau;
 LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauAutocompleteUsesModuleForTypeCompatibility)
-LUAU_FASTFLAG(LuauBetterCursorInCommentDetection)
-LUAU_FASTFLAG(LuauAllFreeTypesHaveScopes)
-LUAU_FASTFLAG(LuauClonedTableAndFunctionTypesMustHaveScopes)
-LUAU_FASTFLAG(LuauDisableNewSolverAssertsInMixedMode)
-LUAU_FASTFLAG(LuauCloneTypeAliasBindings)
-LUAU_FASTFLAG(LuauDoNotClonePersistentBindings)
-LUAU_FASTFLAG(LuauUserTypeFunTypecheck)
 LUAU_FASTFLAG(LuauBetterScopeSelection)
 LUAU_FASTFLAG(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAG(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAG(LuauFragmentAutocompleteIfRecommendations)
+LUAU_FASTFLAG(LuauPopulateRefinedTypesInFragmentFromOldSolver)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -68,17 +61,12 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 {
     static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
 
-    ScopedFastFlag luauAllFreeTypesHaveScopes{FFlag::LuauAllFreeTypesHaveScopes, true};
-    ScopedFastFlag luauClonedTableAndFunctionTypesMustHaveScopes{FFlag::LuauClonedTableAndFunctionTypesMustHaveScopes, true};
-    ScopedFastFlag luauDisableNewSolverAssertsInMixedMode{FFlag::LuauDisableNewSolverAssertsInMixedMode, true};
-    ScopedFastFlag luauCloneTypeAliasBindings{FFlag::LuauCloneTypeAliasBindings, true};
-    ScopedFastFlag luauDoNotClonePersistentBindings{FFlag::LuauDoNotClonePersistentBindings, true};
     ScopedFastFlag luauBetterScopeSelection{FFlag::LuauBetterScopeSelection, true};
     ScopedFastFlag luauBlockDiffFragmentSelection{FFlag::LuauBlockDiffFragmentSelection, true};
-    ScopedFastFlag luauAutocompleteUsesModuleForTypeCompatibility{FFlag::LuauAutocompleteUsesModuleForTypeCompatibility, true};
     ScopedFastFlag luauFragmentAcMemoryLeak{FFlag::LuauFragmentAcMemoryLeak, true};
     ScopedFastFlag luauGlobalVariableModuleIsolation{FFlag::LuauGlobalVariableModuleIsolation, true};
     ScopedFastFlag luauFragmentAutocompleteIfRecommendations{FFlag::LuauFragmentAutocompleteIfRecommendations, true};
+    ScopedFastFlag luauPopulateRefinedTypesInFragmentFromOldSolver{FFlag::LuauPopulateRefinedTypesInFragmentFromOldSolver, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -160,6 +148,37 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         return Luau::tryFragmentAutocomplete(this->frontend, "MainModule", cursorPos, context, nullCallback);
     }
 
+    void autocompleteFragmentInNewSolver(
+        const std::string& document,
+        const std::string& updated,
+        Position cursorPos,
+        std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+        )
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        this->check(document, getOptions());
+
+        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
+        assertions(result);
+    }
+
+    void autocompleteFragmentInOldSolver(
+        const std::string& document,
+        const std::string& updated,
+        Position cursorPos,
+        std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
+        std::optional<Position> fragmentEndPosition = std::nullopt
+        )
+    {
+        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        this->check(document, getOptions());
+
+        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
+        assertions(result);
+    }
 
     void autocompleteFragmentInBothSolvers(
         const std::string& document,
@@ -2527,7 +2546,6 @@ l
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "do_not_recommend_results_in_multiline_comment")
 {
-    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     std::string source = R"(--[[
 )";
     std::string dest = R"(--[[
@@ -2548,7 +2566,6 @@ a
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_simple")
 {
-    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     const std::string source = R"(
 -- sel
 -- retur
@@ -2584,7 +2601,6 @@ bar
 baz
 ]]
 )";
-    ScopedFastFlag sff{FFlag::LuauBetterCursorInCommentDetection, true};
     autocompleteFragmentInBothSolvers(
         source,
         source,
@@ -2629,7 +2645,6 @@ baz
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments")
 {
-    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     const std::string source = R"(
 -- sel
 -- retur
@@ -2709,7 +2724,6 @@ if x == 5
 local x = 5
 if x == 5 then -- a comment
 )";
-    ScopedFastFlag sff = {FFlag::LuauBetterCursorInCommentDetection, true};
     autocompleteFragmentInBothSolvers(
         source,
         updated,
@@ -2965,7 +2979,6 @@ return module
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "ice_caused_by_mixed_mode_use")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteUsesModuleForTypeCompatibility, true};
     const std::string source =
         std::string("--[[\n\tPackage link auto-generated by Rotriever\n]]\nlocal PackageIndex = script.Parent._Index\n\nlocal Package = ") +
         "require(PackageIndex[\"ReactOtter\"][\"ReactOtter\"])\n\nexport type Goal = Package.Goal\nexport type SpringOptions " +
@@ -3065,8 +3078,6 @@ z = a.P.E
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "user_defined_type_function_local")
 {
-    ScopedFastFlag luauUserTypeFunTypecheck{FFlag::LuauUserTypeFunTypecheck, true};
-
     const std::string source = R"(--!strict
 type function foo(x: type): type
     if x.tag == "singleton" then
@@ -3395,7 +3406,6 @@ local foo = 8)");
     CHECK(*pos == Position{2, 0});
 }
 
-#if 0
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalReturn_assert")
 {
     const std::string source = R"()";
@@ -3441,7 +3451,6 @@ return target(bar)";
         }
     );
 }
-#endif
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "str_metata_table_finished_defining")
 {
@@ -3722,6 +3731,138 @@ end
             CHECK(!result.result->acResults.entryMap.count("then"));
         }
     );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_first_branch_of_union_old_solver")
+{
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+    result.
+end
+)";
+    autocompleteFragmentInOldSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
+    });
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_second_branch_of_union_old_solver")
+{
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+    result.
+end
+)";
+
+    autocompleteFragmentInOldSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
+    });
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_first_branch_of_union_new_solver" * doctest::skip(true))
+{
+    // TODO: CLI-155619 - Fragment autocomplete needs to use stale refinement information for modules typechecked in the new solver as well
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "ok" then
+    result.
+end
+)";
+    autocompleteFragmentInNewSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
+    });
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_second_branch_of_union_new_solver" * doctest::skip(true))
+{
+    // TODO: CLI-155619 - Fragment autocomplete needs to use stale refinement information for modules typechecked in the new solver as well
+    const std::string source = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+
+end
+)";
+
+    const std::string dest = R"(
+type Ok<T> = { type: "ok", value: T}
+type Err<E> = { type : "err", error : E}
+type Result<T,E> = Ok<T> | Err<E>
+
+local result = {} :: Result<number, string>
+
+if result.type == "err" then
+    result.
+end
+)";
+
+    autocompleteFragmentInNewSolver(source, dest, Position{8, 11}, [](auto& result){
+        REQUIRE(result.result);
+        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+        CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
+    });
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

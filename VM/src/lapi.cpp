@@ -15,6 +15,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauUnrefExisting, false)
+
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
  *
@@ -1445,9 +1447,26 @@ void lua_unref(lua_State* L, int ref)
 
     global_State* g = L->global;
     LuaTable* reg = hvalue(registry(L));
-    TValue* slot = luaH_setnum(L, reg, ref);
-    setnvalue(slot, g->registryfree); // NB: no barrier needed because value isn't collectable
-    g->registryfree = ref;
+
+    if (DFFlag::LuauUnrefExisting)
+    {
+        const TValue* slot = luaH_getnum(reg, ref);
+        api_check(L, slot != luaO_nilobject);
+
+        // similar to how 'luaH_setnum' makes non-nil slot value mutable
+        TValue* mutableSlot = (TValue*)slot;
+
+        // NB: no barrier needed because value isn't collectable
+        setnvalue(mutableSlot, g->registryfree);
+
+        g->registryfree = ref;
+    }
+    else
+    {
+        TValue* slot = luaH_setnum(L, reg, ref);
+        setnvalue(slot, g->registryfree); // NB: no barrier needed because value isn't collectable
+        g->registryfree = ref;
+    }
 }
 
 void lua_setuserdatatag(lua_State* L, int idx, int tag)
@@ -1476,16 +1495,6 @@ void lua_setuserdatametatable(lua_State* L, int tag)
     api_check(L, !L->global->udatamt[tag]); // reassignment not supported
     api_check(L, ttistable(L->top - 1));
     L->global->udatamt[tag] = hvalue(L->top - 1);
-    L->top--;
-}
-
-void lua_setuserdatametatable_DEPRECATED(lua_State* L, int tag, int idx)
-{
-    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
-    api_check(L, !L->global->udatamt[tag]); // reassignment not supported
-    StkId o = index2addr(L, idx);
-    api_check(L, ttistable(o));
-    L->global->udatamt[tag] = hvalue(o);
     L->top--;
 }
 
