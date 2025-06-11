@@ -4,8 +4,8 @@
 
 struct lua_State;
 
-using pre_op_t = bool(*)(lua_State*,std::uint32_t&);
-using post_op_t = void(*)(lua_State*, std::uint32_t);
+using pre_op_t = bool(*)(lua_State*,std::uint32_t*);
+using post_op_t = void(*)(lua_State*, std::uint32_t*);
 
 class Flow : public Singleton<Flow> {
     pre_op_t pre_op;
@@ -27,14 +27,15 @@ public:
         post_op = op;
     }
 
-    bool do_pre_op(lua_State* L, std::uint32_t& id) {
+    bool do_pre_op(lua_State* L, std::uint32_t* pc) {
         if (has_pre_op())
-            return pre_op(L, id);
+            return pre_op(L, pc);
+        return true; // pass by default
     }
 
-    void do_post_op(lua_State* L, std::uint32_t& id) {
+    void do_post_op(lua_State* L, std::uint32_t* pc) {
         if (has_post_op())
-            post_op(L, id);
+            post_op(L, pc);
     }
 
 
