@@ -14,9 +14,9 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauErrorSuppressionTypeFunctionArgs)
 
 struct TypeFunctionFixture : Fixture
@@ -55,14 +55,14 @@ struct TypeFunctionFixture : Fixture
             }
         };
 
-        unfreeze(frontend.globals.globalTypes);
-        TypeId t = frontend.globals.globalTypes.addType(GenericType{"T"});
+        unfreeze(getFrontend().globals.globalTypes);
+        TypeId t = getFrontend().globals.globalTypes.addType(GenericType{"T"});
         GenericTypeDefinition genericT{t};
 
-        ScopePtr globalScope = frontend.globals.globalScope;
+        ScopePtr globalScope = getFrontend().globals.globalScope;
         globalScope->exportedTypeBindings["Swap"] =
-            TypeFun{{genericT}, frontend.globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFunction}, {t}, {}})};
-        freeze(frontend.globals.globalTypes);
+            TypeFun{{genericT}, getFrontend().globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFunction}, {t}, {}})};
+        freeze(getFrontend().globals.globalTypes);
     }
 };
 
@@ -349,7 +349,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
@@ -372,7 +372,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local metatable = { __index = {w = 1} }
@@ -431,7 +431,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     if (!FFlag::LuauSolverV2)
         return;
@@ -464,7 +464,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_o
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
@@ -502,7 +502,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
@@ -525,7 +525,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local metatable = { __index = {w = 1} }
@@ -568,7 +568,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_unio
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
@@ -606,7 +606,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_on_extern_types"
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type KeysOfMyObject = keyof<BaseClass>
@@ -1005,7 +1005,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
@@ -1306,7 +1306,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
@@ -1588,15 +1588,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_u
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const PrimitiveType* stringType = get<PrimitiveType>(builtinTypes->stringType);
+    const PrimitiveType* stringType = get<PrimitiveType>(getBuiltins()->stringType);
     REQUIRE(stringType->metatable);
 
     TypeArena arena = TypeArena{};
 
-    std::string expected1 = toString(arena.addType(UnionType{{*stringType->metatable, builtinTypes->emptyTableType}}), {true});
+    std::string expected1 = toString(arena.addType(UnionType{{*stringType->metatable, getBuiltins()->emptyTableType}}), {true});
     CHECK_EQ(toString(requireTypeAlias("Metatable"), {true}), expected1);
 
-    std::string expected2 = toString(arena.addType(IntersectionType{{*stringType->metatable, builtinTypes->emptyTableType}}), {true});
+    std::string expected2 = toString(arena.addType(IntersectionType{{*stringType->metatable, getBuiltins()->emptyTableType}}), {true});
     CHECK_EQ(toString(requireTypeAlias("IntersectMetatable"), {true}), expected2);
 }
 
@@ -1612,7 +1612,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_s
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const PrimitiveType* stringType = get<PrimitiveType>(builtinTypes->stringType);
+    const PrimitiveType* stringType = get<PrimitiveType>(getBuiltins()->stringType);
     REQUIRE(stringType->metatable);
 
     std::string expected = toString(*stringType->metatable, {true});
@@ -1712,26 +1712,26 @@ struct TFFixture
     NotNull<TypeArena> arena{&arena_};
 
     BuiltinTypes builtinTypes_;
-    NotNull<BuiltinTypes> builtinTypes{&builtinTypes_};
+    NotNull<BuiltinTypes> getBuiltins(){ return NotNull{&builtinTypes_};}
 
-    ScopePtr globalScope = std::make_shared<Scope>(builtinTypes->anyTypePack);
+    ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
 
     InternalErrorReporter ice;
     UnifierSharedState unifierState{&ice};
-    SimplifierPtr simplifier = EqSatSimplification::newSimplifier(arena, builtinTypes);
-    Normalizer normalizer{arena, builtinTypes, NotNull{&unifierState}};
+    SimplifierPtr simplifier = EqSatSimplification::newSimplifier(arena, getBuiltins());
+    Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}};
     TypeCheckLimits limits;
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
 
     const ScopedFastFlag sff[1] = {
-        {FFlag::LuauEagerGeneralization3, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
 
     BuiltinTypeFunctions builtinTypeFunctions;
 
     TypeFunctionContext tfc{
         arena,
-        builtinTypes,
+        getBuiltins(),
         NotNull{globalScope.get()},
         NotNull{simplifier.get()},
         NotNull{&normalizer},
@@ -1745,7 +1745,7 @@ TEST_CASE_FIXTURE(TFFixture, "refine<G, ~(false?)>")
 {
     TypeId g = arena->addType(GenericType{globalScope.get(), Polarity::Negative});
 
-    TypeId refineTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.refineFunc, {g, builtinTypes->truthyType}});
+    TypeId refineTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.refineFunc, {g, getBuiltins()->truthyType}});
 
     FunctionGraphReductionResult res = reduceTypeFunctions(refineTy, Location{}, tfc);
 
@@ -1758,8 +1758,8 @@ TEST_CASE_FIXTURE(TFFixture, "refine<G, ~(false?)>")
 
 TEST_CASE_FIXTURE(TFFixture, "or<'a, 'b>")
 {
-    TypeId aType = arena->freshType(builtinTypes, globalScope.get());
-    TypeId bType = arena->freshType(builtinTypes, globalScope.get());
+    TypeId aType = arena->freshType(getBuiltins(), globalScope.get());
+    TypeId bType = arena->freshType(getBuiltins(), globalScope.get());
 
     TypeId orType = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.orFunc, {aType, bType}});
 

@@ -251,6 +251,8 @@ const char* getCmdName(IrCmd cmd)
         return "SET_TABLE";
     case IrCmd::GET_IMPORT:
         return "GET_IMPORT";
+    case IrCmd::GET_CACHED_IMPORT:
+        return "GET_CACHED_IMPORT";
     case IrCmd::CONCAT:
         return "CONCAT";
     case IrCmd::GET_UPVALUE:
@@ -501,7 +503,7 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "undef");
         break;
     case IrOpKind::Constant:
-        toString(ctx.result, ctx.constants[op.index]);
+        toString(ctx.result, ctx.proto, ctx.constants[op.index]);
         break;
     case IrOpKind::Condition:
         CODEGEN_ASSERT(op.index < uint32_t(IrCondition::Count));
@@ -539,7 +541,7 @@ void toString(IrToStringContext& ctx, IrOp op)
     }
 }
 
-void toString(std::string& result, IrConst constant)
+void toString(std::string& result, Proto* proto, IrConst constant)
 {
     switch (constant.kind)
     {
@@ -557,6 +559,36 @@ void toString(std::string& result, IrConst constant)
         break;
     case IrConstKind::Tag:
         result.append(getTagName(constant.valueTag));
+        break;
+    case IrConstKind::Import:
+        append(result, "%uu", constant.valueUint);
+
+        if (proto)
+        {
+            append(result, " (");
+
+            int count = constant.valueUint >> 30;
+            int id0 = count > 0 ? int(constant.valueUint >> 20) & 1023 : -1;
+            int id1 = count > 1 ? int(constant.valueUint >> 10) & 1023 : -1;
+            int id2 = count > 2 ? int(constant.valueUint) & 1023 : -1;
+
+            if (id0 != -1)
+                appendVmConstant(result, proto, id0);
+
+            if (id1 != -1)
+            {
+                append(result, ".");
+                appendVmConstant(result, proto, id1);
+            }
+
+            if (id2 != -1)
+            {
+                append(result, ".");
+                appendVmConstant(result, proto, id2);
+            }
+
+            append(result, ")");
+        }
         break;
     }
 }

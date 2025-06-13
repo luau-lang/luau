@@ -66,7 +66,7 @@ int main(int argc, char** argv)
     options.captureComments = true;
     options.allowDeclarationSyntax = true;
 
-    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
+    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, std::move(options));
 
     if (parseResult.errors.size() > 0)
     {

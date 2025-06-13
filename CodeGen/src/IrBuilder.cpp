@@ -676,6 +676,14 @@ IrOp IrBuilder::constUint(unsigned value)
     return constAny(constant, uint64_t(value));
 }
 
+IrOp IrBuilder::constImport(unsigned value)
+{
+    IrConst constant;
+    constant.kind = IrConstKind::Import;
+    constant.valueUint = value;
+    return constAny(constant, uint64_t(value));
+}
+
 IrOp IrBuilder::constDouble(double value)
 {
     IrConst constant;

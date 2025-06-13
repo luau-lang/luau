@@ -240,6 +240,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
     case IrCmd::GET_IMPORT:
+    case IrCmd::GET_CACHED_IMPORT:
     case IrCmd::CONCAT:
     case IrCmd::GET_UPVALUE:
     case IrCmd::SET_UPVALUE:

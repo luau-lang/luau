@@ -15,7 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 
@@ -227,7 +227,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization3, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
 
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
@@ -261,7 +261,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization3, true};
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
 
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
@@ -430,7 +430,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
-        {FFlag::LuauEagerGeneralization3, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
 
     fileResolver.source["Module/ListFns"] = R"(
@@ -454,12 +454,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
         return {}
     )";
 
-    CheckResult result = frontend.check("Module/ListFns");
-    auto modListFns = frontend.moduleResolver.getModule("Module/ListFns");
+    CheckResult result = getFrontend().check("Module/ListFns");
+    auto modListFns = getFrontend().moduleResolver.getModule("Module/ListFns");
     freeze(modListFns->interfaceTypes);
     freeze(modListFns->internalTypes);
     LUAU_REQUIRE_NO_ERRORS(result);
-    CheckResult result2 = frontend.check("Module/B");
+    CheckResult result2 = getFrontend().check("Module/B");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

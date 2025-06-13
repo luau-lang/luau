@@ -21,30 +21,30 @@ struct SimplifyFixture : Fixture
 
     ToStringOptions opts;
 
-    Scope scope{builtinTypes->anyTypePack};
+    Scope scope{getBuiltins()->anyTypePack};
 
-    const TypeId anyTy = builtinTypes->anyType;
-    const TypeId unknownTy = builtinTypes->unknownType;
-    const TypeId neverTy = builtinTypes->neverType;
-    const TypeId errorTy = builtinTypes->errorType;
+    const TypeId anyTy = getBuiltins()->anyType;
+    const TypeId unknownTy = getBuiltins()->unknownType;
+    const TypeId neverTy = getBuiltins()->neverType;
+    const TypeId errorTy = getBuiltins()->errorType;
 
-    const TypeId functionTy = builtinTypes->functionType;
-    const TypeId tableTy = builtinTypes->tableType;
+    const TypeId functionTy = getBuiltins()->functionType;
+    const TypeId tableTy = getBuiltins()->tableType;
 
-    const TypeId numberTy = builtinTypes->numberType;
-    const TypeId stringTy = builtinTypes->stringType;
-    const TypeId booleanTy = builtinTypes->booleanType;
-    const TypeId nilTy = builtinTypes->nilType;
+    const TypeId numberTy = getBuiltins()->numberType;
+    const TypeId stringTy = getBuiltins()->stringType;
+    const TypeId booleanTy = getBuiltins()->booleanType;
+    const TypeId nilTy = getBuiltins()->nilType;
 
-    const TypeId classTy = builtinTypes->externType;
+    const TypeId classTy = getBuiltins()->externType;
 
-    const TypeId trueTy = builtinTypes->trueType;
-    const TypeId falseTy = builtinTypes->falseType;
+    const TypeId trueTy = getBuiltins()->trueType;
+    const TypeId falseTy = getBuiltins()->falseType;
 
-    const TypeId truthyTy = builtinTypes->truthyType;
-    const TypeId falsyTy = builtinTypes->falsyType;
+    const TypeId truthyTy = getBuiltins()->truthyType;
+    const TypeId falsyTy = getBuiltins()->falsyType;
 
-    const TypeId freeTy = freshType(arena, builtinTypes, &scope);
+    const TypeId freeTy = freshType(arena, getBuiltins(), &scope);
     const TypeId genericTy = arena->addType(GenericType{});
     const TypeId blockedTy = arena->addType(BlockedType{});
     const TypeId pendingTy = arena->addType(PendingExpansionType{{}, {}, {}, {}});
@@ -55,7 +55,7 @@ struct SimplifyFixture : Fixture
     const TypePackId emptyTypePack = arena->addTypePack({});
 
     const TypeId fn1Ty = arena->addType(FunctionType{emptyTypePack, emptyTypePack});
-    const TypeId fn2Ty = arena->addType(FunctionType{builtinTypes->anyTypePack, emptyTypePack});
+    const TypeId fn2Ty = arena->addType(FunctionType{getBuiltins()->anyTypePack, emptyTypePack});
 
     TypeId parentClassTy = nullptr;
     TypeId childClassTy = nullptr;
@@ -66,17 +66,17 @@ struct SimplifyFixture : Fixture
 
     SimplifyFixture()
     {
-        createSomeExternTypes(&frontend);
+        createSomeExternTypes(getFrontend());
 
-        parentClassTy = frontend.globals.globalScope->linearSearchForBinding("Parent")->typeId;
-        childClassTy = frontend.globals.globalScope->linearSearchForBinding("Child")->typeId;
-        anotherChildClassTy = frontend.globals.globalScope->linearSearchForBinding("AnotherChild")->typeId;
-        unrelatedClassTy = frontend.globals.globalScope->linearSearchForBinding("Unrelated")->typeId;
+        parentClassTy = getFrontend().globals.globalScope->linearSearchForBinding("Parent")->typeId;
+        childClassTy = getFrontend().globals.globalScope->linearSearchForBinding("Child")->typeId;
+        anotherChildClassTy = getFrontend().globals.globalScope->linearSearchForBinding("AnotherChild")->typeId;
+        unrelatedClassTy = getFrontend().globals.globalScope->linearSearchForBinding("Unrelated")->typeId;
     }
 
     TypeId intersect(TypeId a, TypeId b)
     {
-        return simplifyIntersection(builtinTypes, arena, a, b).result;
+        return simplifyIntersection(getBuiltins(), arena, a, b).result;
     }
 
     std::string intersectStr(TypeId a, TypeId b)
@@ -110,7 +110,7 @@ struct SimplifyFixture : Fixture
 
     TypeId union_(TypeId a, TypeId b)
     {
-        return simplifyUnion(builtinTypes, arena, a, b).result;
+        return simplifyUnion(getBuiltins(), arena, a, b).result;
     }
 };
 
@@ -476,7 +476,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "union")
     CHECK(nilTy == intersect(t1, nilTy));
     // CHECK(nilTy == intersect(nilTy, t1)); // TODO?
 
-    CHECK(builtinTypes->stringType == intersect(builtinTypes->optionalStringType, truthyTy));
+    CHECK(getBuiltins()->stringType == intersect(getBuiltins()->optionalStringType, truthyTy));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "two_unions")
@@ -611,12 +611,12 @@ TEST_CASE_FIXTURE(SimplifyFixture, "bound_intersected_by_itself_should_be_itself
 TEST_CASE_FIXTURE(SimplifyFixture, "cyclic_never_union_and_string")
 {
     // t1 where t1 = never | t1
-    TypeId leftType = arena->addType(UnionType{{builtinTypes->neverType, builtinTypes->neverType}});
+    TypeId leftType = arena->addType(UnionType{{getBuiltins()->neverType, getBuiltins()->neverType}});
     UnionType* leftUnion = getMutable<UnionType>(leftType);
     REQUIRE(leftUnion);
     leftUnion->options[0] = leftType;
 
-    CHECK(builtinTypes->stringType == union_(leftType, builtinTypes->stringType));
+    CHECK(getBuiltins()->stringType == union_(leftType, getBuiltins()->stringType));
 }
 
 TEST_SUITE_END();

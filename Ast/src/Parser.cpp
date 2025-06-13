@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
 LUAU_FASTFLAGVARIABLE(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauStoreLocalAnnotationColonPositions)
 LUAU_FASTFLAGVARIABLE(LuauCSTForReturnTypeFunctionTail)
+LUAU_FASTFLAGVARIABLE(LuauParseAttributeFixUninit)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -808,8 +809,10 @@ AstStat* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
 }
 
 
-std::pair<bool, AstAttr::Type> Parser::validateAttribute(const char* attributeName, const TempVector<AstAttr*>& attributes)
+std::pair<bool, AstAttr::Type> Parser::validateAttribute_DEPRECATED(const char* attributeName, const TempVector<AstAttr*>& attributes)
 {
+    LUAU_ASSERT(!FFlag::LuauParseAttributeFixUninit);
+
     AstAttr::Type type;
 
     // check if the attribute name is valid
@@ -848,6 +851,42 @@ std::pair<bool, AstAttr::Type> Parser::validateAttribute(const char* attributeNa
     return {found, type};
 }
 
+std::optional<AstAttr::Type> Parser::validateAttribute(const char* attributeName, const TempVector<AstAttr*>& attributes)
+{
+    LUAU_ASSERT(FFlag::LuauParseAttributeFixUninit);
+
+    // check if the attribute name is valid
+    std::optional<AstAttr::Type> type;
+
+    for (int i = 0; kAttributeEntries[i].name; ++i)
+    {
+        if (strcmp(attributeName, kAttributeEntries[i].name) == 0)
+        {
+            type = kAttributeEntries[i].type;
+            break;
+        }
+    }
+
+    if (!type)
+    {
+        if (strlen(attributeName) == 1)
+            report(lexer.current().location, "Attribute name is missing");
+        else
+            report(lexer.current().location, "Invalid attribute '%s'", attributeName);
+    }
+    else
+    {
+        // check that attribute is not duplicated
+        for (const AstAttr* attr : attributes)
+        {
+            if (attr->type == *type)
+                report(lexer.current().location, "Cannot duplicate attribute '%s'", attributeName);
+        }
+    }
+
+    return type;
+}
+
 // attribute ::= '@' NAME
 void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 {
@@ -855,13 +894,26 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 
     Location loc = lexer.current().location;
 
-    const char* name = lexer.current().name;
-    const auto [found, type] = validateAttribute(name, attributes);
+    if (FFlag::LuauParseAttributeFixUninit)
+    {
+        const char* name = lexer.current().name;
+        std::optional<AstAttr::Type> type = validateAttribute(name, attributes);
 
-    nextLexeme();
+        nextLexeme();
 
-    if (found)
-        attributes.push_back(allocator.alloc<AstAttr>(loc, type));
+        if (type)
+            attributes.push_back(allocator.alloc<AstAttr>(loc, *type));
+    }
+    else
+    {
+        const char* name = lexer.current().name;
+        const auto [found, type] = validateAttribute_DEPRECATED(name, attributes);
+
+        nextLexeme();
+
+        if (found)
+            attributes.push_back(allocator.alloc<AstAttr>(loc, type));
+    }
 }
 
 // attributes ::= {attribute}

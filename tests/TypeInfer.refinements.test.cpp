@@ -10,7 +10,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
@@ -85,62 +85,62 @@ struct RefinementExternTypeFixture : BuiltinsFixture
 {
     RefinementExternTypeFixture()
     {
-        TypeArena& arena = frontend.globals.globalTypes;
-        NotNull<Scope> scope{frontend.globals.globalScope.get()};
+        TypeArena& arena = getFrontend().globals.globalTypes;
+        NotNull<Scope> scope{getFrontend().globals.globalScope.get()};
 
-        std::optional<TypeId> rootSuper = std::make_optional(builtinTypes->externType);
+        std::optional<TypeId> rootSuper = std::make_optional(getBuiltins()->externType);
 
         unfreeze(arena);
         TypeId vec3 = arena.addType(ExternType{"Vector3", {}, rootSuper, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ExternType>(vec3)->props = {
-            {"X", Property{builtinTypes->numberType}},
-            {"Y", Property{builtinTypes->numberType}},
-            {"Z", Property{builtinTypes->numberType}},
+            {"X", Property{getBuiltins()->numberType}},
+            {"Y", Property{getBuiltins()->numberType}},
+            {"Z", Property{getBuiltins()->numberType}},
         };
 
         TypeId inst = arena.addType(ExternType{"Instance", {}, rootSuper, std::nullopt, {}, nullptr, "Test", {}});
 
-        TypePackId isAParams = arena.addTypePack({inst, builtinTypes->stringType});
-        TypePackId isARets = arena.addTypePack({builtinTypes->booleanType});
+        TypePackId isAParams = arena.addTypePack({inst, getBuiltins()->stringType});
+        TypePackId isARets = arena.addTypePack({getBuiltins()->booleanType});
         TypeId isA = arena.addType(FunctionType{isAParams, isARets});
         getMutable<FunctionType>(isA)->magic = std::make_shared<MagicInstanceIsA>();
 
         getMutable<ExternType>(inst)->props = {
-            {"Name", Property{builtinTypes->stringType}},
+            {"Name", Property{getBuiltins()->stringType}},
             {"IsA", Property{isA}},
         };
 
         TypeId scriptConnection = arena.addType(ExternType("ExternScriptConnection", {}, inst, std::nullopt, {}, nullptr, "Test", {}));
         TypePackId disconnectArgs = arena.addTypePack({scriptConnection});
-        TypeId disconnect = arena.addType(FunctionType{disconnectArgs, builtinTypes->emptyTypePack});
+        TypeId disconnect = arena.addType(FunctionType{disconnectArgs, getBuiltins()->emptyTypePack});
         getMutable<ExternType>(scriptConnection)->props = {
             {"Disconnect", Property{disconnect}},
         };
 
-        TypeId folder = frontend.globals.globalTypes.addType(ExternType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
-        TypeId part = frontend.globals.globalTypes.addType(ExternType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        TypeId folder = getFrontend().globals.globalTypes.addType(ExternType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        TypeId part = getFrontend().globals.globalTypes.addType(ExternType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ExternType>(part)->props = {
             {"Position", Property{vec3}},
         };
 
-        TypeId optionalPart = arena.addType(UnionType{{part, builtinTypes->nilType}});
-        TypeId weldConstraint = frontend.globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        TypeId optionalPart = arena.addType(UnionType{{part, getBuiltins()->nilType}});
+        TypeId weldConstraint = getFrontend().globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ExternType>(weldConstraint)->props = {
             {"Part0", Property{optionalPart}},
             {"Part1", Property{optionalPart}},
         };
 
-        frontend.globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
-        frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
-        frontend.globals.globalScope->exportedTypeBindings["ExternScriptConnection"] = TypeFun{{}, scriptConnection};
-        frontend.globals.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
-        frontend.globals.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
-        frontend.globals.globalScope->exportedTypeBindings["WeldConstraint"] = TypeFun{{}, weldConstraint};
+        getFrontend().globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
+        getFrontend().globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
+        getFrontend().globals.globalScope->exportedTypeBindings["ExternScriptConnection"] = TypeFun{{}, scriptConnection};
+        getFrontend().globals.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
+        getFrontend().globals.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
+        getFrontend().globals.globalScope->exportedTypeBindings["WeldConstraint"] = TypeFun{{}, weldConstraint};
 
-        for (const auto& [name, ty] : frontend.globals.globalScope->exportedTypeBindings)
+        for (const auto& [name, ty] : getFrontend().globals.globalScope->exportedTypeBindings)
             persist(ty.type);
 
-        freeze(frontend.globals.globalTypes);
+        freeze(getFrontend().globals.globalTypes);
     }
 };
 } // namespace
@@ -764,7 +764,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
         CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
@@ -1670,7 +1670,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_propertie
     CheckResult result = check(R"(
         local weld: WeldConstraint = nil :: any
         assert(weld.Part8)
-        print(weld) -- hover type should become `never`
+        print(weld)
         assert(weld.Part8.Name == "RootPart")
         local part8 = assert(weld.Part8)
         local pos = part8.Position
@@ -2544,7 +2544,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "remove_recursive_upper_bound_when_generalizi
         end
     )"));
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
         // FIXME CLI-114134.  We need to simplify types more consistently.
         CHECK_EQ("nil & string & unknown", toString(requireTypeAtPosition({4, 24})));
     else

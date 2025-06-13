@@ -160,9 +160,8 @@ struct Fixture
     TestConfigResolver configResolver;
     NullModuleResolver moduleResolver;
     std::unique_ptr<SourceModule> sourceModule;
-    Frontend frontend;
     InternalErrorReporter ice;
-    NotNull<BuiltinTypes> builtinTypes;
+    
 
     std::string decorateWithTypes(const std::string& code);
 
@@ -179,9 +178,15 @@ struct Fixture
     void registerTestTypes();
 
     LoadDefinitionFileResult loadDefinition(const std::string& source, bool forAutocomplete = false);
-
+    // TODO: test theory about dynamic dispatch
+    NotNull<BuiltinTypes> getBuiltins();
+    virtual Frontend& getFrontend();
 private:
     bool hasDumpedErrors = false;
+protected:
+    bool forAutocomplete = false;
+    std::optional<Frontend> frontend;
+    BuiltinTypes* builtinTypes = nullptr;
 };
 
 struct BuiltinsFixture : Fixture
@@ -190,6 +195,7 @@ struct BuiltinsFixture : Fixture
 
     // For the purpose of our tests, we're always the latest version of type functions.
     ScopedFastFlag sff_optionalInTypeFunctionLib{FFlag::LuauTypeFunOptional, true};
+    Frontend& getFrontend() override;
 };
 
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);
@@ -220,8 +226,8 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Wa
 
 std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
-void registerHiddenTypes(Frontend* frontend);
-void createSomeExternTypes(Frontend* frontend);
+void registerHiddenTypes(Frontend& frontend);
+void createSomeExternTypes(Frontend& frontend);
 
 template<typename E>
 const E* findError(const CheckResult& result)

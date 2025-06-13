@@ -40,7 +40,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
         CHECK("number?" == toString(requireType("q")));
     }
     else
-        CHECK_EQ(*builtinTypes->numberType, *requireType("q"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("q"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
@@ -151,8 +151,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
     }
     else
     {
-        CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
-        CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
     }
 }
 
@@ -180,8 +180,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
     }
     else
     {
-        CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
-        CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
     }
 }
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements")
@@ -213,8 +213,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements"
     }
     else
     {
-        CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
-        CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
     }
 }
 
@@ -385,8 +385,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-    CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
@@ -451,8 +451,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-    CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "while_loop")
@@ -469,7 +469,7 @@ TEST_CASE_FIXTURE(Fixture, "while_loop")
     if (FFlag::LuauSolverV2)
         CHECK("number?" == toString(requireType("i")));
     else
-        CHECK_EQ(*builtinTypes->numberType, *requireType("i"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("i"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop")
@@ -486,7 +486,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop")
     if (FFlag::LuauSolverV2)
         CHECK("string?" == toString(requireType("i")));
     else
-        CHECK_EQ(*builtinTypes->stringType, *requireType("i"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("i"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop_condition_binds_to_its_block")
@@ -804,7 +804,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
         CHECK("number?" == toString(keyTy));
     }
     else
-        CHECK_EQ(*builtinTypes->numberType, *requireType("key"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("key"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
@@ -821,7 +821,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ(*builtinTypes->nilType, *requireType("extra"));
+    CHECK_EQ(*getBuiltins()->nilType, *requireType("extra"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")

@@ -108,7 +108,7 @@ TEST_SUITE_BEGIN("TypePathTraversal");
 
 TEST_CASE_FIXTURE(TypePathFixture, "empty_traversal")
 {
-    CHECK(traverseForType(builtinTypes->numberType, kEmpty, builtinTypes) == builtinTypes->numberType);
+    CHECK(traverseForType(getBuiltins()->numberType, kEmpty, getBuiltins()) == getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(TypePathFixture, "table_property")
@@ -117,12 +117,14 @@ TEST_CASE_FIXTURE(TypePathFixture, "table_property")
         local x = { y = 123 }
     )");
 
-    CHECK(traverseForType(requireType("x"), Path(TypePath::Property{"y", true}), builtinTypes) == builtinTypes->numberType);
+    CHECK(traverseForType(requireType("x"), Path(TypePath::Property{"y", true}), getBuiltins()) == getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "class_property")
 {
-    CHECK(traverseForType(vector2InstanceType, Path(TypePath::Property{"X", true}), builtinTypes) == builtinTypes->numberType);
+    // Force this here because vector2InstanceType won't get initialized until the frontend has been forced
+    getFrontend();
+    CHECK(traverseForType(vector2InstanceType, Path(TypePath::Property{"X", true}), getBuiltins()) == getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "metatable_property")
@@ -149,7 +151,7 @@ TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "metatable_property")
         )");
     }
 
-    CHECK(traverseForType(requireType("x"), Path(TypePath::Property::read("x")), builtinTypes) == builtinTypes->numberType);
+    CHECK(traverseForType(requireType("x"), Path(TypePath::Property::read("x")), getBuiltins()) == getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(TypePathFixture, "index")
@@ -162,12 +164,12 @@ TEST_CASE_FIXTURE(TypePathFixture, "index")
 
         SUBCASE("in_bounds")
         {
-            CHECK(traverseForType(requireTypeAlias("T"), Path(TypePath::Index{1}), builtinTypes) == builtinTypes->stringType);
+            CHECK(traverseForType(requireTypeAlias("T"), Path(TypePath::Index{1}), getBuiltins()) == getBuiltins()->stringType);
         }
 
         SUBCASE("out_of_bounds")
         {
-            CHECK(traverseForType(requireTypeAlias("T"), Path(TypePath::Index{97}), builtinTypes) == std::nullopt);
+            CHECK(traverseForType(requireTypeAlias("T"), Path(TypePath::Index{97}), getBuiltins()) == std::nullopt);
         }
     }
 
@@ -180,7 +182,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "index")
 
         SUBCASE("in_bounds")
         {
-            auto result = traverseForType(requireTypeAlias("T"), Path(TypePath::Index{1}), builtinTypes);
+            auto result = traverseForType(requireTypeAlias("T"), Path(TypePath::Index{1}), getBuiltins());
             CHECK(result);
 
             if (result)
@@ -189,7 +191,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "index")
 
         SUBCASE("out_of_bounds")
         {
-            CHECK(traverseForType(requireTypeAlias("T"), Path(TypePath::Index{97}), builtinTypes) == std::nullopt);
+            CHECK(traverseForType(requireTypeAlias("T"), Path(TypePath::Index{97}), getBuiltins()) == std::nullopt);
         }
     }
 
@@ -203,14 +205,14 @@ TEST_CASE_FIXTURE(TypePathFixture, "index")
         SUBCASE("in_bounds")
         {
             Path path = Path({TypePath::PackField::Arguments, TypePath::Index{1}});
-            auto result = traverseForType(requireTypeAlias("T"), path, builtinTypes);
-            CHECK(result == builtinTypes->stringType);
+            auto result = traverseForType(requireTypeAlias("T"), path, getBuiltins());
+            CHECK(result == getBuiltins()->stringType);
         }
 
         SUBCASE("out_of_bounds")
         {
             Path path = Path({TypePath::PackField::Arguments, TypePath::Index{72}});
-            auto result = traverseForType(requireTypeAlias("T"), path, builtinTypes);
+            auto result = traverseForType(requireTypeAlias("T"), path, getBuiltins());
             CHECK(result == std::nullopt);
         }
     }
@@ -218,10 +220,11 @@ TEST_CASE_FIXTURE(TypePathFixture, "index")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "metatables")
 {
+    getFrontend();
     SUBCASE("string")
     {
-        auto result = traverseForType(builtinTypes->stringType, Path(TypeField::Metatable), builtinTypes);
-        CHECK(result == getMetatable(builtinTypes->stringType, builtinTypes));
+        auto result = traverseForType(getBuiltins()->stringType, Path(TypeField::Metatable), getBuiltins());
+        CHECK(result == getMetatable(getBuiltins()->stringType, getBuiltins()));
     }
 
     SUBCASE("string_singleton")
@@ -230,8 +233,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "metatables")
             type T = "foo"
         )");
 
-        auto result = traverseForType(requireTypeAlias("T"), Path(TypeField::Metatable), builtinTypes);
-        CHECK(result == getMetatable(builtinTypes->stringType, builtinTypes));
+        auto result = traverseForType(requireTypeAlias("T"), Path(TypeField::Metatable), getBuiltins());
+        CHECK(result == getMetatable(getBuiltins()->stringType, getBuiltins()));
     }
 
     SUBCASE("table")
@@ -245,7 +248,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "metatables")
         )");
 
         // Tricky test setup because 'setmetatable' mutates the argument 'tbl' type
-        auto result = traverseForType(requireType("res"), Path(TypeField::Table), builtinTypes);
+        auto result = traverseForType(requireType("res"), Path(TypeField::Table), getBuiltins());
         auto expected = lookupType("Table");
         REQUIRE(expected);
         CHECK(result == follow(*expected));
@@ -258,13 +261,13 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "metatables")
             local tbl = setmetatable({}, mt)
         )");
 
-        auto result = traverseForType(requireType("tbl"), Path(TypeField::Metatable), builtinTypes);
+        auto result = traverseForType(requireType("tbl"), Path(TypeField::Metatable), getBuiltins());
         CHECK(result == requireType("mt"));
     }
 
     SUBCASE("class")
     {
-        auto result = traverseForType(vector2InstanceType, Path(TypeField::Metatable), builtinTypes);
+        auto result = traverseForType(vector2InstanceType, Path(TypeField::Metatable), getBuiltins());
         // ExternTypeFixture's Vector2 metatable is just an empty table, but it's there.
         CHECK(result);
     }
@@ -274,31 +277,31 @@ TEST_CASE_FIXTURE(TypePathFixture, "bounds")
 {
     SUBCASE("free_type")
     {
-        TypeArena& arena = frontend.globals.globalTypes;
+        TypeArena& arena = getFrontend().globals.globalTypes;
         unfreeze(arena);
 
-        TypeId ty = arena.freshType(frontend.builtinTypes, frontend.globals.globalScope.get());
+        TypeId ty = arena.freshType(getBuiltins(), getFrontend().globals.globalScope.get());
         FreeType* ft = getMutable<FreeType>(ty);
 
         SUBCASE("upper")
         {
-            ft->upperBound = builtinTypes->numberType;
-            auto result = traverseForType(ty, Path(TypeField::UpperBound), builtinTypes);
-            CHECK(result == builtinTypes->numberType);
+            ft->upperBound = getBuiltins()->numberType;
+            auto result = traverseForType(ty, Path(TypeField::UpperBound), getBuiltins());
+            CHECK(result == getBuiltins()->numberType);
         }
 
         SUBCASE("lower")
         {
-            ft->lowerBound = builtinTypes->booleanType;
-            auto result = traverseForType(ty, Path(TypeField::LowerBound), builtinTypes);
-            CHECK(result == builtinTypes->booleanType);
+            ft->lowerBound = getBuiltins()->booleanType;
+            auto result = traverseForType(ty, Path(TypeField::LowerBound), getBuiltins());
+            CHECK(result == getBuiltins()->booleanType);
         }
     }
 
     SUBCASE("unbounded_type")
     {
-        CHECK(traverseForType(builtinTypes->numberType, Path(TypeField::UpperBound), builtinTypes) == std::nullopt);
-        CHECK(traverseForType(builtinTypes->numberType, Path(TypeField::LowerBound), builtinTypes) == std::nullopt);
+        CHECK(traverseForType(getBuiltins()->numberType, Path(TypeField::UpperBound), getBuiltins()) == std::nullopt);
+        CHECK(traverseForType(getBuiltins()->numberType, Path(TypeField::LowerBound), getBuiltins()) == std::nullopt);
     }
 }
 
@@ -312,11 +315,11 @@ TEST_CASE_FIXTURE(TypePathFixture, "indexers")
                 type T = { [string]: boolean }
             )");
 
-            auto lookupResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexLookup), builtinTypes);
-            auto resultResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexResult), builtinTypes);
+            auto lookupResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexLookup), getBuiltins());
+            auto resultResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexResult), getBuiltins());
 
-            CHECK(lookupResult == builtinTypes->stringType);
-            CHECK(resultResult == builtinTypes->booleanType);
+            CHECK(lookupResult == getBuiltins()->stringType);
+            CHECK(resultResult == getBuiltins()->booleanType);
         }
 
         SUBCASE("no_indexer")
@@ -325,8 +328,8 @@ TEST_CASE_FIXTURE(TypePathFixture, "indexers")
                 type T = { y: number }
             )");
 
-            auto lookupResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexLookup), builtinTypes);
-            auto resultResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexResult), builtinTypes);
+            auto lookupResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexLookup), getBuiltins());
+            auto resultResult = traverseForType(requireTypeAlias("T"), Path(TypeField::IndexResult), getBuiltins());
 
             CHECK(lookupResult == std::nullopt);
             CHECK(resultResult == std::nullopt);
@@ -340,17 +343,17 @@ TEST_CASE_FIXTURE(TypePathFixture, "negated")
 {
     SUBCASE("valid")
     {
-        TypeArena& arena = frontend.globals.globalTypes;
+        TypeArena& arena = getFrontend().globals.globalTypes;
         unfreeze(arena);
 
-        TypeId ty = arena.addType(NegationType{builtinTypes->numberType});
-        auto result = traverseForType(ty, Path(TypeField::Negated), builtinTypes);
-        CHECK(result == builtinTypes->numberType);
+        TypeId ty = arena.addType(NegationType{getBuiltins()->numberType});
+        auto result = traverseForType(ty, Path(TypeField::Negated), getBuiltins());
+        CHECK(result == getBuiltins()->numberType);
     }
 
     SUBCASE("not_negation")
     {
-        auto result = traverseForType(builtinTypes->numberType, Path(TypeField::Negated), builtinTypes);
+        auto result = traverseForType(getBuiltins()->numberType, Path(TypeField::Negated), getBuiltins());
         CHECK(result == std::nullopt);
     }
 }
@@ -359,17 +362,17 @@ TEST_CASE_FIXTURE(TypePathFixture, "variadic")
 {
     SUBCASE("valid")
     {
-        TypeArena& arena = frontend.globals.globalTypes;
+        TypeArena& arena = getFrontend().globals.globalTypes;
         unfreeze(arena);
 
-        TypePackId tp = arena.addTypePack(VariadicTypePack{builtinTypes->numberType});
-        auto result = traverseForType(tp, Path(TypeField::Variadic), builtinTypes);
-        CHECK(result == builtinTypes->numberType);
+        TypePackId tp = arena.addTypePack(VariadicTypePack{getBuiltins()->numberType});
+        auto result = traverseForType(tp, Path(TypeField::Variadic), getBuiltins());
+        CHECK(result == getBuiltins()->numberType);
     }
 
     SUBCASE("not_variadic")
     {
-        auto result = traverseForType(builtinTypes->numberType, Path(TypeField::Variadic), builtinTypes);
+        auto result = traverseForType(getBuiltins()->numberType, Path(TypeField::Variadic), getBuiltins());
         CHECK(result == std::nullopt);
     }
 }
@@ -383,7 +386,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "arguments")
             end
         )");
 
-        auto result = traverseForPack(requireType("f"), Path(PackField::Arguments), builtinTypes);
+        auto result = traverseForPack(requireType("f"), Path(PackField::Arguments), getBuiltins());
         CHECK(result);
         if (result)
             CHECK(toString(*result) == "number, string");
@@ -391,7 +394,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "arguments")
 
     SUBCASE("not_function")
     {
-        auto result = traverseForPack(builtinTypes->booleanType, Path(PackField::Arguments), builtinTypes);
+        auto result = traverseForPack(getBuiltins()->booleanType, Path(PackField::Arguments), getBuiltins());
         CHECK(result == std::nullopt);
     }
 }
@@ -406,7 +409,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "returns")
             end
         )");
 
-        auto result = traverseForPack(requireType("f"), Path(PackField::Returns), builtinTypes);
+        auto result = traverseForPack(requireType("f"), Path(PackField::Returns), getBuiltins());
         CHECK(result);
         if (result)
             CHECK(toString(*result) == "number, string");
@@ -414,7 +417,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "returns")
 
     SUBCASE("not_function")
     {
-        auto result = traverseForPack(builtinTypes->booleanType, Path(PackField::Returns), builtinTypes);
+        auto result = traverseForPack(getBuiltins()->booleanType, Path(PackField::Returns), getBuiltins());
         CHECK(result == std::nullopt);
     }
 }
@@ -427,7 +430,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "tail")
             type T = (number, string, ...boolean) -> ()
         )");
 
-        auto result = traverseForPack(requireTypeAlias("T"), Path({PackField::Arguments, PackField::Tail}), builtinTypes);
+        auto result = traverseForPack(requireTypeAlias("T"), Path({PackField::Arguments, PackField::Tail}), getBuiltins());
         CHECK(result);
         if (result)
             CHECK(toString(*result) == "...boolean");
@@ -439,13 +442,13 @@ TEST_CASE_FIXTURE(TypePathFixture, "tail")
             type T = (number, string) -> ()
         )");
 
-        auto result = traverseForPack(requireTypeAlias("T"), Path({PackField::Arguments, PackField::Tail}), builtinTypes);
+        auto result = traverseForPack(requireTypeAlias("T"), Path({PackField::Arguments, PackField::Tail}), getBuiltins());
         CHECK(result == std::nullopt);
     }
 
     SUBCASE("type")
     {
-        auto result = traverseForPack(builtinTypes->stringType, Path({PackField::Arguments, PackField::Tail}), builtinTypes);
+        auto result = traverseForPack(getBuiltins()->stringType, Path({PackField::Arguments, PackField::Tail}), getBuiltins());
         CHECK(result == std::nullopt);
     }
 }
@@ -456,25 +459,25 @@ TEST_CASE_FIXTURE(TypePathFixture, "cycles" * doctest::timeout(0.5))
     // where there _is_ no traversal.
     SUBCASE("bound_cycle")
     {
-        TypeArena& arena = frontend.globals.globalTypes;
+        TypeArena& arena = getFrontend().globals.globalTypes;
         unfreeze(arena);
 
         TypeId a = arena.addType(BlockedType{});
         TypeId b = arena.addType(BoundType{a});
         asMutable(a)->ty.emplace<BoundType>(b);
 
-        CHECK_THROWS(traverseForType(a, Path(TypeField::IndexResult), builtinTypes));
+        CHECK_THROWS(traverseForType(a, Path(TypeField::IndexResult), getBuiltins()));
     }
 
     SUBCASE("table_contains_itself")
     {
-        TypeArena& arena = frontend.globals.globalTypes;
+        TypeArena& arena = getFrontend().globals.globalTypes;
         unfreeze(arena);
 
         TypeId tbl = arena.addType(TableType{});
         getMutable<TableType>(tbl)->props["a"] = Luau::Property(tbl);
 
-        auto result = traverseForType(tbl, Path(TypePath::Property{"a", true}), builtinTypes);
+        auto result = traverseForType(tbl, Path(TypePath::Property{"a", true}), getBuiltins());
         CHECK(result == tbl);
     }
 }
@@ -495,7 +498,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "step_limit")
 
     TypeId root = requireTypeAlias("T");
     Path path = PathBuilder().readProp("x").readProp("y").readProp("z").build();
-    auto result = traverseForType(root, path, builtinTypes);
+    auto result = traverseForType(root, path, getBuiltins());
     CHECK(!result);
 }
 
@@ -513,8 +516,8 @@ TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
 
         TypeId root = requireTypeAlias("Tab");
         Path path = PathBuilder().mt().readProp("__add").rets().index(0).build();
-        auto result = traverseForType(root, path, builtinTypes);
-        CHECK(result == builtinTypes->numberType);
+        auto result = traverseForType(root, path, getBuiltins());
+        CHECK(result == getBuiltins()->numberType);
     }
 
     SUBCASE("overloaded_fn_overload_one_argument_two")
@@ -527,8 +530,8 @@ TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
 
         TypeId root = requireTypeAlias("Obj");
         Path path = PathBuilder().readProp("method").index(0).args().index(1).build();
-        auto result = traverseForType(root, path, builtinTypes);
-        CHECK(*result == builtinTypes->falseType);
+        auto result = traverseForType(root, path, getBuiltins());
+        CHECK(*result == getBuiltins()->falseType);
     }
 }
 

@@ -7,7 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -280,7 +280,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
         CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
         REQUIRE(tm);
 
-        CHECK(builtinTypes->stringType == tm->rhsType);
+        CHECK(getBuiltins()->stringType == tm->rhsType);
         CHECK(CannotAssignToNever::Reason::PropertyNarrowed == tm->reason);
         REQUIRE(tm->cause.size() == 2);
         CHECK("\"Dog\"" == toString(tm->cause[0]));
@@ -378,7 +378,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
     };
 
     CheckResult result = check(R"(
@@ -396,7 +396,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }

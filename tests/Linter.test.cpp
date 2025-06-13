@@ -8,9 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LintRedundantNativeAttribute);
-LUAU_FASTFLAG(LuauDeprecatedAttribute);
-LUAU_FASTFLAG(LuauEagerGeneralization3);
+LUAU_FASTFLAG(LuauEagerGeneralization4);
 
 using namespace Luau;
 
@@ -51,7 +49,7 @@ TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
 {
     // Normally this would be defined externally, so hack it in for testing
-    addGlobalBinding(frontend.globals, "Wait", Binding{builtinTypes->anyType, {}, true, "wait", "@test/global/Wait"});
+    addGlobalBinding(getFrontend().globals, "Wait", Binding{getBuiltins()->anyType, {}, true, "wait", "@test/global/Wait"});
 
     LintResult result = lint("Wait(5)");
 
@@ -63,7 +61,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobalNoReplacement")
 {
     // Normally this would be defined externally, so hack it in for testing
     const char* deprecationReplacementString = "";
-    addGlobalBinding(frontend.globals, "Version", Binding{builtinTypes->anyType, {}, true, deprecationReplacementString});
+    addGlobalBinding(getFrontend().globals, "Version", Binding{getBuiltins()->anyType, {}, true, deprecationReplacementString});
 
     LintResult result = lint("Version()");
 
@@ -390,7 +388,7 @@ return bar()
 TEST_CASE_FIXTURE(Fixture, "ImportUnused")
 {
     // Normally this would be defined externally, so hack it in for testing
-    addGlobalBinding(frontend.globals, "game", builtinTypes->anyType, "@test");
+    addGlobalBinding(getFrontend().globals, "game", getBuiltins()->anyType, "@test");
 
     LintResult result = lint(R"(
 local Roact = require(game.Packages.Roact)
@@ -621,16 +619,16 @@ return foo1
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
-    unfreeze(frontend.globals.globalTypes);
+    unfreeze(getFrontend().globals.globalTypes);
     TableType::Props instanceProps{
-        {"ClassName", {builtinTypes->anyType}},
+        {"ClassName", {getBuiltins()->anyType}},
     };
 
-    TableType instanceTable{instanceProps, std::nullopt, frontend.globals.globalScope->level, Luau::TableState::Sealed};
-    TypeId instanceType = frontend.globals.globalTypes.addType(instanceTable);
+    TableType instanceTable{instanceProps, std::nullopt, getFrontend().globals.globalScope->level, Luau::TableState::Sealed};
+    TypeId instanceType = getFrontend().globals.globalTypes.addType(instanceTable);
     TypeFun instanceTypeFun{{}, instanceType};
 
-    frontend.globals.globalScope->exportedTypeBindings["Part"] = instanceTypeFun;
+    getFrontend().globals.globalScope->exportedTypeBindings["Part"] = instanceTypeFun;
 
     LintResult result = lint(R"(
 local game = ...
@@ -1341,10 +1339,10 @@ TEST_CASE_FIXTURE(Fixture, "no_spurious_warning_after_a_function_type_alias")
 
 TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
 {
-    ScopePtr testScope = frontend.addEnvironment("Test");
-    unfreeze(frontend.globals.globalTypes);
-    frontend.loadDefinitionFile(
-        frontend.globals,
+    ScopePtr testScope = getFrontend().addEnvironment("Test");
+    unfreeze(getFrontend().globals.globalTypes);
+    getFrontend().loadDefinitionFile(
+        getFrontend().globals,
         testScope,
         R"(
         declare Foo: number
@@ -1352,7 +1350,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
         "@test",
         /* captureComments */ false
     );
-    freeze(frontend.globals.globalTypes);
+    freeze(getFrontend().globals.globalTypes);
 
     fileResolver.environments["A"] = "Test";
 
@@ -1521,32 +1519,32 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 {
-    unfreeze(frontend.globals.globalTypes);
-    TypeId instanceType = frontend.globals.globalTypes.addType(ExternType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test", {}});
+    unfreeze(getFrontend().globals.globalTypes);
+    TypeId instanceType = getFrontend().globals.globalTypes.addType(ExternType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test", {}});
     persist(instanceType);
-    frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
+    getFrontend().globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     getMutable<ExternType>(instanceType)->props = {
-        {"Name", {builtinTypes->stringType}},
-        {"DataCost", {builtinTypes->numberType, /* deprecated= */ true}},
-        {"Wait", {builtinTypes->anyType, /* deprecated= */ true}},
+        {"Name", {getBuiltins()->stringType}},
+        {"DataCost", {getBuiltins()->numberType, /* deprecated= */ true}},
+        {"Wait", {getBuiltins()->anyType, /* deprecated= */ true}},
     };
 
     TypeId colorType =
-        frontend.globals.globalTypes.addType(TableType{{}, std::nullopt, frontend.globals.globalScope->level, Luau::TableState::Sealed});
+        getFrontend().globals.globalTypes.addType(TableType{{}, std::nullopt, getFrontend().globals.globalScope->level, Luau::TableState::Sealed});
 
-    getMutable<TableType>(colorType)->props = {{"toHSV", {builtinTypes->anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
+    getMutable<TableType>(colorType)->props = {{"toHSV", {getBuiltins()->anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
 
-    addGlobalBinding(frontend.globals, "Color3", Binding{colorType, {}});
+    addGlobalBinding(getFrontend().globals, "Color3", Binding{colorType, {}});
 
-    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(frontend.globals, "table")))
+    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(getFrontend().globals, "table")))
     {
         ttv->props["foreach"].deprecated = true;
         ttv->props["getn"].deprecated = true;
         ttv->props["getn"].deprecatedSuggestion = "#";
     }
 
-    freeze(frontend.globals.globalTypes);
+    freeze(getFrontend().globals.globalTypes);
 
     LintResult result = lint(R"(
 return function (i: Instance)
@@ -1571,7 +1569,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiUntyped")
 {
-    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(frontend.globals, "table")))
+    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(getFrontend().globals, "table")))
     {
         ttv->props["foreach"].deprecated = true;
         ttv->props["getn"].deprecated = true;
@@ -2337,8 +2335,6 @@ local _ = a <= (b == 0)
 
 TEST_CASE_FIXTURE(Fixture, "RedundantNativeAttribute")
 {
-    ScopedFastFlag sff[] = {{FFlag::LintRedundantNativeAttribute, true}};
-
     LintResult result = lint(R"(
 --!native
 

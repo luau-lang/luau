@@ -439,9 +439,6 @@ public:
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
-    TypeId errorRecoveryType() const;
-    TypePackId errorRecoveryTypePack() const;
-
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 
     void throwTimeLimitError() const;

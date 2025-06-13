@@ -40,7 +40,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
@@ -207,16 +207,16 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(
 
     Luau::ParseResult parseResult = parseSourceForModule(source, sourceModule, captureComments);
     if (parseResult.errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, sourceModule, nullptr};
+        return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), nullptr};
 
     ModulePtr checkedModule = check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, {});
 
     if (checkedModule->errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, sourceModule, checkedModule};
+        return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), std::move(checkedModule)};
 
-    persistCheckedTypes(checkedModule, globals, targetScope, packageName);
+    persistCheckedTypes(checkedModule, globals, std::move(targetScope), packageName);
 
-    return LoadDefinitionFileResult{true, parseResult, sourceModule, checkedModule};
+    return LoadDefinitionFileResult{true, std::move(parseResult), std::move(sourceModule), std::move(checkedModule)};
 }
 
 namespace
@@ -970,7 +970,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
             environmentScope,
             /*forAutocomplete*/ true,
             /*recordJsonLog*/ false,
-            typeCheckLimits
+            std::move(typeCheckLimits)
         );
 
         double duration = getTimestamp() - timestamp;
@@ -990,7 +990,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         return;
     }
 
-    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, typeCheckLimits);
+    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, std::move(typeCheckLimits));
 
     double duration = getTimestamp() - timestamp;
 
@@ -1172,7 +1172,7 @@ void Frontend::sendQueueCycleItemTask(std::shared_ptr<BuildQueueWorkState> state
 
         if (!item.processing)
         {
-            sendQueueItemTask(state, i);
+            sendQueueItemTask(std::move(state), i);
             break;
         }
     }
@@ -1314,10 +1314,10 @@ ModulePtr check(
         parentScope,
         typeFunctionScope,
         std::move(prepareModuleScope),
-        options,
-        limits,
+        std::move(options),
+        std::move(limits),
         recordJsonLog,
-        writeJsonLog
+        std::move(writeJsonLog)
     );
 }
 
@@ -1438,13 +1438,13 @@ ModulePtr check(
         requireCycles
     };
 
-    // FIXME: Delete this flag when clipping FFlag::LuauEagerGeneralization2.
+    // FIXME: Delete this flag when clipping FFlag::LuauEagerGeneralization4.
     //
     // This optional<> only exists so that we can run one constructor when the flag
     // is set, and another when it is unset.
     std::optional<ConstraintSolver> cs;
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         ConstraintSet constraintSet = cg.run(sourceModule.root);
         result->errors = std::move(constraintSet.errors);
@@ -1522,13 +1522,13 @@ ModulePtr check(
         // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
         // types
         ScopePtr moduleScope = result->getModuleScope();
-        moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
+        moduleScope->returnType = builtinTypes->errorTypePack;
 
         for (auto& [name, ty] : result->declaredGlobals)
-            ty = builtinTypes->errorRecoveryType();
+            ty = builtinTypes->errorType;
 
         for (auto& [name, tf] : result->exportedTypeBindings)
-            tf.type = builtinTypes->errorRecoveryType();
+            tf.type = builtinTypes->errorType;
     }
     else if (FFlag::LuauNewSolverTypecheckCatchTimeouts)
     {
@@ -1705,7 +1705,7 @@ ModulePtr Frontend::check(
                 globals.globalTypeFunctionScope,
                 prepareModuleScopeWrap,
                 options,
-                typeCheckLimits,
+                std::move(typeCheckLimits),
                 recordJsonLog,
                 writeJsonLog
             );
@@ -1740,7 +1740,7 @@ ModulePtr Frontend::check(
         typeChecker.unifierIterationLimit = typeCheckLimits.unifierIterationLimit;
         typeChecker.cancellationToken = typeCheckLimits.cancellationToken;
 
-        return typeChecker.check(sourceModule, mode, environmentScope);
+        return typeChecker.check(sourceModule, mode, std::move(environmentScope));
     }
 }
 

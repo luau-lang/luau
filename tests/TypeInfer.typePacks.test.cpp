@@ -12,9 +12,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 
 TEST_SUITE_BEGIN("TypePackTests");
@@ -35,8 +35,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
     const auto& [returns, tail] = flatten(takeTwoType->retTypes);
 
     CHECK_EQ(2, returns.size());
-    CHECK_EQ(builtinTypes->numberType, follow(returns[0]));
-    CHECK_EQ(builtinTypes->numberType, follow(returns[1]));
+    CHECK_EQ(getBuiltins()->numberType, follow(returns[0]));
+    CHECK_EQ(getBuiltins()->numberType, follow(returns[1]));
 
     CHECK(!tail);
 }
@@ -82,9 +82,9 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
     const auto& [rets, tail] = flatten(takeOneMoreType->retTypes);
 
     REQUIRE_EQ(3, rets.size());
-    CHECK_EQ(builtinTypes->numberType, follow(rets[0]));
-    CHECK_EQ(builtinTypes->numberType, follow(rets[1]));
-    CHECK_EQ(builtinTypes->numberType, follow(rets[2]));
+    CHECK_EQ(getBuiltins()->numberType, follow(rets[0]));
+    CHECK_EQ(getBuiltins()->numberType, follow(rets[1]));
+    CHECK_EQ(getBuiltins()->numberType, follow(rets[2]));
 
     CHECK(!tail);
 }
@@ -99,7 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
         CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
     else
         CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
@@ -195,28 +195,28 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_varargs_returns_any")
 
 TEST_CASE_FIXTURE(Fixture, "variadic_packs")
 {
-    TypeArena& arena = frontend.globals.globalTypes;
+    TypeArena& arena = getFrontend().globals.globalTypes;
 
     unfreeze(arena);
 
-    TypePackId listOfNumbers = arena.addTypePack(TypePackVar{VariadicTypePack{builtinTypes->numberType}});
-    TypePackId listOfStrings = arena.addTypePack(TypePackVar{VariadicTypePack{builtinTypes->stringType}});
+    TypePackId listOfNumbers = arena.addTypePack(TypePackVar{VariadicTypePack{getBuiltins()->numberType}});
+    TypePackId listOfStrings = arena.addTypePack(TypePackVar{VariadicTypePack{getBuiltins()->stringType}});
 
     // clang-format off
-    addGlobalBinding(frontend.globals, "foo",
+    addGlobalBinding(getFrontend().globals, "foo",
         arena.addType(
             FunctionType{
                 listOfNumbers,
-                arena.addTypePack({builtinTypes->numberType})
+                arena.addTypePack({getBuiltins()->numberType})
             }
         ),
         "@test"
     );
-    addGlobalBinding(frontend.globals, "bar",
+    addGlobalBinding(getFrontend().globals, "bar",
         arena.addType(
             FunctionType{
-                arena.addTypePack({{builtinTypes->numberType}, listOfStrings}),
-                arena.addTypePack({builtinTypes->numberType})
+                arena.addTypePack({{getBuiltins()->numberType}, listOfStrings}),
+                arena.addTypePack({getBuiltins()->numberType})
             }
         ),
         "@test"
@@ -238,11 +238,11 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
     CHECK(Location{Position{4, 29}, Position{4, 30}} == result.errors[1].location);
 
     CHECK_EQ(
-        result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}})
+        result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{getBuiltins()->numberType, getBuiltins()->stringType}})
     );
 
     CHECK_EQ(
-        result.errors[1], (TypeError{Location(Position{4, 29}, Position{4, 30}), TypeMismatch{builtinTypes->stringType, builtinTypes->numberType}})
+        result.errors[1], (TypeError{Location(Position{4, 29}, Position{4, 30}), TypeMismatch{getBuiltins()->stringType, getBuiltins()->numberType}})
     );
 }
 
@@ -376,7 +376,7 @@ export type Packed<T, U...> = { a: T, b: (U...) -> () }
 return {}
     )";
 
-    CheckResult aResult = frontend.check("game/A");
+    CheckResult aResult = getFrontend().check("game/A");
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
@@ -880,7 +880,7 @@ export type H<T... = ()> = { b: (T...) -> T... }
 return {}
     )";
 
-    CheckResult resultTypes = frontend.check("Module/Types");
+    CheckResult resultTypes = getFrontend().check("Module/Types");
     LUAU_REQUIRE_NO_ERRORS(resultTypes);
 
     fileResolver.source["Module/Users"] = R"(
@@ -897,7 +897,7 @@ local g: Types.G<...number>
 local h: Types.H<>
     )";
 
-    CheckResult resultUsers = frontend.check("Module/Users");
+    CheckResult resultUsers = getFrontend().check("Module/Users");
     LUAU_REQUIRE_NO_ERRORS(resultUsers);
 
     CHECK_EQ(toString(requireType("Module/Users", "a")), "A<number, string>");
@@ -1098,7 +1098,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         function foo<T...>(...: T...): T...

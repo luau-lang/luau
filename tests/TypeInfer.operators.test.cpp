@@ -17,7 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -29,7 +29,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         // FIXME: Regression
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
@@ -51,7 +51,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         // FIXME: Regression.
         CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
@@ -72,13 +72,13 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         // FIXME: Regression
         CHECK("(string & ~(false?)) | string" == toString(requireType("s")));
     }
     else
-        CHECK_EQ(*requireType("s"), *builtinTypes->stringType);
+        CHECK_EQ(*requireType("s"), *getBuiltins()->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_does_not_always_add_boolean")
@@ -98,7 +98,7 @@ TEST_CASE_FIXTURE(Fixture, "and_adds_boolean_no_superfluous_union")
         local x:boolean = s
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("x"), *builtinTypes->booleanType);
+    CHECK_EQ(*requireType("x"), *getBuiltins()->booleanType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_or_ternary")
@@ -125,9 +125,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 
     std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType.has_value());
-    CHECK_EQ(builtinTypes->numberType, follow(*retType));
-    CHECK_EQ(requireType("n"), builtinTypes->numberType);
-    CHECK_EQ(requireType("s"), builtinTypes->stringType);
+    CHECK_EQ(getBuiltins()->numberType, follow(*retType));
+    CHECK_EQ(requireType("n"), getBuiltins()->numberType);
+    CHECK_EQ(requireType("s"), getBuiltins()->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable_with_follows")
@@ -138,7 +138,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable_with_follows")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(requireType("SOLAR_MASS"), builtinTypes->numberType);
+    CHECK_EQ(requireType("SOLAR_MASS"), getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_possible_metatable")
@@ -421,7 +421,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
         s += true
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 13}, {2, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->booleanType}}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 13}, {2, 17}}, TypeMismatch{getBuiltins()->numberType, getBuiltins()->booleanType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
@@ -434,13 +434,13 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
     if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+        CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{getBuiltins()->numberType, getBuiltins()->stringType}}));
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
-        CHECK_EQ(result.errors[1], (TypeError{Location{{2, 8}, {2, 15}}, TypeMismatch{builtinTypes->stringType, builtinTypes->numberType}}));
+        CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{getBuiltins()->numberType, getBuiltins()->stringType}}));
+        CHECK_EQ(result.errors[1], (TypeError{Location{{2, 8}, {2, 15}}, TypeMismatch{getBuiltins()->stringType, getBuiltins()->numberType}}));
     }
 }
 
@@ -605,7 +605,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
         TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
         REQUIRE(tm);
         CHECK_EQ(toString(tm->givenType), "bar");
-        CHECK_EQ(*tm->wantedType, *builtinTypes->numberType);
+        CHECK_EQ(*tm->wantedType, *getBuiltins()->numberType);
     }
     else
     {
@@ -634,7 +634,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
         local a = -foo
     )");
 
-    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -663,7 +663,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
         CHECK_EQ("string", toString(requireType("a")));
 
         TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-        REQUIRE_EQ(*tm->wantedType, *builtinTypes->booleanType);
+        REQUIRE_EQ(*tm->wantedType, *getBuiltins()->booleanType);
         // given type is the typeof(foo) which is complex to compare against
     }
 }
@@ -695,8 +695,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE_MESSAGE(tm, "Expected a TypeMismatch but got " << result.errors[0]);
 
-    REQUIRE_EQ(*tm->wantedType, *builtinTypes->numberType);
-    REQUIRE_EQ(*tm->givenType, *builtinTypes->stringType);
+    REQUIRE_EQ(*tm->wantedType, *getBuiltins()->numberType);
+    REQUIRE_EQ(*tm->givenType, *getBuiltins()->stringType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unary_not_is_boolean")
@@ -755,8 +755,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
     {
         TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
         REQUIRE_MESSAGE(tm, "Expected a TypeMismatch but got " << result.errors[0]);
-        CHECK_EQ(*tm->wantedType, *builtinTypes->numberType);
-        CHECK_EQ(*tm->givenType, *builtinTypes->stringType);
+        CHECK_EQ(*tm->wantedType, *getBuiltins()->numberType);
+        CHECK_EQ(*tm->givenType, *getBuiltins()->stringType);
 
         GenericError* gen1 = get<GenericError>(result.errors[1]);
         REQUIRE(gen1);
@@ -767,7 +767,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
 
         TypeMismatch* tm2 = get<TypeMismatch>(result.errors[2]);
         REQUIRE(tm2);
-        CHECK_EQ(*tm2->wantedType, *builtinTypes->numberType);
+        CHECK_EQ(*tm2->wantedType, *getBuiltins()->numberType);
         CHECK_EQ(*tm2->givenType, *requireType("foo"));
     }
 }
@@ -1017,7 +1017,7 @@ local b: number = 1 or a
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
     CHECK_EQ("number?", toString(tm->givenType));
 }
 
@@ -1360,8 +1360,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
 
-    CHECK(requireType("v1") == builtinTypes->booleanType);
-    CHECK(requireType("v2") == builtinTypes->booleanType);
+    CHECK(requireType("v1") == getBuiltins()->booleanType);
+    CHECK(requireType("v2") == getBuiltins()->booleanType);
 
     CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return a boolean");
     CHECK(toString(result.errors[3]) == "Metamethod '__lt' must return a boolean");

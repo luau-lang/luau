@@ -5,7 +5,8 @@
 #include "Luau/Scope.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAGVARIABLE(LuauInferPolarityOfReadWriteProperties)
 
 namespace Luau
 {
@@ -48,25 +49,52 @@ struct InferPolarity : TypeVisitor
             return false;
 
         const Polarity p = polarity;
-        for (const auto& [name, prop] : tt.props)
+        if (FFlag::LuauInferPolarityOfReadWriteProperties)
         {
-            if (prop.isShared())
+            for (const auto& [name, prop] : tt.props)
             {
-                polarity = Polarity::Mixed;
-                traverse(prop.type());
+                if (prop.isShared())
+                {
+                    polarity = Polarity::Mixed;
+                    traverse(*prop.readTy);
+                    continue;
+                }
+
+                if (prop.readTy)
+                {
+                    polarity = p;
+                    traverse(*prop.readTy);
+                }
+
+                if (prop.writeTy)
+                {
+                    polarity = invert(p);
+                    traverse(*prop.writeTy);
+                }
             }
-            else if (prop.isReadOnly())
+        }
+        else
+        {
+            for (const auto& [name, prop] : tt.props)
             {
-                polarity = p;
-                traverse(*prop.readTy);
+                if (prop.isShared())
+                {
+                    polarity = Polarity::Mixed;
+                    traverse(prop.type());
+                }
+                else if (prop.isReadOnly())
+                {
+                    polarity = p;
+                    traverse(*prop.readTy);
+                }
+                else if (prop.isWriteOnly())
+                {
+                    polarity = invert(p);
+                    traverse(*prop.writeTy);
+                }
+                else
+                    LUAU_ASSERT(!"Unreachable");
             }
-            else if (prop.isWriteOnly())
-            {
-                polarity = invert(p);
-                traverse(*prop.writeTy);
-            }
-            else
-                LUAU_ASSERT(!"Unreachable");
         }
 
         if (tt.indexer)
@@ -133,7 +161,7 @@ struct InferPolarity : TypeVisitor
 template<typename TID>
 static void inferGenericPolarities_(NotNull<TypeArena> arena, NotNull<Scope> scope, TID ty)
 {
-    if (!FFlag::LuauEagerGeneralization3)
+    if (!FFlag::LuauEagerGeneralization4)
         return;
 
     InferPolarity infer{arena, scope};

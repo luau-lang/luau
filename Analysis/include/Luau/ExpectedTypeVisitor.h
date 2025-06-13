@@ -52,6 +52,10 @@ struct ExpectedTypeVisitor : public AstVisitor
     // parameters.
     bool visit(AstExprCall* expr) override;
 
+    // If we have an expression like `A[B]`, then the expected type of B is
+    // clearly the properties and indexer of `A`.
+    bool visit(AstExprIndexExpr* expr) override;
+
     // If we have an expression of type:
     //
     //   return X :: Y

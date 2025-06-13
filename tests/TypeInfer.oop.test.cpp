@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
@@ -420,7 +421,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(2))
 {
-    frontend.options.retainFullTypeGraphs = false;
+    getFrontend().options.retainFullTypeGraphs = false;
 
     // Used `luau-reduce` tool to extract a minimal reproduction.
     // Credit: https://github.com/evaera/roblox-lua-promise/blob/v4.0.0/lib/init.lua
@@ -538,10 +539,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
         setmetatable(tbl, cls)
     )";
 
-    CheckResult result = frontend.check("game/B");
+    CheckResult result = getFrontend().check("game/B");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr b = frontend.moduleResolver.getModule("game/B");
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
     REQUIRE(b);
 
     std::optional<Binding> clsBinding = b->getModuleScope()->linearSearchForBinding("tbl");
@@ -550,6 +551,88 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
     TypeId clsType = clsBinding->typeId;
 
     CHECK("{ @metatable cls, tbl }" == toString(clsType));
+}
+
+// https://luau.org/typecheck#adding-types-for-faux-object-oriented-programs
+TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff[] ={
+        {FFlag::LuauEagerGeneralization4, true},
+    };
+
+    CheckResult result = check(R"(
+        local Account = {}
+        Account.__index = Account
+
+        type AccountData = {
+            name: string,
+            balance: number,
+        }
+
+        export type Account = setmetatable<AccountData, typeof(Account)>
+
+        function Account.new(name, balance): Account
+            local self = {}
+            self.name = name
+            self.balance = balance
+
+            return setmetatable(self, Account)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff[] ={
+        {FFlag::LuauEagerGeneralization4, true},
+    };
+
+    CheckResult result = check(R"(
+        local Account = {}
+        Account.__index = Account
+
+        type AccountData = {
+            name: string,
+            balance: number,
+        }
+
+        export type Account = setmetatable<AccountData, typeof(Account)>
+
+        function Account.new(name, balance): Account
+            local self = {}
+            self.name = name
+            self.balance = balance
+
+            return setmetatable(self, Account)
+        end
+
+        function Account.deposit(self: Account, credit: number)
+            self.balance += credit
+        end
+
+        function Account.withdraw(self: Account, debit: number)
+            self.balance -= debit
+        end
+
+        function Account.hasBalance(self: Account, amount: number): boolean
+            return self.balance >= amount
+        end
+
+        local account = Account.new("Hina", 500)
+
+        if account:hasBalance(123) then -- TypeError: Value of type 'unknown' could be nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
