@@ -466,9 +466,8 @@ static int getNegatedValue(lua_State* L)
     return 1;
 }
 
-// Luau: `types.newtable(props: {props: {[type]: type} | {[type]: type | { read: type }} | {[type]: type | { read: type } | { write: type }} | 
-// {[type]: type | { read: type } | { write: type } | { read: type, write: type }} | nil, indexer: {index: type, readresult: type, writeresult: type}?, 
-// metatable: type?) -> type` Returns the type instance representing table
+// Luau: `types.newtable(props: {[type]: type { read: type } | { write: type } | { read: type, write: type }}?,
+// indexer: {index: type, readresult: type, writeresult: type}?, metatable: type?) -> type` Returns the type instance representing table
 static int createTable(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
