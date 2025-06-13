@@ -13,7 +13,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAG(LuauSkipMalformedTypeAliases)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -84,8 +84,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
                 Location{{1, 21}, {1, 26}},
                 getMainSourceModule()->name,
                 TypeMismatch{
-                    builtinTypes->numberType,
-                    builtinTypes->stringType,
+                    getBuiltins()->numberType,
+                    getBuiltins()->stringType,
                 },
             }
         );
@@ -98,8 +98,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
                 Location{{1, 8}, {1, 26}},
                 getMainSourceModule()->name,
                 TypeMismatch{
-                    builtinTypes->numberType,
-                    builtinTypes->stringType,
+                    getBuiltins()->numberType,
+                    getBuiltins()->stringType,
                 },
             }
         );
@@ -188,7 +188,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_whe
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE_MESSAGE(tm, result.errors[0]);
     CHECK_EQ("Node?", toString(tm->wantedType));
-    CHECK_EQ(builtinTypes->numberType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
@@ -210,7 +210,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
     };
 
     CheckResult result = check(R"(
@@ -229,7 +229,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
     };
 
     CheckResult result = check(R"(
@@ -274,9 +274,9 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_errors")
     LUAU_REQUIRE_ERRORS(result);
 
     // We had a UAF in this example caused by not cloning type function arguments
-    ModulePtr module = frontend.moduleResolver.getModule("MainModule");
+    ModulePtr module = getFrontend().moduleResolver.getModule("MainModule");
     unfreeze(module->interfaceTypes);
-    copyErrors(module->errors, module->interfaceTypes, builtinTypes);
+    copyErrors(module->errors, module->interfaceTypes, getBuiltins());
     freeze(module->interfaceTypes);
     module->internalTypes.clear();
     module->astTypes.clear();
@@ -329,7 +329,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("Wrapped", toString(tm->wantedType));
-    CHECK_EQ(builtinTypes->numberType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type2")
@@ -348,7 +348,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
         CHECK_EQ("t1 where t1 = ({ a: t1 }) -> string", toString(tm->wantedType));
     else
         CHECK_EQ("t1 where t1 = ({| a: t1 |}) -> string", toString(tm->wantedType));
-    CHECK_EQ(builtinTypes->numberType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
 // Check that recursive intersection type doesn't generate an OOM
@@ -508,7 +508,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_multi_assign")
         local b: Bar.myvec3
     )";
 
-    CheckResult result = frontend.check("workspace/C");
+    CheckResult result = getFrontend().check("workspace/C");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId aTypeId = requireType("workspace/C", "a");
@@ -527,7 +527,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
     CheckResult result = check("type t10<x> = typeof(table)");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = getGlobalBinding(frontend.globals, "table");
+    TypeId ty = getGlobalBinding(getFrontend().globals, "table");
 
     CHECK(toString(ty) == "typeof(table)");
 
@@ -602,7 +602,7 @@ export type X = { a: number, b: X? }
 return {}
     )";
 
-    CheckResult aResult = frontend.check("game/A");
+    CheckResult aResult = getFrontend().check("game/A");
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
@@ -627,7 +627,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_
         return {}
     )";
 
-    CheckResult aResult = frontend.check("game/A");
+    CheckResult aResult = getFrontend().check("game/A");
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
@@ -995,7 +995,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_lose_track_of_PendingExpansionTypes_aft
         end
     )";
 
-    CheckResult result = frontend.check("game/React/React/ReactHooks");
+    CheckResult result = getFrontend().check("game/React/React/ReactHooks");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1048,7 +1048,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "alias_expands_to_bare_reference_to_imported_
         end
     )";
 
-    CheckResult result = frontend.check("game/B");
+    CheckResult result = getFrontend().check("game/B");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

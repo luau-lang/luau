@@ -16,7 +16,7 @@ TEST_SUITE_BEGIN("Instantiation2Test");
 TEST_CASE_FIXTURE(Fixture, "weird_cyclic_instantiation")
 {
     TypeArena arena;
-    Scope scope(builtinTypes->anyTypePack);
+    Scope scope(getBuiltins()->anyTypePack);
 
     TypeId genericT = arena.addType(GenericType{"T"});
 
@@ -30,11 +30,11 @@ TEST_CASE_FIXTURE(Fixture, "weird_cyclic_instantiation")
     DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
     DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
 
-    TypeId freeTy = arena.freshType(builtinTypes, &scope);
+    TypeId freeTy = arena.freshType(getBuiltins(), &scope);
     FreeType* ft = getMutable<FreeType>(freeTy);
     REQUIRE(ft);
     ft->lowerBound = idTy;
-    ft->upperBound = builtinTypes->unknownType;
+    ft->upperBound = getBuiltins()->unknownType;
 
     genericSubstitutions[genericT] = freeTy;
 

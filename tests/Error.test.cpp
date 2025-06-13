@@ -18,7 +18,7 @@ TEST_CASE("TypeError_code_should_return_nonzero_code")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_names_show_instead_of_tables")
 {
-    frontend.options.retainFullTypeGraphs = false;
+    getFrontend().options.retainFullTypeGraphs = false;
 
     CheckResult result = check(R"(
 --!strict
@@ -38,7 +38,7 @@ local x: Account = 5
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_function_errors")
 {
-    frontend.options.retainFullTypeGraphs = false;
+    getFrontend().options.retainFullTypeGraphs = false;
 
     CheckResult result = check(R"(
         --!strict
@@ -58,7 +58,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_function_errors")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unary_op_type_function_errors")
 {
-    frontend.options.retainFullTypeGraphs = false;
+    getFrontend().options.retainFullTypeGraphs = false;
 
     CheckResult result = check(R"(
         --!strict

@@ -1363,7 +1363,7 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
     else if (thereSubHere)
         return here;
     if (!head.empty())
-        return arena->addTypePack(TypePack{head, tail});
+        return arena->addTypePack(TypePack{std::move(head), tail});
     else if (tail)
         return *tail;
     else
@@ -1822,7 +1822,7 @@ std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& her
         }
 
         if (!rootNegations.empty())
-            result.externTypes.pushPair(builtinTypes->externType, rootNegations);
+            result.externTypes.pushPair(builtinTypes->externType, std::move(rootNegations));
     }
 
     result.nils = get<NeverType>(here.nils) ? builtinTypes->nilType : builtinTypes->neverType;
@@ -2375,7 +2375,7 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
     else if (thereSubHere)
         return there;
     if (!head.empty())
-        return arena->addTypePack(TypePack{head, tail});
+        return arena->addTypePack(TypePack{std::move(head), tail});
     else if (tail)
         return *tail;
     else

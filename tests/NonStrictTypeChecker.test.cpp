@@ -65,7 +65,9 @@ struct NonStrictTypeCheckerFixture : Fixture
 
     NonStrictTypeCheckerFixture()
     {
-        registerHiddenTypes(&frontend);
+        // Force the frontend
+        getFrontend();
+        registerHiddenTypes(getFrontend());
         registerTestTypes();
     }
 
@@ -86,7 +88,7 @@ struct NonStrictTypeCheckerFixture : Fixture
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
-        return frontend.check(moduleName);
+        return getFrontend().check(moduleName);
     }
 
     std::string definitions = R"BUILTIN_SRC(
@@ -639,14 +641,14 @@ buffer.readi8(b, 0)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 {
-    Luau::unfreeze(frontend.globals.globalTypes);
-    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::unfreeze(getFrontend().globals.globalTypes);
+    Luau::unfreeze(getFrontend().globalsForAutocomplete.globalTypes);
 
-    registerBuiltinGlobals(frontend, frontend.globals);
+    registerBuiltinGlobals(getFrontend(), getFrontend().globals);
     registerTestTypes();
 
-    Luau::freeze(frontend.globals.globalTypes);
-    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::freeze(getFrontend().globals.globalTypes);
+    Luau::freeze(getFrontend().globalsForAutocomplete.globalTypes);
 
     CheckResult result = checkNonStrict(R"(
         local test = "test"
@@ -656,7 +658,7 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict_1")
 {
     CheckResult result = check(Mode::Nonstrict, R"(
         foo = 5

@@ -11,9 +11,10 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauStringFormatImprovements)
+LUAU_FASTFLAG(LuauWriteOnlyPropertyMangling)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -110,7 +111,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_concat_returns_string")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*builtinTypes->stringType, *requireType("r"));
+    CHECK_EQ(*getBuiltins()->stringType, *requireType("r"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort")
@@ -170,7 +171,7 @@ TEST_CASE_FIXTURE(Fixture, "strings_have_methods")
     )LUA");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+    CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_variatic")
@@ -180,7 +181,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_variatic")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
+    CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_checks_for_numbers")
@@ -397,7 +398,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(builtinTypes->stringType, requireType("s"));
+    CHECK_EQ(getBuiltins()->stringType, requireType("s"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_3_args_overload")
@@ -473,7 +474,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gcinfo")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
+    CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getfenv")
@@ -490,9 +491,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n1"));
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n2"));
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n3"));
+    CHECK_EQ(*getBuiltins()->numberType, *requireType("n1"));
+    CHECK_EQ(*getBuiltins()->numberType, *requireType("n2"));
+    CHECK_EQ(*getBuiltins()->numberType, *requireType("n3"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
@@ -615,8 +616,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(tm->wantedType, builtinTypes->stringType);
-    CHECK_EQ(tm->givenType, builtinTypes->numberType);
+    CHECK_EQ(tm->wantedType, getBuiltins()->stringType);
+    CHECK_EQ(tm->givenType, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier")
@@ -809,8 +810,8 @@ TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(tm->wantedType, builtinTypes->stringType);
-    CHECK_EQ(tm->givenType, builtinTypes->numberType);
+    CHECK_EQ(tm->wantedType, getBuiltins()->stringType);
+    CHECK_EQ(tm->givenType, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_trivial_arity")
@@ -959,9 +960,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_report_all_type_errors_at_corr
         string.format("%s%d%s", 1, "hello", true)
     )");
 
-    TypeId stringType = builtinTypes->stringType;
-    TypeId numberType = builtinTypes->numberType;
-    TypeId booleanType = builtinTypes->booleanType;
+    TypeId stringType = getBuiltins()->stringType;
+    TypeId numberType = getBuiltins()->numberType;
+    TypeId booleanType = getBuiltins()->booleanType;
 
     LUAU_REQUIRE_ERROR_COUNT(6, result);
 
@@ -1308,7 +1309,7 @@ TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
 {
-    TypeId mathTy = requireType(frontend.globals.globalScope, "math");
+    TypeId mathTy = requireType(getFrontend().globals.globalScope, "math");
     REQUIRE(mathTy);
     TableType* ttv = getMutable<TableType>(mathTy);
     REQUIRE(ttv);
@@ -1694,8 +1695,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_singleton_types
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(tm->wantedType, builtinTypes->stringType);
-    CHECK_EQ(tm->givenType, builtinTypes->numberType);
+    CHECK_EQ(tm->wantedType, getBuiltins()->stringType);
+    CHECK_EQ(tm->givenType, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "better_string_format_error_when_format_string_is_dynamic")
@@ -1715,6 +1716,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "better_string_format_error_when_format_strin
         "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.",
         toString(result.errors[0])
     );
+}
+
+TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
+{
+    ScopedFastFlag _{FFlag::LuauWriteOnlyPropertyMangling, true};
+
+    // CLI-157307: This currently errors as we claim the literal is not a
+    // `{ write foo: number }`, which is wrong as every table literal is
+    // trivially a write-only table.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local function accept(t: { write foo: number })
+        end
+
+        accept({ foo = "lol", foo = true })
+    )"));
 }
 
 TEST_SUITE_END();

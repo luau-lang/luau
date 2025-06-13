@@ -490,8 +490,8 @@ int main(int argc, char** argv)
             help(args);
     }
 
-    const std::string scriptName = argv[1];
-    const std::string appName = argv[2];
+    std::string scriptName = argv[1];
+    std::string appName = argv[2];
     const std::string searchText = argv[3];
 
     std::optional<std::string> source = readFile(scriptName);
@@ -503,5 +503,5 @@ int main(int argc, char** argv)
     }
 
     Reducer reducer;
-    reducer.run(scriptName, appName, *source, searchText);
+    reducer.run(std::move(scriptName), std::move(appName), *source, searchText);
 }

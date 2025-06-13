@@ -36,7 +36,7 @@ LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
 LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
-LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 
 namespace Luau
@@ -598,7 +598,7 @@ TypePackId TypeChecker2::reconstructPack(AstArray<AstExpr*> exprs, TypeArena& ar
     }
 
     TypePackId tail = lookupPack(exprs.data[exprs.size - 1]);
-    return arena.addTypePack(TypePack{head, tail});
+    return arena.addTypePack(TypePack{std::move(head), tail});
 }
 
 Scope* TypeChecker2::findInnermostScope(Location location) const
@@ -713,7 +713,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
 {
     Scope* scope = findInnermostScope(ret->location);
     TypePackId expectedRetType = scope->returnType;
-    if (FFlag::LuauTableLiteralSubtypeSpecificCheck)
+    if (FFlag::LuauTableLiteralSubtypeSpecificCheck2)
     {
         if (ret->list.size == 0)
         {
@@ -811,7 +811,7 @@ void TypeChecker2::visit(AstStatLocal* local)
                 TypeId valueType = value ? lookupType(value) : nullptr;
                 if (valueType)
                 {
-                    if (FFlag::LuauTableLiteralSubtypeSpecificCheck)
+                    if (FFlag::LuauTableLiteralSubtypeSpecificCheck2)
                         testPotentialLiteralIsSubtype(value, annotationType);
                     else
                         testIsSubtype(valueType, annotationType, value->location);
@@ -960,7 +960,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     }
 
     // and now we can put everything together to get the actual typepack of the iterators.
-    TypePackId iteratorPack = arena.addTypePack(valueTypes, iteratorTail);
+    TypePackId iteratorPack = arena.addTypePack(std::move(valueTypes), iteratorTail);
 
     // ... and then expand it out to 3 values (if possible)
     TypePack iteratorTypes = extendTypePack(arena, builtinTypes, iteratorPack, 3);
@@ -1120,7 +1120,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
 
                     if (const FunctionType* nextFtv = get<FunctionType>(*instantiatedNextFn))
                     {
-                        checkFunction(nextFtv, instantiatedIteratorTypes, true);
+                        checkFunction(nextFtv, std::move(instantiatedIteratorTypes), true);
                     }
                     else if (!isErrorSuppressing(forInStatement->values.data[0]->location, *instantiatedNextFn))
                     {
@@ -1224,13 +1224,20 @@ void TypeChecker2::visit(AstStatAssign* assign)
             continue;
         }
 
-        if (FFlag::LuauTableLiteralSubtypeSpecificCheck)
+        if (FFlag::LuauTableLiteralSubtypeSpecificCheck2)
         {
-            // If rhsType </: lhsType, then it's not useful to also report that rhsType </: bindingType
-            if (testPotentialLiteralIsSubtype(rhs, lhsType))
+            // FIXME CLI-142462: Due to the fact that we do not type state
+            // tables properly, table types "time travel." We can take
+            // advantage of this for the specific code pattern of:
+            //
+            //  local t = {}
+            //  t.foo = {} -- Type of the RHS gets time warped to `{ bar: {} }`
+            //  t.foo.bar = {}
+            //
+            if (testLiteralOrAstTypeIsSubtype(rhs, lhsType))
             {
                 if (std::optional<TypeId> bindingType = getBindingType(lhs))
-                    testPotentialLiteralIsSubtype(rhs, *bindingType);
+                    testLiteralOrAstTypeIsSubtype(rhs, *bindingType);
             }
         }
         else
@@ -2137,7 +2144,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         auto name = getIdentifierOfBaseVar(expr->left);
         reportError(
             CannotInferBinaryOperation{
-                expr->op, name, isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation
+                expr->op, std::move(name), isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation
             },
             expr->location
         );
@@ -2197,7 +2204,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                 expr->location
             );
 
-            return builtinTypes->errorRecoveryType();
+            return builtinTypes->errorType;
         }
 
         std::optional<TypeId> mm;
@@ -2280,7 +2287,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                         reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
                     }
 
-                    return builtinTypes->errorRecoveryType();
+                    return builtinTypes->errorType;
                 }
             }
             else
@@ -2288,7 +2295,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                 reportError(CannotCallNonFunction{*mm}, expr->location);
             }
 
-            return builtinTypes->errorRecoveryType();
+            return builtinTypes->errorType;
         }
         // If this is a string comparison, or a concatenation of strings, we
         // want to fall through to primitive behavior.
@@ -2323,7 +2330,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                     );
                 }
 
-                return builtinTypes->errorRecoveryType();
+                return builtinTypes->errorType;
             }
             else if (!leftMt && !rightMt && (get<TableType>(leftType) || get<TableType>(rightType)))
             {
@@ -2352,7 +2359,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                     );
                 }
 
-                return builtinTypes->errorRecoveryType();
+                return builtinTypes->errorType;
             }
         }
     }
@@ -2410,7 +2417,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
             )},
             expr->location
         );
-        return builtinTypes->errorRecoveryType();
+        return builtinTypes->errorType;
     }
 
     case AstExprBinary::Op::And:
@@ -2423,7 +2430,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     default:
         // Unhandled AstExprBinary::Op possibility.
         LUAU_ASSERT(false);
-        return builtinTypes->errorRecoveryType();
+        return builtinTypes->errorType;
     }
 }
 
@@ -2509,7 +2516,7 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         return result;
     }
     else if (get<ErrorTypePack>(pack))
-        return builtinTypes->errorRecoveryType();
+        return builtinTypes->errorType;
     else if (finite(pack) && size(pack) == 0)
         return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`
     else
@@ -2721,7 +2728,7 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
             symbol += ty->name.value;
 
-            reportError(UnknownSymbol{symbol, UnknownSymbol::Context::Type}, ty->location);
+            reportError(UnknownSymbol{std::move(symbol), UnknownSymbol::Context::Type}, ty->location);
         }
     }
 }
@@ -2965,6 +2972,17 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
 
     if (!reasonings.suppressed)
         reportError(TypePackMismatch{superTy, subTy, reasonings.toString()}, location);
+}
+
+bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType)
+{
+    NotNull<Scope> scope{findInnermostScope(expr->location)};
+    auto exprTy = lookupType(expr);
+    SubtypingResult r = subtyping->isSubtype(exprTy, expectedType, scope);
+    if (r.isSubtype)
+        return true;
+
+    return testPotentialLiteralIsSubtype(expr, expectedType);
 }
 
 bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType)
@@ -3298,7 +3316,7 @@ PropertyTypes TypeChecker2::lookupProp(
         }
     }
 
-    return {typesOfProp, typesMissingTheProp};
+    return {std::move(typesOfProp), std::move(typesMissingTheProp)};
 }
 
 
@@ -3445,9 +3463,9 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
 
         TypeId propTy;
         if (context == ValueContext::LValue)
-            propTy = module->internalTypes.addType(IntersectionType{parts});
+            propTy = module->internalTypes.addType(IntersectionType{std::move(parts)});
         else
-            propTy = module->internalTypes.addType(UnionType{parts});
+            propTy = module->internalTypes.addType(UnionType{std::move(parts)});
 
         return {NormalizationResult::True, propTy};
     }
@@ -3501,7 +3519,7 @@ void TypeChecker2::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& 
     }
 
     if (!candidates.empty())
-        data = TypeErrorData(UnknownPropButFoundLikeProp{utk->table, utk->key, candidates});
+        data = TypeErrorData(UnknownPropButFoundLikeProp{utk->table, utk->key, std::move(candidates)});
 }
 
 bool TypeChecker2::isErrorSuppressing(Location loc, TypeId ty)

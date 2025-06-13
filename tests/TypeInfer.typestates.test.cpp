@@ -7,8 +7,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 using namespace Luau;
@@ -67,7 +67,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_different_values_to_x")
 
 TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     // Parameter `x` has a fresh type `'x` bounded by `never` and `unknown`.
     // The first use of `x` constrains `x`'s upper bound by `string | number`.
@@ -414,7 +414,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauReportSubtypingErrors, true},
-        {FFlag::LuauEagerGeneralization3, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
 
     CheckResult result = check(R"(

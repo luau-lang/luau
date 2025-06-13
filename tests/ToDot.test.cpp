@@ -15,7 +15,7 @@ struct ToDotClassFixture : Fixture
 {
     ToDotClassFixture()
     {
-        TypeArena& arena = frontend.globals.globalTypes;
+        TypeArena& arena = getFrontend().globals.globalTypes;
 
         unfreeze(arena);
 
@@ -23,17 +23,17 @@ struct ToDotClassFixture : Fixture
 
         TypeId baseClassInstanceType = arena.addType(ExternType{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test", {}});
         getMutable<ExternType>(baseClassInstanceType)->props = {
-            {"BaseField", {builtinTypes->numberType}},
+            {"BaseField", {getBuiltins()->numberType}},
         };
-        frontend.globals.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
+        getFrontend().globals.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
 
         TypeId childClassInstanceType = arena.addType(ExternType{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test", {}});
         getMutable<ExternType>(childClassInstanceType)->props = {
-            {"ChildField", {builtinTypes->stringType}},
+            {"ChildField", {getBuiltins()->stringType}},
         };
-        frontend.globals.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
+        getFrontend().globals.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
 
-        for (const auto& [name, ty] : frontend.globals.globalScope->exportedTypeBindings)
+        for (const auto& [name, ty] : getFrontend().globals.globalScope->exportedTypeBindings)
             persist(ty.type);
 
         freeze(arena);
@@ -48,35 +48,35 @@ TEST_CASE_FIXTURE(Fixture, "primitive")
         R"(digraph graphname {
 n1 [label="nil"];
 })",
-        toDot(builtinTypes->nilType)
+        toDot(getBuiltins()->nilType)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="number"];
 })",
-        toDot(builtinTypes->numberType)
+        toDot(getBuiltins()->numberType)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="any"];
 })",
-        toDot(builtinTypes->anyType)
+        toDot(getBuiltins()->anyType)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="unknown"];
 })",
-        toDot(builtinTypes->unknownType)
+        toDot(getBuiltins()->unknownType)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="never"];
 })",
-        toDot(builtinTypes->neverType)
+        toDot(getBuiltins()->neverType)
     );
 }
 
@@ -90,28 +90,28 @@ TEST_CASE_FIXTURE(Fixture, "no_duplicatePrimitives")
         R"(digraph graphname {
 n1 [label="PrimitiveType number"];
 })",
-        toDot(builtinTypes->numberType, opts)
+        toDot(getBuiltins()->numberType, opts)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="AnyType 1"];
 })",
-        toDot(builtinTypes->anyType, opts)
+        toDot(getBuiltins()->anyType, opts)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="UnknownType 1"];
 })",
-        toDot(builtinTypes->unknownType, opts)
+        toDot(getBuiltins()->unknownType, opts)
     );
 
     CHECK_EQ(
         R"(digraph graphname {
 n1 [label="NeverType 1"];
 })",
-        toDot(builtinTypes->neverType, opts)
+        toDot(getBuiltins()->neverType, opts)
     );
 }
 
@@ -119,7 +119,7 @@ TEST_CASE_FIXTURE(Fixture, "bound")
 {
     TypeArena arena;
 
-    TypeId ty = arena.addType(BoundType{builtinTypes->numberType});
+    TypeId ty = arena.addType(BoundType{getBuiltins()->numberType});
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -216,7 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection")
 {
     TypeArena arena;
 
-    TypeId ty = arena.addType(IntersectionType{{builtinTypes->stringType, builtinTypes->numberType}});
+    TypeId ty = arena.addType(IntersectionType{{getBuiltins()->stringType, getBuiltins()->numberType}});
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -322,7 +322,7 @@ n3 [label="TableType 3"];
 
 TEST_CASE_FIXTURE(Fixture, "free")
 {
-    Type type{TypeVariant{FreeType{TypeLevel{0, 0}, builtinTypes->neverType, builtinTypes->unknownType}}};
+    Type type{TypeVariant{FreeType{TypeLevel{0, 0}, getBuiltins()->neverType, getBuiltins()->unknownType}}};
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(
@@ -339,7 +339,7 @@ TEST_CASE_FIXTURE(Fixture, "free_with_constraints")
         {FFlag::LuauSolverV2, true},
     };
 
-    Type type{TypeVariant{FreeType{nullptr, builtinTypes->numberType, builtinTypes->optionalNumberType}}};
+    Type type{TypeVariant{FreeType{nullptr, getBuiltins()->numberType, getBuiltins()->optionalNumberType}}};
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -467,7 +467,7 @@ n1 [label="GenericTypePack T"];
 
 TEST_CASE_FIXTURE(Fixture, "bound_pack")
 {
-    TypePackVar pack{TypePackVariant{TypePack{{builtinTypes->numberType}, {}}}};
+    TypePackVar pack{TypePackVariant{TypePack{{getBuiltins()->numberType}, {}}}};
     TypePackVar bound{TypePackVariant{BoundTypePack{&pack}}};
 
     ToDotOptions opts;
@@ -489,7 +489,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_table")
     TypeArena arena;
 
     TypeId ty = arena.addType(TableType{});
-    getMutable<TableType>(ty)->props["x"] = {builtinTypes->numberType};
+    getMutable<TableType>(ty)->props["x"] = {getBuiltins()->numberType};
 
     TypeId boundTy = arena.addType(TableType{});
     getMutable<TableType>(boundTy)->boundTo = ty;
@@ -539,7 +539,7 @@ n5 [label="SingletonType boolean: false"];
 TEST_CASE_FIXTURE(Fixture, "negation")
 {
     TypeArena arena;
-    TypeId t = arena.addType(NegationType{builtinTypes->stringType});
+    TypeId t = arena.addType(NegationType{getBuiltins()->stringType});
 
     ToDotOptions opts;
     opts.showPointers = false;

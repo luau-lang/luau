@@ -760,7 +760,7 @@ static bool tryAddTypeCorrectSuggestion(AutocompleteEntryMap& result, ScopePtr s
     if (!ty)
         return false;
 
-    if (auto name = tryGetTypeNameInScope(scope, *ty))
+    if (auto name = tryGetTypeNameInScope(std::move(scope), *ty))
     {
         if (auto it = result.find(*name); it != result.end())
             it->second.typeCorrect = TypeCorrectKind::Correct;
@@ -966,7 +966,7 @@ AutocompleteEntryMap autocompleteTypeNames(
                 }
 
                 if (inferredType)
-                    tryAddTypeCorrectSuggestion(result, startScope, topType, inferredType, position);
+                    tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, inferredType, position);
 
                 break;
             }
@@ -1066,7 +1066,7 @@ AutocompleteEntryMap autocompleteTypeNames(
                             if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
                             {
                                 if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
-                                    tryAddTypeCorrectSuggestion(result, startScope, topType, *ty, position);
+                                    tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
                             }
                         }
                     }
@@ -1079,7 +1079,7 @@ AutocompleteEntryMap autocompleteTypeNames(
                     if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
                     {
                         if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
-                            tryAddTypeCorrectSuggestion(result, startScope, topType, *ty, position);
+                            tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
                     }
                 }
             }
@@ -1115,7 +1115,7 @@ AutocompleteEntryMap autocompleteTypeNames(
                         if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
                         {
                             if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
-                                tryAddTypeCorrectSuggestion(result, startScope, topType, *ty, position);
+                                tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
                         }
                     }
                 }
@@ -1485,7 +1485,7 @@ static AutocompleteResult autocompleteExpression(
 {
     AutocompleteEntryMap result;
     AutocompleteContext context = autocompleteExpression(module, builtinTypes, typeArena, ancestry, scopeAtPosition, position, result);
-    return {result, ancestry, context};
+    return {std::move(result), ancestry, context};
 }
 
 static std::optional<const ExternType*> getMethodContainingExternType(const ModulePtr& module, AstExpr* funcExpr)
@@ -2025,7 +2025,7 @@ AutocompleteResult autocomplete_(
                     if (!key)
                         autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position, result);
 
-                    return {result, ancestry, AutocompleteContext::Property};
+                    return {std::move(result), ancestry, AutocompleteContext::Property};
                 }
 
                 break;
@@ -2061,12 +2061,12 @@ AutocompleteResult autocomplete_(
         // Also offer general expression suggestions
         autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position, result);
 
-        return {result, ancestry, AutocompleteContext::Property};
+        return {std::move(result), ancestry, AutocompleteContext::Property};
     }
     else if (isIdentifier(node) && (parent->is<AstStatExpr>() || parent->is<AstStatError>()))
         return {autocompleteStatement(*module, ancestry, scopeAtPosition, position), ancestry, AutocompleteContext::Statement};
 
-    if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(module, ancestry, position, fileResolver, callback))
+    if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(module, ancestry, position, fileResolver, std::move(callback)))
     {
         return {*ret, ancestry, AutocompleteContext::String};
     }
@@ -2094,14 +2094,14 @@ AutocompleteResult autocomplete_(
             }
         }
 
-        return {result, ancestry, AutocompleteContext::String};
+        return {std::move(result), ancestry, AutocompleteContext::String};
     }
     else if (stringPartOfInterpString(node, position))
     {
         // We're not a simple interpolated string, we're something like `a{"b"}@1`, and we
         // can't know what to format to
         AutocompleteEntryMap map;
-        return {map, ancestry, AutocompleteContext::String};
+        return {std::move(map), ancestry, AutocompleteContext::String};
     }
 
     if (node->is<AstExprConstantNumber>())

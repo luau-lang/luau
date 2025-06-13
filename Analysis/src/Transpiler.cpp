@@ -2960,7 +2960,7 @@ TranspileResult transpile(std::string_view source, ParseOptions options, bool wi
 
     auto allocator = Allocator{};
     auto names = AstNameTable{allocator};
-    ParseResult parseResult = Parser::parse(source.data(), source.size(), names, allocator, options);
+    ParseResult parseResult = Parser::parse(source.data(), source.size(), names, allocator, std::move(options));
 
     if (!parseResult.errors.empty())
     {

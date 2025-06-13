@@ -16,9 +16,6 @@ LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAG(LuauAttribute)
-LUAU_FASTFLAGVARIABLE(LintRedundantNativeAttribute)
-
 LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 namespace Luau
@@ -107,7 +104,7 @@ static void emitWarning(LintContext& context, LintWarning::Code code, const Loca
     std::string message = vformat(format, args);
     va_end(args);
 
-    LintWarning warning = {code, location, message};
+    LintWarning warning = {code, location, std::move(message)};
     context.result.push_back(warning);
 }
 
@@ -3392,8 +3389,6 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
 
 static bool hasNativeCommentDirective(const std::vector<HotComment>& hotcomments)
 {
-    LUAU_ASSERT(FFlag::LintRedundantNativeAttribute);
-
     for (const HotComment& hc : hotcomments)
     {
         if (hc.content.empty() || hc.content[0] == ' ' || hc.content[0] == '\t')
@@ -3417,8 +3412,6 @@ struct LintRedundantNativeAttribute : AstVisitor
 public:
     LUAU_NOINLINE static void process(LintContext& context)
     {
-        LUAU_ASSERT(FFlag::LintRedundantNativeAttribute);
-
         LintRedundantNativeAttribute pass;
         pass.context = &context;
         context.root->visit(&pass);
@@ -3540,7 +3533,7 @@ std::vector<LintWarning> lint(
     if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence))
         LintComparisonPrecedence::process(context);
 
-    if (FFlag::LintRedundantNativeAttribute && context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
+    if (context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
     {
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);

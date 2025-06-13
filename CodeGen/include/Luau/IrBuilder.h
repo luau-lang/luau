@@ -41,6 +41,7 @@ struct IrBuilder
 
     IrOp constInt(int value);
     IrOp constUint(unsigned value);
+    IrOp constImport(unsigned value);
     IrOp constDouble(double value);
     IrOp constTag(uint8_t value);
     IrOp constAny(IrConst constant, uint64_t asCommonKey);

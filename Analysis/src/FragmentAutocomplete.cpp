@@ -479,7 +479,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
         }
     }
 
-    return {localMap, localStack, ancestry, region.nearestStatement, region.parentBlock, region.fragmentLocation};
+    return {std::move(localMap), std::move(localStack), std::move(ancestry), region.nearestStatement, region.parentBlock, region.fragmentLocation};
 }
 
 std::optional<FragmentParseResult> parseFragment(
@@ -512,7 +512,7 @@ std::optional<FragmentParseResult> parseFragment(
     opts.allowDeclarationSyntax = false;
     opts.captureComments = true;
     opts.parseFragment = FragmentParseResumeSettings{std::move(result.localMap), std::move(result.localStack), startPos};
-    ParseResult p = Luau::Parser::parse(srcStart, parseLength, *names, *fragmentResult.alloc, opts);
+    ParseResult p = Luau::Parser::parse(srcStart, parseLength, *names, *fragmentResult.alloc, std::move(opts));
     // This means we threw a ParseError and we should decline to offer autocomplete here.
     if (p.root == nullptr)
         return std::nullopt;
@@ -1037,7 +1037,7 @@ std::optional<FragmentParseResult> parseFragment_DEPRECATED(
     opts.allowDeclarationSyntax = false;
     opts.captureComments = true;
     opts.parseFragment = FragmentParseResumeSettings{std::move(result.localMap), std::move(result.localStack), startPos};
-    ParseResult p = Luau::Parser::parse(srcStart, parseLength, *names, *fragmentResult.alloc, opts);
+    ParseResult p = Luau::Parser::parse(srcStart, parseLength, *names, *fragmentResult.alloc, std::move(opts));
     // This means we threw a ParseError and we should decline to offer autocomplete here.
     if (p.root == nullptr)
         return std::nullopt;
@@ -1192,7 +1192,7 @@ FragmentTypeCheckResult typecheckFragment_(
         {},
         nullptr,
         NotNull{&dfg},
-        limits
+        std::move(limits)
     };
 
     try
@@ -1351,7 +1351,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
         tcResult.freshScope,
         cursorPosition,
         frontend.fileResolver,
-        callback
+        std::move(callback)
     );
     if (FFlag::LuauFragmentAcMemoryLeak)
         freeze(tcResult.incrementalModule->internalTypes);

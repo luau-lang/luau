@@ -19,7 +19,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 namespace Luau
 {
@@ -329,12 +329,12 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
 
         for (TypePackId genericPack : subFn->genericPacks)
         {
-            if (FFlag::LuauEagerGeneralization3)
+            if (FFlag::LuauEagerGeneralization4)
             {
-                if (FFlag::LuauEagerGeneralization3)
+                if (FFlag::LuauEagerGeneralization4)
                     genericPack = follow(genericPack);
 
-                // TODO: Clip this follow() with LuauEagerGeneralization2
+                // TODO: Clip this follow() with LuauEagerGeneralization4
                 const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
                 if (gen)
                     genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
@@ -465,7 +465,7 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
     {
         result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
-        if (FFlag::LuauEagerGeneralization3)
+        if (FFlag::LuauEagerGeneralization4)
         {
             // FIXME: We can probably do something more efficient here.
             result &= unify(superTable->indexer->indexType, subTable->indexer->indexType);

@@ -15,13 +15,13 @@ TEST_SUITE_BEGIN("TypeTests");
 
 TEST_CASE_FIXTURE(Fixture, "primitives_are_equal")
 {
-    REQUIRE_EQ(builtinTypes->booleanType, builtinTypes->booleanType);
+    REQUIRE_EQ(getBuiltins()->booleanType, getBuiltins()->booleanType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_type_is_equal_to_that_which_it_is_bound")
 {
-    Type bound(BoundType(builtinTypes->booleanType));
-    REQUIRE_EQ(bound, *builtinTypes->booleanType);
+    Type bound(BoundType(getBuiltins()->booleanType));
+    REQUIRE_EQ(bound, *getBuiltins()->booleanType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "equivalent_cyclic_tables_are_equal")
@@ -53,8 +53,8 @@ TEST_CASE_FIXTURE(Fixture, "different_cyclic_tables_are_not_equal")
 TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_not_parenthesized_if_just_one_value")
 {
     auto emptyArgumentPack = TypePackVar{TypePack{}};
-    auto returnPack = TypePackVar{TypePack{{builtinTypes->numberType}}};
-    auto returnsTwo = Type(FunctionType(frontend.globals.globalScope->level, &emptyArgumentPack, &returnPack));
+    auto returnPack = TypePackVar{TypePack{{getBuiltins()->numberType}}};
+    auto returnsTwo = Type(FunctionType(getFrontend().globals.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
     CHECK_EQ("() -> number", res);
@@ -63,8 +63,8 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_not_parenthesized_if_just
 TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_not_just_one_value")
 {
     auto emptyArgumentPack = TypePackVar{TypePack{}};
-    auto returnPack = TypePackVar{TypePack{{builtinTypes->numberType, builtinTypes->numberType}}};
-    auto returnsTwo = Type(FunctionType(frontend.globals.globalScope->level, &emptyArgumentPack, &returnPack));
+    auto returnPack = TypePackVar{TypePack{{getBuiltins()->numberType, getBuiltins()->numberType}}};
+    auto returnsTwo = Type(FunctionType(getFrontend().globals.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
     CHECK_EQ("() -> (number, number)", res);
@@ -75,8 +75,8 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_
     auto emptyArgumentPack = TypePackVar{TypePack{}};
     auto free = FreeTypePack(TypeLevel());
     auto freePack = TypePackVar{TypePackVariant{free}};
-    auto returnPack = TypePackVar{TypePack{{builtinTypes->numberType}, &freePack}};
-    auto returnsTwo = Type(FunctionType(frontend.globals.globalScope->level, &emptyArgumentPack, &returnPack));
+    auto returnPack = TypePackVar{TypePack{{getBuiltins()->numberType}, &freePack}};
+    auto returnsTwo = Type(FunctionType(getFrontend().globals.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
     CHECK_EQ(res, "() -> (number, a...)");
@@ -85,9 +85,9 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_
 TEST_CASE_FIXTURE(Fixture, "subset_check")
 {
     UnionType super, sub, notSub;
-    super.options = {builtinTypes->numberType, builtinTypes->stringType, builtinTypes->booleanType};
-    sub.options = {builtinTypes->numberType, builtinTypes->stringType};
-    notSub.options = {builtinTypes->numberType, builtinTypes->nilType};
+    super.options = {getBuiltins()->numberType, getBuiltins()->stringType, getBuiltins()->booleanType};
+    sub.options = {getBuiltins()->numberType, getBuiltins()->stringType};
+    notSub.options = {getBuiltins()->numberType, getBuiltins()->nilType};
 
     CHECK(isSubset(super, sub));
     CHECK(!isSubset(super, notSub));
@@ -96,7 +96,7 @@ TEST_CASE_FIXTURE(Fixture, "subset_check")
 TEST_CASE_FIXTURE(Fixture, "iterate_over_UnionType")
 {
     UnionType utv;
-    utv.options = {builtinTypes->numberType, builtinTypes->stringType, builtinTypes->anyType};
+    utv.options = {getBuiltins()->numberType, getBuiltins()->stringType, getBuiltins()->anyType};
 
     std::vector<TypeId> result;
     for (TypeId ty : &utv)
@@ -109,38 +109,38 @@ TEST_CASE_FIXTURE(Fixture, "iterating_over_nested_UnionTypes")
 {
     Type subunion{UnionType{}};
     UnionType* innerUtv = getMutable<UnionType>(&subunion);
-    innerUtv->options = {builtinTypes->numberType, builtinTypes->stringType};
+    innerUtv->options = {getBuiltins()->numberType, getBuiltins()->stringType};
 
     UnionType utv;
-    utv.options = {builtinTypes->anyType, &subunion};
+    utv.options = {getBuiltins()->anyType, &subunion};
 
     std::vector<TypeId> result;
     for (TypeId ty : &utv)
         result.push_back(ty);
 
     REQUIRE_EQ(result.size(), 3);
-    CHECK_EQ(result[0], builtinTypes->anyType);
-    CHECK_EQ(result[2], builtinTypes->stringType);
-    CHECK_EQ(result[1], builtinTypes->numberType);
+    CHECK_EQ(result[0], getBuiltins()->anyType);
+    CHECK_EQ(result[2], getBuiltins()->stringType);
+    CHECK_EQ(result[1], getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "iterating_over_nested_UnionTypes_postfix_operator_plus_plus")
 {
     Type subunion{UnionType{}};
     UnionType* innerUtv = getMutable<UnionType>(&subunion);
-    innerUtv->options = {builtinTypes->numberType, builtinTypes->stringType};
+    innerUtv->options = {getBuiltins()->numberType, getBuiltins()->stringType};
 
     UnionType utv;
-    utv.options = {builtinTypes->anyType, &subunion};
+    utv.options = {getBuiltins()->anyType, &subunion};
 
     std::vector<TypeId> result;
     for (auto it = begin(&utv); it != end(&utv); it++)
         result.push_back(*it);
 
     REQUIRE_EQ(result.size(), 3);
-    CHECK_EQ(result[0], builtinTypes->anyType);
-    CHECK_EQ(result[2], builtinTypes->stringType);
-    CHECK_EQ(result[1], builtinTypes->numberType);
+    CHECK_EQ(result[0], getBuiltins()->anyType);
+    CHECK_EQ(result[2], getBuiltins()->stringType);
+    CHECK_EQ(result[1], getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "iterator_detects_cyclic_UnionTypes_and_skips_over_them")
@@ -150,8 +150,8 @@ TEST_CASE_FIXTURE(Fixture, "iterator_detects_cyclic_UnionTypes_and_skips_over_th
 
     Type btv{UnionType{}};
     UnionType* utv2 = getMutable<UnionType>(&btv);
-    utv2->options.push_back(builtinTypes->numberType);
-    utv2->options.push_back(builtinTypes->stringType);
+    utv2->options.push_back(getBuiltins()->numberType);
+    utv2->options.push_back(getBuiltins()->stringType);
     utv2->options.push_back(&atv);
 
     utv1->options.push_back(&btv);
@@ -161,14 +161,14 @@ TEST_CASE_FIXTURE(Fixture, "iterator_detects_cyclic_UnionTypes_and_skips_over_th
         result.push_back(ty);
 
     REQUIRE_EQ(result.size(), 2);
-    CHECK_EQ(result[0], builtinTypes->numberType);
-    CHECK_EQ(result[1], builtinTypes->stringType);
+    CHECK_EQ(result[0], getBuiltins()->numberType);
+    CHECK_EQ(result[1], getBuiltins()->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "iterator_descends_on_nested_in_first_operator*")
 {
-    Type tv1{UnionType{{builtinTypes->stringType, builtinTypes->numberType}}};
-    Type tv2{UnionType{{&tv1, builtinTypes->booleanType}}};
+    Type tv1{UnionType{{getBuiltins()->stringType, getBuiltins()->numberType}}};
+    Type tv2{UnionType{{&tv1, getBuiltins()->booleanType}}};
     auto utv = get<UnionType>(&tv2);
 
     std::vector<TypeId> result;
@@ -176,19 +176,19 @@ TEST_CASE_FIXTURE(Fixture, "iterator_descends_on_nested_in_first_operator*")
         result.push_back(ty);
 
     REQUIRE_EQ(result.size(), 3);
-    CHECK_EQ(result[0], builtinTypes->stringType);
-    CHECK_EQ(result[1], builtinTypes->numberType);
-    CHECK_EQ(result[2], builtinTypes->booleanType);
+    CHECK_EQ(result[0], getBuiltins()->stringType);
+    CHECK_EQ(result[1], getBuiltins()->numberType);
+    CHECK_EQ(result[2], getBuiltins()->booleanType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_vector_iter_ctor")
 {
-    Type tv1{UnionType{{builtinTypes->stringType, builtinTypes->numberType}}};
-    Type tv2{UnionType{{&tv1, builtinTypes->booleanType}}};
+    Type tv1{UnionType{{getBuiltins()->stringType, getBuiltins()->numberType}}};
+    Type tv2{UnionType{{&tv1, getBuiltins()->booleanType}}};
     auto utv = get<UnionType>(&tv2);
 
     std::vector<TypeId> actual(begin(utv), end(utv));
-    std::vector<TypeId> expected{builtinTypes->stringType, builtinTypes->numberType, builtinTypes->booleanType};
+    std::vector<TypeId> expected{getBuiltins()->stringType, getBuiltins()->numberType, getBuiltins()->booleanType};
     CHECK_EQ(actual, expected);
 }
 
@@ -219,7 +219,7 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_only_cyclic_union")
  */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    Type ftv11{FreeType{TypeLevel{}, builtinTypes->neverType, builtinTypes->unknownType}};
+    Type ftv11{FreeType{TypeLevel{}, getBuiltins()->neverType, getBuiltins()->unknownType}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
     TypePackVar tp17{TypePack{}};
@@ -294,11 +294,11 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     ModulePtr currentModule = std::make_shared<Module>();
     Anyification anyification(
         &currentModule->internalTypes,
-        frontend.globals.globalScope,
-        builtinTypes,
-        &frontend.iceHandler,
-        builtinTypes->anyType,
-        builtinTypes->anyTypePack
+        getFrontend().globals.globalScope,
+        getBuiltins(),
+        &getFrontend().iceHandler,
+        getBuiltins()->anyType,
+        getBuiltins()->anyTypePack
     );
     std::optional<TypeId> any = anyification.substitute(root);
 

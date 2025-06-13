@@ -766,7 +766,7 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    TypeArena& arena = frontend.globals.globalTypes;
+    TypeArena& arena = getFrontend().globals.globalTypes;
 
     unfreeze(arena);
 
@@ -782,7 +782,7 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 
     TypeId partType = arena.addType(ExternType{
         "Part",
-        {{"BrickColor", Property::rw(builtinTypes->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
+        {{"BrickColor", Property::rw(getBuiltins()->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
         instanceType,
         nullopt,
         {},
@@ -793,7 +793,7 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 
     getMutable<ExternType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
 
-    frontend.globals.globalScope->bindings[frontend.globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
+    getFrontend().globals.globalScope->bindings[getFrontend().globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
 
     freeze(arena);
 
@@ -807,8 +807,8 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
     CHECK(Location{{1, 40}, {1, 48}} == result.errors[0].location);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK(builtinTypes->stringType == tm->wantedType);
-    CHECK(builtinTypes->numberType == tm->givenType);
+    CHECK(getBuiltins()->stringType == tm->wantedType);
+    CHECK(getBuiltins()->numberType == tm->givenType);
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_index_a_class_with_no_indexer")
@@ -826,7 +826,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_index_a_class_with_no_indexer")
         "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
     );
 
-    CHECK(builtinTypes->errorType == requireType("c"));
+    CHECK(getBuiltins()->errorType == requireType("c"));
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible_with_extern_types")

@@ -10,8 +10,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAG(LuauEagerGeneralization3)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -583,7 +583,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
 type X = { x: number }
@@ -625,20 +625,20 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     // It shouldn't be possible to craft a cyclic union, but even if we do, we
     // shouldn't blow up.
 
-    TypeArena& arena = frontend.globals.globalTypes;
+    TypeArena& arena = getFrontend().globals.globalTypes;
     unfreeze(arena);
 
-    TypeId badCyclicUnionTy = arena.freshType(builtinTypes, frontend.globals.globalScope.get());
+    TypeId badCyclicUnionTy = arena.freshType(getBuiltins(), getFrontend().globals.globalScope.get());
     UnionType u;
 
     u.options.push_back(badCyclicUnionTy);
     u.options.push_back(arena.addType(TableType{
-        {}, TableIndexer{builtinTypes->numberType, builtinTypes->numberType}, TypeLevel{}, frontend.globals.globalScope.get(), TableState::Sealed
+        {}, TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType}, TypeLevel{}, getFrontend().globals.globalScope.get(), TableState::Sealed
     }));
 
     asMutable(badCyclicUnionTy)->ty.emplace<UnionType>(std::move(u));
 
-    frontend.globals.globalScope->exportedTypeBindings["BadCyclicUnion"] = TypeFun{{}, badCyclicUnionTy};
+    getFrontend().globals.globalScope->exportedTypeBindings["BadCyclicUnion"] = TypeFun{{}, badCyclicUnionTy};
 
     freeze(arena);
 
@@ -895,7 +895,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
         CHECK_EQ(
             "<a>(({ read x: a } & { x: number }) | ({ read x: a } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f"))
         );
@@ -1000,7 +1000,7 @@ TEST_CASE_FIXTURE(Fixture, "suppress_errors_for_prop_lookup_of_a_union_that_incl
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    registerHiddenTypes(&frontend);
+    registerHiddenTypes(getFrontend());
 
     CheckResult result = check(R"(
         function f(a: err | Not<nil>)

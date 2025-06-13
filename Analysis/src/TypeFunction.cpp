@@ -48,14 +48,15 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAGVARIABLE(LuauNarrowIntersectionNevers)
 LUAU_FASTFLAGVARIABLE(LuauNotAllBinaryTypeFunsHaveDefaults)
 LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
+LUAU_FASTFLAGVARIABLE(LuauOccursCheckForRefinement)
 
 namespace Luau
 {
@@ -264,7 +265,7 @@ struct TypeFunctionReducer
         Okay,
     };
 
-    SkipTestResult testForSkippability(TypeId ty)
+    SkipTestResult DEPRECATED_testForSkippability(TypeId ty)
     {
         ty = follow(ty);
 
@@ -283,10 +284,55 @@ struct TypeFunctionReducer
         }
         else if (is<GenericType>(ty))
         {
-            if (FFlag::LuauEagerGeneralization3)
+            if (FFlag::LuauEagerGeneralization4)
                 return SkipTestResult::Generic;
             else
                 return SkipTestResult::Irreducible;
+        }
+
+        return SkipTestResult::Okay;
+    }
+
+    SkipTestResult testForSkippability(TypeId ty)
+    {
+        if (!FFlag::LuauEagerGeneralization4)
+            return DEPRECATED_testForSkippability(ty);
+
+        VecDeque<TypeId> queue;
+        DenseHashSet<TypeId> seen{nullptr};
+
+        queue.push_back(follow(ty));
+
+        while (!queue.empty())
+        {
+            TypeId t = queue.front();
+            queue.pop_front();
+
+            if (seen.contains(t))
+                continue;
+
+            if (is<TypeFunctionInstanceType>(t))
+            {
+                for (auto cyclicTy : cyclicTypeFunctions)
+                {
+                    if (t == cyclicTy)
+                        return SkipTestResult::CyclicTypeFunction;
+                }
+
+                if (!irreducible.contains(t))
+                    return SkipTestResult::Defer;
+
+                return SkipTestResult::Irreducible;
+            }
+            else if (is<GenericType>(t))
+                return SkipTestResult::Generic;
+            else if (auto it = get<IntersectionType>(t))
+            {
+                for (TypeId part : it->parts)
+                    queue.push_back(follow(part));
+            }
+
+            seen.insert(t);
         }
 
         return SkipTestResult::Okay;
@@ -305,7 +351,7 @@ struct TypeFunctionReducer
         }
         else if (is<GenericTypePack>(ty))
         {
-            if (FFlag::LuauEagerGeneralization3)
+            if (FFlag::LuauEagerGeneralization4)
                 return SkipTestResult::Generic;
             else
                 return SkipTestResult::Irreducible;
@@ -517,7 +563,7 @@ struct TypeFunctionReducer
             ctx.userFuncName = tfit->userFuncName;
 
             TypeFunctionReductionResult<TypeId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
-            handleTypeFunctionReduction(subject, result);
+            handleTypeFunctionReduction(subject, std::move(result));
         }
     }
 
@@ -542,7 +588,7 @@ struct TypeFunctionReducer
 
             TypeFunctionReductionResult<TypePackId> result =
                 tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
-            handleTypeFunctionReduction(subject, result);
+            handleTypeFunctionReduction(subject, std::move(result));
         }
     }
 
@@ -752,7 +798,7 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
     }
 
     if (reductionStatus != Reduction::MaybeOk || !blockedTypes.empty())
-        return {{std::nullopt, reductionStatus, blockedTypes, {}}};
+        return {{std::nullopt, reductionStatus, std::move(blockedTypes), {}}};
 
     if (!results.empty())
     {
@@ -924,7 +970,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
     if (!ctx->typeFunctionRuntime->allowEvaluation || typeFunction->userFuncData.definition->hasErrors)
-        return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     FindUserTypeFunctionBlockers check{ctx};
 
@@ -949,7 +995,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     {
         // Cannot evaluate if a potential dependency couldn't be parsed
         if (definition.first->hasErrors)
-            return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+            return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
         if (std::optional<std::string> error = ctx->typeFunctionRuntime->registerFunction(definition.first))
         {
@@ -1090,7 +1136,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     ctx->typeFunctionRuntime->messages.clear();
 
     if (auto error = checkResultForError(L, name.value, lua_pcall(L, int(typeParams.size()), 1, 0)))
-        return {std::nullopt, Reduction::Erroneous, {}, {}, error, ctx->typeFunctionRuntime->messages};
+        return {std::nullopt, Reduction::Erroneous, {}, {}, std::move(error), ctx->typeFunctionRuntime->messages};
 
     // If the return value is not a type userdata, return with error message
     if (!isTypeUserData(L, 1))
@@ -1222,7 +1268,7 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
 
     const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
     if (!instantiatedMmFtv)
-        return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     TypePackId inferredArgPack = ctx->arena->addTypePack({operandTy});
     Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
@@ -1259,7 +1305,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
         operandTy = follow(operandTy);
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
@@ -1305,7 +1351,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
 
     const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
     if (!instantiatedMmFtv)
-        return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     TypePackId inferredArgPack = ctx->arena->addTypePack({operandTy});
     Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
@@ -1772,7 +1818,7 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
 
     const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
     if (!instantiatedMmFtv)
-        return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     std::vector<TypeId> inferredArgs;
     if (!reversed)
@@ -1856,7 +1902,7 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
         return {rhsTy, Reduction::MaybeOk, {}, {}};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
             return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
@@ -1903,7 +1949,7 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (lhsTy == instance || rhsTy == instance)
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
             return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
@@ -1997,7 +2043,7 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
 
     const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
     if (!instantiatedMmFtv)
-        return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     TypePackId inferredArgPack = ctx->arena->addTypePack({lhsTy, rhsTy});
     Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
@@ -2126,7 +2172,7 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
 
     const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
     if (!instantiatedMmFtv)
-        return {ctx->builtins->errorRecoveryType(), Reduction::MaybeOk, {}, {}};
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     TypePackId inferredArgPack = ctx->arena->addTypePack({lhsTy, rhsTy});
     Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
@@ -2247,6 +2293,98 @@ bool isSimpleDiscriminant(TypeId ty)
     return isApproximateTruthy(ty) || isApproximateFalsy(ty);
 }
 
+struct RefineTypeScrubber : public Substitution
+{
+    NotNull<TypeFunctionContext> ctx;
+    TypeId needle;
+
+    explicit RefineTypeScrubber(NotNull<TypeFunctionContext> ctx, TypeId needle)
+        : Substitution(ctx->arena)
+        , ctx{ctx}
+        , needle{needle}
+    {
+    }
+
+    bool isDirty(TypePackId tp) override
+    {
+        return false;
+    }
+
+    bool ignoreChildren(TypePackId tp) override
+    {
+        return false;
+    }
+
+    TypePackId clean(TypePackId tp) override
+    {
+        return tp;
+    }
+
+    bool isDirty(TypeId ty) override
+    {
+        if (auto ut = get<UnionType>(ty))
+        {
+            for (auto option : ut)
+            {
+                if (option == needle)
+                    return true;
+            }
+        }
+        else if (auto it = get<IntersectionType>(ty))
+        {
+            for (auto part : it)
+            {
+                if (part == needle)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    bool ignoreChildren(TypeId ty) override
+    {
+        return !is<UnionType, IntersectionType>(ty);
+    }
+
+    TypeId clean(TypeId ty) override 
+    {
+        // NOTE: this feels pretty similar to other places where we try to
+        // filter over a set type, may be worth combining those in the future.
+        if (auto ut = get<UnionType>(ty))
+        {
+            TypeIds newOptions;
+            for (auto option : ut)
+            {
+                if (option != needle && !is<NeverType>(option))
+                    newOptions.insert(option);
+            }
+            if (newOptions.empty())
+                return ctx->builtins->neverType;
+            else if (newOptions.size() == 1)
+                return *newOptions.begin();
+            else
+                return ctx->arena->addType(UnionType{newOptions.take()});
+        }
+        else if (auto it = get<IntersectionType>(ty))
+        {
+            TypeIds newParts;
+            for (auto part : it)
+            {
+                if (part != needle && !is<UnknownType>(part))
+                    newParts.insert(part);
+            }
+            if (newParts.empty())
+                return ctx->builtins->unknownType;
+            else if (newParts.size() == 1)
+                return *newParts.begin();
+            else
+                return ctx->arena->addType(IntersectionType{newParts.take()});
+        }
+        return ty;
+    }
+
+};
+
 } // namespace
 
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
@@ -2263,11 +2401,30 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     }
 
     TypeId targetTy = follow(typeParams.at(0));
+
+    if (FFlag::LuauOccursCheckForRefinement)
+    {
+        // If we end up minting a refine type like:
+        //
+        //  t1 where t1 = refine<T | t1, Y>
+        //
+        // This can create a degenerate set type such as:
+        //
+        //  t1 where t1 = (T | t1) & Y
+        //
+        // Instead, we can clip the recursive part:
+        //
+        //  t1 where t1 = refine<T | t1, Y> => refine<T, Y>
+        RefineTypeScrubber rts{ctx, instance};
+        if (auto result = rts.substitute(targetTy))
+            targetTy = *result;
+    }
+
     std::vector<TypeId> discriminantTypes;
     for (size_t i = 1; i < typeParams.size(); i++)
         discriminantTypes.push_back(follow(typeParams.at(i)));
 
-    const bool targetIsPending = FFlag::LuauEagerGeneralization3 ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
+    const bool targetIsPending = FFlag::LuauEagerGeneralization4 ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
                                                                  : isPending(targetTy, ctx->solver);
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
@@ -2348,7 +2505,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             if (is<TableType>(target) || isSimpleDiscriminant(discriminant))
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                if (FFlag::LuauEagerGeneralization3)
+                if (FFlag::LuauEagerGeneralization4)
                 {
                     // Simplification considers free and generic types to be
                     // 'blocking', but that's not suitable for refine<>.
@@ -2844,7 +3001,7 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
     if (singletons.size() == 1)
         return {singletons.front(), Reduction::MaybeOk, {}, {}};
 
-    return {ctx->arena->addType(UnionType{singletons}), Reduction::MaybeOk, {}, {}};
+    return {ctx->arena->addType(UnionType{std::move(singletons)}), Reduction::MaybeOk, {}, {}};
 }
 
 TypeFunctionReductionResult<TypeId> keyofTypeFunction(
@@ -3289,7 +3446,7 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
             blockedTypes.reserve(simplified.blockedTypes.size());
             for (auto ty : simplified.blockedTypes)
                 blockedTypes.push_back(ty);
-            return {std::nullopt, Reduction::MaybeOk, blockedTypes, {}};
+            return {std::nullopt, Reduction::MaybeOk, std::move(blockedTypes), {}};
         }
 
         result = simplified.result;
@@ -3489,7 +3646,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
     , eqFunc{"eq", eqTypeFunction}
-    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization3}
+    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization4}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}

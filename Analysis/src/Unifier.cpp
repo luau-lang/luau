@@ -1078,33 +1078,33 @@ void Unifier::tryUnifyNormalizedTypes(
         return;
 
     if (get<UnknownType>(subNorm.tops))
-        return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+        return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
     if (get<PrimitiveType>(subNorm.booleans))
     {
         if (!get<PrimitiveType>(superNorm.booleans))
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
     }
     else if (const SingletonType* stv = get<SingletonType>(subNorm.booleans))
     {
         if (!get<PrimitiveType>(superNorm.booleans) && stv != get<SingletonType>(superNorm.booleans))
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
     }
 
     if (get<PrimitiveType>(subNorm.nils))
         if (!get<PrimitiveType>(superNorm.nils))
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
     if (get<PrimitiveType>(subNorm.numbers))
         if (!get<PrimitiveType>(superNorm.numbers))
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
     if (!isSubtype(subNorm.strings, superNorm.strings))
-        return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+        return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
     if (get<PrimitiveType>(subNorm.threads))
         if (!get<PrimitiveType>(superNorm.errors))
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
 
     for (const auto& [subExternType, _] : subNorm.externTypes.externTypes)
     {
@@ -1140,7 +1140,7 @@ void Unifier::tryUnifyNormalizedTypes(
 
         if (!found)
         {
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
         }
     }
 
@@ -1169,19 +1169,19 @@ void Unifier::tryUnifyNormalizedTypes(
                 return reportError(*e);
         }
         if (!found)
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
     }
 
     if (!subNorm.functions.isNever())
     {
         if (superNorm.functions.isNever())
-            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+            return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
         for (TypeId superFun : superNorm.functions.parts)
         {
             std::unique_ptr<Unifier> innerState = makeChildUnifier();
             const FunctionType* superFtv = get<FunctionType>(superFun);
             if (!superFtv)
-                return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+                return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
             TypePackId tgt = innerState->tryApplyOverloadedFunction(subTy, subNorm.functions, superFtv->argTypes);
             innerState->tryUnify_(tgt, superFtv->retTypes);
             if (innerState->errors.empty())
@@ -1189,7 +1189,7 @@ void Unifier::tryUnifyNormalizedTypes(
             else if (auto e = hasUnificationTooComplex(innerState->errors))
                 return reportError(*e);
             else
-                return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+                return reportError(location, TypeMismatch{superTy, subTy, std::move(reason), std::move(error), mismatchContext()});
         }
     }
 
@@ -1210,7 +1210,7 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
     if (overloads.isNever())
     {
         reportError(location, CannotCallNonFunction{function});
-        return builtinTypes->errorRecoveryTypePack();
+        return builtinTypes->errorTypePack;
     }
 
     std::optional<TypePackId> result;
@@ -1266,7 +1266,7 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
     else
     {
         reportError(location, CannotCallNonFunction{function});
-        return builtinTypes->errorRecoveryTypePack();
+        return builtinTypes->errorTypePack;
     }
 }
 
@@ -1677,13 +1677,13 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
                 while (superIter.good())
                 {
-                    tryUnify_(*superIter, builtinTypes->errorRecoveryType());
+                    tryUnify_(*superIter, builtinTypes->errorType);
                     superIter.advance();
                 }
 
                 while (subIter.good())
                 {
-                    tryUnify_(*subIter, builtinTypes->errorRecoveryType());
+                    tryUnify_(*subIter, builtinTypes->errorType);
                     subIter.advance();
                 }
 
@@ -2256,9 +2256,9 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
     {
         std::string reason = "The former's metatable does not satisfy the requirements.";
         if (e)
-            reportError(location, TypeMismatch{osuperTy, osubTy, reason, *e, mismatchContext()});
+            reportError(location, TypeMismatch{osuperTy, osubTy, std::move(reason), std::move(e), mismatchContext()});
         else
-            reportError(location, TypeMismatch{osuperTy, osubTy, reason, mismatchContext()});
+            reportError(location, TypeMismatch{osuperTy, osubTy, std::move(reason), mismatchContext()});
     };
 
     // Given t1 where t1 = { lower: (t1) -> (a, b...) }
@@ -2369,7 +2369,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         case TableState::Sealed:
         case TableState::Unsealed:
         case TableState::Generic:
-            reportError(mismatchError);
+            reportError(std::move(mismatchError));
         }
     }
     else if (log.getMutable<AnyType>(subTy) || log.getMutable<ErrorType>(subTy))
@@ -2377,7 +2377,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
     }
     else
     {
-        reportError(mismatchError);
+        reportError(std::move(mismatchError));
     }
 }
 
@@ -2462,7 +2462,7 @@ void Unifier::tryUnifyWithExternType(TypeId subTy, TypeId superTy, bool reversed
         {
             ok = false;
             std::string msg = "Extern type " + superExternType->name + " does not have an indexer";
-            reportError(location, GenericError{msg});
+            reportError(location, GenericError{std::move(msg)});
         }
 
         if (!ok)
@@ -2670,7 +2670,7 @@ void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 {
     LUAU_ASSERT(get<ErrorTypePack>(anyTp));
 
-    const TypeId anyTy = builtinTypes->errorRecoveryType();
+    const TypeId anyTy = builtinTypes->errorType;
 
     std::vector<TypeId> queue;
 
@@ -2726,7 +2726,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack, bool reversed)
         if (innerState->failure)
         {
             reportError(location, OccursCheckFailed{});
-            log.replace(needle, BoundType{builtinTypes->errorRecoveryType()});
+            log.replace(needle, BoundType{builtinTypes->errorType});
         }
     }
 
@@ -2787,7 +2787,7 @@ bool Unifier::occursCheck(TypePackId needle, TypePackId haystack, bool reversed)
     if (occurs)
     {
         reportError(location, OccursCheckFailed{});
-        log.replace(needle, BoundTypePack{builtinTypes->errorRecoveryTypePack()});
+        log.replace(needle, BoundTypePack{builtinTypes->errorTypePack});
     }
 
     return occurs;

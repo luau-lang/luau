@@ -3,7 +3,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 namespace Luau
 {
@@ -43,6 +43,17 @@ struct ReferenceCountInitializer : TypeOnceVisitor
         return false;
     }
 
+    bool visit(TypeId ty, const TableType& tt) override
+    {
+        if (FFlag::LuauEagerGeneralization4)
+        {
+            if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
+                result->insert(ty);
+        }
+
+        return true;
+    }
+
     bool visit(TypeId ty, const ExternType&) override
     {
         // ExternTypes never contain free types.
@@ -51,12 +62,18 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypeId, const TypeFunctionInstanceType&) override
     {
-        return FFlag::LuauEagerGeneralization3 && traverseIntoTypeFunctions;
+        return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
     }
 };
 
 bool isReferenceCountedType(const TypeId typ)
 {
+    if (FFlag::LuauEagerGeneralization4)
+    {
+        if (auto tt = get<TableType>(typ))
+            return tt->state == TableState::Free || tt->state == TableState::Unsealed;
+    }
+
     // n.b. this should match whatever `ReferenceCountInitializer` includes.
     return get<FreeType>(typ) || get<BlockedType>(typ) || get<PendingExpansionType>(typ);
 }
@@ -104,7 +121,7 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(fchc->argsPack);
     }
-    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::LuauEagerGeneralization3)
+    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::LuauEagerGeneralization4)
     {
         rci.traverseIntoTypeFunctions = false;
         rci.traverse(fcc->fn);
@@ -118,12 +135,12 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     else if (auto hpc = get<HasPropConstraint>(*this))
     {
         rci.traverse(hpc->resultType);
-        if (FFlag::LuauEagerGeneralization3)
+        if (FFlag::LuauEagerGeneralization4)
             rci.traverse(hpc->subjectType);
     }
     else if (auto hic = get<HasIndexerConstraint>(*this))
     {
-        if (FFlag::LuauEagerGeneralization3)
+        if (FFlag::LuauEagerGeneralization4)
             rci.traverse(hic->subjectType);
         rci.traverse(hic->resultType);
         // `HasIndexerConstraint` should not mutate `indexType`.

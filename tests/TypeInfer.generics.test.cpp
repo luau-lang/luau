@@ -14,11 +14,11 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 using namespace Luau;
 
@@ -34,8 +34,8 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_function")
         local y: number = id(37)
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(builtinTypes->stringType, requireType("x"));
-    CHECK_EQ(builtinTypes->numberType, requireType("y"));
+    CHECK_EQ(getBuiltins()->stringType, requireType("x"));
+    CHECK_EQ(getBuiltins()->numberType, requireType("y"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_local_function")
@@ -48,8 +48,8 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function")
         local y: number = id(37)
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(builtinTypes->stringType, requireType("x"));
-    CHECK_EQ(builtinTypes->numberType, requireType("y"));
+    CHECK_EQ(getBuiltins()->stringType, requireType("x"));
+    CHECK_EQ(getBuiltins()->numberType, requireType("y"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_local_function2")
@@ -62,8 +62,8 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function2")
         local y = id(37)
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(builtinTypes->stringType, requireType("x"));
-    CHECK_EQ(builtinTypes->numberType, requireType("y"));
+    CHECK_EQ(getBuiltins()->stringType, requireType("x"));
+    CHECK_EQ(getBuiltins()->numberType, requireType("y"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unions_and_generics")
@@ -908,7 +908,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
 --!strict
@@ -1121,8 +1121,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
-    CHECK_EQ(*builtinTypes->numberType, *requireType("a"));
-    CHECK_EQ(*builtinTypes->nilType, *requireType("b"));
+    CHECK_EQ(*getBuiltins()->numberType, *requireType("a"));
+    CHECK_EQ(*getBuiltins()->nilType, *requireType("b"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_table_method")
@@ -1427,7 +1427,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
     ScopedFastFlag _[] = {
         {FFlag::LuauReportSubtypingErrors, true},
         {FFlag::LuauSubtypingCheckFunctionGenericCounts, true},
-        {FFlag::LuauEagerGeneralization3, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
     CheckResult result;
 

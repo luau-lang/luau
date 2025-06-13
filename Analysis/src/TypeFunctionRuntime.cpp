@@ -342,7 +342,7 @@ static int createOptional(lua_State* L)
 
     components.emplace_back(allocateTypeFunctionType(L, TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::NilType)));
 
-    allocTypeUserData(L, TypeFunctionUnionType{components});
+    allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
 
     return 1;
 }
@@ -362,7 +362,7 @@ static int createUnion(lua_State* L)
     for (int i = 1; i <= argSize; i++)
         components.push_back(getTypeUserData(L, i));
 
-    allocTypeUserData(L, TypeFunctionUnionType{components});
+    allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
 
     return 1;
 }
@@ -382,7 +382,7 @@ static int createIntersection(lua_State* L)
     for (int i = 1; i <= argSize; i++)
         components.push_back(getTypeUserData(L, i));
 
-    allocTypeUserData(L, TypeFunctionIntersectionType{components});
+    allocTypeUserData(L, TypeFunctionIntersectionType{std::move(components)});
 
     return 1;
 }
@@ -542,7 +542,7 @@ static int createTable(lua_State* L)
     if (metatable && !get<TypeFunctionTableType>(*metatable))
         luaL_error(L, "types.newtable: expected to be given a table type as a metatable, but got %s instead", getTag(L, *metatable).c_str());
 
-    allocTypeUserData(L, TypeFunctionTableType{props, indexer, metatable});
+    allocTypeUserData(L, TypeFunctionTableType{std::move(props), indexer, metatable});
     return 1;
 }
 
@@ -904,7 +904,7 @@ static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx
     if (head.size() == 0 && tail.has_value())
         result = *tail;
     else
-        result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{head, tail});
+        result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{std::move(head), tail});
 
     return result;
 }

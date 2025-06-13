@@ -585,8 +585,8 @@ PendingExpansionType::PendingExpansionType(
 )
     : prefix(prefix)
     , name(name)
-    , typeArguments(typeArguments)
-    , packArguments(packArguments)
+    , typeArguments(std::move(typeArguments))
+    , packArguments(std::move(packArguments))
     , index(++nextIndex)
 {
 }
@@ -619,8 +619,8 @@ FunctionType::FunctionType(
     bool hasSelf
 )
     : definition(std::move(defn))
-    , generics(generics)
-    , genericPacks(genericPacks)
+    , generics(std::move(generics))
+    , genericPacks(std::move(genericPacks))
     , argTypes(argTypes)
     , retTypes(retTypes)
     , hasSelf(hasSelf)
@@ -637,8 +637,8 @@ FunctionType::FunctionType(
     bool hasSelf
 )
     : definition(std::move(defn))
-    , generics(generics)
-    , genericPacks(genericPacks)
+    , generics(std::move(generics))
+    , genericPacks(std::move(genericPacks))
     , level(level)
     , argTypes(argTypes)
     , retTypes(retTypes)
@@ -1044,16 +1044,6 @@ BuiltinTypes::~BuiltinTypes()
     arena.reset(nullptr);
 
     FFlag::DebugLuauFreezeArena.value = prevFlag;
-}
-
-TypeId BuiltinTypes::errorRecoveryType() const
-{
-    return errorType;
-}
-
-TypePackId BuiltinTypes::errorRecoveryTypePack() const
-{
-    return errorTypePack;
 }
 
 TypeId BuiltinTypes::errorRecoveryType(TypeId guess) const

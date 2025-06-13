@@ -40,11 +40,11 @@ struct InConditionalContext
     TypeContext* typeContext;
     TypeContext oldValue;
 
-    explicit InConditionalContext(TypeContext* c)
+    explicit InConditionalContext(TypeContext* c, TypeContext newValue = TypeContext::Condition)
         : typeContext(c)
         , oldValue(*c)
     {
-        *typeContext = TypeContext::Condition;
+        *typeContext = newValue;
     }
 
     ~InConditionalContext()

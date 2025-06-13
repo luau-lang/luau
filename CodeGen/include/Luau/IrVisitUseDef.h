@@ -68,6 +68,9 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
     case IrCmd::GET_IMPORT:
         visitor.def(inst.a);
         break;
+    case IrCmd::GET_CACHED_IMPORT:
+        visitor.def(inst.a);
+        break;
     case IrCmd::CONCAT:
         visitor.useRange(vmRegOp(inst.a), function.uintOp(inst.b));
 
