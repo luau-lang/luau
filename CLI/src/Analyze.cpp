@@ -178,7 +178,7 @@ struct CliFileResolver : Luau::FileResolver
             Luau::Require::ErrorHandler nullErrorHandler{};
 
             Luau::Require::Navigator navigator(navigationContext, nullErrorHandler);
-            if (navigator.navigate(path) != Luau::Require::Navigator::Status::Success)
+            if (navigator.navigate(std::move(path)) != Luau::Require::Navigator::Status::Success)
                 return std::nullopt;
 
             if (!navigationContext.isModulePresent())

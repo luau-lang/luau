@@ -16,7 +16,7 @@
 
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 
-LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization3)
+LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauGeneralizationCannotMutateAcrossModules)
 
 namespace Luau
@@ -470,7 +470,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (FFlag::LuauEagerGeneralization3)
+        if (FFlag::LuauEagerGeneralization4)
         {
             if (!subsumes(scope, ft.scope))
                 return true;
@@ -521,7 +521,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
         {
-            if (FFlag::LuauEagerGeneralization3)
+            if (FFlag::LuauEagerGeneralization4)
                 unsealedTables.insert(ty);
             else
             {
@@ -594,7 +594,7 @@ struct FreeTypeSearcher : TypeVisitor
 
         if (tt.indexer)
         {
-            if (FFlag::LuauEagerGeneralization3)
+            if (FFlag::LuauEagerGeneralization4)
             {
                 // {[K]: V} is equivalent to three functions: get, set, and iterate
                 //
@@ -652,7 +652,7 @@ struct FreeTypeSearcher : TypeVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        if (FFlag::LuauEagerGeneralization3)
+        if (FFlag::LuauEagerGeneralization4)
         {
             GeneralizationParams<TypePackId>& params = typePacks[tp];
             ++params.useCount;
@@ -1223,7 +1223,7 @@ GeneralizationResult<TypeId> generalizeType(
 
     if (!hasLowerBound && !hasUpperBound)
     {
-        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization3 && (params.polarity != Polarity::Mixed && params.useCount == 1)))
+        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization4 && (params.polarity != Polarity::Mixed && params.useCount == 1)))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1247,7 +1247,7 @@ GeneralizationResult<TypeId> generalizeType(
 
         if (follow(lb) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), lb);
-        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization3 && params.useCount == 1))
+        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization4 && params.useCount == 1))
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1353,7 +1353,7 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    if (FFlag::LuauEagerGeneralization3)
+    if (FFlag::LuauEagerGeneralization4)
     {
         FunctionType* functionTy = getMutable<FunctionType>(ty);
         auto pushGeneric = [&](TypeId t)
@@ -1597,7 +1597,7 @@ void pruneUnnecessaryGenerics(
     TypeId ty
 )
 {
-    if (!FFlag::LuauEagerGeneralization3)
+    if (!FFlag::LuauEagerGeneralization4)
         return;
 
     ty = follow(ty);

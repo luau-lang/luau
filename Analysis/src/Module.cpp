@@ -172,7 +172,7 @@ struct ClonePublicInterface : Substitution
                     InternalError{"Free type is escaping its module; please report this bug at "
                                   "https://github.com/luau-lang/luau/issues"}
                 );
-                result = builtinTypes->errorRecoveryType();
+                result = builtinTypes->errorType;
             }
             else if (auto genericty = getMutable<GenericType>(result))
             {
@@ -196,7 +196,7 @@ struct ClonePublicInterface : Substitution
                     InternalError{"Free type pack is escaping its module; please report this bug at "
                                   "https://github.com/luau-lang/luau/issues"}
                 );
-                clonedTp = builtinTypes->errorRecoveryTypePack();
+                clonedTp = builtinTypes->errorTypePack;
             }
             else if (auto gtp = getMutable<GenericTypePack>(clonedTp))
                 gtp->scope = nullptr;
@@ -218,7 +218,7 @@ struct ClonePublicInterface : Substitution
         else
         {
             module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
-            return builtinTypes->errorRecoveryType();
+            return builtinTypes->errorType;
         }
     }
 
@@ -232,7 +232,7 @@ struct ClonePublicInterface : Substitution
         else
         {
             module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
-            return builtinTypes->errorRecoveryTypePack();
+            return builtinTypes->errorTypePack;
         }
     }
 
@@ -265,7 +265,7 @@ struct ClonePublicInterface : Substitution
 
         TypeId type = cloneType(tf.type);
 
-        return TypeFun{typeParams, typePackParams, type, tf.definitionLocation};
+        return TypeFun{std::move(typeParams), std::move(typePackParams), type, tf.definitionLocation};
     }
 };
 

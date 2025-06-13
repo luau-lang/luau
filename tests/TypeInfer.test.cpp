@@ -25,7 +25,7 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked2)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauInsertErrorTypesIntoIndexerResult)
@@ -34,6 +34,9 @@ LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauSkipLvalueForCompoundAssignment)
 LUAU_FASTFLAG(LuauMissingFollowInAssignIndexConstraint)
+LUAU_FASTFLAG(LuauOccursCheckForRefinement)
+LUAU_FASTFLAG(LuauInferPolarityOfReadWriteProperties)
+LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 
 using namespace Luau;
 
@@ -71,7 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_error")
 
         CHECK_EQ(
             result.errors[0],
-            (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}})
+            (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{getBuiltins()->numberType, getBuiltins()->stringType}})
         );
     }
 }
@@ -95,7 +98,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_error_2")
                 Location{Position{0, 18}, Position{0, 22}},
                 TypeMismatch{
                     requireType("a"),
-                    builtinTypes->stringType,
+                    getBuiltins()->stringType,
                 }
             })
         );
@@ -210,8 +213,8 @@ TEST_CASE_FIXTURE(Fixture, "if_statement")
     }
     else
     {
-        CHECK_EQ(*builtinTypes->stringType, *requireType("a"));
-        CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("a"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("b"));
     }
 }
 
@@ -441,7 +444,7 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #endif
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
-    ScopedFastFlag _{FFlag::LuauEagerGeneralization3, false};
+    ScopedFastFlag _{FFlag::LuauEagerGeneralization4, false};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
@@ -691,7 +694,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_nested_unions_with_optionals")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
     CHECK_EQ("(boolean | number | string)?", toString(tm->givenType));
 }
 
@@ -1614,7 +1617,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating
  */
 TEST_CASE_FIXTURE(Fixture, "typeof_cannot_refine_builtin_alias")
 {
-    GlobalTypes& globals = frontend.globals;
+    GlobalTypes& globals = getFrontend().globals;
     TypeArena& arena = globals.globalTypes;
 
     unfreeze(arena);
@@ -2024,7 +2027,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization3, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
 
     auto result = check(R"(
@@ -2059,7 +2062,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization3, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
 
     CheckResult result = check(R"(
@@ -2092,7 +2095,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization2, true},
+        {FFlag::LuauEagerGeneralization4, true},
     };
 
     LUAU_REQUIRE_ERRORS(check(R"(
@@ -2302,7 +2305,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "config_reader_example")
     // test suite starts, which will cause an assert if we try to eagerly
     // generalize _after_ the test is set up. Additionally, this code block
     // crashes under the new solver without flags.
-    if (!FFlag::LuauEagerGeneralization3)
+    if (!FFlag::LuauEagerGeneralization4)
         return;
 
     fileResolver.source["game/ConfigReader"] = R"(
@@ -2344,12 +2347,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "config_reader_example")
         local _ = ConfigReader:read("foobar")()
     )";
 
-    LUAU_REQUIRE_ERRORS(frontend.check("game/Util"));
+    LUAU_REQUIRE_ERRORS(getFrontend().check("game/Util"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "is_safe_integer_example")
 {
-    if (!FFlag::LuauEagerGeneralization3)
+    if (!FFlag::LuauEagerGeneralization4)
         return;
 
     fileResolver.source["game/isInteger"] = R"(
@@ -2373,7 +2376,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "is_safe_integer_example")
         end
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(frontend.check("game/Util"));
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Util"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_remover_heap_use_after_free")
@@ -2411,6 +2414,32 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_assign_index_constraint")
         end,{[_]=_,} do
         end
         _ -= _
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_occurs_check_stack_overflow")
+{
+    ScopedFastFlag _{FFlag::LuauOccursCheckForRefinement, true};
+    // We just want this to not stack overflow, it's ok for it to barf errors.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        _ = if _ then _
+        for l0 in ... do
+        type t0 = (()->((t0<t0...>)->())|(any))|(typeof(_))
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_infer_divergent_rw_props")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEnableWriteOnlyProperties, true},
+        {FFlag::LuauInferPolarityOfReadWriteProperties, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        return function(l0:{_:(any)&(any),write _:any,})
+        end
     )"));
 }
 

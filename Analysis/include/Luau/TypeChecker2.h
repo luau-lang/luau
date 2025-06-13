@@ -194,7 +194,9 @@ private:
     void explainError(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& result);
     void explainError(TypePackId subTy, TypePackId superTy, Location location, const SubtypingResult& result);
 
-    bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedTy);
+    bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
+
+    bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
 
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location);
     bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location);

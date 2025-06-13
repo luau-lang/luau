@@ -392,10 +392,18 @@ enum class IrCmd : uint8_t
     // C: Rn or unsigned int (key)
     SET_TABLE,
 
+    // TODO: remove with FFlagLuauCodeGenSimplifyImport
     // Lookup a value in the environment
     // A: Rn (where to store the result)
     // B: unsigned int (import path)
     GET_IMPORT,
+
+    // Store an import from constant or the import path
+    // A: Rn (where to store the result)
+    // B: Kn
+    // C: unsigned int (import path)
+    // D: unsigned int (pcpos)
+    GET_CACHED_IMPORT,
 
     // Concatenate multiple TValues into a string
     // A: Rn (value start)
@@ -763,6 +771,7 @@ enum class IrConstKind : uint8_t
     Uint,
     Double,
     Tag,
+    Import,
 };
 
 struct IrConst
@@ -1126,6 +1135,14 @@ struct IrFunction
         IrConst& value = constOp(op);
 
         CODEGEN_ASSERT(value.kind == IrConstKind::Uint);
+        return value.valueUint;
+    }
+
+    unsigned importOp(IrOp op)
+    {
+        IrConst& value = constOp(op);
+
+        CODEGEN_ASSERT(value.kind == IrConstKind::Import);
         return value.valueUint;
     }
 

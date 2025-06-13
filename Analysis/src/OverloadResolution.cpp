@@ -256,7 +256,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 
                 TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
 
-                return {Analysis::ArityMismatch, {error}};
+                return {Analysis::ArityMismatch, {std::move(error)}};
             }
 
             // If any of the unsatisfied arguments are not supertypes of
@@ -274,7 +274,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 
                         TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
 
-                        return {Analysis::ArityMismatch, {error}};
+                        return {Analysis::ArityMismatch, {std::move(error)}};
                     }
                 }
                 else
@@ -284,7 +284,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                         auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
                         TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
 
-                        return {Analysis::ArityMismatch, {error}};
+                        return {Analysis::ArityMismatch, {std::move(error)}};
                     }
                 }
             }
@@ -305,7 +305,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                         auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
                         TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg}};
 
-                        return {Analysis::ArityMismatch, {error}};
+                        return {Analysis::ArityMismatch, {std::move(error)}};
                     }
                 }
             }

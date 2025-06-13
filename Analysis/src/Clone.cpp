@@ -12,6 +12,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
+LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticClone)
+
 namespace Luau
 {
 
@@ -73,12 +75,12 @@ public:
 
         if (hasExceededIterationLimit())
         {
-            TypeId error = builtinTypes->errorRecoveryType();
+            TypeId error = builtinTypes->errorType;
             (*types)[ty] = error;
             return error;
         }
 
-        return find(ty).value_or(builtinTypes->errorRecoveryType());
+        return find(ty).value_or(builtinTypes->errorType);
     }
 
     TypePackId clone(TypePackId tp)
@@ -88,12 +90,12 @@ public:
 
         if (hasExceededIterationLimit())
         {
-            TypePackId error = builtinTypes->errorRecoveryTypePack();
+            TypePackId error = builtinTypes->errorTypePack;
             (*packs)[tp] = error;
             return error;
         }
 
-        return find(tp).value_or(builtinTypes->errorRecoveryTypePack());
+        return find(tp).value_or(builtinTypes->errorTypePack);
     }
 
 private:
@@ -208,7 +210,7 @@ public:
 private:
     Property shallowClone(const Property& p)
     {
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticClone)
         {
             std::optional<TypeId> cloneReadTy;
             if (auto ty = p.readTy)

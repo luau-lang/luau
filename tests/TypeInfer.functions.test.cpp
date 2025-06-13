@@ -22,12 +22,12 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization3)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
@@ -77,7 +77,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         function myFunction(): number
@@ -103,8 +103,8 @@ TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
             (TypeError{
                 Location{Position{3, 16}, Position{3, 20}},
                 TypeMismatch{
-                    builtinTypes->numberType,
-                    builtinTypes->booleanType,
+                    getBuiltins()->numberType,
+                    getBuiltins()->booleanType,
                 }
             })
         );
@@ -149,7 +149,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_return_type")
     std::vector<TypeId> retVec = flatten(takeFiveType->retTypes).first;
     REQUIRE(!retVec.empty());
 
-    REQUIRE_EQ(*follow(retVec[0]), *builtinTypes->numberType);
+    REQUIRE_EQ(*follow(retVec[0]), *getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_from_function_return_type")
@@ -157,7 +157,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_from_function_return_type")
     CheckResult result = check("function take_five() return 5 end    local five = take_five()");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*builtinTypes->numberType, *follow(requireType("five")));
+    CHECK_EQ(*getBuiltins()->numberType, *follow(requireType("five")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
@@ -171,7 +171,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{5, 8}, Position{5, 24}}, NotATable{builtinTypes->numberType}}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{5, 8}, Position{5, 24}}, NotATable{getBuiltins()->numberType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
@@ -258,8 +258,8 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
     {
         TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
         REQUIRE(tm);
-        CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-        CHECK_EQ(builtinTypes->stringType, tm->givenType);
+        CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
+        CHECK_EQ(getBuiltins()->stringType, tm->givenType);
     }
 
     ExtraInformation* ei = get<ExtraInformation>(result.errors[1]);
@@ -300,8 +300,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_give_other_overloads_message_if_only_one_argume
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-    CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_type_from_selected_overload")
@@ -991,8 +991,8 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
         (TypeError{
             Location{Position{3, 12}, Position{3, 18}},
             TypeMismatch{
-                builtinTypes->numberType,
-                builtinTypes->stringType,
+                getBuiltins()->numberType,
+                getBuiltins()->stringType,
             }
         })
     );
@@ -1002,8 +1002,8 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
         (TypeError{
             Location{Position{3, 20}, Position{3, 23}},
             TypeMismatch{
-                builtinTypes->stringType,
-                builtinTypes->numberType,
+                getBuiltins()->stringType,
+                getBuiltins()->numberType,
             }
         })
     );
@@ -1485,7 +1485,7 @@ local a: TableWithFunc = { x = 3, y = 4, f = function(a, b) return a + b end }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
 local function f(): {string|number}
@@ -1661,7 +1661,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // if 'string' library property was replaced with an internal module type, it will be freed and the next check will crash
-    frontend.clear();
+    getFrontend().clear();
 
     CheckResult result2 = check(R"(
         print(string.len('hello'))
@@ -1686,7 +1686,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(3, result);
@@ -1771,7 +1771,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
         // FIXME CLI-151985
         LUAU_CHECK_ERROR_COUNT(2, result);
@@ -1968,7 +1968,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
 
-    if (FFlag::LuauEagerGeneralization3 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
         LUAU_CHECK_NO_ERRORS(result);
         CHECK("<a>({ read p: { read q: a } }) -> (a & ~(false?))?" == toString(requireType("g")));
@@ -2121,7 +2121,7 @@ z = y -- Not OK, so the line is colorable
 
 TEST_CASE_FIXTURE(Fixture, "function_is_supertype_of_concrete_functions")
 {
-    registerHiddenTypes(&frontend);
+    registerHiddenTypes(getFrontend());
 
     CheckResult result = check(R"(
         function foo(f: fun) end
@@ -2139,7 +2139,7 @@ TEST_CASE_FIXTURE(Fixture, "function_is_supertype_of_concrete_functions")
 
 TEST_CASE_FIXTURE(Fixture, "concrete_functions_are_not_supertypes_of_function")
 {
-    registerHiddenTypes(&frontend);
+    registerHiddenTypes(getFrontend());
 
     CheckResult result = check(R"(
         local a: fun = function() end
@@ -2168,7 +2168,7 @@ TEST_CASE_FIXTURE(Fixture, "concrete_functions_are_not_supertypes_of_function")
 
 TEST_CASE_FIXTURE(Fixture, "other_things_are_not_related_to_function")
 {
-    registerHiddenTypes(&frontend);
+    registerHiddenTypes(getFrontend());
 
     CheckResult result = check(R"(
         local a: fun = function() end
@@ -2429,7 +2429,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         function num()
@@ -2453,7 +2453,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_after_num_or_str")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck, true};
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local function num_or_str()
@@ -2643,7 +2643,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type_2")
         return;
 
     // Make sure the error types are cloned to module interface
-    frontend.options.retainFullTypeGraphs = false;
+    getFrontend().options.retainFullTypeGraphs = false;
 
     CheckResult result = check(R"(
         local function escape_fslash(pre)
@@ -2912,7 +2912,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSimplifyOutOfLine2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
     };
 
     CheckResult result = check(R"(
@@ -2932,7 +2932,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
     {
         // The new solver should ideally be able to do better here, but this is no worse than the old solver.
 
-        if (FFlag::LuauEagerGeneralization3)
+        if (FFlag::LuauEagerGeneralization4)
         {
             LUAU_REQUIRE_ERROR_COUNT(2, result);
             auto tm1 = get<TypeMismatch>(result.errors[0]);
@@ -3062,7 +3062,7 @@ end
 local u,v = id(3), id(id(44))
 )");
 
-    CHECK_EQ(builtinTypes->numberType, requireType("v"));
+    CHECK_EQ(getBuiltins()->numberType, requireType("v"));
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

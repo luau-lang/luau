@@ -79,22 +79,22 @@ TEST_CASE_FIXTURE(Fixture, "is_within_comment_parse_result")
 TEST_CASE_FIXTURE(Fixture, "dont_clone_persistent_primitive")
 {
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     // numberType is persistent.  We leave it as-is.
-    TypeId newNumber = clone(builtinTypes->numberType, dest, cloneState);
-    CHECK_EQ(newNumber, builtinTypes->numberType);
+    TypeId newNumber = clone(getBuiltins()->numberType, dest, cloneState);
+    CHECK_EQ(newNumber, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
 {
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     // Create a new number type that isn't persistent
-    unfreeze(frontend.globals.globalTypes);
-    TypeId oldNumber = frontend.globals.globalTypes.addType(PrimitiveType{PrimitiveType::Number});
-    freeze(frontend.globals.globalTypes);
+    unfreeze(getFrontend().globals.globalTypes);
+    TypeId oldNumber = getFrontend().globals.globalTypes.addType(PrimitiveType{PrimitiveType::Number});
+    freeze(getFrontend().globals.globalTypes);
     TypeId newNumber = clone(oldNumber, dest, cloneState);
 
     CHECK_NE(newNumber, oldNumber);
@@ -128,7 +128,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     TypeId ty = requireType("Cyclic");
 
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
     TypeId cloneTy = clone(ty, dest, cloneState);
 
     TableType* ttv = getMutable<TableType>(cloneTy);
@@ -164,7 +164,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
 
     TypeArena dest;
 
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
     TypeId cloneTy = clone(tableTy, dest, cloneState);
     TableType* ctt = getMutable<TableType>(cloneTy);
     REQUIRE(ctt);
@@ -189,7 +189,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     dumpErrors(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr module = frontend.moduleResolver.getModule("MainModule");
+    ModulePtr module = getFrontend().moduleResolver.getModule("MainModule");
     std::optional<TypeId> exports = first(module->returnType);
     REQUIRE(bool(exports));
 
@@ -202,17 +202,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     REQUIRE(signType != nullptr);
 
     CHECK(!isInArena(signType, module->interfaceTypes));
-    CHECK(isInArena(signType, frontend.globals.globalTypes));
+    CHECK(isInArena(signType, getFrontend().globals.globalTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_union")
 {
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
-    unfreeze(frontend.globals.globalTypes);
-    TypeId oldUnion = frontend.globals.globalTypes.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
-    freeze(frontend.globals.globalTypes);
+    unfreeze(getFrontend().globals.globalTypes);
+    TypeId oldUnion = getFrontend().globals.globalTypes.addType(UnionType{{getBuiltins()->numberType, getBuiltins()->stringType}});
+    freeze(getFrontend().globals.globalTypes);
     TypeId newUnion = clone(oldUnion, dest, cloneState);
 
     CHECK_NE(newUnion, oldUnion);
@@ -223,11 +223,11 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_union")
 TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
 {
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
-    unfreeze(frontend.globals.globalTypes);
-    TypeId oldIntersection = frontend.globals.globalTypes.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}});
-    freeze(frontend.globals.globalTypes);
+    unfreeze(getFrontend().globals.globalTypes);
+    TypeId oldIntersection = getFrontend().globals.globalTypes.addType(IntersectionType{{getBuiltins()->numberType, getBuiltins()->stringType}});
+    freeze(getFrontend().globals.globalTypes);
     TypeId newIntersection = clone(oldIntersection, dest, cloneState);
 
     CHECK_NE(newIntersection, oldIntersection);
@@ -240,7 +240,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
     Type exampleMetaClass{ExternType{
         "ExampleClassMeta",
         {
-            {"__add", {builtinTypes->anyType}},
+            {"__add", {getBuiltins()->anyType}},
         },
         std::nullopt,
         std::nullopt,
@@ -252,8 +252,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
     Type exampleClass{ExternType{
         "ExampleClass",
         {
-            {"PropOne", {builtinTypes->numberType}},
-            {"PropTwo", {builtinTypes->stringType}},
+            {"PropOne", {getBuiltins()->numberType}},
+            {"PropTwo", {getBuiltins()->stringType}},
         },
         std::nullopt,
         &exampleMetaClass,
@@ -264,7 +264,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
     }};
 
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     TypeId cloned = clone(&exampleClass, dest, cloneState);
     const ExternType* etv = get<ExternType>(cloned);
@@ -281,16 +281,16 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
     TypeArena arena;
-    TypeId freeTy = freshType(NotNull{&arena}, builtinTypes, nullptr);
+    TypeId freeTy = freshType(NotNull{&arena}, getBuiltins(), nullptr);
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
 
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     TypeId clonedTy = clone(freeTy, dest, cloneState);
     CHECK(get<FreeType>(clonedTy));
 
-    cloneState = {builtinTypes};
+    cloneState = {getBuiltins()};
     TypePackId clonedTp = clone(&freeTp, dest, cloneState);
     CHECK(get<FreeTypePack>(clonedTp));
 }
@@ -302,7 +302,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
     ttv->state = TableState::Free;
 
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     TypeId cloned = clone(&tableTy, dest, cloneState);
     const TableType* clonedTtv = get<TableType>(cloned);
@@ -323,7 +323,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
         return a;
     )";
 
-    CheckResult result = frontend.check("Module/A");
+    CheckResult result = getFrontend().check("Module/A");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
@@ -332,7 +332,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
         return a.foo(5)
     )";
 
-    result = frontend.check("Module/B");
+    result = getFrontend().check("Module/B");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -357,7 +357,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
     }
 
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     TypeId ty = clone(table, dest, cloneState);
     CHECK(get<ErrorType>(ty));
@@ -373,14 +373,14 @@ TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
 {
     TypeArena src;
 
-    TypeId u = src.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
+    TypeId u = src.addType(UnionType{{getBuiltins()->numberType, getBuiltins()->stringType}});
     UnionType* uu = getMutable<UnionType>(u);
     REQUIRE(uu);
 
     uu->options.push_back(u);
 
     TypeArena dest;
-    CloneState cloneState{builtinTypes};
+    CloneState cloneState{getBuiltins()};
 
     TypeId cloned = clone(u, dest, cloneState);
     REQUIRE(cloned);
@@ -389,8 +389,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
     REQUIRE(clonedUnion);
     REQUIRE(3 == clonedUnion->options.size());
 
-    CHECK(builtinTypes->numberType == clonedUnion->options[0]);
-    CHECK(builtinTypes->stringType == clonedUnion->options[1]);
+    CHECK(getBuiltins()->numberType == clonedUnion->options[0]);
+    CHECK(getBuiltins()->stringType == clonedUnion->options[1]);
     CHECK(cloned == clonedUnion->options[2]);
 }
 
@@ -403,10 +403,10 @@ type B = A
 
     FrontendOptions opts;
     opts.retainFullTypeGraphs = false;
-    CheckResult result = frontend.check("Module/A", opts);
+    CheckResult result = getFrontend().check("Module/A", opts);
     LUAU_REQUIRE_ERRORS(result);
 
-    auto mod = frontend.moduleResolver.getModule("Module/A");
+    auto mod = getFrontend().moduleResolver.getModule("Module/A");
     auto it = mod->exportedTypeBindings.find("A");
     REQUIRE(it != mod->exportedTypeBindings.end());
 
@@ -429,11 +429,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
         return {}
     )";
 
-    CheckResult result = frontend.check("Module/B");
+    CheckResult result = getFrontend().check("Module/B");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr modA = frontend.moduleResolver.getModule("Module/A");
-    ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
+    ModulePtr modA = getFrontend().moduleResolver.getModule("Module/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("Module/B");
     REQUIRE(modA);
     REQUIRE(modB);
     auto modAiter = modA->exportedTypeBindings.find("A");
@@ -460,12 +460,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
         return exports
     )";
 
-    CheckResult result = frontend.check("Module/B");
+    CheckResult result = getFrontend().check("Module/B");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr modA = frontend.moduleResolver.getModule("Module/A");
+    ModulePtr modA = getFrontend().moduleResolver.getModule("Module/A");
     REQUIRE(modA);
-    ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("Module/B");
     REQUIRE(modB);
 
     std::optional<TypeId> typeA = first(modA->returnType);
@@ -498,7 +498,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_table_bound_to_table_bound_to_table")
     getMutable<TableType>(b)->boundTo = c;
 
     TypeArena dest;
-    CloneState state{builtinTypes};
+    CloneState state{getBuiltins()};
     TypeId res = clone(a, dest, state);
 
     REQUIRE(dest.types.size() == 1);
@@ -513,11 +513,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_type_to_a_persistent_type")
 {
     TypeArena arena;
 
-    TypeId boundTo = arena.addType(BoundType{builtinTypes->numberType});
-    REQUIRE(builtinTypes->numberType->persistent);
+    TypeId boundTo = arena.addType(BoundType{getBuiltins()->numberType});
+    REQUIRE(getBuiltins()->numberType->persistent);
 
     TypeArena dest;
-    CloneState state{builtinTypes};
+    CloneState state{getBuiltins()};
     TypeId res = clone(boundTo, dest, state);
 
     REQUIRE(res == follow(boundTo));
@@ -527,11 +527,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_typepack_to_a_persistent_typep
 {
     TypeArena arena;
 
-    TypePackId boundTo = arena.addTypePack(BoundTypePack{builtinTypes->neverTypePack});
-    REQUIRE(builtinTypes->neverTypePack->persistent);
+    TypePackId boundTo = arena.addTypePack(BoundTypePack{getBuiltins()->neverTypePack});
+    REQUIRE(getBuiltins()->neverTypePack->persistent);
 
     TypeArena dest;
-    CloneState state{builtinTypes};
+    CloneState state{getBuiltins()};
     TypePackId res = clone(boundTo, dest, state);
 
     REQUIRE(res == follow(boundTo));
@@ -556,7 +556,7 @@ for i,v in x do
 end
 )");
 
-    auto& module = frontend.moduleResolver.getModule("MainModule");
+    auto& module = getFrontend().moduleResolver.getModule("MainModule");
     CHECK(module->getModuleScope()->children.size() == 7);
 }
 

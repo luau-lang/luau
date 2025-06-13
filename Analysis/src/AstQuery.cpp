@@ -483,7 +483,7 @@ static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
     const Module& module,
     const TypeId ty,
     const AstExpr* parentExpr,
-    const std::optional<DocumentationSymbol> documentationSymbol
+    std::optional<DocumentationSymbol> documentationSymbol
 )
 {
     if (!documentationSymbol)

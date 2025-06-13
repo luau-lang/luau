@@ -18,7 +18,7 @@ struct NegationFixture : Fixture
 
     NegationFixture()
     {
-        registerHiddenTypes(&frontend);
+        registerHiddenTypes(getFrontend());
     }
 };
 

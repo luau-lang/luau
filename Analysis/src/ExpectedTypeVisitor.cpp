@@ -3,8 +3,12 @@
 
 #include "Luau/Scope.h"
 #include "Luau/TypeArena.h"
+#include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/VisitType.h"
+
+LUAU_FASTFLAGVARIABLE(LuauImplicitTableIndexerKeys)
 
 namespace Luau
 {
@@ -69,6 +73,106 @@ bool ExpectedTypeVisitor::visit(AstStatReturn* stat)
 
     return true;
 }
+
+namespace
+{
+
+struct IndexerIndexCollector : public TypeOnceVisitor
+{
+    NotNull<TypeIds> indexes;
+
+    explicit IndexerIndexCollector(NotNull<TypeIds> indexes) : TypeOnceVisitor(/* skipBoundTypes */ true), indexes(indexes)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        indexes->insert(ty);
+        return false;
+    }
+
+    bool visit(TypeId, const UnionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const IntersectionType&) override
+    {
+        return true;
+    }
+
+};
+
+struct IndexCollector : public TypeOnceVisitor
+{
+    NotNull<TypeArena> arena;
+    TypeIds indexes;
+
+    explicit IndexCollector(NotNull<TypeArena> arena) : TypeOnceVisitor(/* skipBoundTypes */ true), arena(arena)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId, const UnionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const IntersectionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const TableType& ttv) override
+    {
+        for (const auto& [name, _] : ttv.props)
+            indexes.insert(arena->addType(SingletonType{StringSingleton{name}}));
+
+        if (ttv.indexer)
+        {
+            IndexerIndexCollector iic{NotNull{&indexes}};
+            iic.traverse(ttv.indexer->indexType);
+        }
+
+        return false;
+    }
+
+};
+
+}
+
+bool ExpectedTypeVisitor::visit(AstExprIndexExpr* expr)
+{
+    if (!FFlag::LuauImplicitTableIndexerKeys)
+        return true;
+
+    if (auto ty = astTypes->find(expr->expr))
+    {
+        IndexCollector ic{arena};
+        ic.traverse(*ty);
+        if (ic.indexes.size() > 1)
+        {
+            applyExpectedType(
+                arena->addType(UnionType{ic.indexes.take()}),
+                expr->index
+            );
+        }
+        else if (ic.indexes.size() == 1)
+        {
+            applyExpectedType(
+                *ic.indexes.begin(),
+                expr->index
+            );
+        }
+    }
+
+    return true;
+}
+
 
 bool ExpectedTypeVisitor::visit(AstExprCall* expr)
 {

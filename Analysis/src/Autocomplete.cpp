@@ -46,7 +46,7 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*sourceModule, position);
     LUAU_ASSERT(!ancestry.empty());
     ScopePtr startScope = findScopeAtPosition(*module, position);
-    return autocomplete_(module, builtinTypes, &typeArena, ancestry, globalScope, startScope, position, frontend.fileResolver, callback);
+    return autocomplete_(module, builtinTypes, &typeArena, ancestry, globalScope, startScope, position, frontend.fileResolver, std::move(callback));
 }
 
 } // namespace Luau

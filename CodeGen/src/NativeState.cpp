@@ -90,6 +90,7 @@ void initFunctions(NativeContext& context)
     context.callProlog = callProlog;
     context.callEpilogC = callEpilogC;
     context.newUserdata = newUserdata;
+    context.getImport = getImport;
 
     context.callFallback = callFallback;
 

@@ -32,7 +32,7 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index);
 void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index); // Block title
 void toString(IrToStringContext& ctx, IrOp op);
 
-void toString(std::string& result, IrConst constant);
+void toString(std::string& result, Proto* proto, IrConst constant);
 
 const char* getBytecodeTypeName(uint8_t type, const char* const* userdataTypes);
 

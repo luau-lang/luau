@@ -970,8 +970,6 @@ struct BuiltinTypes
 
     TypeId errorRecoveryType(TypeId guess) const;
     TypePackId errorRecoveryTypePack(TypePackId guess) const;
-    TypeId errorRecoveryType() const;
-    TypePackId errorRecoveryTypePack() const;
 
     friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes);
     friend struct GlobalTypes;

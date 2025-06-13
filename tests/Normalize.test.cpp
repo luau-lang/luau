@@ -32,9 +32,9 @@ struct IsSubtypeFixture : Fixture
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        SimplifierPtr simplifier = newSimplifier(NotNull{&module->internalTypes}, builtinTypes);
+        SimplifierPtr simplifier = newSimplifier(NotNull{&module->internalTypes}, getBuiltins());
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, NotNull{simplifier.get()}, ice);
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), NotNull{simplifier.get()}, ice);
     }
 };
 } // namespace
@@ -325,13 +325,13 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "cyclic_table")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "extern_types")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
 
     check(""); // Ensure that we have a main Module.
 
-    TypeId p = frontend.globals.globalScope->lookupType("Parent")->type;
-    TypeId c = frontend.globals.globalScope->lookupType("Child")->type;
-    TypeId u = frontend.globals.globalScope->lookupType("Unrelated")->type;
+    TypeId p = getFrontend().globals.globalScope->lookupType("Parent")->type;
+    TypeId c = getFrontend().globals.globalScope->lookupType("Child")->type;
+    TypeId u = getFrontend().globals.globalScope->lookupType("Unrelated")->type;
 
     CHECK(isSubtype(c, p));
     CHECK(!isSubtype(p, c));
@@ -400,10 +400,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
 {
     check("");
 
-    TypeId any = builtinTypes->anyType;
-    TypeId err = builtinTypes->errorType;
-    TypeId str = builtinTypes->stringType;
-    TypeId unk = builtinTypes->unknownType;
+    TypeId any = getBuiltins()->anyType;
+    TypeId err = getBuiltins()->errorType;
+    TypeId str = getBuiltins()->stringType;
+    TypeId unk = getBuiltins()->unknownType;
 
     CHECK(!isSubtype(any, err));
     CHECK(isSubtype(err, any));
@@ -447,12 +447,12 @@ struct NormalizeFixture : Fixture
     TypeArena arena;
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&unifierState}};
-    Scope globalScope{builtinTypes->anyTypePack};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&unifierState}};
+    Scope globalScope{getBuiltins()->anyTypePack};
 
     NormalizeFixture()
     {
-        registerHiddenTypes(&frontend);
+        registerHiddenTypes(getFrontend());
     }
 
     std::shared_ptr<const NormalizedType> toNormalizedType(const std::string& annotation, int expectedErrors = 0)
@@ -698,7 +698,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
 {
     // this test was used to fix a bug in normalization when working with intersections/unions of the same type.
 
-    TypeId a = arena.addType(FunctionType{builtinTypes->emptyTypePack, builtinTypes->anyTypePack, std::nullopt, false});
+    TypeId a = arena.addType(FunctionType{getBuiltins()->emptyTypePack, getBuiltins()->anyTypePack, std::nullopt, false});
     TypeId c = arena.addType(IntersectionType{{a, a}});
 
     std::shared_ptr<const NormalizedType> n = normalizer.normalize(c);
@@ -760,7 +760,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
 
     CheckResult result = check(R"(
 export type t0 = { a: Child }
@@ -781,7 +781,7 @@ export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t
 
 TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_extern_types")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
     CHECK("Parent | Unrelated" == toString(normal("Parent | Unrelated")));
     CHECK("Parent" == toString(normal("Parent | Child")));
     CHECK("Parent | Unrelated" == toString(normal("Parent | Child | Unrelated")));
@@ -789,14 +789,14 @@ TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_extern_types")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_extern_types")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
     CHECK("Child" == toString(normal("Parent & Child")));
     CHECK("never" == toString(normal("Child & Unrelated")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_extern_types_with_intersection")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
     CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
 }
 
@@ -828,8 +828,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
 {
     // T where T = any & (number | T)
     TypeId t = arena.addType(BlockedType{});
-    TypeId u = arena.addType(UnionType{{builtinTypes->numberType, t}});
-    asMutable(t)->ty.emplace<IntersectionType>(IntersectionType{{builtinTypes->anyType, u}});
+    TypeId u = arena.addType(UnionType{{getBuiltins()->numberType, t}});
+    asMutable(t)->ty.emplace<IntersectionType>(IntersectionType{{getBuiltins()->anyType, u}});
 
     std::shared_ptr<const NormalizedType> nt = normalizer.normalize(t);
     REQUIRE(nt);
@@ -841,8 +841,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union_of_intersection")
 {
     // t1 where t1 = (string & t1) | string
     TypeId boundTy = arena.addType(BlockedType{});
-    TypeId intersectTy = arena.addType(IntersectionType{{builtinTypes->stringType, boundTy}});
-    TypeId unionTy = arena.addType(UnionType{{builtinTypes->stringType, intersectTy}});
+    TypeId intersectTy = arena.addType(IntersectionType{{getBuiltins()->stringType, boundTy}});
+    TypeId unionTy = arena.addType(UnionType{{getBuiltins()->stringType, intersectTy}});
     asMutable(boundTy)->reassign(Type{BoundType{unionTy}});
 
     std::shared_ptr<const NormalizedType> nt = normalizer.normalize(unionTy);
@@ -854,8 +854,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_intersection_of_unions")
 {
     // t1 where t1 = (string & t1) | string
     TypeId boundTy = arena.addType(BlockedType{});
-    TypeId unionTy = arena.addType(UnionType{{builtinTypes->stringType, boundTy}});
-    TypeId intersectionTy = arena.addType(IntersectionType{{builtinTypes->stringType, unionTy}});
+    TypeId unionTy = arena.addType(UnionType{{getBuiltins()->stringType, boundTy}});
+    TypeId intersectionTy = arena.addType(IntersectionType{{getBuiltins()->stringType, unionTy}});
     asMutable(boundTy)->reassign(Type{BoundType{intersectionTy}});
 
     std::shared_ptr<const NormalizedType> nt = normalizer.normalize(intersectionTy);
@@ -870,7 +870,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_extern_types")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
     CHECK("never" == toString(normal("Not<Parent> & Child")));
@@ -885,13 +885,13 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_extern_types")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "extern_types_and_unknown")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
     CHECK("Parent" == toString(normal("Parent & unknown")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "extern_types_and_never")
 {
-    createSomeExternTypes(&frontend);
+    createSomeExternTypes(getFrontend());
     CHECK("never" == toString(normal("Parent & never")));
 }
 
@@ -923,17 +923,17 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "normalize_is_exactly_number")
 {
-    std::shared_ptr<const NormalizedType> number = normalizer.normalize(builtinTypes->numberType);
+    std::shared_ptr<const NormalizedType> number = normalizer.normalize(getBuiltins()->numberType);
     // 1. all types for which Types::number say true for, NormalizedType::isExactlyNumber should say true as well
-    CHECK(Luau::isNumber(builtinTypes->numberType) == number->isExactlyNumber());
+    CHECK(Luau::isNumber(getBuiltins()->numberType) == number->isExactlyNumber());
     // 2. isExactlyNumber should handle cases like `number & number`
-    TypeId intersection = arena.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->numberType}});
+    TypeId intersection = arena.addType(IntersectionType{{getBuiltins()->numberType, getBuiltins()->numberType}});
     std::shared_ptr<const NormalizedType> normIntersection = normalizer.normalize(intersection);
     CHECK(normIntersection->isExactlyNumber());
 
     // 3. isExactlyNumber should reject things that are definitely not precisely numbers `number | any`
 
-    TypeId yoonion = arena.addType(UnionType{{builtinTypes->anyType, builtinTypes->numberType}});
+    TypeId yoonion = arena.addType(UnionType{{getBuiltins()->anyType, getBuiltins()->numberType}});
     std::shared_ptr<const NormalizedType> unionIntersection = normalizer.normalize(yoonion);
     CHECK(!unionIntersection->isExactlyNumber());
 }
@@ -972,15 +972,15 @@ TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_3")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "final_types_are_cached")
 {
-    std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(builtinTypes->numberType);
-    std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(builtinTypes->numberType);
+    std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(getBuiltins()->numberType);
+    std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(getBuiltins()->numberType);
 
     CHECK(na1 == na2);
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_not_cached")
 {
-    TypeId a = arena.freshType(builtinTypes, &globalScope);
+    TypeId a = arena.freshType(getBuiltins(), &globalScope);
 
     std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(a);
     std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(a);
@@ -990,8 +990,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_n
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_with_not_unknown")
 {
-    TypeId notUnknown = arena.addType(NegationType{builtinTypes->unknownType});
-    TypeId type = arena.addType(IntersectionType{{builtinTypes->numberType, notUnknown}});
+    TypeId notUnknown = arena.addType(NegationType{getBuiltins()->unknownType});
+    TypeId type = arena.addType(IntersectionType{{getBuiltins()->numberType, notUnknown}});
     std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(type);
 
     CHECK("never" == toString(normalizer.typeFromNormal(*normalized.get())));
@@ -1030,12 +1030,12 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     // { x: ~(false?) }
-    TypeId t1 = arena.addType(TableType{TableType::Props{{"x", builtinTypes->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
+    TypeId t1 = arena.addType(TableType{TableType::Props{{"x", getBuiltins()->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
     // { x: number? }?
     TypeId t2 = arena.addType(UnionType{
-        {arena.addType(TableType{TableType::Props{{"x", builtinTypes->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed}),
-         builtinTypes->nilType}
+        {arena.addType(TableType{TableType::Props{{"x", getBuiltins()->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed}),
+         getBuiltins()->nilType}
     });
 
     TypeId intersection = arena.addType(IntersectionType{{t2, t1}});
@@ -1053,8 +1053,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
         {FFlag::LuauSolverV2, true}, // Only because it affects the stringification of free types
     };
 
-    TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
-    TypeId notTruthy = arena.addType(NegationType{builtinTypes->truthyType}); // ~~(false?)
+    TypeId freeTy = arena.freshType(getBuiltins(), &globalScope);
+    TypeId notTruthy = arena.addType(NegationType{getBuiltins()->truthyType}); // ~~(false?)
 
     TypeId intersectionTy = arena.addType(IntersectionType{{freeTy, notTruthy}}); // 'a & ~~(false?)
 
@@ -1073,13 +1073,13 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
         {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
     };
 
-    TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
-    TypeId orderA = arena.addType(IntersectionType{{freeTy, builtinTypes->stringType}});
+    TypeId freeTy = arena.freshType(getBuiltins(), &globalScope);
+    TypeId orderA = arena.addType(IntersectionType{{freeTy, getBuiltins()->stringType}});
     auto normA = normalizer.normalize(orderA);
     REQUIRE(normA);
     CHECK_EQ("'a & string", toString(normalizer.typeFromNormal(*normA)));
 
-    TypeId orderB = arena.addType(IntersectionType{{builtinTypes->stringType, freeTy}});
+    TypeId orderB = arena.addType(IntersectionType{{getBuiltins()->stringType, freeTy}});
     auto normB = normalizer.normalize(orderB);
     REQUIRE(normB);
     // Prior to LuauNormalizationReorderFreeTypeIntersect this became `never` :skull:

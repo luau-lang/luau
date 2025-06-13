@@ -218,7 +218,7 @@ private:
             if (!g->explicitName)
                 name = format("g%d", g->index);
 
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionGenericType{g->explicitName, false, name});
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionGenericType{g->explicitName, false, std::move(name)});
         }
         else
         {
@@ -251,7 +251,7 @@ private:
             if (!gPack->explicitName)
                 name = format("g%d", gPack->index);
 
-            target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionGenericTypePack{gPack->explicitName, name});
+            target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionGenericTypePack{gPack->explicitName, std::move(name)});
         }
         else
         {
@@ -527,12 +527,12 @@ public:
 
         if (hasExceededIterationLimit() || state->errors.size() != 0)
         {
-            TypeId error = state->ctx->builtins->errorRecoveryType();
+            TypeId error = state->ctx->builtins->errorType;
             types[ty] = error;
             return error;
         }
 
-        return find(ty).value_or(state->ctx->builtins->errorRecoveryType());
+        return find(ty).value_or(state->ctx->builtins->errorType);
     }
 
     TypePackId deserialize(TypeFunctionTypePackId tp)
@@ -542,12 +542,12 @@ public:
 
         if (hasExceededIterationLimit() || state->errors.size() != 0)
         {
-            TypePackId error = state->ctx->builtins->errorRecoveryTypePack();
+            TypePackId error = state->ctx->builtins->errorTypePack;
             packs[tp] = error;
             return error;
         }
 
-        return find(tp).value_or(state->ctx->builtins->errorRecoveryTypePack());
+        return find(tp).value_or(state->ctx->builtins->errorTypePack);
     }
 
 private:

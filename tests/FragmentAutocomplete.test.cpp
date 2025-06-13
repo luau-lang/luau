@@ -51,9 +51,9 @@ static FrontendOptions getOptions()
     return options;
 }
 
-static ModuleResolver& getModuleResolver(Luau::Frontend& frontend)
+static ModuleResolver& getModuleResolver(Frontend& frontend)
 {
-    return FFlag::LuauSolverV2 ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
+    return FFlag::LuauSolverV2 ?frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
 }
 
 template<class BaseType>
@@ -130,7 +130,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     )
     {
         ParseResult p = parseHelper(document);
-        auto [_, result] = Luau::typecheckFragment(this->frontend, "MainModule", cursorPos, getOptions(), document, fragmentEndPosition, p.root);
+        auto [_, result] = Luau::typecheckFragment(this->getFrontend(), "MainModule", cursorPos, getOptions(), document, fragmentEndPosition, p.root);
         return result;
     }
 
@@ -145,7 +145,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         ParseResult parseResult = parseHelper(document);
         FrontendOptions options = getOptions();
         FragmentContext context{document, parseResult, options, fragmentEndPosition};
-        return Luau::tryFragmentAutocomplete(this->frontend, "MainModule", cursorPos, context, nullCallback);
+        return Luau::tryFragmentAutocomplete(this->getFrontend(), "MainModule", cursorPos, context, nullCallback);
     }
 
     void autocompleteFragmentInNewSolver(
@@ -211,7 +211,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     )
     {
         ParseResult pr = parseHelper(document);
-        return Luau::typecheckFragment(this->frontend, module, cursorPos, getOptions(), document, fragmentEndPosition, pr.root);
+        return Luau::typecheckFragment(this->getFrontend(), module, cursorPos, getOptions(), document, fragmentEndPosition, pr.root);
     }
 
     FragmentAutocompleteStatusResult autocompleteFragmentForModule(
@@ -226,7 +226,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         ParseResult parseResult = parseHelper(document);
         FrontendOptions options;
         FragmentContext context{document, parseResult, options, fragmentEndPosition};
-        return Luau::tryFragmentAutocomplete(this->frontend, module, cursorPos, context, nullCallback);
+        return Luau::tryFragmentAutocomplete(this->getFrontend(). module, cursorPos, context, nullCallback);
     }
 
     SourceModule& getSource()
@@ -244,10 +244,10 @@ struct FragmentAutocompleteFixture : FragmentAutocompleteFixtureImpl<Fixture>
     FragmentAutocompleteFixture()
         : FragmentAutocompleteFixtureImpl<Fixture>()
     {
-        addGlobalBinding(frontend.globals, "table", Binding{builtinTypes->anyType});
-        addGlobalBinding(frontend.globals, "math", Binding{builtinTypes->anyType});
-        addGlobalBinding(frontend.globalsForAutocomplete, "table", Binding{builtinTypes->anyType});
-        addGlobalBinding(frontend.globalsForAutocomplete, "math", Binding{builtinTypes->anyType});
+        addGlobalBinding(getFrontend().globals, "table", Binding{getBuiltins()->anyType});
+        addGlobalBinding(getFrontend().globals, "math", Binding{getBuiltins()->anyType});
+        addGlobalBinding(getFrontend().globalsForAutocomplete, "table", Binding{getBuiltins()->anyType});
+        addGlobalBinding(getFrontend().globalsForAutocomplete, "math", Binding{getBuiltins()->anyType});
     }
 };
 
@@ -272,8 +272,8 @@ end
         loadDefinition(fakeVecDecl);
         loadDefinition(fakeVecDecl, /* For Autocomplete Module */ true);
 
-        addGlobalBinding(frontend.globals, "game", Binding{builtinTypes->anyType});
-        addGlobalBinding(frontend.globalsForAutocomplete, "game", Binding{builtinTypes->anyType});
+        addGlobalBinding(getFrontend().globals, "game", Binding{getBuiltins()->anyType});
+        addGlobalBinding(getFrontend().globalsForAutocomplete, "game", Binding{getBuiltins()->anyType});
     }
 };
 
@@ -1317,7 +1317,7 @@ abc("bar")
     CHECK_EQ(Position{3, 1}, parent->location.end);
 }
 
-TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "respects_frontend_options")
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "respects_getFrontend().options")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
@@ -1330,21 +1330,21 @@ t
     FrontendOptions opts;
     opts.forAutocomplete = true;
 
-    frontend.check("game/A", opts);
-    CHECK_NE(frontend.moduleResolverForAutocomplete.getModule("game/A"), nullptr);
-    CHECK_EQ(frontend.moduleResolver.getModule("game/A"), nullptr);
+    getFrontend().check("game/A", opts);
+    CHECK_NE(getFrontend().moduleResolverForAutocomplete.getModule("game/A"), nullptr);
+    CHECK_EQ(getFrontend().moduleResolver.getModule("game/A"), nullptr);
     ParseOptions parseOptions;
     parseOptions.captureComments = true;
     SourceModule sourceMod;
     ParseResult parseResult = Parser::parse(source.c_str(), source.length(), *sourceMod.names, *sourceMod.allocator, parseOptions);
     FragmentContext context{source, parseResult, opts, std::nullopt};
 
-    FragmentAutocompleteStatusResult frag = Luau::tryFragmentAutocomplete(frontend, "game/A", Position{2, 1}, context, nullCallback);
+    FragmentAutocompleteStatusResult frag = Luau::tryFragmentAutocomplete(getFrontend(), "game/A", Position{2, 1}, context, nullCallback);
     REQUIRE(frag.result);
     REQUIRE(frag.result->incrementalModule);
     CHECK_EQ("game/A", frag.result->incrementalModule->name);
-    CHECK_NE(frontend.moduleResolverForAutocomplete.getModule("game/A"), nullptr);
-    CHECK_EQ(frontend.moduleResolver.getModule("game/A"), nullptr);
+    CHECK_NE(getFrontend().moduleResolverForAutocomplete.getModule("game/A"), nullptr);
+    CHECK_EQ(getFrontend().moduleResolver.getModule("game/A"), nullptr);
 }
 
 TEST_SUITE_END();
@@ -1496,16 +1496,16 @@ return { hello = B }
     const std::string sourceB = "game/Gui/Modules/B";
     fileResolver.source[sourceB] = R"(return {hello = "hello"})";
 
-    CheckResult result = frontend.check(sourceA, getOptions());
-    CHECK(!frontend.isDirty(sourceA, getOptions().forAutocomplete));
+    CheckResult result = getFrontend().check(sourceA, getOptions());
+    CHECK(!getFrontend().isDirty(sourceA, getOptions().forAutocomplete));
 
-    std::weak_ptr<Module> weakModule = getModuleResolver(frontend).getModule(sourceB);
+    std::weak_ptr<Module> weakModule = getModuleResolver(getFrontend()).getModule(sourceB);
     REQUIRE(!weakModule.expired());
 
-    frontend.markDirty(sourceB);
-    CHECK(frontend.isDirty(sourceA, getOptions().forAutocomplete));
+    getFrontend().markDirty(sourceB);
+    CHECK(getFrontend().isDirty(sourceA, getOptions().forAutocomplete));
 
-    frontend.check(sourceB, getOptions());
+    getFrontend().check(sourceB, getOptions());
     CHECK(weakModule.expired());
 
     auto [status, _] = typecheckFragmentForModule(sourceA, fileResolver.source[sourceA], Luau::Position(0, 0));

@@ -148,7 +148,7 @@ void findCyclicTypes(std::set<TypeId>& cycles, std::set<TypePackId>& cycleTPs, T
 
 static std::pair<bool, std::optional<Luau::Name>> canUseTypeNameInScope(ScopePtr scope, const std::string& name)
 {
-    for (ScopePtr curr = scope; curr; curr = curr->parent)
+    for (ScopePtr curr = std::move(scope); curr; curr = curr->parent)
     {
         for (const auto& [importName, nameTable] : curr->importedTypeBindings)
         {
@@ -1957,7 +1957,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             return tos(c.resultType) + " ~ hasIndexer " + tos(c.subjectType) + " " + tos(c.indexType);
         }
         else if constexpr (std::is_same_v<T, AssignPropConstraint>)
-            return "assignProp " + tos(c.lhsType) + " " + c.propName + " " + tos(c.rhsType);
+            return tos(c.propType) +  " ~ assignProp " + tos(c.lhsType) + " " + c.propName + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, AssignIndexConstraint>)
             return "assignIndex " + tos(c.lhsType) + " " + tos(c.indexType) + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, UnpackConstraint>)

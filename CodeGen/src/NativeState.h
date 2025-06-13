@@ -94,6 +94,7 @@ struct NativeContext
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
     Udata* (*newUserdata)(lua_State* L, size_t s, int tag) = nullptr;
+    void (*getImport)(lua_State* L, StkId res, unsigned id, unsigned pc) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
 

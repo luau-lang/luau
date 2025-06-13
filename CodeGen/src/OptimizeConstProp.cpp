@@ -1539,6 +1539,13 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidate(inst.a);
         state.invalidateUserCall();
         break;
+    case IrCmd::GET_CACHED_IMPORT:
+        state.invalidate(inst.a);
+
+        // Outside of safe environment, environment traversal for an import can execute custom code
+        if (!state.inSafeEnv)
+            state.invalidateUserCall();
+        break;
     case IrCmd::CONCAT:
         state.invalidateRegisterRange(vmRegOp(inst.a), function.uintOp(inst.b));
         state.invalidateUserCall(); // TODO: if only strings and numbers are concatenated, there will be no user calls

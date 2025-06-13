@@ -16,6 +16,8 @@
 #include <memory>
 #include <string_view>
 
+LUAU_FASTFLAG(LuauCodeGenSimplifyImport)
+
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
     // While 'vector' library constants are a Luau built-in, their constant value depends on the embedder LUA_VECTOR_SIZE value
@@ -498,6 +500,8 @@ bb_bytecode_1:
 
 TEST_CASE("DseInitialStackState")
 {
+    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo()
@@ -518,17 +522,11 @@ bb_bytecode_0:
   JUMP bb_2
 bb_2:
   CHECK_SAFE_ENV exit(3)
-  JUMP_EQ_TAG K1 (nil), tnil, bb_fallback_4, bb_3
-bb_3:
-  %9 = LOAD_TVALUE K1 (nil)
-  STORE_TVALUE R1, %9
-  JUMP bb_5
-bb_5:
+  GET_CACHED_IMPORT R1, K1 (nil), 1073741824u ('_'), 4u
   SET_SAVEDPC 7u
-  %21 = NEW_TABLE 0u, 0u
-  STORE_POINTER R1, %21
+  %14 = NEW_TABLE 0u, 0u
+  STORE_POINTER R1, %14
   STORE_TAG R1, ttable
-  CHECK_GC
   STORE_TAG R0, tnil
   INTERRUPT 9u
   JUMP bb_bytecode_0
@@ -1569,6 +1567,8 @@ end
 
 TEST_CASE("ForInManualAnnotation")
 {
+    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -1601,22 +1601,17 @@ bb_bytecode_1:
   STORE_DOUBLE R1, 0
   STORE_TAG R1, tnumber
   CHECK_SAFE_ENV exit(1)
-  JUMP_EQ_TAG K1 (nil), tnil, bb_fallback_6, bb_5
-bb_5:
-  %9 = LOAD_TVALUE K1 (nil)
-  STORE_TVALUE R2, %9
-  JUMP bb_7
-bb_7:
-  %15 = LOAD_TVALUE R0
-  STORE_TVALUE R3, %15
+  GET_CACHED_IMPORT R2, K1 (nil), 1073741824u ('ipairs'), 2u
+  %8 = LOAD_TVALUE R0
+  STORE_TVALUE R3, %8
   INTERRUPT 4u
   SET_SAVEDPC 5u
   CALL R2, 1i, 3i
   CHECK_SAFE_ENV exit(5)
-  CHECK_TAG R3, ttable, bb_fallback_8
-  CHECK_TAG R4, tnumber, bb_fallback_8
-  JUMP_CMP_NUM R4, 0, not_eq, bb_fallback_8, bb_9
-bb_9:
+  CHECK_TAG R3, ttable, bb_fallback_5
+  CHECK_TAG R4, tnumber, bb_fallback_5
+  JUMP_CMP_NUM R4, 0, not_eq, bb_fallback_5, bb_6
+bb_6:
   STORE_TAG R2, tnil
   STORE_POINTER R4, 0i
   STORE_EXTRA R4, 128i
@@ -1624,41 +1619,41 @@ bb_9:
   JUMP bb_bytecode_3
 bb_bytecode_2:
   CHECK_TAG R6, ttable, exit(6)
-  %35 = LOAD_POINTER R6
-  %36 = GET_SLOT_NODE_ADDR %35, 6u, K2 ('pos')
-  CHECK_SLOT_MATCH %36, K2 ('pos'), bb_fallback_10
-  %38 = LOAD_TVALUE %36, 0i
-  STORE_TVALUE R8, %38
-  JUMP bb_11
-bb_11:
+  %28 = LOAD_POINTER R6
+  %29 = GET_SLOT_NODE_ADDR %28, 6u, K2 ('pos')
+  CHECK_SLOT_MATCH %29, K2 ('pos'), bb_fallback_7
+  %31 = LOAD_TVALUE %29, 0i
+  STORE_TVALUE R8, %31
+  JUMP bb_8
+bb_8:
   CHECK_TAG R8, tvector, exit(8)
-  %45 = LOAD_FLOAT R8, 0i
-  STORE_DOUBLE R7, %45
+  %38 = LOAD_FLOAT R8, 0i
+  STORE_DOUBLE R7, %38
   STORE_TAG R7, tnumber
   CHECK_TAG R1, tnumber, exit(10)
-  %52 = LOAD_DOUBLE R1
-  %54 = ADD_NUM %52, %45
-  STORE_DOUBLE R1, %54
+  %45 = LOAD_DOUBLE R1
+  %47 = ADD_NUM %45, %38
+  STORE_DOUBLE R1, %47
   JUMP bb_bytecode_3
 bb_bytecode_3:
   INTERRUPT 11u
-  CHECK_TAG R2, tnil, bb_fallback_13
-  %60 = LOAD_POINTER R3
-  %61 = LOAD_INT R4
-  %62 = GET_ARR_ADDR %60, %61
-  CHECK_ARRAY_SIZE %60, %61, bb_12
-  %64 = LOAD_TAG %62
-  JUMP_EQ_TAG %64, tnil, bb_12, bb_14
-bb_14:
-  %66 = ADD_INT %61, 1i
-  STORE_INT R4, %66
-  %68 = INT_TO_NUM %66
-  STORE_DOUBLE R5, %68
+  CHECK_TAG R2, tnil, bb_fallback_10
+  %53 = LOAD_POINTER R3
+  %54 = LOAD_INT R4
+  %55 = GET_ARR_ADDR %53, %54
+  CHECK_ARRAY_SIZE %53, %54, bb_9
+  %57 = LOAD_TAG %55
+  JUMP_EQ_TAG %57, tnil, bb_9, bb_11
+bb_11:
+  %59 = ADD_INT %54, 1i
+  STORE_INT R4, %59
+  %61 = INT_TO_NUM %59
+  STORE_DOUBLE R5, %61
   STORE_TAG R5, tnumber
-  %71 = LOAD_TVALUE %62
-  STORE_TVALUE R6, %71
+  %64 = LOAD_TVALUE %55
+  STORE_TVALUE R6, %64
   JUMP bb_bytecode_2
-bb_12:
+bb_9:
   INTERRUPT 13u
   RETURN R1, 1i
 )"

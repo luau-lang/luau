@@ -125,7 +125,7 @@ std::optional<TypePackId> TypeFunctionReductionGuesser::guess(TypePackId tp)
         guessedHead.push_back(*guessedType);
     }
 
-    return arena->addTypePack(TypePack{guessedHead, tail});
+    return arena->addTypePack(TypePack{std::move(guessedHead), tail});
 }
 
 TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunctionReductionForFunctionExpr(
@@ -182,7 +182,7 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
     functionReducesTo.clear();
     substitutable.clear();
 
-    return TypeFunctionReductionGuessResult{results, recommendedAnnotation};
+    return TypeFunctionReductionGuessResult{std::move(results), recommendedAnnotation};
 }
 
 std::optional<TypeId> TypeFunctionReductionGuesser::guessType(TypeId arg)

@@ -10,6 +10,8 @@ struct ExternTypeFixture : BuiltinsFixture
 {
     explicit ExternTypeFixture(bool prepareAutocomplete = false);
 
+    Frontend& getFrontend() override;
+
     TypeId vector2Type;
     TypeId vector2InstanceType;
 };
