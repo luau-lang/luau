@@ -2443,4 +2443,15 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_infer_divergent_rw_props")
     )"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "read_table_type_refinements_persist_scope")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+_ = {n0=_,},if _._ then ... else if _[if _ then _ else ({nil,})].setmetatable then if _ then _ elseif l0 then ... elseif _.n0 then _ elseif function<A>(l0)
+return _._G,_
+end then _._G else ...
+    )"));
+}
+
 TEST_SUITE_END();

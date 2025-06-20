@@ -31,13 +31,13 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerStricterIndexCheck)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
 LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 
 namespace Luau
 {
@@ -1316,10 +1316,7 @@ void TypeChecker2::visit(AstStatDeclareFunction* stat)
 {
     visitGenerics(stat->generics, stat->genericPacks);
     visit(stat->params);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-        visit(stat->retTypes);
-    else
-        visit(stat->retTypes_DEPRECATED);
+    visit(stat->retTypes);
 }
 
 void TypeChecker2::visit(AstStatDeclareGlobal* stat)
@@ -1573,26 +1570,104 @@ void TypeChecker2::visitCall(AstExprCall* call)
         argExprs.push_back(indexExpr->expr);
     }
 
-    for (size_t i = 0; i < call->args.size; ++i)
+    if (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls)
     {
-        AstExpr* arg = call->args.data[i];
-        argExprs.push_back(arg);
-        TypeId* argTy = module->astTypes.find(arg);
-        if (argTy)
-            args.head.push_back(*argTy);
-        else if (i == call->args.size - 1)
+        // FIXME: Similar to bidirectional inference prior, this does not support
+        // overloaded functions nor generic types (yet).
+        if (auto fty = get<FunctionType>(fnTy); fty && fty->generics.empty() && fty->genericPacks.empty() && call->args.size > 0)
         {
-            if (auto argTail = module->astTypePacks.find(arg))
+            size_t selfOffset = call->self ? 1 : 0;
+
+            auto [paramsHead, _] = extendTypePack(module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset);
+
+            for (size_t idx = 0; idx < call->args.size - 1; ++idx)
             {
-                auto [head, tail] = flatten(*argTail);
-                args.head.insert(args.head.end(), head.begin(), head.end());
-                args.tail = tail;
+                auto argExpr = call->args.data[idx];
+                auto argExprType = lookupType(argExpr);
+                argExprs.push_back(argExpr);
+                if (idx + selfOffset >= paramsHead.size() || isErrorSuppressing(argExpr->location, argExprType))
+                {
+                    args.head.push_back(argExprType);
+                    continue;
+                }
+                testLiteralOrAstTypeIsSubtype(argExpr, paramsHead[idx + selfOffset]);
+                args.head.push_back(paramsHead[idx + selfOffset]);
+            }
+
+            auto lastExpr = call->args.data[call->args.size - 1];
+            argExprs.push_back(lastExpr);
+
+            if (auto argTail = module->astTypePacks.find(lastExpr))
+            {
+                auto [lastExprHead, lastExprTail] = flatten(*argTail);
+                args.head.insert(args.head.end(), lastExprHead.begin(), lastExprHead.end());
+                args.tail = lastExprTail;
+            }
+            else if (paramsHead.size() >= call->args.size + selfOffset)
+            {
+                auto lastType = paramsHead[call->args.size - 1 + selfOffset];
+                auto lastExprType = lookupType(lastExpr);
+                if (isErrorSuppressing(lastExpr->location, lastExprType))
+                {
+                    args.head.push_back(lastExprType);
+                }
+                else
+                {
+                    testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+                    args.head.push_back(lastType);
+                }
             }
             else
                 args.tail = builtinTypes->anyTypePack;
         }
         else
-            args.head.push_back(builtinTypes->anyType);
+        {
+            for (size_t i = 0; i < call->args.size; ++i)
+            {
+                AstExpr* arg = call->args.data[i];
+                argExprs.push_back(arg);
+                TypeId* argTy = module->astTypes.find(arg);
+                if (argTy)
+                    args.head.push_back(*argTy);
+                else if (i == call->args.size - 1)
+                {
+                    if (auto argTail = module->astTypePacks.find(arg))
+                    {
+                        auto [head, tail] = flatten(*argTail);
+                        args.head.insert(args.head.end(), head.begin(), head.end());
+                        args.tail = tail;
+                    }
+                    else
+                        args.tail = builtinTypes->anyTypePack;
+                }
+                else
+                    args.head.push_back(builtinTypes->anyType);
+            }
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < call->args.size; ++i)
+        {
+            AstExpr* arg = call->args.data[i];
+            argExprs.push_back(arg);
+            TypeId* argTy = module->astTypes.find(arg);
+            if (argTy)
+                args.head.push_back(*argTy);
+            else if (i == call->args.size - 1)
+            {
+                if (auto argTail = module->astTypePacks.find(arg))
+                {
+                    auto [head, tail] = flatten(*argTail);
+                    args.head.insert(args.head.end(), head.begin(), head.end());
+                    args.tail = tail;
+                }
+                else
+                    args.tail = builtinTypes->anyTypePack;
+            }
+            else
+                args.head.push_back(builtinTypes->anyType);
+        }
     }
 
     TypePackId argsTp = module->internalTypes.addTypePack(args);
@@ -1964,16 +2039,8 @@ void TypeChecker2::visit(AstExprFunction* fn)
     visit(fn->body);
 
     // we need to typecheck the return annotation itself, if it exists.
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        if (fn->returnAnnotation)
-            visit(fn->returnAnnotation);
-    }
-    else
-    {
-        if (fn->returnAnnotation_DEPRECATED)
-            visit(*fn->returnAnnotation_DEPRECATED);
-    }
+    if (fn->returnAnnotation)
+        visit(fn->returnAnnotation);
 
 
     // If the function type has a function annotation, we need to see if we can suggest an annotation
@@ -2751,10 +2818,7 @@ void TypeChecker2::visit(AstTypeFunction* ty)
 {
     visitGenerics(ty->generics, ty->genericPacks);
     visit(ty->argTypes);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-        visit(ty->returnTypes);
-    else
-        visit(ty->returnTypes_DEPRECATED);
+    visit(ty->returnTypes);
 }
 
 void TypeChecker2::visit(AstTypeTypeof* ty)

@@ -21,11 +21,12 @@
 #include <utility>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMissingFollows)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
+LUAU_FASTFLAG(LuauImplicitTableIndexerKeys2)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -336,7 +337,7 @@ static void autocompleteProps(
                         continue;
                 }
                 else
-                    type = follow(prop.type());
+                    type = follow(prop.type_DEPRECATED());
 
                 TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
                                                   ? TypeCorrectKind::Correct
@@ -368,7 +369,11 @@ static void autocompleteProps(
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
-            TypeId followed = follow(indexIt->second.type());
+            TypeId followed;
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                followed = follow(*indexIt->second.readTy);
+            else
+                followed = follow(indexIt->second.type_DEPRECATED());
             if (get<TableType>(followed) || get<MetatableType>(followed))
             {
                 autocompleteProps(module, typeArena, builtinTypes, rootTy, followed, indexType, nodes, result, seen);
@@ -652,7 +657,6 @@ static std::optional<TypeId> findTypeElementAt(const AstTypeList& astTypeList, T
 
 static std::optional<TypeId> findTypeElementAt(AstTypePack* astTypePack, TypePackId tp, Position position)
 {
-    LUAU_ASSERT(FFlag::LuauStoreReturnTypesAsPackOnAst);
     if (const auto typePack = astTypePack->as<AstTypePackExplicit>())
     {
         return findTypeElementAt(typePack->typeList, tp, position);
@@ -694,16 +698,8 @@ static std::optional<TypeId> findTypeElementAt(AstType* astType, TypeId ty, Posi
         if (auto element = findTypeElementAt(type->argTypes, ftv->argTypes, position))
             return element;
 
-        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-        {
-            if (auto element = findTypeElementAt(type->returnTypes, ftv->retTypes, position))
-                return element;
-        }
-        else
-        {
-            if (auto element = findTypeElementAt(type->returnTypes_DEPRECATED, ftv->retTypes, position))
-                return element;
-        }
+        if (auto element = findTypeElementAt(type->returnTypes, ftv->retTypes, position))
+            return element;
     }
 
     // It's possible to walk through other types like intrsection and unions if we find value in doing that
@@ -1033,65 +1029,14 @@ AutocompleteEntryMap autocompleteTypeNames(
             }
         }
 
-        if (FFlag::LuauStoreReturnTypesAsPackOnAst)
+        if (!node->returnAnnotation)
+            return result;
+
+        if (const auto typePack = node->returnAnnotation->as<AstTypePackExplicit>())
         {
-            if (!node->returnAnnotation)
-                return result;
-
-            if (const auto typePack = node->returnAnnotation->as<AstTypePackExplicit>())
+            for (size_t i = 0; i < typePack->typeList.types.size; i++)
             {
-                for (size_t i = 0; i < typePack->typeList.types.size; i++)
-                {
-                    AstType* ret = typePack->typeList.types.data[i];
-
-                    if (ret->location.containsClosed(position))
-                    {
-                        if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
-                        {
-                            if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, i))
-                                tryAddTypeCorrectSuggestion(result, startScope, topType, *ty, position);
-                        }
-
-                        // TODO: with additional type information, we could suggest inferred return type here
-                        break;
-                    }
-                }
-
-                if (AstTypePack* retTp = typePack->typeList.tailType)
-                {
-                    if (auto variadic = retTp->as<AstTypePackVariadic>())
-                    {
-                        if (variadic->location.containsClosed(position))
-                        {
-                            if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
-                            {
-                                if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
-                                    tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
-                            }
-                        }
-                    }
-                }
-            }
-            else if (auto variadic = node->returnAnnotation->as<AstTypePackVariadic>())
-            {
-                if (variadic->location.containsClosed(position))
-                {
-                    if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
-                    {
-                        if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
-                            tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
-                    }
-                }
-            }
-        }
-        else
-        {
-            if (!node->returnAnnotation_DEPRECATED)
-                return result;
-
-            for (size_t i = 0; i < node->returnAnnotation_DEPRECATED->types.size; i++)
-            {
-                AstType* ret = node->returnAnnotation_DEPRECATED->types.data[i];
+                AstType* ret = typePack->typeList.types.data[i];
 
                 if (ret->location.containsClosed(position))
                 {
@@ -1106,7 +1051,7 @@ AutocompleteEntryMap autocompleteTypeNames(
                 }
             }
 
-            if (AstTypePack* retTp = node->returnAnnotation_DEPRECATED->tailType)
+            if (AstTypePack* retTp = typePack->typeList.tailType)
             {
                 if (auto variadic = retTp->as<AstTypePackVariadic>())
                 {
@@ -1118,6 +1063,17 @@ AutocompleteEntryMap autocompleteTypeNames(
                                 tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
                         }
                     }
+                }
+            }
+        }
+        else if (auto variadic = node->returnAnnotation->as<AstTypePackVariadic>())
+        {
+            if (variadic->location.containsClosed(position))
+            {
+                if (const FunctionType* ftv = tryGetExpectedFunctionType(module, node))
+                {
+                    if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
+                        tryAddTypeCorrectSuggestion(result, std::move(startScope), topType, *ty, position);
                 }
             }
         }
@@ -2074,8 +2030,11 @@ AutocompleteResult autocomplete_(
     {
         AutocompleteEntryMap result;
 
-        if (auto it = module->astExpectedTypes.find(node->asExpr()))
-            autocompleteStringSingleton(*it, false, node, position, result);
+        if (!FFlag::LuauImplicitTableIndexerKeys2)
+        {
+            if (auto it = module->astExpectedTypes.find(node->asExpr()))
+                autocompleteStringSingleton(*it, false, node, position, result);
+        }
 
         if (ancestry.size() >= 2)
         {
@@ -2092,6 +2051,12 @@ AutocompleteResult autocomplete_(
                         autocompleteStringSingleton(*it, false, node, position, result);
                 }
             }
+        }
+
+        if (FFlag::LuauImplicitTableIndexerKeys2)
+        {
+            if (auto it = module->astExpectedTypes.find(node->asExpr()))
+                autocompleteStringSingleton(*it, false, node, position, result);
         }
 
         return {std::move(result), ancestry, AutocompleteContext::String};

@@ -12,6 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -524,7 +525,18 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
     if (indexIt == mtable->props.end())
         return std::nullopt;
 
-    TypeId followed = follow(indexIt->second.type());
+    TypeId followed;
+    if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        if (indexIt->second.readTy)
+            followed = follow(*indexIt->second.readTy);
+        else if (indexIt->second.writeTy)
+            followed = follow(*indexIt->second.writeTy);
+        else
+            return std::nullopt;
+    }
+    else
+        followed = follow(indexIt->second.type_DEPRECATED());
     const TableType* ttv = get<TableType>(followed);
     if (!ttv)
         return std::nullopt;
@@ -539,7 +551,7 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
             return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
     }
     else
-        return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
+        return checkOverloadedDocumentationSymbol(module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol);
 
     return std::nullopt;
 }
@@ -571,7 +583,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                         }
                         else
-                            return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
+                            return checkOverloadedDocumentationSymbol(module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol);
                     }
                 }
                 else if (const ExternType* etv = get<ExternType>(parentTy))
@@ -587,7 +599,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                             }
                             else
                                 return checkOverloadedDocumentationSymbol(
-                                    module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol
+                                    module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol
                                 );
                         }
                         etv = etv->parent ? Luau::get<Luau::ExternType>(*etv->parent) : nullptr;

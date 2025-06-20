@@ -294,7 +294,7 @@ struct GenericTypeVisitor
                                 traverse(*ty);
                         }
                         else
-                            traverse(prop.type());
+                            traverse(prop.type_DEPRECATED());
                     }
 
                     if (ttv->indexer)
@@ -332,7 +332,7 @@ struct GenericTypeVisitor
                             traverse(*ty);
                     }
                     else
-                        traverse(prop.type());
+                        traverse(prop.type_DEPRECATED());
                 }
 
                 if (etv->parent)

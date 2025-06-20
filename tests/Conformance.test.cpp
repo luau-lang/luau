@@ -37,9 +37,8 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauYieldableContinuations)
-LUAU_FASTFLAG(LuauCurrentLineBounds)
-LUAU_FASTFLAG(LuauLoadNoOomThrow)
 LUAU_FASTFLAG(LuauHeapNameDetails)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_DYNAMIC_FASTFLAG(LuauGcAgainstOom)
 
 static lua_CompileOptions defaultOptions()
@@ -1211,7 +1210,16 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         for (const auto& [name, prop] : t->props)
         {
-            populateRTTI(L, prop.type());
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            {
+                if (prop.readTy)
+                    populateRTTI(L, *prop.readTy);
+                else if (prop.writeTy)
+                    populateRTTI(L, *prop.writeTy);
+            }
+            else
+                populateRTTI(L, prop.type_DEPRECATED());
+
             lua_setfield(L, -2, name.c_str());
         }
     }
@@ -1469,8 +1477,6 @@ TEST_CASE("Debugger")
 
 TEST_CASE("InterruptInspection")
 {
-    ScopedFastFlag luauCurrentLineBounds{FFlag::LuauCurrentLineBounds, true};
-
     static bool skipbreak = false;
 
     runConformance(
@@ -1517,8 +1523,6 @@ TEST_CASE("InterruptInspection")
 
 TEST_CASE("InterruptErrorInspection")
 {
-    ScopedFastFlag luauCurrentLineBounds{FFlag::LuauCurrentLineBounds, true};
-
     // for easy access in no-capture lambda
     static int target = 0;
     static int step = 0;
@@ -3237,8 +3241,6 @@ TEST_CASE("HugeFunction")
 
 TEST_CASE("HugeFunctionLoadFailure")
 {
-    ScopedFastFlag luauLoadNoOomThrow{FFlag::LuauLoadNoOomThrow, true};
-
     // This test case verifies that if an out-of-memory error occurs inside of
     // luau_load, we are not left with any GC objects in inconsistent states
     // that would cause issues during garbage collection.

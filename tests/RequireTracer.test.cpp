@@ -6,8 +6,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
-
 using namespace Luau;
 
 namespace
@@ -177,24 +175,13 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof_in_return_type")
     AstStatFunction* func = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(func != nullptr);
 
-    AstTypeTypeof* typeofAnnotation;
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        AstTypePack* retAnnotation = func->func->returnAnnotation;
-        REQUIRE(retAnnotation);
+    AstTypePack* retAnnotation = func->func->returnAnnotation;
+    REQUIRE(retAnnotation);
 
-        AstTypePackExplicit* tp = retAnnotation->as<AstTypePackExplicit>();
-        REQUIRE(tp);
-        REQUIRE_EQ(tp->typeList.types.size, 1);
-        typeofAnnotation = tp->typeList.types.data[0]->as<AstTypeTypeof>();
-    }
-    else
-    {
-        std::optional<AstTypeList> retAnnotation = func->func->returnAnnotation_DEPRECATED;
-        REQUIRE(retAnnotation);
-        REQUIRE_EQ(retAnnotation->types.size, 1);
-        typeofAnnotation = retAnnotation->types.data[0]->as<AstTypeTypeof>();
-    }
+    AstTypePackExplicit* tp = retAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(tp);
+    REQUIRE_EQ(tp->typeList.types.size, 1);
+    AstTypeTypeof* typeofAnnotation = tp->typeList.types.data[0]->as<AstTypeTypeof>();
     REQUIRE(typeofAnnotation != nullptr);
 
     AstExprIndexName* indexName = typeofAnnotation->expr->as<AstExprIndexName>();

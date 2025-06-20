@@ -232,7 +232,7 @@ private:
         else
         {
             return Property{
-                shallowClone(p.type()),
+                shallowClone(p.type_DEPRECATED()),
                 p.deprecated,
                 p.deprecatedSuggestion,
                 p.location,
@@ -551,9 +551,9 @@ public:
 
 } // namespace
 
-TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool ignorePersistent)
+TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool clonePersistentTypes)
 {
-    if (tp->persistent && !ignorePersistent)
+    if (tp->persistent && !clonePersistentTypes)
         return tp;
 
     TypeCloner cloner{
@@ -562,15 +562,15 @@ TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, 
         NotNull{&cloneState.seenTypes},
         NotNull{&cloneState.seenTypePacks},
         nullptr,
-        ignorePersistent ? tp : nullptr
+        clonePersistentTypes ? tp : nullptr
     };
 
     return cloner.shallowClone(tp);
 }
 
-TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool ignorePersistent)
+TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool clonePersistentTypes)
 {
-    if (typeId->persistent && !ignorePersistent)
+    if (typeId->persistent && !clonePersistentTypes)
         return typeId;
 
     TypeCloner cloner{
@@ -578,7 +578,7 @@ TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool
         cloneState.builtinTypes,
         NotNull{&cloneState.seenTypes},
         NotNull{&cloneState.seenTypePacks},
-        ignorePersistent ? typeId : nullptr,
+        clonePersistentTypes ? typeId : nullptr,
         nullptr
     };
 

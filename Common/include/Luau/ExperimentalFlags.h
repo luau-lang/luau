@@ -18,6 +18,7 @@ inline bool isAnalysisFlagExperimental(const char* flag)
         "LuauTableCloneClonesType3",                    // requires fixes in lua-apps code, terrifyingly
         "LuauNormalizationReorderFreeTypeIntersect",    // requires fixes in lua-apps code, also terrifyingly
         "LuauSolverV2",
+        "UseNewLuauTypeSolverDefaultEnabled",           // This can change the default solver used in cli applications, so it also needs to be disabled. Will require fixes in lua-apps code
         // makes sure we always have at least one entry
         nullptr,
     };

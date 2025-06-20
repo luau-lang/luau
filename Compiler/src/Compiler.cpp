@@ -26,9 +26,9 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileInlineNonConstInit)
 LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
 
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauCompileFixTypeFunctionSkip)
 
 namespace Luau
@@ -45,9 +45,9 @@ static const uint8_t kInvalidReg = 255;
 
 static const uint32_t kDefaultAllocPc = ~0u;
 
-CompileError::CompileError(const Location& location, const std::string& message)
+CompileError::CompileError(const Location& location, std::string message)
     : location(location)
-    , message(message)
+    , message(std::move(message))
 {
 }
 
@@ -302,7 +302,7 @@ struct Compiler
         {
             f.canInline = true;
             f.stackSize = stackSize;
-            f.costModel = modelCost(func->body, func->args.data, func->args.size, builtins);
+            f.costModel = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
 
             // track functions that only ever return a single value so that we can convert multret calls to fixedret calls
             if (alwaysTerminates(func->body))
@@ -696,7 +696,10 @@ struct Compiler
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
                 if (int reg = le ? getExprLocalReg(le) : -1; reg >= 0 && (!lv || !lv->written))
                 {
-                    args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc});
+                    if (FFlag::LuauCompileInlineNonConstInit)
+                        args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc, lv ? lv->init : nullptr});
+                    else
+                        args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc});
                 }
                 else
                 {
@@ -719,9 +722,19 @@ struct Compiler
         for (InlineArg& arg : args)
         {
             if (arg.value.type == Constant::Type_Unknown)
+            {
                 pushLocal(arg.local, arg.reg, arg.allocpc);
+
+                if (FFlag::LuauCompileInlineNonConstInit && arg.init)
+                {
+                    if (Variable* lv = variables.find(arg.local))
+                        lv->init = arg.init;
+                }
+            }
             else
+            {
                 locstants[arg.local] = arg.value;
+            }
         }
 
         // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
@@ -771,6 +784,12 @@ struct Compiler
 
             if (Constant* var = locstants.find(local))
                 var->type = Constant::Type_Unknown;
+
+            if (FFlag::LuauCompileInlineNonConstInit)
+            {
+                if (Variable* lv = variables.find(local))
+                    lv->init = nullptr;
+            }
         }
 
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body);
@@ -3016,7 +3035,7 @@ struct Compiler
         }
 
         AstLocal* var = stat->var;
-        uint64_t costModel = modelCost(stat->body, &var, 1, builtins);
+        uint64_t costModel = modelCost(stat->body, &var, 1, builtins, constants);
 
         // we use a dynamic cost threshold that's based on the fixed limit boosted by the cost advantage we gain due to unrolling
         bool varc = true;
@@ -4109,6 +4128,8 @@ struct Compiler
         uint8_t reg;
         Constant value;
         uint32_t allocpc;
+
+        AstExpr* init;
     };
 
     struct InlineFrame
@@ -4325,54 +4346,27 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
             mainFlags |= LPF_NATIVE_FUNCTION;
     }
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        AstExprFunction main(
-            root->location,
-            /* attributes= */ AstArray<AstAttr*>({nullptr, 0}),
-            /* generics= */ AstArray<AstGenericType*>(),
-            /* genericPacks= */ AstArray<AstGenericTypePack*>(),
-            /* self= */ nullptr,
-            AstArray<AstLocal*>(),
-            /* vararg= */ true,
-            /* varargLocation= */ Luau::Location(),
-            root,
-            /* functionDepth= */ 0,
-            /* debugname= */ AstName(),
-            /* returnAnnotation= */ nullptr
-        );
-        uint32_t mainid = compiler.compileFunction(&main, mainFlags);
+    AstExprFunction main(
+        root->location,
+        /* attributes= */ AstArray<AstAttr*>({nullptr, 0}),
+        /* generics= */ AstArray<AstGenericType*>(),
+        /* genericPacks= */ AstArray<AstGenericTypePack*>(),
+        /* self= */ nullptr,
+        AstArray<AstLocal*>(),
+        /* vararg= */ true,
+        /* varargLocation= */ Luau::Location(),
+        root,
+        /* functionDepth= */ 0,
+        /* debugname= */ AstName(),
+        /* returnAnnotation= */ nullptr
+    );
+    uint32_t mainid = compiler.compileFunction(&main, mainFlags);
 
-        const Compiler::Function* mainf = compiler.functions.find(&main);
-        LUAU_ASSERT(mainf && mainf->upvals.empty());
+    const Compiler::Function* mainf = compiler.functions.find(&main);
+    LUAU_ASSERT(mainf && mainf->upvals.empty());
 
-        bytecode.setMainFunction(mainid);
-        bytecode.finalize();
-    }
-    else
-    {
-        AstExprFunction main(
-            root->location,
-            /* attributes= */ AstArray<AstAttr*>({nullptr, 0}),
-            /* generics= */ AstArray<AstGenericType*>(),
-            /* genericPacks= */ AstArray<AstGenericTypePack*>(),
-            /* self= */ nullptr,
-            AstArray<AstLocal*>(),
-            /* vararg= */ true,
-            /* varargLocation= */ Luau::Location(),
-            root,
-            /* functionDepth= */ 0,
-            /* debugname= */ AstName(),
-            /* returnAnnotation= */ std::nullopt
-        );
-        uint32_t mainid = compiler.compileFunction(&main, mainFlags);
-
-        const Compiler::Function* mainf = compiler.functions.find(&main);
-        LUAU_ASSERT(mainf && mainf->upvals.empty());
-
-        bytecode.setMainFunction(mainid);
-        bytecode.finalize();
-    }
+    bytecode.setMainFunction(mainid);
+    bytecode.finalize();
 }
 
 void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const CompileOptions& options, const ParseOptions& parseOptions)

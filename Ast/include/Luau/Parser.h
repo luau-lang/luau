@@ -183,14 +183,6 @@ private:
         const Name* localName,
         const AstArray<AstAttr*>& attributes
     );
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    std::pair<AstExprFunction*, AstLocal*> parseFunctionBody_DEPRECATED(
-        bool hasself,
-        const Lexeme& matchFunction,
-        const AstName& debugname,
-        const Name* localName,
-        const AstArray<AstAttr*>& attributes
-    );
 
     // explist ::= {exp `,'} exp
     void parseExprList(TempVector<AstExpr*>& result, TempVector<Position>* commaPositions = nullptr);
@@ -233,10 +225,6 @@ private:
     AstTypePack* parseOptionalReturnType(Position* returnSpecifierPosition = nullptr);
     AstTypePack* parseReturnType();
 
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    std::optional<AstTypeList> parseOptionalReturnType_DEPRECATED(Position* returnSpecifierPosition = nullptr);
-    std::pair<Location, AstTypeList> parseReturnType_DEPRECATED();
-
     struct TableIndexerResult
     {
         AstTableIndexer* node;
@@ -246,8 +234,6 @@ private:
     };
 
     TableIndexerResult parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
-    // Remove with FFlagLuauStoreCSTData2
-    AstTableIndexer* parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
 
     AstTypeOrPack parseFunctionType(bool allowPack, const AstArray<AstAttr*>& attributes);
     AstType* parseFunctionTypeTail(

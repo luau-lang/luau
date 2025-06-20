@@ -31,6 +31,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatImprovements)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
@@ -336,7 +337,14 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     auto it = stringMetatableTable->props.find("__index");
     LUAU_ASSERT(it != stringMetatableTable->props.end());
 
-    addGlobalBinding(globals, "string", it->second.type(), "@luau");
+
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        addGlobalBinding(globals, "string", *it->second.readTy, "@luau");
+        addGlobalBinding(globals, "string", *it->second.writeTy, "@luau");
+    }
+    else
+        addGlobalBinding(globals, "string", it->second.type_DEPRECATED(), "@luau");
 
     // Setup 'vector' metatable
     if (auto it = globals.globalScope->exportedTypeBindings.find("vector"); it != globals.globalScope->exportedTypeBindings.end())
@@ -494,10 +502,20 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreach"].deprecated = true;
         ttv->props["foreachi"].deprecated = true;
 
-        attachMagicFunction(ttv->props["pack"].type(), std::make_shared<MagicPack>());
-        if (FFlag::LuauTableCloneClonesType3)
-            attachMagicFunction(ttv->props["clone"].type(), std::make_shared<MagicClone>());
-        attachMagicFunction(ttv->props["freeze"].type(), std::make_shared<MagicFreeze>());
+        if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        {
+            attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
+            if (FFlag::LuauTableCloneClonesType3)
+                attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
+            attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
+        }
+        else
+        {
+            attachMagicFunction(ttv->props["pack"].type_DEPRECATED(), std::make_shared<MagicPack>());
+            if (FFlag::LuauTableCloneClonesType3)
+                attachMagicFunction(ttv->props["clone"].type_DEPRECATED(), std::make_shared<MagicClone>());
+            attachMagicFunction(ttv->props["freeze"].type_DEPRECATED(), std::make_shared<MagicFreeze>());
+        }
     }
 
     TypeId requireTy = getGlobalBinding(globals, "require");
@@ -1649,7 +1667,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
         return std::nullopt;
 
     CloneState cloneState{typechecker.builtinTypes};
-    TypeId resultType = shallowClone(inputType, arena, cloneState);
+    TypeId resultType = shallowClone(inputType, arena, cloneState, /* clonePersistentTypes */ false);
 
     TypePackId clonedTypePack = arena.addTypePack({resultType});
     return WithPredicate<TypePackId>{clonedTypePack};

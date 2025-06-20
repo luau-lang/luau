@@ -17,6 +17,7 @@ namespace Luau
 std::string rep(const std::string& s, size_t n);
 }
 
+LUAU_FASTFLAG(LuauCompileInlineNonConstInit)
 LUAU_FASTINT(LuauCompileInlineDepth)
 LUAU_FASTINT(LuauCompileInlineThreshold)
 LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
@@ -24,6 +25,7 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauCompileFixTypeFunctionSkip)
+LUAU_FASTFLAG(LuauCompileCostModelConstants)
 
 using namespace Luau;
 
@@ -119,6 +121,20 @@ static std::string compileTypeTable(const char* source)
     Luau::compileOrThrow(bcb, source, opts);
 
     return bcb.dumpTypeInfo();
+}
+
+static std::string compileWithRemarks(const char* source)
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    return bcb.dumpSourceRemarks();
 }
 
 TEST_SUITE_BEGIN("Compiler");
@@ -3598,9 +3614,12 @@ RETURN R4 1
 )");
 }
 
-TEST_CASE("SourceRemarks")
+TEST_CASE("CostModelRemarks")
 {
-    const char* source = R"(
+    ScopedFastFlag luauCompileCostModelConstants{FFlag::LuauCompileCostModelConstants, true};
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
 local a, b = ...
 
 local function foo(x)
@@ -3608,20 +3627,8 @@ local function foo(x)
 end
 
 return foo(a) + foo(assert(b))
-)";
-
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
-    bcb.setDumpSource(source);
-
-    Luau::CompileOptions options;
-    options.optimizationLevel = 2;
-
-    Luau::compileOrThrow(bcb, source, options);
-
-    std::string remarks = bcb.dumpSourceRemarks();
-
-    CHECK_EQ(remarks, R"(
+)"),
+        R"(
 local a, b = ...
 
 local function foo(x)
@@ -3632,7 +3639,149 @@ end
 -- remark: builtin assert/1
 -- remark: inlining succeeded (cost 2, profit 2.50x, depth 0)
 return foo(a) + foo(assert(b))
-)");
+)"
+    );
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local value = true
+
+local function foo()
+    return value
+end
+
+return foo()
+)"),
+        R"(
+local value = true
+
+local function foo()
+    return value
+end
+
+-- remark: inlining succeeded (cost 0, profit 3.00x, depth 0)
+return foo()
+)"
+    );
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local value = true
+
+local function foo()
+    return not value
+end
+
+return foo()
+)"),
+        R"(
+local value = true
+
+local function foo()
+    return not value
+end
+
+-- remark: inlining succeeded (cost 0, profit 3.00x, depth 0)
+return foo()
+)"
+    );
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local function foo()
+    local s = 0
+    for i = 1, 100 do s += i end
+    return s
+end
+
+return foo()
+)"),
+        R"(
+local function foo()
+    local s = 0
+    -- remark: loop unroll failed: too many iterations (100)
+    for i = 1, 100 do s += i end
+    return s
+end
+
+-- remark: inlining failed: too expensive (cost 127, profit 1.02x)
+return foo()
+)"
+    );
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local function foo()
+    local s = 0
+    for i = 1, 4 * 25 do s += i end
+    return s
+end
+
+return foo()
+)"),
+        R"(
+local function foo()
+    local s = 0
+    -- remark: loop unroll failed: too many iterations (100)
+    for i = 1, 4 * 25 do s += i end
+    return s
+end
+
+-- remark: inlining failed: too expensive (cost 127, profit 1.02x)
+return foo()
+)"
+    );
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local x = ...
+local function test(a)
+    while a < 0 do
+        a += 1
+    end
+    for i=10,1,-1 do
+        a += 1
+    end
+    for i in pairs({}) do
+        a += 1
+        if a % 2 == 0 then continue end
+    end
+    repeat
+        a += 1
+        if a % 2 == 0 then break end
+    until a > 10
+    return a
+end
+local a = test(x)
+local b = test(2)
+)"),
+        R"(
+local x = ...
+local function test(a)
+    while a < 0 do
+        a += 1
+    end
+    -- remark: loop unroll succeeded (iterations 10, cost 10, profit 2.00x)
+    for i=10,1,-1 do
+        a += 1
+    end
+    -- remark: allocation: table hash 0
+    for i in pairs({}) do
+        a += 1
+        if a % 2 == 0 then continue end
+    end
+    repeat
+        a += 1
+        if a % 2 == 0 then break end
+    until a > 10
+    return a
+end
+-- remark: inlining failed: too expensive (cost 76, profit 1.03x)
+local a = test(x)
+-- remark: inlining failed: too expensive (cost 73, profit 1.08x)
+local b = test(2)
+)"
+    );
 }
 
 TEST_CASE("AssignmentConflict")
@@ -7469,6 +7618,74 @@ return foo(42)
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE("InlineNonConstInitializers")
+{
+    ScopedFastFlag luauCompileInlineNonConstInit{FFlag::LuauCompileInlineNonConstInit, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function caller(f)
+    f(1)
+end
+
+local function callback(n)
+    print(n + 5)
+end
+
+caller(callback)
+)",
+                   2,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['caller']
+DUPCLOSURE R1 K1 ['callback']
+GETIMPORT R2 3 [print]
+LOADN R3 6
+CALL R2 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("InlineNonConstInitializers2")
+{
+    ScopedFastFlag luauCompileInlineNonConstInit{FFlag::LuauCompileInlineNonConstInit, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function test(a, b, c, comp)
+    return comp(a, b) and comp(b, c)
+end
+
+local function greater(a, b)
+    return a > b
+end
+
+test(x, y, z, greater)
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['test']
+DUPCLOSURE R4 K1 ['greater']
+JUMPIFLT R1 R0 L0
+LOADB R5 0 +1
+L0: LOADB R5 1
+L1: JUMPIFNOT R5 L3
+JUMPIFLT R2 R1 L2
+LOADB R5 0 +1
+L2: LOADB R5 1
+L3: RETURN R0 0
 )"
     );
 }

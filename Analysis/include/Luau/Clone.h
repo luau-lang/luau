@@ -29,11 +29,10 @@ struct CloneState
  * Be mindful about which behavior you actually _want_.
  *
  * Persistent types are not cloned as an optimization.
- * If a type is cloned in order to mutate it, 'ignorePersistent' has to be set
+ * If a type is cloned in order to mutate it, 'clonePersistentTypes' has to be set
  */
-
-TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool ignorePersistent = false);
-TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool ignorePersistent = false);
+TypePackId shallowClone(TypePackId tp, TypeArena& dest, CloneState& cloneState, bool clonePersistentTypes);
+TypeId shallowClone(TypeId typeId, TypeArena& dest, CloneState& cloneState, bool clonePersistentTypes);
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
 TypeId clone(TypeId tp, TypeArena& dest, CloneState& cloneState);

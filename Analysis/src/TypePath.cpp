@@ -344,7 +344,7 @@ struct TraversalState
             if (FFlag::LuauSolverV2)
                 maybeType = property.isRead ? prop->readTy : prop->writeTy;
             else
-                maybeType = prop->type();
+                maybeType = prop->type_DEPRECATED();
 
             if (maybeType)
             {

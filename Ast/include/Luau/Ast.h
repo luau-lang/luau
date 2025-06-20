@@ -451,24 +451,6 @@ public:
         const std::optional<Location>& argLocation = std::nullopt
     );
 
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstExprFunction(
-        const Location& location,
-        const AstArray<AstAttr*>& attributes,
-        const AstArray<AstGenericType*>& generics,
-        const AstArray<AstGenericTypePack*>& genericPacks,
-        AstLocal* self,
-        const AstArray<AstLocal*>& args,
-        bool vararg,
-        const Location& varargLocation,
-        AstStatBlock* body,
-        size_t functionDepth,
-        const AstName& debugname,
-        const std::optional<AstTypeList>& returnAnnotation,
-        AstTypePack* varargAnnotation = nullptr,
-        const std::optional<Location>& argLocation = std::nullopt
-    );
-
     void visit(AstVisitor* visitor) override;
 
     bool hasNativeAttribute() const;
@@ -479,8 +461,6 @@ public:
     AstArray<AstGenericTypePack*> genericPacks;
     AstLocal* self;
     AstArray<AstLocal*> args;
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    std::optional<AstTypeList> returnAnnotation_DEPRECATED;
     AstTypePack* returnAnnotation = nullptr;
     bool vararg = false;
     Location varargLocation;
@@ -949,7 +929,6 @@ class AstStatDeclareFunction : public AstStat
 public:
     LUAU_RTTI(AstStatDeclareFunction)
 
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
     AstStatDeclareFunction(
         const Location& location,
         const AstName& name,
@@ -963,7 +942,6 @@ public:
         AstTypePack* retTypes
     );
 
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
     AstStatDeclareFunction(
         const Location& location,
         const AstArray<AstAttr*>& attributes,
@@ -977,36 +955,6 @@ public:
         const Location& varargLocation,
         AstTypePack* retTypes
     );
-
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstStatDeclareFunction(
-        const Location& location,
-        const AstName& name,
-        const Location& nameLocation,
-        const AstArray<AstGenericType*>& generics,
-        const AstArray<AstGenericTypePack*>& genericPacks,
-        const AstTypeList& params,
-        const AstArray<AstArgumentName>& paramNames,
-        bool vararg,
-        const Location& varargLocation,
-        const AstTypeList& retTypes
-    );
-
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstStatDeclareFunction(
-        const Location& location,
-        const AstArray<AstAttr*>& attributes,
-        const AstName& name,
-        const Location& nameLocation,
-        const AstArray<AstGenericType*>& generics,
-        const AstArray<AstGenericTypePack*>& genericPacks,
-        const AstTypeList& params,
-        const AstArray<AstArgumentName>& paramNames,
-        bool vararg,
-        const Location& varargLocation,
-        const AstTypeList& retTypes
-    );
-
 
     void visit(AstVisitor* visitor) override;
 
@@ -1023,8 +971,6 @@ public:
     bool vararg = false;
     Location varargLocation;
     AstTypePack* retTypes;
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstTypeList retTypes_DEPRECATED;
 };
 
 struct AstDeclaredExternTypeProperty
@@ -1167,27 +1113,6 @@ public:
         AstTypePack* returnTypes
     );
 
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstTypeFunction(
-        const Location& location,
-        const AstArray<AstGenericType*>& generics,
-        const AstArray<AstGenericTypePack*>& genericPacks,
-        const AstTypeList& argTypes,
-        const AstArray<std::optional<AstArgumentName>>& argNames,
-        const AstTypeList& returnTypes
-    );
-
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstTypeFunction(
-        const Location& location,
-        const AstArray<AstAttr*>& attributes,
-        const AstArray<AstGenericType*>& generics,
-        const AstArray<AstGenericTypePack*>& genericPacks,
-        const AstTypeList& argTypes,
-        const AstArray<std::optional<AstArgumentName>>& argNames,
-        const AstTypeList& returnTypes
-    );
-
     void visit(AstVisitor* visitor) override;
 
     bool isCheckedFunction() const;
@@ -1198,8 +1123,6 @@ public:
     AstArray<AstGenericTypePack*> genericPacks;
     AstTypeList argTypes;
     AstArray<std::optional<AstArgumentName>> argNames;
-    // Clip with FFlagLuauStoreReturnTypesAsPackOnAst
-    AstTypeList returnTypes_DEPRECATED;
     AstTypePack* returnTypes;
 };
 

@@ -14,7 +14,6 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAGVARIABLE(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAGVARIABLE(LuauDfgAllowUpdatesInLoops)
@@ -951,10 +950,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareFunction* d)
     visitGenerics(d->generics);
     visitGenericPacks(d->genericPacks);
     visitTypeList(d->params);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-        visitTypePack(d->retTypes);
-    else
-        visitTypeList(d->retTypes_DEPRECATED);
+    visitTypePack(d->retTypes);
 
     return ControlFlow::None;
 }
@@ -1169,16 +1165,8 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
     if (f->varargAnnotation)
         visitTypePack(f->varargAnnotation);
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        if (f->returnAnnotation)
-            visitTypePack(f->returnAnnotation);
-    }
-    else
-    {
-        if (f->returnAnnotation_DEPRECATED)
-            visitTypeList(*f->returnAnnotation_DEPRECATED);
-    }
+    if (f->returnAnnotation)
+        visitTypePack(f->returnAnnotation);
 
     // TODO: function body can be re-entrant, as in mutations that occurs at the end of the function can also be
     // visible to the beginning of the function, so statically speaking, the body of the function has an exit point
@@ -1420,10 +1408,7 @@ void DataFlowGraphBuilder::visitType(AstTypeFunction* f)
     visitGenerics(f->generics);
     visitGenericPacks(f->genericPacks);
     visitTypeList(f->argTypes);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-        visitTypePack(f->returnTypes);
-    else
-        visitTypeList(f->returnTypes_DEPRECATED);
+    visitTypePack(f->returnTypes);
 }
 
 void DataFlowGraphBuilder::visitType(AstTypeTypeof* t)

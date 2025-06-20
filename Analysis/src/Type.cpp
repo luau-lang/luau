@@ -30,6 +30,7 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -708,8 +709,11 @@ Property Property::create(std::optional<TypeId> read, std::optional<TypeId> writ
     }
 }
 
-TypeId Property::type() const
+TypeId Property::type_DEPRECATED() const
 {
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        LUAU_ASSERT(!FFlag::LuauSolverV2);
+
     LUAU_ASSERT(readTy);
     return *readTy;
 }
@@ -834,7 +838,7 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
         if (l->first != r->first)
             return false;
 
-        if (FFlag::LuauSolverV2 && FFlag::LuauSubtypingCheckFunctionGenericCounts)
+        if (FFlag::LuauSolverV2 && (FFlag::LuauSubtypingCheckFunctionGenericCounts || FFlag::LuauRemoveTypeCallsForReadWriteProps))
         {
             if (l->second.readTy && r->second.readTy)
             {
@@ -852,7 +856,7 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
             else if (l->second.writeTy || r->second.writeTy)
                 return false;
         }
-        else if (!areEqual(seen, *l->second.type(), *r->second.type()))
+        else if (!areEqual(seen, *l->second.type_DEPRECATED(), *r->second.type_DEPRECATED()))
             return false;
         ++l;
         ++r;
@@ -1082,7 +1086,18 @@ void persist(TypeId ty)
             LUAU_ASSERT(ttv->state != TableState::Free && ttv->state != TableState::Unsealed);
 
             for (const auto& [_name, prop] : ttv->props)
-                queue.push_back(prop.type());
+            {
+                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                {
+                    if (prop.readTy)
+                        queue.push_back(*prop.readTy);
+                    if (prop.writeTy)
+                        queue.push_back(*prop.writeTy);
+                }
+                else
+                    queue.push_back(prop.type_DEPRECATED());
+            }
+
 
             if (ttv->indexer)
             {
@@ -1093,7 +1108,17 @@ void persist(TypeId ty)
         else if (auto etv = get<ExternType>(t))
         {
             for (const auto& [_name, prop] : etv->props)
-                queue.push_back(prop.type());
+            {
+                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                {
+                    if (prop.readTy)
+                        queue.push_back(*prop.readTy);
+                    if (prop.writeTy)
+                        queue.push_back(*prop.writeTy);
+                }
+                else
+                    queue.push_back(prop.type_DEPRECATED());
+            }
         }
         else if (auto utv = get<UnionType>(t))
         {

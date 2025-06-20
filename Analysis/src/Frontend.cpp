@@ -2,8 +2,8 @@
 #include "Luau/Frontend.h"
 
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Clone.h"
 #include "Luau/Common.h"
+#include "Luau/Clone.h"
 #include "Luau/Config.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
@@ -18,8 +18,6 @@
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
-#include "Luau/ToString.h"
-#include "Luau/Transpiler.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
@@ -48,6 +46,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverTypecheckCatchTimeouts)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauTrackTypeAllocations)
+LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -397,6 +397,21 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
     , configResolver(configResolver)
     , options(options)
 {
+}
+
+void Frontend::setLuauSolverSelectionFromWorkspace(bool newSolverEnabled)
+{
+    useNewLuauSolver.store(newSolverEnabled);
+}
+
+bool Frontend::getLuauSolverSelection() const
+{
+    return useNewLuauSolver.load();
+}
+
+bool Frontend::getLuauSolverSelectionFlagged() const
+{
+    return FFlag::LuauUseWorkspacePropToChooseSolver ? getLuauSolverSelection() : FFlag::LuauSolverV2;
 }
 
 void Frontend::parse(const ModuleName& name)
@@ -983,6 +998,15 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         item.stats.timeCheck += duration;
         item.stats.filesStrict += 1;
 
+        if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
+        {
+            item.stats.typesAllocated += moduleForAutocomplete->internalTypes.types.size();
+            item.stats.typePacksAllocated += moduleForAutocomplete->internalTypes.typePacks.size();
+            item.stats.boolSingletonsMinted += moduleForAutocomplete->internalTypes.boolSingletonsMinted;
+            item.stats.strSingletonsMinted += moduleForAutocomplete->internalTypes.strSingletonsMinted;
+            item.stats.uniqueStrSingletonsMinted += moduleForAutocomplete->internalTypes.uniqueStrSingletonsMinted.size();
+        }
+
         if (item.options.customModuleCheck)
             item.options.customModuleCheck(sourceModule, *moduleForAutocomplete);
 
@@ -1002,6 +1026,15 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     item.stats.timeCheck += duration;
     item.stats.filesStrict += mode == Mode::Strict;
     item.stats.filesNonstrict += mode == Mode::Nonstrict;
+
+    if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
+    {
+        item.stats.typesAllocated += module->internalTypes.types.size();
+        item.stats.typePacksAllocated += module->internalTypes.typePacks.size();
+        item.stats.boolSingletonsMinted += module->internalTypes.boolSingletonsMinted;
+        item.stats.strSingletonsMinted += module->internalTypes.strSingletonsMinted;
+        item.stats.uniqueStrSingletonsMinted += module->internalTypes.uniqueStrSingletonsMinted.size();
+    }
 
     if (item.options.customModuleCheck)
         item.options.customModuleCheck(sourceModule, *module);
@@ -1124,6 +1157,16 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
 
     stats.filesStrict += item.stats.filesStrict;
     stats.filesNonstrict += item.stats.filesNonstrict;
+
+    if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
+    {
+        stats.typesAllocated += item.stats.typesAllocated;
+        stats.typePacksAllocated += item.stats.typePacksAllocated;
+
+        stats.boolSingletonsMinted += item.stats.boolSingletonsMinted;
+        stats.strSingletonsMinted += item.stats.strSingletonsMinted;
+        stats.uniqueStrSingletonsMinted += item.stats.uniqueStrSingletonsMinted;
+    }
 }
 
 void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
@@ -1393,6 +1436,8 @@ ModulePtr check(
     result->mode = mode;
     result->internalTypes.owningModule = result.get();
     result->interfaceTypes.owningModule = result.get();
+    if (FFlag::LuauTrackTypeAllocations)
+        result->internalTypes.collectSingletonStats = options.collectTypeAllocationStats;
     result->allocator = sourceModule.allocator;
     result->names = sourceModule.names;
     result->root = sourceModule.root;
