@@ -15,6 +15,7 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -441,6 +442,8 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
+
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -455,7 +458,10 @@ b(a)
 
     if (FFlag::LuauSolverV2)
     {
-        CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors.at(0)));
+        const std::string expected = "Type 'Vector2' could not be converted into '{ read X: unknown, read Y: string }'; \n"
+                                     "this is because accessing `Y` results in `number` in the former type and `string` in the latter type, "
+                                     "and `number` is not a subtype of `string`";
+        CHECK_EQ(expected, toString(result.errors.at(0)));
     }
     else
     {

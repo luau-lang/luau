@@ -14,7 +14,11 @@ LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauStringFormatImprovements)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauWriteOnlyPropertyMangling)
+LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
+LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1313,7 +1317,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
     REQUIRE(mathTy);
     TableType* ttv = getMutable<TableType>(mathTy);
     REQUIRE(ttv);
-    const FunctionType* ftv = get<FunctionType>(ttv->props["frexp"].type());
+    const FunctionType* ftv;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(ttv->props["frexp"].readTy);
+        ftv = get<FunctionType>(*ttv->props["frexp"].readTy);
+    }
+    else
+        ftv = get<FunctionType>(ttv->props["frexp"].type_DEPRECATED());
     REQUIRE(ftv);
     auto original = ftv->level;
 
@@ -1720,17 +1731,57 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "better_string_format_error_when_format_strin
 
 TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
 {
-    ScopedFastFlag _{FFlag::LuauWriteOnlyPropertyMangling, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEnableWriteOnlyProperties, true},
+        {FFlag::LuauWriteOnlyPropertyMangling, true},
+        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
+    };
 
-    // CLI-157307: This currently errors as we claim the literal is not a
-    // `{ write foo: number }`, which is wrong as every table literal is
-    // trivially a write-only table.
-    LUAU_REQUIRE_ERRORS(check(R"(
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function accept(t: { write foo: number })
         end
 
         accept({ foo = "lol", foo = true })
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_known_property_identity")
+{
+    // This will not result in a real refinement, as we refine `bnot`, a function, to be truthy
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        if bit32.bnot then
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_unknown_property")
+{
+    ScopedFastFlag _{FFlag::LuauTypeCheckerStricterIndexCheck, true};
+
+    CheckResult results = check(R"(
+        if bit32.scrambleEggs then
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<UnknownProperty>(results.errors[0]);
+    CHECK_EQ(err->key, "scrambleEggs");
+    CHECK_EQ(toString(err->table), "typeof(bit32)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_known_property_narrow")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local myutf8 = utf8
+        if myutf8.charpattern == "lol" then
+            local foobar = myutf8.charpattern
+            local _ = foobar
+        end
+    )"));
+    CHECK_EQ("\"lol\"", toString(requireTypeAtPosition(Position{4, 23})));
 }
 
 TEST_SUITE_END();

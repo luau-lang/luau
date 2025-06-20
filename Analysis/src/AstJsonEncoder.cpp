@@ -8,8 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
-
 namespace Luau
 {
 
@@ -433,16 +431,8 @@ struct AstJsonEncoder : public AstVisitor
                 if (node->self)
                     PROP(self);
                 PROP(args);
-                if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-                {
-                    if (node->returnAnnotation)
-                        PROP(returnAnnotation);
-                }
-                else
-                {
-                    if (node->returnAnnotation_DEPRECATED)
-                        write("returnAnnotation", node->returnAnnotation_DEPRECATED);
-                }
+                if (node->returnAnnotation)
+                    PROP(returnAnnotation);
                 PROP(vararg);
                 PROP(varargLocation);
                 if (node->varargAnnotation)
@@ -912,10 +902,7 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(paramNames);
                 PROP(vararg);
                 PROP(varargLocation);
-                if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-                    PROP(retTypes);
-                else
-                    write("retTypes", node->retTypes_DEPRECATED);
+                PROP(retTypes);
                 PROP(generics);
                 PROP(genericPacks);
             }
@@ -1061,10 +1048,7 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(genericPacks);
                 PROP(argTypes);
                 PROP(argNames);
-                if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-                    PROP(returnTypes);
-                else
-                    write("returnTypes", node->returnTypes_DEPRECATED);
+                PROP(returnTypes);
             }
         );
     }

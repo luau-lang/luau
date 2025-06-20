@@ -32,7 +32,6 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 
 LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
 
@@ -1773,7 +1772,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareExtern
         else
         {
             Luau::Property& prop = assignTo[propName];
-            TypeId currentTy = prop.type();
+            TypeId currentTy = prop.type_DEPRECATED();
 
             // We special-case this logic to keep the intersection flat; otherwise we
             // would create a ton of nested intersection types.
@@ -1834,8 +1833,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
     );
 
     TypePackId argPack = resolveTypePack(funScope, global.params);
-    TypePackId retPack =
-        FFlag::LuauStoreReturnTypesAsPackOnAst ? resolveTypePack(funScope, *global.retTypes) : resolveTypePack(funScope, global.retTypes_DEPRECATED);
+    TypePackId retPack = resolveTypePack(funScope, *global.retTypes);
 
     FunctionDefinition defn;
 
@@ -2096,7 +2094,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
     if (TableType* tableType = getMutableTableType(type))
     {
         if (auto it = tableType->props.find(name); it != tableType->props.end())
-            return it->second.type();
+            return it->second.type_DEPRECATED();
         else if (auto indexer = tableType->indexer)
         {
             // TODO: Property lookup should work with string singletons or unions thereof as the indexer key type.
@@ -2124,7 +2122,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
     {
         const Property* prop = lookupExternTypeProp(cls, name);
         if (prop)
-            return prop->type();
+            return prop->type_DEPRECATED();
 
         if (auto indexer = cls->indexer)
         {
@@ -2332,9 +2330,9 @@ TypeId TypeChecker::checkExprTable(
                     if (it != expectedTable->props.end())
                     {
                         Property expectedProp = it->second;
-                        ErrorVec errors = tryUnify(exprType, expectedProp.type(), scope, k->location);
+                        ErrorVec errors = tryUnify(exprType, expectedProp.type_DEPRECATED(), scope, k->location);
                         if (errors.empty())
-                            exprType = expectedProp.type();
+                            exprType = expectedProp.type_DEPRECATED();
                     }
                     else if (expectedTable->indexer && maybeString(expectedTable->indexer->indexType))
                     {
@@ -2428,7 +2426,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 if (expectedTable)
                 {
                     if (auto prop = expectedTable->props.find(key->value.data); prop != expectedTable->props.end())
-                        expectedResultType = prop->second.type();
+                        expectedResultType = prop->second.type_DEPRECATED();
                     else if (expectedIndexType && maybeString(*expectedIndexType))
                         expectedResultType = expectedIndexResultType;
                 }
@@ -2440,7 +2438,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                         if (const TableType* ttv = get<TableType>(follow(expectedOption)))
                         {
                             if (auto prop = ttv->props.find(key->value.data); prop != ttv->props.end())
-                                expectedResultTypes.push_back(prop->second.type());
+                                expectedResultTypes.push_back(prop->second.type_DEPRECATED());
                             else if (ttv->indexer && maybeString(ttv->indexer->indexType))
                                 expectedResultTypes.push_back(ttv->indexer->indexResultType);
                         }
@@ -3408,7 +3406,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         const auto& it = lhsTable->props.find(name);
         if (it != lhsTable->props.end())
         {
-            return it->second.type();
+            return it->second.type_DEPRECATED();
         }
         else if ((ctx == ValueContext::LValue && lhsTable->state == TableState::Unsealed) || lhsTable->state == TableState::Free)
         {
@@ -3449,7 +3447,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
     {
         if (const Property* prop = lookupExternTypeProp(lhsExternType, name))
         {
-            return prop->type();
+            return prop->type_DEPRECATED();
         }
 
         if (auto indexer = lhsExternType->indexer)
@@ -3508,7 +3506,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         {
             if (const Property* prop = lookupExternTypeProp(exprExternType, value->value.data))
             {
-                return prop->type();
+                return prop->type_DEPRECATED();
             }
 
             if (auto indexer = exprExternType->indexer)
@@ -3618,7 +3616,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
                 const auto& it = table->props.find(value->value.data);
                 if (it != table->props.end())
                 {
-                    propTypes.insert(it->second.type());
+                    propTypes.insert(it->second.type_DEPRECATED());
                 }
                 else if ((ctx == ValueContext::LValue && table->state == TableState::Unsealed) || table->state == TableState::Free)
                 {
@@ -3759,12 +3757,12 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
         Name name = indexName->index.value;
 
         if (ttv->props.count(name))
-            return ttv->props[name].type();
+            return ttv->props[name].type_DEPRECATED();
 
         Property& property = ttv->props[name];
         property.setType(freshTy());
         property.location = indexName->indexLocation;
-        return property.type();
+        return property.type_DEPRECATED();
     }
     else if (funName.is<AstExprError>())
         return errorRecoveryType(scope);
@@ -3831,10 +3829,8 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
     auto [generics, genericPacks] = createGenericTypes(funScope, std::nullopt, expr, expr.generics, expr.genericPacks);
 
     TypePackId retPack;
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst && expr.returnAnnotation)
+    if (expr.returnAnnotation)
         retPack = resolveTypePack(funScope, *expr.returnAnnotation);
-    else if (!FFlag::LuauStoreReturnTypesAsPackOnAst && expr.returnAnnotation_DEPRECATED)
-        retPack = resolveTypePack(funScope, *expr.returnAnnotation_DEPRECATED);
     else if (isNonstrictMode())
         retPack = anyTypePack;
     else if (expectedFunctionType && expectedFunctionType->generics.empty() && expectedFunctionType->genericPacks.empty())
@@ -4041,8 +4037,7 @@ void TypeChecker::checkFunctionBody(const ScopePtr& scope, TypeId ty, const AstE
             // If we're in nonstrict mode we want to only report this missing return
             // statement if there are type annotations on the function. In strict mode
             // we report it regardless.
-            if (!isNonstrictMode() ||
-                (FFlag::LuauStoreReturnTypesAsPackOnAst ? function.returnAnnotation != nullptr : function.returnAnnotation_DEPRECATED.has_value()))
+            if (!isNonstrictMode() || function.returnAnnotation != nullptr)
             {
                 reportError(getEndLocation(function), FunctionExitsWithoutReturning{funTy->retTypes});
             }
@@ -5785,8 +5780,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         auto [generics, genericPacks] = createGenericTypes(funcScope, std::nullopt, annotation, func->generics, func->genericPacks);
 
         TypePackId argTypes = resolveTypePack(funcScope, func->argTypes);
-        TypePackId retTypes = FFlag::LuauStoreReturnTypesAsPackOnAst ? resolveTypePack(funcScope, *func->returnTypes)
-                                                                     : resolveTypePack(funcScope, func->returnTypes_DEPRECATED);
+        TypePackId retTypes = resolveTypePack(funcScope, *func->returnTypes);
 
         std::vector<TypeId> genericTys;
         genericTys.reserve(generics.size());

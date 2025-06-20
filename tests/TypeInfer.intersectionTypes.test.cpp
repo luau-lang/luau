@@ -10,8 +10,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNarrowIntersectionNevers)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1458,8 +1458,10 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag narrowIntersections{FFlag::LuauNarrowIntersectionNevers, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineTablesWithReadType, true},
+    };
 
     loadDefinition(R"(
         declare class Player
@@ -1474,7 +1476,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
         end
     )"));
 
-    CHECK_EQ("Player & { Character: ~(false?) }", toString(requireTypeAtPosition({3, 23})));
+    CHECK_EQ("Player & { read Character: ~(false?) }", toString(requireTypeAtPosition({3, 23})));
 }
 
 TEST_SUITE_END();

@@ -177,7 +177,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
     REQUIRE(ttv != nullptr);
 
     REQUIRE(ttv->props.count("foo"));
-    TypeId fooProp = ttv->props["foo"].type();
+    TypeId fooProp = ttv->props["foo"].type_DEPRECATED();
     REQUIRE(fooProp != nullptr);
 
     CHECK_EQ(*fooProp, *getBuiltins()->anyType);
@@ -200,9 +200,9 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     TableType* ttv = getMutable<TableType>(requireType("T"));
     REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
 
-    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type());
-    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type());
-    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type())), "Should be a function: " << *ttv->props["three"].type());
+    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type_DEPRECATED());
+    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type_DEPRECATED());
+    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED());
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")

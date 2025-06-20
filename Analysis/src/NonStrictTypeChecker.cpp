@@ -23,7 +23,6 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictVisitTypes2)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
 
 namespace Luau
@@ -773,13 +772,7 @@ struct NonStrictTypeChecker
         {
             visitGenerics(exprFn->generics, exprFn->genericPacks);
 
-            if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-                visit(exprFn->returnAnnotation);
-            else
-            {
-                if (exprFn->returnAnnotation_DEPRECATED)
-                    visit(*exprFn->returnAnnotation_DEPRECATED);
-            }
+            visit(exprFn->returnAnnotation);
 
             if (exprFn->varargAnnotation)
                 visit(exprFn->varargAnnotation);

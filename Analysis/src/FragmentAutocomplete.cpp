@@ -34,7 +34,6 @@ LUAU_FASTFLAGVARIABLE(LuauBetterScopeSelection)
 LUAU_FASTFLAGVARIABLE(LuauBlockDiffFragmentSelection)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAcMemoryLeak)
 LUAU_FASTFLAGVARIABLE(LuauGlobalVariableModuleIsolation)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteIfRecommendations)
 LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPopulateRefinedTypesInFragmentFromOldSolver)
@@ -51,16 +50,9 @@ Location getFunctionDeclarationExtents(AstExprFunction* exprFn, AstExpr* exprNam
 {
     auto fnBegin = exprFn->location.begin;
     auto fnEnd = exprFn->location.end;
-    if (auto returnAnnot = exprFn->returnAnnotation; FFlag::LuauStoreReturnTypesAsPackOnAst && returnAnnot)
+    if (auto returnAnnot = exprFn->returnAnnotation)
     {
         fnEnd = returnAnnot->location.end;
-    }
-    else if (auto returnAnnot = exprFn->returnAnnotation_DEPRECATED; !FFlag::LuauStoreReturnTypesAsPackOnAst && returnAnnot)
-    {
-        if (returnAnnot->tailType)
-            fnEnd = returnAnnot->tailType->location.end;
-        else if (returnAnnot->types.size != 0)
-            fnEnd = returnAnnot->types.data[returnAnnot->types.size - 1]->location.end;
     }
     else if (exprFn->args.size != 0)
     {
@@ -581,7 +573,7 @@ struct UsageFinder : public AstVisitor
 
     bool visit(AstTypePack* node) override
     {
-        return FFlag::LuauStoreReturnTypesAsPackOnAst;
+        return true;
     }
 
     bool visit(AstStatTypeAlias* alias) override

@@ -20,6 +20,7 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
 
 static std::string wrongNumberOfArgsString(
@@ -418,7 +419,12 @@ struct ErrorConverter
 
         auto it = mtt->props.find("__call");
         if (it != mtt->props.end())
-            return it->second.type();
+        {
+            if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                return it->second.readTy;
+            else
+                return it->second.type_DEPRECATED();
+        }
         else
             return std::nullopt;
     }

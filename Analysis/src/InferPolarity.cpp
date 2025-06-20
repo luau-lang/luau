@@ -6,6 +6,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauInferPolarityOfReadWriteProperties)
 
 namespace Luau
@@ -49,7 +50,7 @@ struct InferPolarity : TypeVisitor
             return false;
 
         const Polarity p = polarity;
-        if (FFlag::LuauInferPolarityOfReadWriteProperties)
+        if (FFlag::LuauInferPolarityOfReadWriteProperties || FFlag::LuauRemoveTypeCallsForReadWriteProps)
         {
             for (const auto& [name, prop] : tt.props)
             {
@@ -80,7 +81,7 @@ struct InferPolarity : TypeVisitor
                 if (prop.isShared())
                 {
                     polarity = Polarity::Mixed;
-                    traverse(prop.type());
+                    traverse(prop.type_DEPRECATED());
                 }
                 else if (prop.isReadOnly())
                 {

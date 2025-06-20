@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -170,10 +171,23 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
     REQUIRE(!result.success);
     CHECK_EQ(result.parseResult.errors.size(), 0);
     REQUIRE(bool(result.module));
-    REQUIRE_EQ(result.module->errors.size(), 1);
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        REQUIRE_EQ(result.module->errors.size(), 2);
+    else
+        REQUIRE_EQ(result.module->errors.size(), 1);
     GenericError* ge = get<GenericError>(result.module->errors[0]);
     REQUIRE(ge);
-    CHECK_EQ("Cannot overload non-function class member 'X'", ge->message);
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        CHECK_EQ("Cannot overload read type of non-function class member 'X'", ge->message);
+    else
+        CHECK_EQ("Cannot overload non-function class member 'X'", ge->message);
+
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        GenericError* ge2 = get<GenericError>(result.module->errors[1]);
+        REQUIRE(ge2);
+        CHECK_EQ("Cannot overload write type of non-function class member 'X'", ge2->message);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
@@ -366,7 +380,14 @@ TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_re
     const auto& method = cls->props["myMethod"];
     CHECK_EQ(method.documentationSymbol, "@test/globaltype/MyClass.myMethod");
 
-    FunctionType* function = getMutable<FunctionType>(method.type());
+    FunctionType* function;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(method.readTy);
+        function = getMutable<FunctionType>(*method.readTy);
+    }
+    else
+        function = getMutable<FunctionType>(method.type_DEPRECATED());
     REQUIRE(function);
 
     REQUIRE(function->definition.has_value());

@@ -31,6 +31,11 @@ LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauDisablePrimitiveInferenceInLargeTables)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauAutocompleteMissingFollows)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAG(LuauRelateTablesAreNeverDisjoint)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
+LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
+LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -80,15 +85,33 @@ TEST_CASE_FIXTURE(Fixture, "basic")
 
     std::optional<Property> fooProp = get(tType->props, "foo");
     REQUIRE(bool(fooProp));
-    CHECK_EQ(PrimitiveType::String, getPrimitiveType(fooProp->type()));
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(fooProp->readTy);
+        CHECK_EQ(PrimitiveType::String, getPrimitiveType(*fooProp->readTy));
+    }
+    else
+        CHECK_EQ(PrimitiveType::String, getPrimitiveType(fooProp->type_DEPRECATED()));
 
     std::optional<Property> bazProp = get(tType->props, "baz");
     REQUIRE(bool(bazProp));
-    CHECK_EQ(PrimitiveType::Number, getPrimitiveType(bazProp->type()));
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(bazProp->readTy);
+        CHECK_EQ(PrimitiveType::Number, getPrimitiveType(*bazProp->readTy));
+    }
+    else
+        CHECK_EQ(PrimitiveType::Number, getPrimitiveType(bazProp->type_DEPRECATED()));
 
     std::optional<Property> quuxProp = get(tType->props, "quux");
     REQUIRE(bool(quuxProp));
-    CHECK_EQ(PrimitiveType::NilType, getPrimitiveType(quuxProp->type()));
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(quuxProp->readTy);
+        CHECK_EQ(PrimitiveType::NilType, getPrimitiveType(*quuxProp->readTy));
+    }
+    else
+        CHECK_EQ(PrimitiveType::NilType, getPrimitiveType(quuxProp->type_DEPRECATED()));
 }
 
 TEST_CASE_FIXTURE(Fixture, "augment_table")
@@ -117,7 +140,16 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
     REQUIRE(tType != nullptr);
 
     REQUIRE(tType->props.find("p") != tType->props.end());
-    const TableType* pType = get<TableType>(tType->props["p"].type());
+
+    const TableType* pType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        Property& p = tType->props["p"];
+        REQUIRE(p.readTy);
+        pType = get<TableType>(p.readTy);
+    }
+    else
+        pType = get<TableType>(tType->props["p"].type_DEPRECATED());
     REQUIRE(pType != nullptr);
 
     CHECK("{ p: { foo: string } }" == toString(requireType("t"), {true}));
@@ -261,7 +293,14 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function")
     std::optional<Property> fooProp = get(tableType->props, "foo");
     REQUIRE(bool(fooProp));
 
-    const FunctionType* methodType = get<FunctionType>(follow(fooProp->type()));
+    const FunctionType* methodType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(fooProp->readTy);
+        methodType = get<FunctionType>(follow(fooProp->readTy));
+    }
+    else
+        methodType = get<FunctionType>(follow(fooProp->type_DEPRECATED()));
     REQUIRE(methodType != nullptr);
 }
 
@@ -275,7 +314,15 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function_2")
 
     std::optional<Property> uProp = get(tableType->props, "U");
     REQUIRE(bool(uProp));
-    TypeId uType = uProp->type();
+
+    TypeId uType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(uProp->readTy);
+        uType = *uProp->readTy;
+    }
+    else
+        uType = uProp->type_DEPRECATED();
 
     const TableType* uTable = get<TableType>(uType);
     REQUIRE(uTable != nullptr);
@@ -283,7 +330,14 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function_2")
     std::optional<Property> fooProp = get(uTable->props, "foo");
     REQUIRE(bool(fooProp));
 
-    const FunctionType* methodType = get<FunctionType>(follow(fooProp->type()));
+    const FunctionType* methodType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(fooProp->readTy);
+        methodType = get<FunctionType>(follow(fooProp->readTy));
+    }
+    else
+        methodType = get<FunctionType>(follow(fooProp->type_DEPRECATED()));
     REQUIRE(methodType != nullptr);
 
     std::vector<TypeId> methodArgs = flatten(methodType->argTypes).first;
@@ -477,6 +531,8 @@ TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_param_width_subtyping_2")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
+
     CheckResult result = check(R"(
         --!strict
         function foo(o)
@@ -489,23 +545,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_param_width_subtyping_2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    // CLI 114792 We don't report MissingProperties in many places where the old solver does
-    if (FFlag::LuauSolverV2)
-    {
-        TypeMismatch* error = get<TypeMismatch>(result.errors[0]);
-        REQUIRE_MESSAGE(error != nullptr, "Expected TypeMismatch but got " << toString(result.errors[0]));
+    MissingProperties* error = get<MissingProperties>(result.errors[0]);
+    REQUIRE_MESSAGE(error != nullptr, "Expected MissingProperties but got " << toString(result.errors[0]));
+    REQUIRE(error->properties.size() == 1);
 
-        CHECK("{ read bar: string }" == toString(error->givenType));
-        CHECK("{ read bar: string, read baz: string }" == toString(error->wantedType));
-    }
-    else
-    {
-        MissingProperties* error = get<MissingProperties>(result.errors[0]);
-        REQUIRE_MESSAGE(error != nullptr, "Expected MissingProperties but got " << toString(result.errors[0]));
-        REQUIRE(error->properties.size() == 1);
-
-        CHECK_EQ("baz", error->properties[0]);
-    }
+    CHECK_EQ("baz", error->properties[0]);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_3")
@@ -1063,7 +1107,16 @@ TEST_CASE_FIXTURE(Fixture, "assigning_to_an_unsealed_table_with_string_literal_s
     REQUIRE(tableType->indexer == std::nullopt);
     REQUIRE(0 != tableType->props.count("a"));
 
-    TypeId propertyA = tableType->props["a"].type();
+
+    TypeId propertyA;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        Property& a = tableType->props["a"];
+        REQUIRE(a.readTy);
+        propertyA = *a.readTy;
+    }
+    else
+        propertyA = tableType->props["a"].type_DEPRECATED();
     REQUIRE(propertyA != nullptr);
     CHECK_EQ(*getBuiltins()->stringType, *propertyA);
 }
@@ -2298,8 +2351,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
     REQUIRE_MESSAGE(ttv, "Expected a table but got " << toString(ty, {true}));
     REQUIRE(ttv->props.count("new"));
     Property& prop = ttv->props["new"];
-    REQUIRE(prop.type());
-    const FunctionType* ftv = get<FunctionType>(follow(prop.type()));
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        REQUIRE(prop.readTy);
+    else
+        REQUIRE(prop.type_DEPRECATED());
+    const FunctionType* ftv =
+        (FFlag::LuauRemoveTypeCallsForReadWriteProps) ? get<FunctionType>(follow(*prop.readTy)) : get<FunctionType>(follow(prop.type_DEPRECATED()));
     REQUIRE(ftv);
     const TypePack* res = get<TypePack>(follow(ftv->retTypes));
     REQUIRE(res);
@@ -3156,7 +3213,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
     REQUIRE(counterType);
 
     REQUIRE(counterType->props.count("new"));
-    const FunctionType* newType = get<FunctionType>(follow(counterType->props["new"].type()));
+    const FunctionType* newType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        Property& newProp = counterType->props["new"];
+        REQUIRE(newProp.readTy);
+        newType = get<FunctionType>(follow(*newProp.readTy));
+    }
+    else
+        newType = get<FunctionType>(follow(counterType->props["new"].type_DEPRECATED()));
     REQUIRE(newType);
 
     std::optional<TypeId> newRetType = *first(newType->retTypes);
@@ -3517,6 +3582,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_invalidate_the_properties_iterator_of_free_tabl
 
 TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 {
+    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
+
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t.x and t or 5
@@ -3527,7 +3594,7 @@ TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
     if (FFlag::LuauSolverV2)
     {
         CHECK_EQ("Value of type '{ x: number? }?' could be nil", toString(result.errors[0]));
-        CHECK_EQ("number | { x: number }", toString(requireType("u")));
+        CHECK_EQ("number | { read x: number, write x: number? }", toString(requireType("u")));
     }
     else
     {
@@ -3896,6 +3963,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 {
     ScopedFastFlag sff[]{
         {FFlag::LuauInstantiateInSubtyping, true},
+        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
     };
 
     CheckResult result = check(R"(
@@ -3915,12 +3983,12 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
     if (FFlag::LuauSolverV2)
     {
-        // FIXME.  We really should be reporting just one error in this case.  CLI-114509
-        LUAU_REQUIRE_ERROR_COUNT(3, result);
-
-        CHECK(get<TypePackMismatch>(result.errors[0]));
-        CHECK(get<TypeMismatch>(result.errors[1]));
-        CHECK(get<TypeMismatch>(result.errors[2]));
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        auto err = get<TypeMismatch>(result.errors[0]);
+        CHECK_EQ(result.errors[0].location, Location{{10, 10}, {10, 11}});
+        REQUIRE(err);
+        CHECK_EQ("{ m: (number) -> number }", toString(err->wantedType));
+        CHECK_EQ("{ m: <T>(T) -> T }", toString(err->givenType, {true}));
     }
     else
     {
@@ -4457,6 +4525,8 @@ TEST_CASE_FIXTURE(Fixture, "new_solver_supports_read_write_properties")
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
+
     CheckResult result = check(R"(
         function one(tbl: {x: any}) end
         function two(tbl: {x: string}) one(tbl) end -- ok, string <: any and any <: string
@@ -4476,8 +4546,8 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
     // honestly not sure which of these is a better developer experience.
     if (FFlag::LuauSolverV2)
     {
-        CHECK_EQ(*tm->wantedType, *getBuiltins()->stringType);
-        CHECK_EQ(*tm->givenType, *getBuiltins()->numberType);
+        CHECK_EQ("{ x: any, y: string }", toString(tm->wantedType));
+        CHECK_EQ("{ x: string, y: number }", toString(tm->givenType));
     }
     else
     {
@@ -5583,7 +5653,7 @@ TEST_CASE_FIXTURE(Fixture, "unsafe_bidirectional_mutation")
 {
     // It's kind of suspect that we allow multiple definitions of keys in
     // a single table.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         type F = {
             _G: () -> ()
         }
@@ -5595,7 +5665,9 @@ TEST_CASE_FIXTURE(Fixture, "unsafe_bidirectional_mutation")
             _G = {},
             _G = _,
         })
-    )"));
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_in_indexer_with_compound_assign")
@@ -5643,6 +5715,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_match_literal_type_crash_again")
             }
         )
     )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -5845,6 +5918,169 @@ TEST_CASE_FIXTURE(Fixture, "oss_1859")
     REQUIRE(err);
     CHECK_EQ("Cat", toString(err->wantedType));
     CHECK_EQ("{ actions: { meow: (...any) -> string }, age: number, name: string }", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1797_intersection_of_tables_arent_disjoint")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRelateTablesAreNeverDisjoint, true},
+        {FFlag::LuauRefineTablesWithReadType, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        export type Foo = {
+            foo: string,
+        }
+
+        export type Bar = Foo & {
+            copy: (...any) -> any
+        }
+
+        local function _test(nd: { bar: Bar? })
+            local bar = nd.bar
+            if not bar then
+                return
+            end
+            print(bar)
+        end
+    )"));
+
+    // This might be better as the expanded intersection, but the point of
+    // this test is that this _isn't_ `never`.
+    CHECK_EQ("Foo & { copy: (...any) -> any }", toString(requireTypeAtPosition({16, 20})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1344")
+{
+    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type t = {
+        	value: string?,
+        }
+
+        local t: t = {}
+
+        if not t.value then
+        	t.value = ""
+        end
+
+        local s: string? = nil
+
+        if not s then
+        	s = ""
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1651")
+{
+    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local MyModule = {}
+        MyModule._isEnabled = true :: boolean
+
+        assert(MyModule._isEnabled, `type solver`)
+        MyModule._isEnabled = false
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function take(_: { foo: string? }) end
+
+        take({ foo = "bar" })
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call_incorrect")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
+    };
+
+    CheckResult results = check(R"(
+        local function take(_: { foo: string?, bing: number }) end
+
+        take({ foo = "bar", bing = true })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+
+    auto err = get<TypeMismatch>(results.errors[0]);
+    CHECK_EQ(results.errors[0].location, Location{{3, 35}, {3, 39}});
+    CHECK_EQ(toString(err->givenType), "boolean");
+    CHECK_EQ(toString(err->wantedType), "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call_singleton")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
+    };
+
+    CheckResult results = check(R"(
+        local function take(_: { foo: "foo" }) end
+
+        take({ foo = "foo" })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
+        {FFlag::LuauEagerGeneralization4, true},
+    };
+
+    CheckResult results = check(R"(
+        local keycodes = {
+            Alt = 2,
+            Space = 3,
+            Tab = 4,
+        }
+
+        type Keycode = keyof<typeof(keycodes)>
+        local function sendInput(keycodes: { Keycode })
+            print(keycodes)
+        end
+
+        sendInput({"Alt"}) -- shouldn't error
+        sendInput(
+            {
+                "Alt",
+                "Space",
+                "Ctrl", -- should error
+            }
+        )
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    // NOTE: Single line with just `"Ctrl"`
+    CHECK_EQ(results.errors[0].location, Location{{17, 16}, {17, 22}});
+    CHECK_EQ(R"("Alt" | "Space" | "Tab")", toString(err->wantedType));
+    // FIXME: CLI-157899
+    CHECK_EQ(R"("Alt" | "Ctrl" | "Space" | "Tab")", toString(err->givenType));
 }
 
 TEST_SUITE_END();

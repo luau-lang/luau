@@ -14,6 +14,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionTypeFunctionArgs)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -75,7 +76,17 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
         {
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
-                return fit->second.type();
+            {
+                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                {
+                    if (fit->second.readTy)
+                        return fit->second.readTy;
+                    else
+                        return fit->second.writeTy;
+                }
+                else
+                    return fit->second.type_DEPRECATED();
+            }
         }
         else if (const auto& itf = get<FunctionType>(index))
         {
@@ -124,7 +135,17 @@ std::optional<TypeId> findMetatableEntry(
 
     auto it = mtt->props.find(entry);
     if (it != mtt->props.end())
-        return it->second.type();
+    {
+        if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+        {
+            if (it->second.readTy)
+                return it->second.readTy;
+            else
+                return it->second.writeTy;
+        }
+        else
+            return it->second.type_DEPRECATED();
+    }
     else
         return std::nullopt;
 }
@@ -168,7 +189,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
                 }
             }
             else
-                return it->second.type();
+                return it->second.type_DEPRECATED();
         }
     }
 
@@ -187,7 +208,20 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         {
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
-                return fit->second.type();
+            {
+                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                {
+                    switch (context)
+                    {
+                    case ValueContext::RValue:
+                        return fit->second.readTy;
+                    case ValueContext::LValue:
+                        return fit->second.writeTy;
+                    }
+                }
+                else
+                    return fit->second.type_DEPRECATED();
+            }
         }
         else if (const auto& itf = get<FunctionType>(index))
         {
@@ -701,6 +735,34 @@ AstExpr* unwrapGroup(AstExpr* expr)
         expr = group->expr;
 
     return expr;
+}
+
+bool isApproximatelyFalsyType(TypeId ty)
+{
+    ty = follow(ty);
+    bool seenNil = false;
+    bool seenFalse = false;
+    if (auto ut = get<UnionType>(ty))
+    {
+        for (auto option : ut)
+        {
+            if (auto pt = get<PrimitiveType>(option); pt && pt->type == PrimitiveType::NilType)
+                seenNil = true;
+            else if (auto st = get<SingletonType>(option); st && st->variant == BooleanSingleton{false})
+                seenFalse = true;
+            else
+                return false;
+        }
+    }
+    return seenFalse && seenNil;
+}
+
+bool isApproximatelyTruthyType(TypeId ty)
+{
+    ty = follow(ty);
+    if (auto nt = get<NegationType>(ty))
+        return isApproximatelyFalsyType(nt->ty);
+    return false;
 }
 
 

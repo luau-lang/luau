@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAG(LuauFollowTypeAlias)
 LUAU_FASTFLAG(LuauFollowExistingTypeFunction)
+LUAU_FASTFLAG(LuauTypeFunctionSerializeFollowMetatable)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2464,6 +2465,20 @@ else
     export type t110 = ""type--"
     function _<t32...,t0...,t0...,t0...>(...):(any)&(any)
     end
+end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "udtf_metatable_serialization_follows")
+{
+    ScopedFastFlag luauTypeFunctionSerializeFollowMetatable{FFlag::LuauTypeFunctionSerializeFollowMetatable, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+_ = setmetatable(_(),_),(_) or _ == _ or f
+while _() do
+export type function t0<O,I>(l0,l0)
+end
+type t39<A> = t0<{write [Vector3]:any},typeof(_),l0.t0,any>
 end
     )"));
 }

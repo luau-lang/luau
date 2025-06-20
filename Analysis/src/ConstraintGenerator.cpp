@@ -36,7 +36,6 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAGVARIABLE(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
@@ -49,8 +48,10 @@ LUAU_FASTFLAGVARIABLE(LuauDisablePrimitiveInferenceInLargeTables)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAGVARIABLE(LuauSkipLvalueForCompoundAssignment)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauFollowTypeAlias)
 LUAU_FASTFLAGVARIABLE(LuauFollowExistingTypeFunction)
+LUAU_FASTFLAGVARIABLE(LuauRefineTablesWithReadType)
 
 namespace Luau
 {
@@ -206,8 +207,8 @@ ConstraintGenerator::ConstraintGenerator(
     NotNull<ModuleResolver> moduleResolver,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> ice,
-    const ScopePtr& globalScope,
-    const ScopePtr& typeFunctionScope,
+    ScopePtr globalScope,
+    ScopePtr typeFunctionScope,
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
     DcrLogger* logger,
     NotNull<DataFlowGraph> dfg,
@@ -223,8 +224,8 @@ ConstraintGenerator::ConstraintGenerator(
     , typeFunctionRuntime(typeFunctionRuntime)
     , moduleResolver(moduleResolver)
     , ice(ice)
-    , globalScope(globalScope)
-    , typeFunctionScope(typeFunctionScope)
+    , globalScope(std::move(globalScope))
+    , typeFunctionScope(std::move(typeFunctionScope))
     , prepareModuleScope(std::move(prepareModuleScope))
     , requireCycles(std::move(requireCycles))
     , logger(logger)
@@ -607,11 +608,18 @@ void ConstraintGenerator::computeRefinement(
 
             TypeId nextDiscriminantTy = arena->addType(TableType{});
             NotNull<TableType> table{getMutable<TableType>(nextDiscriminantTy)};
-            // When we fully support read-write properties (i.e. when we allow properties with
-            // completely disparate read and write types), then the following property can be
-            // set to read-only since refinements only tell us about what we read. This cannot
-            // be allowed yet though because it causes read and write types to diverge.
-            table->props[*key->propName] = Property::rw(discriminantTy);
+            if (FFlag::LuauRefineTablesWithReadType)
+            {
+                table->props[*key->propName] = Property::readonly(discriminantTy);
+            }
+            else
+            {
+                // When we fully support read-write properties (i.e. when we allow properties with
+                // completely disparate read and write types), then the following property can be
+                // set to read-only since refinements only tell us about what we read. This cannot
+                // be allowed yet though because it causes read and write types to diverge.
+                table->props[*key->propName] = Property::rw(discriminantTy);
+            }
             table->scope = scope.get();
             table->state = TableState::Sealed;
 
@@ -1998,29 +2006,91 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         else
         {
             Luau::Property& prop = props[propName];
-            TypeId currentTy = prop.type();
 
-            // We special-case this logic to keep the intersection flat; otherwise we
-            // would create a ton of nested intersection types.
-            if (const IntersectionType* itv = get<IntersectionType>(currentTy))
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
             {
-                std::vector<TypeId> options = itv->parts;
-                options.push_back(propTy);
-                TypeId newItv = arena->addType(IntersectionType{std::move(options)});
+                if (auto readTy = prop.readTy)
+                {
+                    // We special-case this logic to keep the intersection flat; otherwise we
+                    // would create a ton of nested intersection types.
+                    if (const IntersectionType* itv = get<IntersectionType>(*readTy))
+                    {
+                        std::vector<TypeId> options = itv->parts;
+                        options.push_back(propTy);
+                        TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
-                prop.readTy = newItv;
-                prop.writeTy = newItv;
-            }
-            else if (get<FunctionType>(currentTy))
-            {
-                TypeId intersection = arena->addType(IntersectionType{{currentTy, propTy}});
+                        prop.readTy = newItv;
+                    }
+                    else if (get<FunctionType>(*readTy))
+                    {
+                        TypeId intersection = arena->addType(IntersectionType{{*readTy, propTy}});
 
-                prop.readTy = intersection;
-                prop.writeTy = intersection;
+                        prop.readTy = intersection;
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload read type of non-function class member '%s'", propName.c_str())}
+                        );
+                    }
+                }
+
+                if (auto writeTy = prop.writeTy)
+                {
+                    // We special-case this logic to keep the intersection flat; otherwise we
+                    // would create a ton of nested intersection types.
+                    if (const IntersectionType* itv = get<IntersectionType>(*writeTy))
+                    {
+                        std::vector<TypeId> options = itv->parts;
+                        options.push_back(propTy);
+                        TypeId newItv = arena->addType(IntersectionType{std::move(options)});
+
+                        prop.writeTy = newItv;
+                    }
+                    else if (get<FunctionType>(*writeTy))
+                    {
+                        TypeId intersection = arena->addType(IntersectionType{{*writeTy, propTy}});
+
+                        prop.writeTy = intersection;
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload write type of non-function class member '%s'", propName.c_str())}
+                        );
+                    }
+                }
             }
             else
             {
-                reportError(declaredExternType->location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                TypeId currentTy = prop.type_DEPRECATED();
+
+                // We special-case this logic to keep the intersection flat; otherwise we
+                // would create a ton of nested intersection types.
+                if (const IntersectionType* itv = get<IntersectionType>(currentTy))
+                {
+                    std::vector<TypeId> options = itv->parts;
+                    options.push_back(propTy);
+                    TypeId newItv = arena->addType(IntersectionType{std::move(options)});
+
+                    prop.readTy = newItv;
+                    prop.writeTy = newItv;
+                }
+                else if (get<FunctionType>(currentTy))
+                {
+                    TypeId intersection = arena->addType(IntersectionType{{currentTy, propTy}});
+
+                    prop.readTy = intersection;
+                    prop.writeTy = intersection;
+                }
+                else
+                {
+                    reportError(
+                        declaredExternType->location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())}
+                    );
+                }
             }
         }
     }
@@ -2052,8 +2122,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
         funScope = childScope(global, scope);
 
     TypePackId paramPack = resolveTypePack(funScope, global->params, /* inTypeArguments */ false);
-    TypePackId retPack = FFlag::LuauStoreReturnTypesAsPackOnAst ? resolveTypePack(funScope, global->retTypes, /* inTypeArguments */ false)
-                                                                : resolveTypePack(funScope, global->retTypes_DEPRECATED, /* inTypeArguments */ false);
+    TypePackId retPack = resolveTypePack(funScope, global->retTypes, /* inTypeArguments */ false);
 
     FunctionDefinition defn;
 
@@ -3538,20 +3607,10 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 
     // If there is both an annotation and an expected type, the annotation wins.
     // Type checking will sort out any discrepancies later.
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst && fn->returnAnnotation)
+    if (fn->returnAnnotation)
     {
         TypePackId annotatedRetType =
             resolveTypePack(signatureScope, fn->returnAnnotation, /* inTypeArguments */ false, /* replaceErrorWithFresh*/ true);
-        // We bind the annotated type directly here so that, when we need to
-        // generate constraints for return types, we have a guarantee that we
-        // know the annotated return type already, if one was provided.
-        LUAU_ASSERT(get<FreeTypePack>(returnType));
-        emplaceTypePack<BoundTypePack>(asMutable(returnType), annotatedRetType);
-    }
-    else if (!FFlag::LuauStoreReturnTypesAsPackOnAst && fn->returnAnnotation_DEPRECATED)
-    {
-        TypePackId annotatedRetType =
-            resolveTypePack(signatureScope, *fn->returnAnnotation_DEPRECATED, /* inTypeArguments */ false, /* replaceErrorWithFresh*/ true);
         // We bind the annotated type directly here so that, when we need to
         // generate constraints for return types, we have a guarantee that we
         // know the annotated return type already, if one was provided.
@@ -3805,16 +3864,7 @@ TypeId ConstraintGenerator::resolveFunctionType(
     AstTypePackExplicit tempArgTypes{Location{}, fn->argTypes};
     TypePackId argTypes = resolveTypePack_(signatureScope, &tempArgTypes, inTypeArguments, replaceErrorWithFresh);
 
-    TypePackId returnTypes;
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        returnTypes = resolveTypePack_(signatureScope, fn->returnTypes, inTypeArguments, replaceErrorWithFresh);
-    }
-    else
-    {
-        AstTypePackExplicit tempRetTypes{Location{}, fn->returnTypes_DEPRECATED};
-        returnTypes = resolveTypePack_(signatureScope, &tempRetTypes, inTypeArguments, replaceErrorWithFresh);
-    }
+    TypePackId returnTypes = resolveTypePack_(signatureScope, fn->returnTypes, inTypeArguments, replaceErrorWithFresh);
 
     // TODO: FunctionType needs a pointer to the scope so that we know
     // how to quantify/instantiate it.

@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauErrorSuppressionTypeFunctionArgs)
+LUAU_FASTFLAG(LuauEmptyStringInKeyOf)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1704,6 +1705,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_suppression_should_work_on_type_functi
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK("Unknown type 'Colours'" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_props")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag _{FFlag::LuauEmptyStringInKeyOf, true};
+
+    loadDefinition(R"(
+        declare class Foobar
+            one: boolean
+            [""]: number
+        end
+    )");
+
+    CheckResult results = check(R"(
+        export type FoobarKeys = keyof<Foobar>;
+        export type TableKeys = keyof<{ [""]: string, two: boolean }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+    CHECK_EQ(R"("" | "one")", toString(requireTypeAlias("FoobarKeys")));
+    CHECK_EQ(R"("" | "two")", toString(requireTypeAlias("TableKeys")));
+
 }
 
 struct TFFixture

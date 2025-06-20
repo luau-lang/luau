@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 using namespace Luau;
 
@@ -1142,7 +1143,15 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
     REQUIRE(tTable != nullptr);
 
     REQUIRE(tTable->props.count("bar"));
-    TypeId barType = tTable->props["bar"].type();
+    TypeId barType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        Property& bar = tTable->props["bar"];
+        REQUIRE(bar.readTy);
+        barType = *bar.readTy;
+    }
+    else
+        barType = tTable->props["bar"].type_DEPRECATED();
     REQUIRE(barType != nullptr);
 
     const FunctionType* ftv = get<FunctionType>(follow(barType));
@@ -1177,7 +1186,15 @@ TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
     std::optional<Property> fooProp = get(t->props, "foo");
     REQUIRE(bool(fooProp));
 
-    const FunctionType* foo = get<FunctionType>(follow(fooProp->type()));
+
+    const FunctionType* foo;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(fooProp->readTy);
+        foo = get<FunctionType>(follow(*fooProp->readTy));
+    }
+    else
+        foo = get<FunctionType>(follow(fooProp->type_DEPRECATED()));
     REQUIRE(bool(foo));
 
     std::optional<TypeId> ret_ = first(foo->retTypes);
@@ -1224,7 +1241,14 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
     std::optional<Property> methodProp = get(argTable->props, "method");
     REQUIRE(bool(methodProp));
 
-    const FunctionType* methodFunction = get<FunctionType>(follow(methodProp->type()));
+    const FunctionType* methodFunction;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(methodProp->readTy);
+        methodFunction = get<FunctionType>(follow(*methodProp->readTy));
+    }
+    else
+        methodFunction = get<FunctionType>(follow(methodProp->type_DEPRECATED()));
     REQUIRE(methodFunction != nullptr);
 
     std::optional<TypeId> methodArg = first(methodFunction->argTypes);

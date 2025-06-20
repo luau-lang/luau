@@ -15,6 +15,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauGeneralizationCannotMutateAcrossModules)
@@ -562,7 +563,10 @@ struct FreeTypeSearcher : TypeVisitor
                 {
                     Polarity p = polarity;
                     polarity = Polarity::Mixed;
-                    traverse(prop.type());
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                        traverse(*prop.readTy);
+                    else
+                        traverse(prop.type_DEPRECATED());
                     polarity = p;
                 }
                 else
@@ -586,7 +590,10 @@ struct FreeTypeSearcher : TypeVisitor
 
                     Polarity p = polarity;
                     polarity = Polarity::Mixed;
-                    traverse(prop.type());
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                        traverse(*prop.readTy);
+                    else
+                        traverse(prop.type_DEPRECATED());
                     polarity = p;
                 }
             }
@@ -1518,7 +1525,10 @@ struct GenericCounter : TypeVisitor
                 {
                     Polarity p = polarity;
                     polarity = Polarity::Mixed;
-                    traverse(prop.type());
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                        traverse(*prop.readTy);
+                    else
+                        traverse(prop.type_DEPRECATED());
                     polarity = p;
                 }
                 else
@@ -1542,7 +1552,10 @@ struct GenericCounter : TypeVisitor
 
                     Polarity p = polarity;
                     polarity = Polarity::Mixed;
-                    traverse(prop.type());
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                        traverse(*prop.readTy);
+                    else
+                        traverse(prop.type_DEPRECATED());
                     polarity = p;
                 }
             }
