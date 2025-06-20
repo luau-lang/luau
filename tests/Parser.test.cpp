@@ -17,10 +17,8 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
 LUAU_FASTFLAG(LuauParseStringIndexer)
 LUAU_FASTFLAG(LuauDeclareExternType)
-LUAU_FASTFLAG(LuauStoreCSTData2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -152,20 +150,11 @@ TEST_CASE_FIXTURE(Fixture, "functions_can_have_return_annotations")
     AstStatFunction* statFunction = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunction != nullptr);
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        REQUIRE(statFunction->func->returnAnnotation);
-        auto typePack = statFunction->func->returnAnnotation->as<AstTypePackExplicit>();
-        REQUIRE(typePack);
-        CHECK_EQ(typePack->typeList.types.size, 1);
-        CHECK(typePack->typeList.tailType == nullptr);
-    }
-    else
-    {
-        REQUIRE(statFunction->func->returnAnnotation_DEPRECATED.has_value());
-        CHECK_EQ(statFunction->func->returnAnnotation_DEPRECATED->types.size, 1);
-        CHECK(statFunction->func->returnAnnotation_DEPRECATED->tailType == nullptr);
-    }
+    REQUIRE(statFunction->func->returnAnnotation);
+    auto typePack = statFunction->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    CHECK_EQ(typePack->typeList.types.size, 1);
+    CHECK(typePack->typeList.tailType == nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_can_have_a_function_type_annotation")
@@ -180,28 +169,15 @@ TEST_CASE_FIXTURE(Fixture, "functions_can_have_a_function_type_annotation")
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        REQUIRE(statFunc->func->returnAnnotation);
-        auto typePack = statFunc->func->returnAnnotation->as<AstTypePackExplicit>();
-        REQUIRE(typePack);
-        CHECK(typePack->typeList.tailType == nullptr);
-        AstArray<AstType*>& retTypes = typePack->typeList.types;
-        REQUIRE(retTypes.size == 1);
+    REQUIRE(statFunc->func->returnAnnotation);
+    auto typePack = statFunc->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    CHECK(typePack->typeList.tailType == nullptr);
+    AstArray<AstType*>& retTypes = typePack->typeList.types;
+    REQUIRE(retTypes.size == 1);
 
-        AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
-        REQUIRE(funTy != nullptr);
-    }
-    else
-    {
-        REQUIRE(statFunc->func->returnAnnotation_DEPRECATED.has_value());
-        CHECK(statFunc->func->returnAnnotation_DEPRECATED->tailType == nullptr);
-        AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation_DEPRECATED->types;
-        REQUIRE(retTypes.size == 1);
-
-        AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
-        REQUIRE(funTy != nullptr);
-    }
+    AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
+    REQUIRE(funTy != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_type_should_disambiguate_from_function_type_and_multiple_returns")
@@ -216,38 +192,20 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_disambiguate_from_functi
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        REQUIRE(statFunc->func->returnAnnotation);
-        auto typePack = statFunc->func->returnAnnotation->as<AstTypePackExplicit>();
-        REQUIRE(typePack);
-        CHECK(typePack->typeList.tailType == nullptr);
-        AstArray<AstType*>& retTypes = typePack->typeList.types;
-        REQUIRE(retTypes.size == 2);
+    REQUIRE(statFunc->func->returnAnnotation);
+    auto typePack = statFunc->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    CHECK(typePack->typeList.tailType == nullptr);
+    AstArray<AstType*>& retTypes = typePack->typeList.types;
+    REQUIRE(retTypes.size == 2);
 
-        AstTypeReference* ty0 = retTypes.data[0]->as<AstTypeReference>();
-        REQUIRE(ty0 != nullptr);
-        REQUIRE(ty0->name == "number");
+    AstTypeReference* ty0 = retTypes.data[0]->as<AstTypeReference>();
+    REQUIRE(ty0 != nullptr);
+    REQUIRE(ty0->name == "number");
 
-        AstTypeReference* ty1 = retTypes.data[1]->as<AstTypeReference>();
-        REQUIRE(ty1 != nullptr);
-        REQUIRE(ty1->name == "string");
-    }
-    else
-    {
-        REQUIRE(statFunc->func->returnAnnotation_DEPRECATED.has_value());
-        CHECK(statFunc->func->returnAnnotation_DEPRECATED->tailType == nullptr);
-        AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation_DEPRECATED->types;
-        REQUIRE(retTypes.size == 2);
-
-        AstTypeReference* ty0 = retTypes.data[0]->as<AstTypeReference>();
-        REQUIRE(ty0 != nullptr);
-        REQUIRE(ty0->name == "number");
-
-        AstTypeReference* ty1 = retTypes.data[1]->as<AstTypeReference>();
-        REQUIRE(ty1 != nullptr);
-        REQUIRE(ty1->name == "string");
-    }
+    AstTypeReference* ty1 = retTypes.data[1]->as<AstTypeReference>();
+    REQUIRE(ty1 != nullptr);
+    REQUIRE(ty1->name == "string");
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_type_should_parse_as_function_type_annotation_with_no_args")
@@ -262,45 +220,25 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_parse_as_function_type_a
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        REQUIRE(statFunc->func->returnAnnotation);
-        auto typePack = statFunc->func->returnAnnotation->as<AstTypePackExplicit>();
-        REQUIRE(typePack);
-        CHECK(typePack->typeList.tailType == nullptr);
-        AstArray<AstType*>& retTypes = typePack->typeList.types;
-        REQUIRE(retTypes.size == 1);
+    REQUIRE(statFunc->func->returnAnnotation);
+    auto typePack = statFunc->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    CHECK(typePack->typeList.tailType == nullptr);
+    AstArray<AstType*>& retTypes = typePack->typeList.types;
+    REQUIRE(retTypes.size == 1);
 
-        AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
-        REQUIRE(funTy != nullptr);
-        REQUIRE(funTy->argTypes.types.size == 0);
-        CHECK(funTy->argTypes.tailType == nullptr);
+    AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
+    REQUIRE(funTy != nullptr);
+    REQUIRE(funTy->argTypes.types.size == 0);
+    CHECK(funTy->argTypes.tailType == nullptr);
 
-        auto funReturnPack = funTy->returnTypes->as<AstTypePackExplicit>();
-        REQUIRE(funReturnPack);
-        CHECK(funReturnPack->typeList.tailType == nullptr);
+    auto funReturnPack = funTy->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(funReturnPack);
+    CHECK(funReturnPack->typeList.tailType == nullptr);
 
-        AstTypeReference* ty = funReturnPack->typeList.types.data[0]->as<AstTypeReference>();
-        REQUIRE(ty != nullptr);
-        REQUIRE(ty->name == "nil");
-    }
-    else
-    {
-        REQUIRE(statFunc->func->returnAnnotation_DEPRECATED.has_value());
-        CHECK(statFunc->func->returnAnnotation_DEPRECATED->tailType == nullptr);
-        AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation_DEPRECATED->types;
-        REQUIRE(retTypes.size == 1);
-
-        AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
-        REQUIRE(funTy != nullptr);
-        REQUIRE(funTy->argTypes.types.size == 0);
-        CHECK(funTy->argTypes.tailType == nullptr);
-        CHECK(funTy->returnTypes_DEPRECATED.tailType == nullptr);
-
-        AstTypeReference* ty = funTy->returnTypes_DEPRECATED.types.data[0]->as<AstTypeReference>();
-        REQUIRE(ty != nullptr);
-        REQUIRE(ty->name == "nil");
-    }
+    AstTypeReference* ty = funReturnPack->typeList.types.data[0]->as<AstTypeReference>();
+    REQUIRE(ty != nullptr);
+    REQUIRE(ty->name == "nil");
 }
 
 TEST_CASE_FIXTURE(Fixture, "annotations_can_be_tables")
@@ -442,17 +380,9 @@ TEST_CASE_FIXTURE(Fixture, "return_type_is_an_intersection_type_if_led_with_one_
     AstTypeFunction* annotation = local->vars.data[0]->annotation->as<AstTypeFunction>();
     REQUIRE(annotation != nullptr);
 
-    AstTypeIntersection* returnAnnotation;
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        auto returnTypePack = annotation->returnTypes->as<AstTypePackExplicit>();
-        REQUIRE(returnTypePack);
-        returnAnnotation = returnTypePack->typeList.types.data[0]->as<AstTypeIntersection>();
-    }
-    else
-    {
-        returnAnnotation = annotation->returnTypes_DEPRECATED.types.data[0]->as<AstTypeIntersection>();
-    }
+    auto returnTypePack = annotation->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePack);
+    AstTypeIntersection* returnAnnotation = returnTypePack->typeList.types.data[0]->as<AstTypeIntersection>();
     REQUIRE(returnAnnotation != nullptr);
     CHECK(returnAnnotation->types.data[0]->as<AstTypeGroup>());
     CHECK(returnAnnotation->types.data[1]->as<AstTypeFunction>());
@@ -2000,16 +1930,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
     CHECK(func->name == "bar");
     CHECK(func->nameLocation == Location({2, 25}, {2, 28}));
     REQUIRE_EQ(func->params.types.size, 1);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        auto retTypePack = func->retTypes->as<AstTypePackExplicit>();
-        REQUIRE(retTypePack);
-        REQUIRE_EQ(retTypePack->typeList.types.size, 1);
-    }
-    else
-    {
-        REQUIRE_EQ(func->retTypes_DEPRECATED.types.size, 1);
-    }
+
+    auto retTypePack = func->retTypes->as<AstTypePackExplicit>();
+    REQUIRE(retTypePack);
+    REQUIRE_EQ(retTypePack->typeList.types.size, 1);
 
     AstStatDeclareFunction* varFunc = stat->body.data[2]->as<AstStatDeclareFunction>();
     REQUIRE(varFunc);
@@ -2392,15 +2316,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_variadics")
     REQUIRE(fnFoo);
     CHECK_EQ(fnFoo->argTypes.types.size, 2);
     CHECK(fnFoo->argTypes.tailType);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        CHECK(fnFoo->returnTypes->is<AstTypePackVariadic>());
-    }
-    else
-    {
-        CHECK_EQ(fnFoo->returnTypes_DEPRECATED.types.size, 0);
-        CHECK(fnFoo->returnTypes_DEPRECATED.tailType);
-    }
+    CHECK(fnFoo->returnTypes->is<AstTypePackVariadic>());
 
     AstStatTypeAlias* bar = stat->body.data[2]->as<AstStatTypeAlias>();
     REQUIRE(bar);
@@ -2408,18 +2324,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_variadics")
     REQUIRE(fnBar);
     CHECK_EQ(fnBar->argTypes.types.size, 0);
     CHECK(!fnBar->argTypes.tailType);
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        auto returnTypePack = fnBar->returnTypes->as<AstTypePackExplicit>();
-        REQUIRE(returnTypePack);
-        CHECK_EQ(returnTypePack->typeList.types.size, 1);
-        CHECK(returnTypePack->typeList.tailType);
-    }
-    else
-    {
-        CHECK_EQ(fnBar->returnTypes_DEPRECATED.types.size, 1);
-        CHECK(fnBar->returnTypes_DEPRECATED.tailType);
-    }
+    auto returnTypePack = fnBar->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePack);
+    CHECK_EQ(returnTypePack->typeList.types.size, 1);
+    CHECK(returnTypePack->typeList.tailType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadics_must_be_last")
@@ -2485,8 +2393,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
     REQUIRE(argAnnot != nullptr);
     CHECK(argAnnot->genericName == "a");
 
-    AstTypePackGeneric* retAnnot = FFlag::LuauStoreReturnTypesAsPackOnAst ? fnTy->returnTypes->as<AstTypePackGeneric>()
-                                                                          : fnTy->returnTypes_DEPRECATED.tailType->as<AstTypePackGeneric>();
+    AstTypePackGeneric* retAnnot = fnTy->returnTypes->as<AstTypePackGeneric>();
     REQUIRE(retAnnot != nullptr);
     CHECK(retAnnot->genericName == "b");
 }
@@ -2571,9 +2478,7 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
         REQUIRE_EQ(func->argNames.size, 3);
         REQUIRE(func->argNames.data[2]);
         CHECK_EQ(func->argNames.data[2]->first, "c");
-        AstTypeFunction* funcRet = FFlag::LuauStoreReturnTypesAsPackOnAst
-                                       ? func->returnTypes->as<AstTypePackExplicit>()->typeList.types.data[0]->as<AstTypeFunction>()
-                                       : func->returnTypes_DEPRECATED.types.data[0]->as<AstTypeFunction>();
+        AstTypeFunction* funcRet = func->returnTypes->as<AstTypePackExplicit>()->typeList.types.data[0]->as<AstTypeFunction>();
         REQUIRE(funcRet != nullptr);
         REQUIRE_EQ(funcRet->argTypes.types.size, 3);
         REQUIRE_EQ(funcRet->argNames.size, 3);
@@ -2817,20 +2722,11 @@ TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
     auto funcType = alias1->type->as<AstTypeFunction>();
     REQUIRE(funcType);
 
-    if (FFlag::LuauStoreReturnTypesAsPackOnAst)
-    {
-        auto returnTypePack = funcType->returnTypes->as<AstTypePackExplicit>();
-        REQUIRE(returnTypePack);
-        REQUIRE_EQ(1, returnTypePack->typeList.types.size);
-        REQUIRE(!returnTypePack->typeList.tailType);
-        CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeGroup>());
-    }
-    else
-    {
-        REQUIRE_EQ(1, funcType->returnTypes_DEPRECATED.types.size);
-        REQUIRE(!funcType->returnTypes_DEPRECATED.tailType);
-        CHECK(funcType->returnTypes_DEPRECATED.types.data[0]->is<AstTypeGroup>());
-    }
+    auto returnTypePack = funcType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePack);
+    REQUIRE_EQ(1, returnTypePack->typeList.types.size);
+    REQUIRE(!returnTypePack->typeList.tailType);
+    CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeGroup>());
 }
 
 TEST_CASE_FIXTURE(Fixture, "inner_and_outer_scope_of_functions_have_correct_end_position")
@@ -2899,8 +2795,6 @@ TEST_CASE_FIXTURE(Fixture, "function_start_locations_are_before_attributes")
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size_zero")
 {
-    ScopedFastFlag _{FFlag::LuauStoreCSTData2, true};
-
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 

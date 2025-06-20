@@ -22,6 +22,7 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -409,7 +410,10 @@ struct TypeStringifier
         if (prop.isShared())
         {
             emitKey(name);
-            stringify(prop.type());
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                stringify(*prop.readTy);
+            else
+                stringify(prop.type_DEPRECATED());
             return;
         }
 
@@ -440,7 +444,7 @@ struct TypeStringifier
             return _newStringify(name, prop);
 
         emitKey(name);
-        stringify(prop.type());
+        stringify(prop.type_DEPRECATED());
     }
 
     void stringify(TypePackId tp);

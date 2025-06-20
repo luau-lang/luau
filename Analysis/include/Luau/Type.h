@@ -456,9 +456,8 @@ struct Property
         std::optional<Location> typeLocation = std::nullopt
     );
 
-    // DEPRECATED: Should only be called in non-RWP! We assert that the `readTy` is not nullopt.
-    // TODO: Kill once we don't have non-RWP.
-    TypeId type() const;
+    // DEPRECATED: This should be removed with `LuauTypeSolverV2` clean up
+    TypeId type_DEPRECATED() const;
     void setType(TypeId ty);
 
     // If this property has a present `writeTy`, set it equal to the `readTy`.
@@ -565,13 +564,13 @@ struct ExternType
         ModuleName definitionModuleName,
         std::optional<Location> definitionLocation
     )
-        : name(name)
-        , props(props)
+        : name(std::move(name))
+        , props(std::move(props))
         , parent(parent)
         , metatable(metatable)
-        , tags(tags)
-        , userData(userData)
-        , definitionModuleName(definitionModuleName)
+        , tags(std::move(tags))
+        , userData(std::move(userData))
+        , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
     {
     }
@@ -587,13 +586,13 @@ struct ExternType
         std::optional<Location> definitionLocation,
         std::optional<TableIndexer> indexer
     )
-        : name(name)
-        , props(props)
+        : name(std::move(name))
+        , props(std::move(props))
         , parent(parent)
         , metatable(metatable)
-        , tags(tags)
-        , userData(userData)
-        , definitionModuleName(definitionModuleName)
+        , tags(std::move(tags))
+        , userData(std::move(userData))
+        , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
         , indexer(indexer)
     {
@@ -638,31 +637,31 @@ struct TypeFunctionInstanceType
         UserDefinedFunctionData userFuncData
     )
         : function(function)
-        , typeArguments(typeArguments)
-        , packArguments(packArguments)
+        , typeArguments(std::move(typeArguments))
+        , packArguments(std::move(packArguments))
         , userFuncName(userFuncName)
-        , userFuncData(userFuncData)
+        , userFuncData(std::move(userFuncData))
     {
     }
 
     TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments)
         : function{&function}
-        , typeArguments(typeArguments)
+        , typeArguments(std::move(typeArguments))
         , packArguments{}
     {
     }
 
     TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : function{&function}
-        , typeArguments(typeArguments)
-        , packArguments(packArguments)
+        , typeArguments(std::move(typeArguments))
+        , packArguments(std::move(packArguments))
     {
     }
 
     TypeFunctionInstanceType(NotNull<const TypeFunction> function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : function{function}
-        , typeArguments(typeArguments)
-        , packArguments(packArguments)
+        , typeArguments(std::move(typeArguments))
+        , packArguments(std::move(packArguments))
     {
     }
 };
@@ -713,7 +712,7 @@ struct LazyType
 {
     LazyType() = default;
     LazyType(std::function<void(LazyType&)> unwrap)
-        : unwrap(unwrap)
+        : unwrap(std::move(unwrap))
     {
     }
 
@@ -800,8 +799,8 @@ struct Type final
     {
     }
 
-    Type(const TypeVariant& ty, bool persistent)
-        : ty(ty)
+    Type(TypeVariant ty, bool persistent)
+        : ty(std::move(ty))
         , persistent(persistent)
     {
     }

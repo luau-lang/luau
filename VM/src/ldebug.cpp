@@ -12,16 +12,11 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCurrentLineBounds)
-
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
 {
-    if (FFlag::LuauCurrentLineBounds)
-        return pcRel(ci->savedpc, ci_func(ci)->l.p);
-    else
-        return pcRel_DEPRECATED(ci->savedpc, ci_func(ci)->l.p);
+    return pcRel(ci->savedpc, ci_func(ci)->l.p);
 }
 
 static int currentline(lua_State* L, CallInfo* ci)

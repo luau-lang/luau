@@ -58,6 +58,8 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauSolverV2)
 
+const double kTypecheckTimeoutSec = 4.0;
+
 std::chrono::milliseconds kInterruptTimeout(10);
 std::chrono::time_point<std::chrono::system_clock> interruptDeadline;
 
@@ -175,6 +177,19 @@ static void setupFrontend(Luau::Frontend& frontend)
     };
 }
 
+static Luau::FrontendOptions getFrontendOptions()
+{
+    Luau::FrontendOptions options;
+
+    options.retainFullTypeGraphs = true;
+    options.forAutocomplete = false;
+    options.runLintChecks = kFuzzLinter;
+
+    options.moduleTimeLimitSec = kTypecheckTimeoutSec;
+
+    return options;
+}
+
 struct FuzzFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
@@ -286,7 +301,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     {
         static FuzzFileResolver fileResolver;
         static FuzzConfigResolver configResolver;
-        static Luau::FrontendOptions defaultOptions{/*retainFullTypeGraphs*/ true, /*forAutocomplete*/ false, /*runLintChecks*/ kFuzzLinter};
+        static Luau::FrontendOptions defaultOptions = getFrontendOptions();
         static Luau::Frontend frontend(&fileResolver, &configResolver, defaultOptions);
 
         static int once = (setupFrontend(frontend), 0);

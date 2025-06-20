@@ -5,8 +5,6 @@
 #include "lstate.h"
 
 #define pcRel(pc, p) ((pc) && (pc) != (p)->code ? cast_to(int, (pc) - (p)->code) - 1 : 0)
-// TODO: remove with FFlagLuauCurrentLineBounds
-#define pcRel_DEPRECATED(pc, p) ((pc) ? cast_to(int, (pc) - (p)->code) - 1 : 0)
 
 #define luaG_typeerror(L, o, opname) luaG_typeerrorL(L, o, opname)
 #define luaG_forerror(L, o, what) luaG_forerrorL(L, o, what)

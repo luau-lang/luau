@@ -21,7 +21,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauExpectedTypeVisitor)
-LUAU_FASTFLAG(LuauImplicitTableIndexerKeys)
+LUAU_FASTFLAG(LuauImplicitTableIndexerKeys2)
 
 using namespace Luau;
 
@@ -4621,7 +4621,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
         // Somewhat surprisingly, the old solver didn't cover this case.
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauExpectedTypeVisitor, true},
-        {FFlag::LuauImplicitTableIndexerKeys, true},
+        {FFlag::LuauImplicitTableIndexerKeys2, true},
     };
 
     check(R"(
@@ -4636,8 +4636,62 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
 
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("A"), 1);
+    CHECK_EQ(ac.entryMap["A"].kind, AutocompleteEntryKind::String);
     CHECK_EQ(ac.entryMap.count("B"), 1);
+    CHECK_EQ(ac.entryMap["B"].kind, AutocompleteEntryKind::String);
     CHECK_EQ(ac.entryMap.count("C"), 1);
+    CHECK_EQ(ac.entryMap["C"].kind, AutocompleteEntryKind::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_without_annotation")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExpectedTypeVisitor, true},
+        {FFlag::LuauImplicitTableIndexerKeys2, false},
+    };
+
+    check(R"(
+        local foo = {
+            ["Item/Foo"] = 42,
+            ["Item/Bar"] = "it's true",
+            ["Item/Baz"] = true,
+        }
+        foo["@1"]
+    )");
+
+    auto ac = autocomplete('1');
+
+    auto checkEntry = [&](auto key, auto type)
+    {
+        REQUIRE_EQ(ac.entryMap.count(key), 1);
+        auto entry = ac.entryMap.at(key);
+        CHECK_EQ(entry.kind, AutocompleteEntryKind::Property);
+        REQUIRE(entry.type);
+        CHECK_EQ(type, toString(*entry.type));
+    };
+
+    checkEntry("Item/Foo", "number");
+    checkEntry("Item/Bar", "string");
+    checkEntry("Item/Baz", "boolean");
+}
+
+TEST_CASE_FIXTURE(ACFixture, "bidirectional_autocomplete_in_function_call")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExpectedTypeVisitor, true},
+    };
+
+    check(R"(
+        local function take(_: { choice: "left" | "right" }) end
+
+        take({ choice = "@1" })
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("left"), 1);
+    CHECK_EQ(ac.entryMap.count("right"), 1);
 }
 
 TEST_SUITE_END();

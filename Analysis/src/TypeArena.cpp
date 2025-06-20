@@ -3,6 +3,7 @@
 #include "Luau/TypeArena.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena);
+LUAU_FASTFLAG(LuauTrackTypeAllocations)
 
 namespace Luau
 {
@@ -112,6 +113,29 @@ TypePackId TypeArena::addTypePackFunction(const TypePackFunction& function, std:
 TypePackId TypeArena::addTypePackFunction(const TypePackFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
 {
     return addTypePack(TypeFunctionInstanceTypePack{NotNull{&function}, std::move(typeArguments), std::move(packArguments)});
+}
+
+void TypeArena::recordSingletonStats(const NotNull<SingletonType> singleton)
+{
+    LUAU_ASSERT(FFlag::LuauTrackTypeAllocations);
+
+    auto record = [this](auto&& s)
+    {
+        using T = std::decay_t<decltype(s)>;
+
+        if constexpr (std::is_same_v<T, BooleanSingleton>)
+            boolSingletonsMinted += 1;
+        else if constexpr (std::is_same_v<T, StringSingleton>)
+        {
+            strSingletonsMinted += 1;
+            if (!s.value.empty())
+                uniqueStrSingletonsMinted.insert(s.value);
+        }
+        else
+            static_assert(always_false_v<T>, "Missing allocation count support for this kind of singleton");
+    };
+
+    visit(record, singleton->variant);
 }
 
 void freeze(TypeArena& arena)

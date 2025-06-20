@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -190,7 +191,15 @@ TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
     const TableType* tt = get<TableType>(follow(t));
     REQUIRE(tt);
 
-    TypeId fooTy = tt->props.at("foo").type();
+    TypeId fooTy;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        const Property& foo = tt->props.at("foo");
+        REQUIRE(foo.readTy);
+        fooTy = *foo.readTy;
+    }
+    else
+        fooTy = tt->props.at("foo").type_DEPRECATED();
     CHECK("<a>(a) -> a" == toString(fooTy));
 }
 
@@ -235,7 +244,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
     REQUIRE(ttv);
 
     REQUIRE(ttv->props.count("f"));
-    TypeId k = ttv->props["f"].type();
+
+    TypeId k;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        const Property& f = ttv->props["f"];
+        REQUIRE(f.readTy);
+        k = *f.readTy;
+    }
+    else
+        k = ttv->props["f"].type_DEPRECATED();
     REQUIRE(k);
 }
 

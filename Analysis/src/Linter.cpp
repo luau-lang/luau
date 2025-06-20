@@ -16,8 +16,6 @@ LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
-
 namespace Luau
 {
 
@@ -907,7 +905,7 @@ private:
 
     bool visit(AstTypePack* node) override
     {
-        return FFlag::LuauStoreReturnTypesAsPackOnAst;
+        return true;
     }
 
     bool visit(AstTypeReference* node) override
@@ -1974,7 +1972,7 @@ private:
 
     bool visit(AstTypePack* node) override
     {
-        return FFlag::LuauStoreReturnTypesAsPackOnAst;
+        return true;
     }
 
     bool visit(AstTypeTable* node) override

@@ -15,7 +15,7 @@ class CstNode;
 class ParseError : public std::exception
 {
 public:
-    ParseError(const Location& location, const std::string& message);
+    ParseError(const Location& location, std::string message);
 
     virtual const char* what() const throw();
 

@@ -16,8 +16,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCurrentLineBounds)
-
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -149,53 +147,27 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
         L->base = L->ci->base;
     }
 
-    if (FFlag::LuauCurrentLineBounds)
-    {
-        Closure* cl = clvalue(L->ci->func);
+    Closure* cl = clvalue(L->ci->func);
 
-        // note: the pc expectations of the hook are matching the general "pc points to next instruction"
-        // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
-        // this needs to be called before luaD_checkstack in case it fails to reallocate stack
-        const Instruction* oldsavedpc = L->ci->savedpc;
+    // note: the pc expectations of the hook are matching the general "pc points to next instruction"
+    // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
+    // this needs to be called before luaD_checkstack in case it fails to reallocate stack
+    const Instruction* oldsavedpc = L->ci->savedpc;
 
-        if (L->ci->savedpc && L->ci->savedpc != cl->l.p->code + cl->l.p->sizecode)
-            L->ci->savedpc++;
+    if (L->ci->savedpc && L->ci->savedpc != cl->l.p->code + cl->l.p->sizecode)
+        L->ci->savedpc++;
 
-        luaD_checkstack(L, LUA_MINSTACK); // ensure minimum stack size
-        L->ci->top = L->top + LUA_MINSTACK;
-        LUAU_ASSERT(L->ci->top <= L->stack_last);
+    luaD_checkstack(L, LUA_MINSTACK); // ensure minimum stack size
+    L->ci->top = L->top + LUA_MINSTACK;
+    LUAU_ASSERT(L->ci->top <= L->stack_last);
 
-        lua_Debug ar;
-        ar.currentline = cl->isC ? -1 : luaG_getline(cl->l.p, pcRel(L->ci->savedpc, cl->l.p));
-        ar.userdata = userdata;
+    lua_Debug ar;
+    ar.currentline = cl->isC ? -1 : luaG_getline(cl->l.p, pcRel(L->ci->savedpc, cl->l.p));
+    ar.userdata = userdata;
 
-        hook(L, &ar);
+    hook(L, &ar);
 
-        L->ci->savedpc = oldsavedpc;
-    }
-    else
-    {
-        // note: the pc expectations of the hook are matching the general "pc points to next instruction"
-        // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
-        // this needs to be called before luaD_checkstack in case it fails to reallocate stack
-        if (L->ci->savedpc)
-            L->ci->savedpc++;
-
-        luaD_checkstack(L, LUA_MINSTACK); // ensure minimum stack size
-        L->ci->top = L->top + LUA_MINSTACK;
-        LUAU_ASSERT(L->ci->top <= L->stack_last);
-
-        Closure* cl = clvalue(L->ci->func);
-
-        lua_Debug ar;
-        ar.currentline = cl->isC ? -1 : luaG_getline(cl->l.p, pcRel(L->ci->savedpc, cl->l.p));
-        ar.userdata = userdata;
-
-        hook(L, &ar);
-
-        if (L->ci->savedpc)
-            L->ci->savedpc--;
-    }
+    L->ci->savedpc = oldsavedpc;
 
     L->ci->top = restorestack(L, ci_top);
     L->top = restorestack(L, top);

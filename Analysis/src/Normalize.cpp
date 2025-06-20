@@ -23,6 +23,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
+LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 
 namespace Luau
 {
@@ -404,7 +405,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
             }
             else
             {
-                NormalizationResult res = isInhabited(prop.type(), seen);
+                NormalizationResult res = isInhabited(prop.type_DEPRECATED(), seen);
                 if (res != NormalizationResult::True)
                     return res;
             }
@@ -2513,9 +2514,9 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
             }
             else
             {
-                prop.setType(intersectionType(hprop.type(), tprop.type()));
-                hereSubThere &= (prop.type() == hprop.type());
-                thereSubHere &= (prop.type() == tprop.type());
+                prop.setType(intersectionType(hprop.type_DEPRECATED(), tprop.type_DEPRECATED()));
+                hereSubThere &= (prop.type_DEPRECATED() == hprop.type_DEPRECATED());
+                thereSubHere &= (prop.type_DEPRECATED() == tprop.type_DEPRECATED());
             }
         }
 
@@ -3327,7 +3328,8 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
         {
-            makeTableShared(table);
+            if (!FFlag::LuauRefineTablesWithReadType)
+                makeTableShared(table);
             result.push_back(table);
         }
     }

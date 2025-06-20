@@ -5,6 +5,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauCompileCostModelConstants)
+
 using namespace Luau;
 
 namespace Luau
@@ -12,7 +14,7 @@ namespace Luau
 namespace Compile
 {
 
-uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount, const DenseHashMap<AstExprCall*, int>& builtins);
+uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount);
 int computeCost(uint64_t model, const bool* varsConst, size_t varCount);
 
 } // namespace Compile
@@ -31,7 +33,7 @@ static uint64_t modelFunction(const char* source)
     AstStatFunction* func = result.root->body.data[0]->as<AstStatFunction>();
     REQUIRE(func);
 
-    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size, DenseHashMap<AstExprCall*, int>{nullptr});
+    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size);
 }
 
 TEST_CASE("Expression")
@@ -133,6 +135,8 @@ end
 
 TEST_CASE("ControlFlow")
 {
+    ScopedFastFlag luauCompileCostModelConstants{FFlag::LuauCompileCostModelConstants, false};
+
     uint64_t model = modelFunction(R"(
 function test(a)
     while a < 0 do

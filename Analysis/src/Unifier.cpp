@@ -342,7 +342,7 @@ static std::optional<std::pair<Luau::Name, const SingletonType*>> getTableMatchT
     {
         for (auto&& [name, prop] : ttv->props)
         {
-            if (auto sing = get<SingletonType>(follow(prop.type())))
+            if (auto sing = get<SingletonType>(follow(prop.type_DEPRECATED())))
                 return {{name, sing}};
         }
     }
@@ -1938,7 +1938,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             auto subIter = subTable->props.find(propName);
 
-            if (subIter == subTable->props.end() && subTable->state == TableState::Unsealed && !isOptional(superProp.type()))
+            if (subIter == subTable->props.end() && subTable->state == TableState::Unsealed && !isOptional(superProp.type_DEPRECATED()))
                 missingProperties.push_back(propName);
         }
 
@@ -1980,7 +1980,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
                 variance = Invariant;
 
             std::unique_ptr<Unifier> innerState = makeChildUnifier();
-            innerState->tryUnify_(r->second.type(), prop.type());
+            innerState->tryUnify_(r->second.type_DEPRECATED(), prop.type_DEPRECATED());
 
             checkChildUnifierTypeMismatch(innerState->errors, name, superTy, subTy);
 
@@ -1997,7 +1997,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
                 variance = Invariant;
 
             std::unique_ptr<Unifier> innerState = makeChildUnifier();
-            innerState->tryUnify_(subTable->indexer->indexResultType, prop.type());
+            innerState->tryUnify_(subTable->indexer->indexResultType, prop.type_DEPRECATED());
 
             checkChildUnifierTypeMismatch(innerState->errors, name, superTy, subTy);
 
@@ -2005,7 +2005,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
                 log.concat(std::move(innerState->log));
             failure |= innerState->failure;
         }
-        else if (subTable->state == TableState::Unsealed && isOptional(prop.type()))
+        else if (subTable->state == TableState::Unsealed && isOptional(prop.type_DEPRECATED()))
         // This is sound because unsealed table types are precise, so `{ p : T } <: { p : T, q : U? }`
         // since if `t : { p : T }` then we are guaranteed that `t.q` is `nil`.
         // TODO: if the supertype is written to, the subtype may no longer be precise (alias analysis?)
@@ -2076,11 +2076,11 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
             std::unique_ptr<Unifier> innerState = makeChildUnifier();
             if (FFlag::LuauFixIndexerSubtypingOrdering)
-                innerState->tryUnify_(prop.type(), superTable->indexer->indexResultType);
+                innerState->tryUnify_(prop.type_DEPRECATED(), superTable->indexer->indexResultType);
             else
             {
                 // Incredibly, the old solver depends on this bug somehow.
-                innerState->tryUnify_(superTable->indexer->indexResultType, prop.type());
+                innerState->tryUnify_(superTable->indexer->indexResultType, prop.type_DEPRECATED());
             }
 
             checkChildUnifierTypeMismatch(innerState->errors, name, superTy, subTy);
@@ -2095,7 +2095,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
             // TODO: file a JIRA
             // TODO: hopefully readonly/writeonly properties will fix this.
             Property clone = prop;
-            clone.setType(deeplyOptional(clone.type()));
+            clone.setType(deeplyOptional(clone.type_DEPRECATED()));
 
             PendingType* pendingSuper = log.queue(superTy);
             TableType* pendingSuperTtv = getMutable<TableType>(pendingSuper);
@@ -2271,7 +2271,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
 
         if (auto it = mttv->props.find("__index"); it != mttv->props.end())
         {
-            TypeId ty = it->second.type();
+            TypeId ty = it->second.type_DEPRECATED();
             std::unique_ptr<Unifier> child = makeChildUnifier();
             child->tryUnify_(ty, superTy);
 
@@ -2323,7 +2323,7 @@ TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> see
         result = types->addType(*ttv);
         TableType* resultTtv = getMutable<TableType>(result);
         for (auto& [name, prop] : resultTtv->props)
-            prop.setType(deeplyOptional(prop.type(), seen));
+            prop.setType(deeplyOptional(prop.type_DEPRECATED(), seen));
         return types->addType(UnionType{{builtinTypes->nilType, result}});
     }
     else
@@ -2442,7 +2442,7 @@ void Unifier::tryUnifyWithExternType(TypeId subTy, TypeId superTy, bool reversed
             else
             {
                 std::unique_ptr<Unifier> innerState = makeChildUnifier();
-                innerState->tryUnify_(classProp->type(), prop.type());
+                innerState->tryUnify_(classProp->type_DEPRECATED(), prop.type_DEPRECATED());
 
                 checkChildUnifierTypeMismatch(innerState->errors, propName, reversed ? subTy : superTy, reversed ? superTy : subTy);
 
@@ -2621,7 +2621,7 @@ static void tryUnifyWithAny(
         else if (auto table = state.log.getMutable<TableType>(ty))
         {
             for (const auto& [_name, prop] : table->props)
-                queue.push_back(prop.type());
+                queue.push_back(prop.type_DEPRECATED());
 
             if (table->indexer)
             {

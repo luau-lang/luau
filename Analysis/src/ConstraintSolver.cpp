@@ -39,6 +39,8 @@ LUAU_FASTFLAGVARIABLE(LuauInsertErrorTypesIntoIndexerResult)
 LUAU_FASTFLAGVARIABLE(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 LUAU_FASTFLAGVARIABLE(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAGVARIABLE(LuauMissingFollowInAssignIndexConstraint)
+LUAU_FASTFLAGVARIABLE(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeCheckFunctionCalls)
 
 namespace Luau
 {
@@ -1834,15 +1836,26 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                 }
             }
             else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
-                     expr->is<AstExprConstantNil>())
+                     expr->is<AstExprConstantNil>() || (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls && expr->is<AstExprTable>()))
             {
                 ReferentialReplacer replacer{arena, NotNull{&replacements}, NotNull{&replacementPacks}};
                 if (auto res = replacer.substitute(expectedArgTy))
+                {
+                    if (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls)
+                    {
+                        // If we do this replacement and there are type
+                        // functions in the final type, then we need to
+                        // ensure those get reduced.
+                        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+                        queuer.traverse(*res);
+                    }
                     u2.unify(actualArgTy, *res);
+                }
                 else
                     u2.unify(actualArgTy, expectedArgTy);
             }
-            else if (expr->is<AstExprTable>() && !ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+            else if (!FFlag::LuauTableLiteralSubtypeCheckFunctionCalls && expr->is<AstExprTable>() &&
+                     !ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
             {
                 Subtyping sp{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
                 std::vector<TypeId> toBlock;
@@ -1850,6 +1863,27 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                     c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&sp}, expectedArgTy, actualArgTy, expr, toBlock
                 );
                 LUAU_ASSERT(toBlock.empty());
+            }
+        }
+
+        if (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls)
+        {
+            // Consider:
+            //
+            //  local Direction = { Left = 1, Right = 2 }
+            //  type Direction = keyof<Direction>
+            //
+            //  local function move(dirs: { Direction }) --[[...]] end
+            //
+            //  move({ "Left", "Right", "Left", "Right" })
+            //
+            // We need `keyof<Direction>` to reduce prior to inferring that the
+            // arguments to `move` must generalize to their lower bounds. This
+            // is how we ensure that ordering.
+            for (auto& c : u2.incompleteSubtypes)
+            {
+                NotNull<Constraint> addition = pushConstraint(constraint->scope, constraint->location, std::move(c));
+                inheritBlocks(constraint, addition);
             }
         }
     }
@@ -3173,8 +3207,16 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
                 return {{}, result.propType};
 
             // TODO: __index can be an overloaded function.
+            //
 
-            TypeId indexType = follow(indexProp->second.type());
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            {
+                // if the property is write-only, then surely we cannot read from it.
+                if (indexProp->second.isWriteOnly())
+                    return {{}, builtinTypes->errorType};
+            }
+
+            TypeId indexType = FFlag::LuauRemoveTypeCallsForReadWriteProps ? follow(*indexProp->second.readTy) : follow(indexProp->second.type_DEPRECATED());
 
             if (auto ft = get<FunctionType>(indexType))
             {
@@ -3212,7 +3254,16 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         if (indexProp == metatable->props.end())
             return {{}, std::nullopt};
 
-        return lookupTableProp(constraint, indexProp->second.type(), propName, context, inConditional, suppressSimplification, seen);
+        if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        {
+            // if the property is write-only, then surely we cannot read from it.
+            if (indexProp->second.isWriteOnly())
+                return {{}, builtinTypes->errorType};
+
+            return lookupTableProp(constraint, *indexProp->second.readTy, propName, context, inConditional, suppressSimplification, seen);
+        }
+        else
+            return lookupTableProp(constraint, indexProp->second.type_DEPRECATED(), propName, context, inConditional, suppressSimplification, seen);
     }
     else if (auto ft = get<FreeType>(subjectType))
     {

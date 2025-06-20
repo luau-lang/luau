@@ -21,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -1466,9 +1467,20 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
             if (isCovariantWith(env, builtinTypes->stringType, subTable->indexer->indexType, scope).isSubtype)
             {
                 if (superProp.isShared())
-                    results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, superProp.type(), scope)
-                                          .withSubComponent(TypePath::TypeField::IndexResult)
-                                          .withSuperComponent(TypePath::Property::read(name)));
+                {
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                    {
+                        results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
+                                              .withSubComponent(TypePath::TypeField::IndexResult)
+                                              .withSuperComponent(TypePath::Property::read(name)));
+                    }
+                    else
+                    {
+                        results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, superProp.type_DEPRECATED(), scope)
+                                              .withSubComponent(TypePath::TypeField::IndexResult)
+                                              .withSuperComponent(TypePath::Property::read(name)));
+                    }
+                }
                 else
                 {
                     if (superProp.readTy)
@@ -1643,10 +1655,22 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
             {
                 if (auto it = mttv->props.find("__index"); it != mttv->props.end())
                 {
-                    if (auto stringTable = get<TableType>(it->second.type()))
-                        result.orElse(
-                            isCovariantWith(env, stringTable, superTable, scope).withSubPath(TypePath::PathBuilder().mt().readProp("__index").build())
-                        );
+
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                    {
+                        // the `string` metatable should not have any write-only types.
+                        LUAU_ASSERT(*it->second.readTy);
+
+                        if (auto stringTable = get<TableType>(*it->second.readTy))
+                            result.orElse(isCovariantWith(env, stringTable, superTable, scope)
+                                              .withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                    }
+                    else
+                    {
+                        if (auto stringTable = get<TableType>(it->second.type_DEPRECATED()))
+                            result.orElse(isCovariantWith(env, stringTable, superTable, scope)
+                                              .withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                    }
                 }
             }
         }
@@ -1676,10 +1700,21 @@ SubtypingResult Subtyping::isCovariantWith(
             {
                 if (auto it = mttv->props.find("__index"); it != mttv->props.end())
                 {
-                    if (auto stringTable = get<TableType>(it->second.type()))
-                        result.orElse(
-                            isCovariantWith(env, stringTable, superTable, scope).withSubPath(TypePath::PathBuilder().mt().readProp("__index").build())
-                        );
+                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                    {
+                        // the `string` metatable should not have any write-only types.
+                        LUAU_ASSERT(*it->second.readTy);
+
+                        if (auto stringTable = get<TableType>(*it->second.readTy))
+                            result.orElse(isCovariantWith(env, stringTable, superTable, scope)
+                                              .withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                    }
+                    else
+                    {
+                        if (auto stringTable = get<TableType>(it->second.type_DEPRECATED()))
+                            result.orElse(isCovariantWith(env, stringTable, superTable, scope)
+                                              .withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                    }
                 }
             }
         }
@@ -1712,7 +1747,12 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingResult res{true};
 
     if (superProp.isShared() && subProp.isShared())
-        res.andAlso(isInvariantWith(env, subProp.type(), superProp.type(), scope).withBothComponent(TypePath::Property::read(name)));
+    {
+        if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            res.andAlso(isInvariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
+        else
+            res.andAlso(isInvariantWith(env, subProp.type_DEPRECATED(), superProp.type_DEPRECATED(), scope).withBothComponent(TypePath::Property::read(name)));
+    }
     else
     {
         if (superProp.readTy.has_value() && subProp.readTy.has_value())

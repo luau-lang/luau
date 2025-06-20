@@ -4,8 +4,6 @@
 #include "Luau/Ast.h"
 #include "Luau/Module.h"
 
-LUAU_FASTFLAG(LuauStoreReturnTypesAsPackOnAst)
-
 namespace Luau
 {
 
@@ -70,7 +68,7 @@ struct RequireTracer : AstVisitor
     bool visit(AstTypePack* node) override
     {
         // allow resolving require inside `typeof` annotations
-        return FFlag::LuauStoreReturnTypesAsPackOnAst;
+        return true;
     }
 
     AstExpr* getDependent_DEPRECATED(AstExpr* node)

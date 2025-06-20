@@ -7,8 +7,9 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 using namespace Luau;
 
@@ -443,7 +444,10 @@ TEST_CASE_FIXTURE(Fixture, "self_referential_type_alias")
     std::optional<Property> incr = get(oTable->props, "incr");
     REQUIRE(incr);
 
-    const FunctionType* incrFunc = get<FunctionType>(incr->type());
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        REQUIRE(incr->readTy);
+
+    const FunctionType* incrFunc = FFlag::LuauRemoveTypeCallsForReadWriteProps ? get<FunctionType>(*incr->readTy) : get<FunctionType>(incr->type_DEPRECATED());
     REQUIRE(incrFunc);
 
     std::optional<TypeId> firstArg = first(incrFunc->argTypes);
@@ -602,7 +606,14 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
     TableType* exportsTable = getMutable<TableType>(*exportsType);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId n = exportsTable->props["n"].type();
+    TypeId n;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(exportsTable->props["n"].readTy);
+        n = *exportsTable->props["n"].readTy;
+    }
+    else
+        n = exportsTable->props["n"].type_DEPRECATED();
     REQUIRE(n != nullptr);
 
     CHECK(isInArena(n, mod.interfaceTypes));
@@ -657,10 +668,24 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
     TableType* exportsTable = getMutable<TableType>(*exportsType);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId aType = exportsTable->props["a"].type();
+    TypeId aType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(exportsTable->props["a"].readTy);
+        aType = *exportsTable->props["a"].readTy;
+    }
+    else
+        aType = exportsTable->props["a"].type_DEPRECATED();
     REQUIRE(aType);
 
-    TypeId bType = exportsTable->props["b"].type();
+    TypeId bType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(exportsTable->props["b"].readTy);
+        bType = *exportsTable->props["b"].readTy;
+    }
+    else
+        bType = exportsTable->props["b"].type_DEPRECATED();
     REQUIRE(bType);
 
     CHECK(isInArena(recordType, mod.interfaceTypes));
