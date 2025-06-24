@@ -1261,6 +1261,7 @@ struct Printer
         else if (const auto& a = program.as<AstStatDeclareGlobal>())
         {
             writer.keyword("declare");
+            writer.advance(a->nameLocation.begin);
             writer.identifier(a->name.value);
 
             writer.symbol(":");
