@@ -58,7 +58,7 @@ const LuaNode luaH_dummynode = {
 #define hashstr(t, str) hashpow2(t, (str)->hash)
 #define hashboolean(t, p) hashpow2(t, p)
 
-static LuaNode* hashpointer(const LuaTable* t, const void* p)
+LuaNode* hashpointer(const LuaTable* t, const void* p)
 {
     // we discard the high 32-bit portion of the pointer on 64-bit platforms as it doesn't carry much entropy anyway
     unsigned int h = unsigned(uintptr_t(p));
@@ -73,7 +73,7 @@ static LuaNode* hashpointer(const LuaTable* t, const void* p)
     return hashpow2(t, h);
 }
 
-static LuaNode* hashnum(const LuaTable* t, double n)
+LuaNode* hashnum(const LuaTable* t, double n)
 {
     static_assert(sizeof(double) == sizeof(unsigned int) * 2, "expected a 8-byte double");
     unsigned int i[2];
@@ -99,7 +99,7 @@ static LuaNode* hashnum(const LuaTable* t, double n)
     return hashpow2(t, h2);
 }
 
-static LuaNode* hashvec(const LuaTable* t, const float* v)
+LuaNode* hashvec(const LuaTable* t, const float* v)
 {
     unsigned int i[LUA_VECTOR_SIZE];
     memcpy(i, v, sizeof(i));
@@ -130,7 +130,7 @@ static LuaNode* hashvec(const LuaTable* t, const float* v)
 ** returns the `main' position of an element in a table (that is, the index
 ** of its hash value)
 */
-static LuaNode* mainposition(const LuaTable* t, const TValue* key)
+LuaNode* mainposition(const LuaTable* t, const TValue* key)
 {
     switch (ttype(key))
     {
@@ -153,7 +153,7 @@ static LuaNode* mainposition(const LuaTable* t, const TValue* key)
 ** returns the index for `key' if `key' is an appropriate key to live in
 ** the array part of the table, -1 otherwise.
 */
-static int arrayindex(double key)
+int arrayindex(double key)
 {
     int i;
     luai_num2int(i, key);
@@ -166,7 +166,7 @@ static int arrayindex(double key)
 ** elements in the array part, then elements in the hash part. The
 ** beginning of a traversal is signalled by -1.
 */
-static int findindex(lua_State* L, LuaTable* t, StkId key)
+int findindex(lua_State* L, LuaTable* t, StkId key)
 {
     int i;
     if (ttisnil(key))
@@ -232,7 +232,7 @@ int luaH_next(lua_State* L, LuaTable* t, StkId key)
 
 #define getaboundary(t) (t->aboundary < 0 ? -t->aboundary : t->sizearray)
 
-static int computesizes(int nums[], int* narray)
+int computesizes(int nums[], int* narray)
 {
     int i;
     int twotoi; // 2^i
@@ -258,7 +258,7 @@ static int computesizes(int nums[], int* narray)
     return na;
 }
 
-static int countint(double key, int* nums)
+int countint(double key, int* nums)
 {
     int k = arrayindex(key);
     if (0 < k && k <= MAXSIZE)
@@ -270,7 +270,7 @@ static int countint(double key, int* nums)
         return 0;
 }
 
-static int numusearray(const LuaTable* t, int* nums)
+int numusearray(const LuaTable* t, int* nums)
 {
     int lg;
     int ttlg;     // 2^lg
@@ -298,7 +298,7 @@ static int numusearray(const LuaTable* t, int* nums)
     return ause;
 }
 
-static int numusehash(const LuaTable* t, int* nums, int* pnasize)
+int numusehash(const LuaTable* t, int* nums, int* pnasize)
 {
     int totaluse = 0; // total number of elements
     int ause = 0;     // summation of `nums'
@@ -317,7 +317,7 @@ static int numusehash(const LuaTable* t, int* nums, int* pnasize)
     return totaluse;
 }
 
-static void setarrayvector(lua_State* L, LuaTable* t, int size)
+void setarrayvector(lua_State* L, LuaTable* t, int size)
 {
     if (size > MAXSIZE)
         luaG_runerror(L, "table overflow");
@@ -328,7 +328,7 @@ static void setarrayvector(lua_State* L, LuaTable* t, int size)
     t->sizearray = size;
 }
 
-static void setnodevector(lua_State* L, LuaTable* t, int size)
+void setnodevector(lua_State* L, LuaTable* t, int size)
 {
     int lsize;
     if (size == 0)
@@ -357,9 +357,9 @@ static void setnodevector(lua_State* L, LuaTable* t, int size)
     t->lastfree = size; // all positions are free
 }
 
-static TValue* newkey(lua_State* L, LuaTable* t, const TValue* key);
+TValue* newkey(lua_State* L, LuaTable* t, const TValue* key);
 
-static TValue* arrayornewkey(lua_State* L, LuaTable* t, const TValue* key)
+TValue* arrayornewkey(lua_State* L, LuaTable* t, const TValue* key)
 {
     if (ttisnumber(key))
     {
@@ -373,7 +373,7 @@ static TValue* arrayornewkey(lua_State* L, LuaTable* t, const TValue* key)
     return newkey(L, t, key);
 }
 
-static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
+void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
 {
     if (nasize > MAXSIZE || nhsize > MAXSIZE)
         luaG_runerror(L, "table overflow");
@@ -424,7 +424,7 @@ static void resize(lua_State* L, LuaTable* t, int nasize, int nhsize)
         luaM_freearray(L, nold, twoto(oldhsize), LuaNode, t->memcat); // free old array
 }
 
-static int adjustasize(LuaTable* t, int size, const TValue* ek)
+int adjustasize(LuaTable* t, int size, const TValue* ek)
 {
     bool tbound = t->node != dummynode || size < t->sizearray;
     int ekindex = ek && ttisnumber(ek) ? arrayindex(nvalue(ek)) : -1;
@@ -446,7 +446,7 @@ void luaH_resizehash(lua_State* L, LuaTable* t, int nhsize)
     resize(L, t, t->sizearray, nhsize);
 }
 
-static void rehash(lua_State* L, LuaTable* t, const TValue* ek)
+void rehash(lua_State* L, LuaTable* t, const TValue* ek)
 {
     int nums[MAXBITS + 1]; // nums[i] = number of keys between 2^(i-1) and 2^i
     for (int i = 0; i <= MAXBITS; i++)
@@ -521,7 +521,7 @@ void luaH_free(lua_State* L, LuaTable* t, lua_Page* page)
     luaM_freegco(L, t, sizeof(LuaTable), t->memcat, page);
 }
 
-static LuaNode* getfreepos(LuaTable* t)
+LuaNode* getfreepos(LuaTable* t)
 {
     while (t->lastfree > 0)
     {
@@ -541,7 +541,7 @@ static LuaNode* getfreepos(LuaTable* t)
 ** put new key in its main position; otherwise (colliding node is in its main
 ** position), new key goes to an empty position.
 */
-static TValue* newkey(lua_State* L, LuaTable* t, const TValue* key)
+TValue* newkey(lua_State* L, LuaTable* t, const TValue* key)
 {
     // enforce boundary invariant
     if (ttisnumber(key) && nvalue(key) == t->sizearray + 1)
@@ -729,7 +729,7 @@ TValue* luaH_setstr(lua_State* L, LuaTable* t, TString* key)
     }
 }
 
-static int updateaboundary(LuaTable* t, int boundary)
+int updateaboundary(LuaTable* t, int boundary)
 {
     if (boundary < t->sizearray && ttisnil(&t->array[boundary - 1]))
     {

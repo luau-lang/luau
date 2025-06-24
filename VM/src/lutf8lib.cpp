@@ -10,7 +10,7 @@
 
 // from strlib
 // translate a relative string position: negative means back from end
-static int u_posrelat(int pos, size_t len)
+int u_posrelat(int pos, size_t len)
 {
     if (pos >= 0)
         return pos;
@@ -23,9 +23,9 @@ static int u_posrelat(int pos, size_t len)
 /*
 ** Decode one UTF-8 sequence, returning NULL if byte sequence is invalid.
 */
-static const char* utf8_decode(const char* o, int* val)
+const char* utf8_decode(const char* o, int* val)
 {
-    static const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
+    const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
     const unsigned char* s = (const unsigned char*)o;
     unsigned int c = s[0];
     unsigned int res = 0; // final result
@@ -59,7 +59,7 @@ static const char* utf8_decode(const char* o, int* val)
 ** range [i,j], or nil + current position if 's' is not well formed in
 ** that interval
 */
-static int utflen(lua_State* L)
+int utflen(lua_State* L)
 {
     int n = 0;
     size_t len;
@@ -88,7 +88,7 @@ static int utflen(lua_State* L)
 ** codepoint(s, [i, [j]])  -> returns codepoints for all characters
 ** that start in the range [i,j]
 */
-static int codepoint(lua_State* L)
+int codepoint(lua_State* L)
 {
     size_t len;
     const char* s = luaL_checklstring(L, 1, &len);
@@ -122,7 +122,7 @@ static int codepoint(lua_State* L)
 #define UTF8BUFFSZ 8
 
 // from Lua 5.3 lobject.c, copied verbatim + static
-static int luaO_utf8esc(char* buff, unsigned long x)
+int luaO_utf8esc(char* buff, unsigned long x)
 {
     int n = 1; // number of bytes put in buffer (backwards)
     LUAU_ASSERT(x <= 0x10FFFF);
@@ -143,7 +143,7 @@ static int luaO_utf8esc(char* buff, unsigned long x)
 }
 
 // lighter replacement for pushutfchar; doesn't push any string onto the stack
-static int buffutfchar(lua_State* L, int arg, char* buff, const char** charstr)
+int buffutfchar(lua_State* L, int arg, char* buff, const char** charstr)
 {
     int code = luaL_checkinteger(L, arg);
     luaL_argcheck(L, 0 <= code && code <= MAXUNICODE, arg, "value out of range");
@@ -159,7 +159,7 @@ static int buffutfchar(lua_State* L, int arg, char* buff, const char** charstr)
 ** implementing the %U escape in lua_pushfstring) and avoids pushing string
 ** objects for each codepoint in the multi-argument case. -Jovanni
 */
-static int utfchar(lua_State* L)
+int utfchar(lua_State* L)
 {
     char buff[UTF8BUFFSZ];
     const char* charstr;
@@ -188,7 +188,7 @@ static int utfchar(lua_State* L)
 ** offset(s, n, [i])  -> index where n-th character counting from
 **   position 'i' starts; 0 means character at 'i'.
 */
-static int byteoffset(lua_State* L)
+int byteoffset(lua_State* L)
 {
     size_t len;
     const char* s = luaL_checklstring(L, 1, &len);
@@ -237,7 +237,7 @@ static int byteoffset(lua_State* L)
     return 1;
 }
 
-static int iter_aux(lua_State* L)
+int iter_aux(lua_State* L)
 {
     size_t len;
     const char* s = luaL_checklstring(L, 1, &len);
@@ -264,7 +264,7 @@ static int iter_aux(lua_State* L)
     }
 }
 
-static int iter_codes(lua_State* L)
+int iter_codes(lua_State* L)
 {
     luaL_checkstring(L, 1);
     lua_pushcfunction(L, iter_aux, NULL);
@@ -276,7 +276,7 @@ static int iter_codes(lua_State* L)
 // pattern to match a single UTF-8 character
 #define UTF8PATT "[\0-\x7F\xC2-\xF4][\x80-\xBF]*"
 
-static const luaL_Reg funcs[] = {
+const luaL_Reg funcs[] = {
     {"offset", byteoffset},
     {"codepoint", codepoint},
     {"char", utfchar},

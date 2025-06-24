@@ -32,7 +32,7 @@ inline T buffer_swapbe(T v)
 }
 #endif
 
-static int buffer_create(lua_State* L)
+int buffer_create(lua_State* L)
 {
     int size = luaL_checkinteger(L, 1);
 
@@ -42,7 +42,7 @@ static int buffer_create(lua_State* L)
     return 1;
 }
 
-static int buffer_fromstring(lua_State* L)
+int buffer_fromstring(lua_State* L)
 {
     size_t len = 0;
     const char* val = luaL_checklstring(L, 1, &len);
@@ -52,7 +52,7 @@ static int buffer_fromstring(lua_State* L)
     return 1;
 }
 
-static int buffer_tostring(lua_State* L)
+int buffer_tostring(lua_State* L)
 {
     size_t len = 0;
     void* data = luaL_checkbuffer(L, 1, &len);
@@ -62,7 +62,7 @@ static int buffer_tostring(lua_State* L)
 }
 
 template<typename T>
-static int buffer_readinteger(lua_State* L)
+int buffer_readinteger(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -83,7 +83,7 @@ static int buffer_readinteger(lua_State* L)
 }
 
 template<typename T>
-static int buffer_writeinteger(lua_State* L)
+int buffer_writeinteger(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -104,7 +104,7 @@ static int buffer_writeinteger(lua_State* L)
 }
 
 template<typename T, typename StorageType>
-static int buffer_readfp(lua_State* L)
+int buffer_readfp(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -131,7 +131,7 @@ static int buffer_readfp(lua_State* L)
 }
 
 template<typename T, typename StorageType>
-static int buffer_writefp(lua_State* L)
+int buffer_writefp(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -157,7 +157,7 @@ static int buffer_writefp(lua_State* L)
     return 0;
 }
 
-static int buffer_readstring(lua_State* L)
+int buffer_readstring(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -173,7 +173,7 @@ static int buffer_readstring(lua_State* L)
     return 1;
 }
 
-static int buffer_writestring(lua_State* L)
+int buffer_writestring(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -195,7 +195,7 @@ static int buffer_writestring(lua_State* L)
     return 0;
 }
 
-static int buffer_len(lua_State* L)
+int buffer_len(lua_State* L)
 {
     size_t len = 0;
     luaL_checkbuffer(L, 1, &len);
@@ -204,7 +204,7 @@ static int buffer_len(lua_State* L)
     return 1;
 }
 
-static int buffer_copy(lua_State* L)
+int buffer_copy(lua_State* L)
 {
     size_t tlen = 0;
     void* tbuf = luaL_checkbuffer(L, 1, &tlen);
@@ -229,7 +229,7 @@ static int buffer_copy(lua_State* L)
     return 0;
 }
 
-static int buffer_fill(lua_State* L)
+int buffer_fill(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -247,7 +247,7 @@ static int buffer_fill(lua_State* L)
     return 0;
 }
 
-static int buffer_readbits(lua_State* L)
+int buffer_readbits(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -282,7 +282,7 @@ static int buffer_readbits(lua_State* L)
     return 1;
 }
 
-static int buffer_writebits(lua_State* L)
+int buffer_writebits(lua_State* L)
 {
     size_t len = 0;
     void* buf = luaL_checkbuffer(L, 1, &len);
@@ -328,7 +328,7 @@ static int buffer_writebits(lua_State* L)
     return 0;
 }
 
-static const luaL_Reg bufferlib[] = {
+const luaL_Reg bufferlib[] = {
     {"create", buffer_create},
     {"fromstring", buffer_fromstring},
     {"tostring", buffer_tostring},

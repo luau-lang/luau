@@ -19,7 +19,7 @@ typedef struct LG
     global_State g;
 } LG;
 
-static void stack_init(lua_State* L1, lua_State* L)
+void stack_init(lua_State* L1, lua_State* L)
 {
     // initialize CallInfo array
     L1->base_ci = luaM_newarray(L, BASIC_CI_SIZE, CallInfo, L1->memcat);
@@ -41,7 +41,7 @@ static void stack_init(lua_State* L1, lua_State* L)
     L1->ci->top = L1->top + LUA_MINSTACK;
 }
 
-static void freestack(lua_State* L, lua_State* L1)
+void freestack(lua_State* L, lua_State* L1)
 {
     luaM_freearray(L, L1->base_ci, L1->size_ci, CallInfo, L1->memcat);
     luaM_freearray(L, L1->stack, L1->stacksize, TValue, L1->memcat);
@@ -50,7 +50,7 @@ static void freestack(lua_State* L, lua_State* L1)
 /*
 ** open parts that may cause memory-allocation errors
 */
-static void f_luaopen(lua_State* L, void* ud)
+void f_luaopen(lua_State* L, void* ud)
 {
     global_State* g = L->global;
     stack_init(L, L);                             // init stack
@@ -63,7 +63,7 @@ static void f_luaopen(lua_State* L, void* ud)
     g->GCthreshold = 4 * g->totalbytes;
 }
 
-static void preinit_state(lua_State* L, global_State* g)
+void preinit_state(lua_State* L, global_State* g)
 {
     L->global = g;
     L->stack = NULL;
@@ -82,7 +82,7 @@ static void preinit_state(lua_State* L, global_State* g)
     L->userdata = NULL;
 }
 
-static void close_state(lua_State* L)
+void close_state(lua_State* L)
 {
     global_State* g = L->global;
     luaF_close(L, L->stack); // close all upvalues for this thread

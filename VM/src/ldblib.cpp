@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static lua_State* getthread(lua_State* L, int* arg)
+lua_State* getthread(lua_State* L, int* arg)
 {
     if (lua_isthread(L, 1))
     {
@@ -22,7 +22,7 @@ static lua_State* getthread(lua_State* L, int* arg)
     }
 }
 
-static int db_info(lua_State* L)
+int db_info(lua_State* L)
 {
     int arg;
     lua_State* L1 = getthread(L, &arg);
@@ -118,7 +118,7 @@ static int db_info(lua_State* L)
     return results;
 }
 
-static int db_traceback(lua_State* L)
+int db_traceback(lua_State* L)
 {
     int arg;
     lua_State* L1 = getthread(L, &arg);
@@ -169,7 +169,7 @@ static int db_traceback(lua_State* L)
     return 1;
 }
 
-static const luaL_Reg dblib[] = {
+const luaL_Reg dblib[] = {
     {"info", db_info},
     {"traceback", db_traceback},
     {NULL, NULL},

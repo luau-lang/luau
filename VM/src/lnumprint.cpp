@@ -20,16 +20,16 @@
 // 9.8.2. Precomputed table for 128-bit overestimates of powers of 10 (see figure 3 for table bounds)
 // To avoid storing 616 128-bit numbers directly we use a technique inspired by Dragonbox implementation and store 16 consecutive
 // powers using a 128-bit baseline and a bitvector with 1-bit scale and 3-bit offset for the delta between each entry and base*5^k
-static const int kPow10TableMin = -292;
-static const int kPow10TableMax = 324;
+const int kPow10TableMin = -292;
+const int kPow10TableMax = 324;
 
 // clang-format off
-static const uint64_t kPow5Table[16] = {
+const uint64_t kPow5Table[16] = {
     0x8000000000000000, 0xa000000000000000, 0xc800000000000000, 0xfa00000000000000, 0x9c40000000000000, 0xc350000000000000,
     0xf424000000000000, 0x9896800000000000, 0xbebc200000000000, 0xee6b280000000000, 0x9502f90000000000, 0xba43b74000000000,
     0xe8d4a51000000000, 0x9184e72a00000000, 0xb5e620f480000000, 0xe35fa931a0000000,
 };
-static const uint64_t kPow10Table[(kPow10TableMax - kPow10TableMin + 1 + 15) / 16][3] = {
+const uint64_t kPow10Table[(kPow10TableMax - kPow10TableMin + 1 + 15) / 16][3] = {
     {0xff77b1fcbebcdc4f, 0x25e8e89c13bb0f7b, 0x333443443333443b}, {0x8dd01fad907ffc3b, 0xae3da7d97f6792e4, 0xbbb3ab3cb3ba3cbc},
     {0x9d71ac8fada6c9b5, 0x6f773fc3603db4aa, 0x4ba4bc4bb4bb4bcc}, {0xaecc49914078536d, 0x58fae9f773886e19, 0x3ba3bc33b43b43bb},
     {0xc21094364dfb5636, 0x985915fc12f542e5, 0x33b43b43a33b33cb}, {0xd77485cb25823ac7, 0x7d633293366b828c, 0x34b44c444343443c},
@@ -53,7 +53,7 @@ static const uint64_t kPow10Table[(kPow10TableMax - kPow10TableMin + 1 + 15) / 1
 };
 // clang-format on
 
-static const char kDigitTable[] = "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+const char kDigitTable[] = "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
                                   "5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
 
 // x*y => 128-bit product (lo+hi)
@@ -116,7 +116,7 @@ struct Decimal
     int k;
 };
 
-static Decimal schubfach(int exponent, uint64_t fraction)
+Decimal schubfach(int exponent, uint64_t fraction)
 {
     // Extract c & q such that c*2^q == |v|
     uint64_t c = fraction;
@@ -197,7 +197,7 @@ static Decimal schubfach(int exponent, uint64_t fraction)
     return {s + (uin != win ? win : rup), k};
 }
 
-static char* printspecial(char* buf, int sign, uint64_t fraction)
+char* printspecial(char* buf, int sign, uint64_t fraction)
 {
     if (fraction == 0)
     {
@@ -211,7 +211,7 @@ static char* printspecial(char* buf, int sign, uint64_t fraction)
     }
 }
 
-static char* printunsignedrev(char* end, uint64_t num)
+char* printunsignedrev(char* end, uint64_t num)
 {
     while (num >= 10000)
     {
@@ -241,7 +241,7 @@ static char* printunsignedrev(char* end, uint64_t num)
     return end;
 }
 
-static char* printexp(char* buf, int num)
+char* printexp(char* buf, int num)
 {
     *buf++ = 'e';
     *buf++ = num < 0 ? '-' : '+';

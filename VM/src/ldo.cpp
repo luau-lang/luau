@@ -165,7 +165,7 @@ l_noret luaD_throw(lua_State* L, int errcode)
 
 // }======================================================
 
-static void correctstack(lua_State* L, TValue* oldstack)
+void correctstack(lua_State* L, TValue* oldstack)
 {
     L->top = (L->top - oldstack) + L->stack;
     for (UpVal* up = L->openupval; up != NULL; up = up->u.open.threadnext)
@@ -340,7 +340,7 @@ void luaD_call(lua_State* L, StkId func, int nresults)
     luaC_checkGC(L);
 }
 
-static void seterrorobj(lua_State* L, int errcode, StkId oldtop)
+void seterrorobj(lua_State* L, int errcode, StkId oldtop)
 {
     switch (errcode)
     {
@@ -364,7 +364,7 @@ static void seterrorobj(lua_State* L, int errcode, StkId oldtop)
     L->top = oldtop + 1;
 }
 
-static void resume_continue(lua_State* L)
+void resume_continue(lua_State* L)
 {
     // unroll Lua/C combined stack, processing continuations
     while (L->status == 0 && L->ci > L->base_ci)
@@ -403,7 +403,7 @@ static void resume_continue(lua_State* L)
     }
 }
 
-static void resume(lua_State* L, void* ud)
+void resume(lua_State* L, void* ud)
 {
     StkId firstArg = cast_to(StkId, ud);
 
@@ -453,7 +453,7 @@ static void resume(lua_State* L, void* ud)
     resume_continue(L);
 }
 
-static CallInfo* resume_findhandler(lua_State* L)
+CallInfo* resume_findhandler(lua_State* L)
 {
     CallInfo* ci = L->ci;
 
@@ -468,7 +468,7 @@ static CallInfo* resume_findhandler(lua_State* L)
     return NULL;
 }
 
-static void resume_handle(lua_State* L, void* ud)
+void resume_handle(lua_State* L, void* ud)
 {
     CallInfo* ci = (CallInfo*)ud;
     Closure* cl = ci_func(ci);
@@ -514,7 +514,7 @@ static void resume_handle(lua_State* L, void* ud)
     resume_continue(L);
 }
 
-static int resume_error(lua_State* L, const char* msg, int narg)
+int resume_error(lua_State* L, const char* msg, int narg)
 {
     L->top -= narg;
     setsvalue(L, L->top, luaS_new(L, msg));
@@ -522,7 +522,7 @@ static int resume_error(lua_State* L, const char* msg, int narg)
     return LUA_ERRRUN;
 }
 
-static void resume_finish(lua_State* L, int status)
+void resume_finish(lua_State* L, int status)
 {
     L->nCcalls = L->baseCcalls;
     L->isactive = false;
@@ -623,7 +623,7 @@ int lua_isyieldable(lua_State* L)
     return (L->nCcalls <= L->baseCcalls);
 }
 
-static void callerrfunc(lua_State* L, void* ud)
+void callerrfunc(lua_State* L, void* ud)
 {
     StkId errfunc = cast_to(StkId, ud);
 
@@ -633,7 +633,7 @@ static void callerrfunc(lua_State* L, void* ud)
     luaD_call(L, L->top - 2, 1);
 }
 
-static void restore_stack_limit(lua_State* L)
+void restore_stack_limit(lua_State* L)
 {
     LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
     if (L->size_ci > LUAI_MAXCALLS)

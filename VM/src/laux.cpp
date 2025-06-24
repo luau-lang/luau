@@ -22,7 +22,7 @@ LUAU_FASTFLAG(LuauYieldableContinuations)
 ** =======================================================
 */
 
-static const char* currfuncname(lua_State* L)
+const char* currfuncname(lua_State* L)
 {
     Closure* cl = L->ci > L->base_ci ? curr_func(L) : NULL;
     const char* debugname = cl && cl->isC ? cl->c.debugname + 0 : NULL;
@@ -64,7 +64,7 @@ l_noret luaL_typeerrorL(lua_State* L, int narg, const char* tname)
     }
 }
 
-static l_noret tag_error(lua_State* L, int narg, int tag)
+l_noret tag_error(lua_State* L, int narg, int tag)
 {
     luaL_typeerrorL(L, narg, lua_typename(L, tag));
 }
@@ -283,7 +283,7 @@ int luaL_callmeta(lua_State* L, int obj, const char* event)
     return 1;
 }
 
-static int libsize(const luaL_Reg* l)
+int libsize(const luaL_Reg* l)
 {
     int size = 0;
     for (; l->name; l++)
@@ -375,7 +375,7 @@ int luaL_callyieldable(lua_State* L, int nargs, int nresults)
 ** =======================================================
 */
 
-static size_t getnextbuffersize(lua_State* L, size_t currentsize, size_t desiredsize)
+size_t getnextbuffersize(lua_State* L, size_t currentsize, size_t desiredsize)
 {
     size_t newsize = currentsize + currentsize / 2;
 
@@ -390,7 +390,7 @@ static size_t getnextbuffersize(lua_State* L, size_t currentsize, size_t desired
     return newsize;
 }
 
-static char* extendstrbuf(luaL_Strbuf* B, size_t additionalsize, int boxloc)
+char* extendstrbuf(luaL_Strbuf* B, size_t additionalsize, int boxloc)
 {
     lua_State* L = B->L;
 

@@ -20,7 +20,7 @@
 
 #include <time.h>
 
-static double clock_period()
+double clock_period()
 {
 #if defined(_WIN32)
     LARGE_INTEGER result = {};
@@ -37,7 +37,7 @@ static double clock_period()
 #endif
 }
 
-static double clock_timestamp()
+double clock_timestamp()
 {
 #if defined(_WIN32)
     LARGE_INTEGER result = {};
@@ -56,7 +56,7 @@ static double clock_timestamp()
 
 double lua_clock()
 {
-    static double period = clock_period();
+    double period = clock_period();
 
     return clock_timestamp() * period;
 }

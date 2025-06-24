@@ -13,12 +13,12 @@
 
 LUAU_FASTFLAG(LuauYieldableContinuations)
 
-static void writestring(const char* s, size_t l)
+void writestring(const char* s, size_t l)
 {
     fwrite(s, 1, l, stdout);
 }
 
-static int luaB_print(lua_State* L)
+int luaB_print(lua_State* L)
 {
     int n = lua_gettop(L); // number of arguments
     for (int i = 1; i <= n; i++)
@@ -34,7 +34,7 @@ static int luaB_print(lua_State* L)
     return 0;
 }
 
-static int luaB_tonumber(lua_State* L)
+int luaB_tonumber(lua_State* L)
 {
     int base = luaL_optinteger(L, 2, 10);
     if (base == 10)
@@ -70,7 +70,7 @@ static int luaB_tonumber(lua_State* L)
     return 1;
 }
 
-static int luaB_error(lua_State* L)
+int luaB_error(lua_State* L)
 {
     int level = luaL_optinteger(L, 2, 1);
     lua_settop(L, 1);
@@ -83,7 +83,7 @@ static int luaB_error(lua_State* L)
     lua_error(L);
 }
 
-static int luaB_getmetatable(lua_State* L)
+int luaB_getmetatable(lua_State* L)
 {
     luaL_checkany(L, 1);
     if (!lua_getmetatable(L, 1))
@@ -95,7 +95,7 @@ static int luaB_getmetatable(lua_State* L)
     return 1; // returns either __metatable field (if present) or metatable
 }
 
-static int luaB_setmetatable(lua_State* L)
+int luaB_setmetatable(lua_State* L)
 {
     int t = lua_type(L, 2);
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -107,7 +107,7 @@ static int luaB_setmetatable(lua_State* L)
     return 1;
 }
 
-static void getfunc(lua_State* L, int opt)
+void getfunc(lua_State* L, int opt)
 {
     if (lua_isfunction(L, 1))
         lua_pushvalue(L, 1);
@@ -123,7 +123,7 @@ static void getfunc(lua_State* L, int opt)
     }
 }
 
-static int luaB_getfenv(lua_State* L)
+int luaB_getfenv(lua_State* L)
 {
     getfunc(L, 1);
     if (lua_iscfunction(L, -1))             // is a C function?
@@ -134,7 +134,7 @@ static int luaB_getfenv(lua_State* L)
     return 1;
 }
 
-static int luaB_setfenv(lua_State* L)
+int luaB_setfenv(lua_State* L)
 {
     luaL_checktype(L, 2, LUA_TTABLE);
     getfunc(L, 0);
@@ -153,7 +153,7 @@ static int luaB_setfenv(lua_State* L)
     return 1;
 }
 
-static int luaB_rawequal(lua_State* L)
+int luaB_rawequal(lua_State* L)
 {
     luaL_checkany(L, 1);
     luaL_checkany(L, 2);
@@ -161,7 +161,7 @@ static int luaB_rawequal(lua_State* L)
     return 1;
 }
 
-static int luaB_rawget(lua_State* L)
+int luaB_rawget(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checkany(L, 2);
@@ -170,7 +170,7 @@ static int luaB_rawget(lua_State* L)
     return 1;
 }
 
-static int luaB_rawset(lua_State* L)
+int luaB_rawset(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checkany(L, 2);
@@ -180,7 +180,7 @@ static int luaB_rawset(lua_State* L)
     return 1;
 }
 
-static int luaB_rawlen(lua_State* L)
+int luaB_rawlen(lua_State* L)
 {
     int tt = lua_type(L, 1);
     luaL_argcheck(L, tt == LUA_TTABLE || tt == LUA_TSTRING, 1, "table or string expected");
@@ -189,13 +189,13 @@ static int luaB_rawlen(lua_State* L)
     return 1;
 }
 
-static int luaB_gcinfo(lua_State* L)
+int luaB_gcinfo(lua_State* L)
 {
     lua_pushinteger(L, lua_gc(L, LUA_GCCOUNT, 0));
     return 1;
 }
 
-static int luaB_type(lua_State* L)
+int luaB_type(lua_State* L)
 {
     luaL_checkany(L, 1);
     // resulting name doesn't differentiate between userdata types
@@ -203,7 +203,7 @@ static int luaB_type(lua_State* L)
     return 1;
 }
 
-static int luaB_typeof(lua_State* L)
+int luaB_typeof(lua_State* L)
 {
     luaL_checkany(L, 1);
     // resulting name returns __type if specified unless the input is a newproxy-created userdata
@@ -224,7 +224,7 @@ int luaB_next(lua_State* L)
     }
 }
 
-static int luaB_pairs(lua_State* L)
+int luaB_pairs(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_pushvalue(L, lua_upvalueindex(1)); // return generator,
@@ -243,7 +243,7 @@ int luaB_inext(lua_State* L)
     return (lua_isnil(L, -1)) ? 0 : 2;
 }
 
-static int luaB_ipairs(lua_State* L)
+int luaB_ipairs(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_pushvalue(L, lua_upvalueindex(1)); // return generator,
@@ -252,7 +252,7 @@ static int luaB_ipairs(lua_State* L)
     return 3;
 }
 
-static int luaB_assert(lua_State* L)
+int luaB_assert(lua_State* L)
 {
     luaL_checkany(L, 1);
     if (!lua_toboolean(L, 1))
@@ -260,7 +260,7 @@ static int luaB_assert(lua_State* L)
     return lua_gettop(L);
 }
 
-static int luaB_select(lua_State* L)
+int luaB_select(lua_State* L)
 {
     int n = lua_gettop(L);
     if (lua_type(L, 1) == LUA_TSTRING && *lua_tostring(L, 1) == '#')
@@ -280,14 +280,14 @@ static int luaB_select(lua_State* L)
     }
 }
 
-static void luaB_pcallrun(lua_State* L, void* ud)
+void luaB_pcallrun(lua_State* L, void* ud)
 {
     StkId func = (StkId)ud;
 
     luaD_call(L, func, LUA_MULTRET);
 }
 
-static int luaB_pcally(lua_State* L)
+int luaB_pcally(lua_State* L)
 {
     luaL_checkany(L, 1);
 
@@ -323,7 +323,7 @@ static int luaB_pcally(lua_State* L)
     return lua_gettop(L); // return status + all results
 }
 
-static int luaB_pcallcont(lua_State* L, int status)
+int luaB_pcallcont(lua_State* L, int status)
 {
     if (status == 0)
     {
@@ -341,7 +341,7 @@ static int luaB_pcallcont(lua_State* L, int status)
     }
 }
 
-static int luaB_xpcally(lua_State* L)
+int luaB_xpcally(lua_State* L)
 {
     luaL_checktype(L, 2, LUA_TFUNCTION);
 
@@ -385,14 +385,14 @@ static int luaB_xpcally(lua_State* L)
     return lua_gettop(L); // return status + all results
 }
 
-static void luaB_xpcallerr(lua_State* L, void* ud)
+void luaB_xpcallerr(lua_State* L, void* ud)
 {
     StkId func = (StkId)ud;
 
     luaD_call(L, func, 1);
 }
 
-static int luaB_xpcallcont(lua_State* L, int status)
+int luaB_xpcallcont(lua_State* L, int status)
 {
     if (status == 0)
     {
@@ -418,14 +418,14 @@ static int luaB_xpcallcont(lua_State* L, int status)
     }
 }
 
-static int luaB_tostring(lua_State* L)
+int luaB_tostring(lua_State* L)
 {
     luaL_checkany(L, 1);
     luaL_tolstring(L, 1, NULL);
     return 1;
 }
 
-static int luaB_newproxy(lua_State* L)
+int luaB_newproxy(lua_State* L)
 {
     int t = lua_type(L, 1);
     luaL_argexpected(L, t == LUA_TNONE || t == LUA_TNIL || t == LUA_TBOOLEAN, 1, "nil or boolean");
@@ -443,7 +443,7 @@ static int luaB_newproxy(lua_State* L)
     return 1;
 }
 
-static const luaL_Reg base_funcs[] = {
+const luaL_Reg base_funcs[] = {
     {"assert", luaB_assert},
     {"error", luaB_error},
     {"gcinfo", luaB_gcinfo},
@@ -466,7 +466,7 @@ static const luaL_Reg base_funcs[] = {
     {NULL, NULL},
 };
 
-static void auxopen(lua_State* L, const char* name, lua_CFunction f, lua_CFunction u)
+void auxopen(lua_State* L, const char* name, lua_CFunction f, lua_CFunction u)
 {
     lua_pushcfunction(L, u, NULL);
     lua_pushcclosure(L, f, name, 1);

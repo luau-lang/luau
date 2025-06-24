@@ -237,7 +237,7 @@ l_noret luaM_toobig(lua_State* L)
     luaG_runerror(L, "memory allocation error: block too big");
 }
 
-static lua_Page* newpage(lua_State* L, lua_Page** pageset, int pageSize, int blockSize, int blockCount)
+lua_Page* newpage(lua_State* L, lua_Page** pageset, int pageSize, int blockSize, int blockCount)
 {
     global_State* g = L->global;
 
@@ -280,7 +280,7 @@ static lua_Page* newpage(lua_State* L, lua_Page** pageset, int pageSize, int blo
 // this is part of a cold path in newblock and newgcoblock
 // it is marked as noinline to prevent it from being inlined into those functions
 // if it is inlined, then the compiler may determine those functions are "too big" to be profitably inlined, which results in reduced performance
-LUAU_NOINLINE static lua_Page* newclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pageset, uint8_t sizeClass, bool storeMetadata)
+LUAU_NOINLINE lua_Page* newclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pageset, uint8_t sizeClass, bool storeMetadata)
 {
     int sizeOfClass = kSizeClassConfig.sizeOfClass[sizeClass];
     int pageSize = sizeOfClass > int(kLargePageThreshold) ? kLargePageSize : kSmallPageSize;
@@ -296,7 +296,7 @@ LUAU_NOINLINE static lua_Page* newclasspage(lua_State* L, lua_Page** freepageset
     return page;
 }
 
-static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
+void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
 {
     global_State* g = L->global;
 
@@ -316,7 +316,7 @@ static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
     (*g->frealloc)(g->ud, page, page->pageSize, 0);
 }
 
-static void freeclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pageset, lua_Page* page, uint8_t sizeClass)
+void freeclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pageset, lua_Page* page, uint8_t sizeClass)
 {
     // remove page from freelist
     if (page->next)
@@ -330,7 +330,7 @@ static void freeclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pages
     freepage(L, pageset, page);
 }
 
-static void* newblock(lua_State* L, int sizeClass)
+void* newblock(lua_State* L, int sizeClass)
 {
     global_State* g = L->global;
     lua_Page* page = g->freepages[sizeClass];
@@ -378,7 +378,7 @@ static void* newblock(lua_State* L, int sizeClass)
     return (char*)block + kBlockHeader;
 }
 
-static void* newgcoblock(lua_State* L, int sizeClass)
+void* newgcoblock(lua_State* L, int sizeClass)
 {
     global_State* g = L->global;
     lua_Page* page = g->freegcopages[sizeClass];
@@ -423,7 +423,7 @@ static void* newgcoblock(lua_State* L, int sizeClass)
     return block;
 }
 
-static void freeblock(lua_State* L, int sizeClass, void* block)
+void freeblock(lua_State* L, int sizeClass, void* block)
 {
     global_State* g = L->global;
 
@@ -461,7 +461,7 @@ static void freeblock(lua_State* L, int sizeClass, void* block)
         freeclasspage(L, g->freepages, debugpageset(&g->allpages), page, sizeClass);
 }
 
-static void freegcoblock(lua_State* L, int sizeClass, void* block, lua_Page* page)
+void freegcoblock(lua_State* L, int sizeClass, void* block, lua_Page* page)
 {
     LUAU_ASSERT(page && page->busyBlocks > 0);
     LUAU_ASSERT(page->blockSize == kSizeClassConfig.sizeOfClass[sizeClass]);

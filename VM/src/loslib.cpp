@@ -10,18 +10,18 @@
 #define LUA_STRFTIMEOPTIONS "aAbBcdHIjmMpSUwWxXyYzZ%"
 
 #if defined(_WIN32)
-static tm* gmtime_r(const time_t* timep, tm* result)
+tm* gmtime_r(const time_t* timep, tm* result)
 {
     return gmtime_s(result, timep) == 0 ? result : NULL;
 }
 
-static tm* localtime_r(const time_t* timep, tm* result)
+tm* localtime_r(const time_t* timep, tm* result)
 {
     return localtime_s(result, timep) == 0 ? result : NULL;
 }
 #endif
 
-static time_t os_timegm(struct tm* timep)
+time_t os_timegm(struct tm* timep)
 {
     // Julian day number calculation
     int day = timep->tm_mday;
@@ -56,7 +56,7 @@ static time_t os_timegm(struct tm* timep)
     return time_t(utc);
 }
 
-static int os_clock(lua_State* L)
+int os_clock(lua_State* L)
 {
     lua_pushnumber(L, lua_clock());
     return 1;
@@ -70,13 +70,13 @@ static int os_clock(lua_State* L)
 ** =======================================================
 */
 
-static void setfield(lua_State* L, const char* key, int value)
+void setfield(lua_State* L, const char* key, int value)
 {
     lua_pushinteger(L, value);
     lua_setfield(L, -2, key);
 }
 
-static void setboolfield(lua_State* L, const char* key, int value)
+void setboolfield(lua_State* L, const char* key, int value)
 {
     if (value < 0) // undefined?
         return;    // does not set field
@@ -84,7 +84,7 @@ static void setboolfield(lua_State* L, const char* key, int value)
     lua_setfield(L, -2, key);
 }
 
-static int getboolfield(lua_State* L, const char* key)
+int getboolfield(lua_State* L, const char* key)
 {
     int res;
     lua_rawgetfield(L, -1, key);
@@ -93,7 +93,7 @@ static int getboolfield(lua_State* L, const char* key)
     return res;
 }
 
-static int getfield(lua_State* L, const char* key, int d)
+int getfield(lua_State* L, const char* key, int d)
 {
     int res;
     lua_rawgetfield(L, -1, key);
@@ -109,7 +109,7 @@ static int getfield(lua_State* L, const char* key, int d)
     return res;
 }
 
-static int os_date(lua_State* L)
+int os_date(lua_State* L)
 {
     const char* s = luaL_optstring(L, 1, "%c");
     time_t t = luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
@@ -176,7 +176,7 @@ static int os_date(lua_State* L)
     return 1;
 }
 
-static int os_time(lua_State* L)
+int os_time(lua_State* L)
 {
     time_t t;
     if (lua_isnoneornil(L, 1)) // called without args?
@@ -204,13 +204,13 @@ static int os_time(lua_State* L)
     return 1;
 }
 
-static int os_difftime(lua_State* L)
+int os_difftime(lua_State* L)
 {
     lua_pushnumber(L, difftime((time_t)(luaL_checknumber(L, 1)), (time_t)(luaL_optnumber(L, 2, 0))));
     return 1;
 }
 
-static const luaL_Reg syslib[] = {
+const luaL_Reg syslib[] = {
     {"clock", os_clock},
     {"date", os_date},
     {"difftime", os_difftime},

@@ -66,7 +66,7 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
             ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1; \
     }
 
-static LuaTable* getcurrenv(lua_State* L)
+LuaTable* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci) // no enclosing function?
         return L->gt;        // use global table as environment
@@ -74,7 +74,7 @@ static LuaTable* getcurrenv(lua_State* L)
         return curr_func(L)->env;
 }
 
-static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
+LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
 {
     api_check(L, lua_ispseudo(idx));
     switch (idx)
@@ -100,7 +100,7 @@ static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
     }
 }
 
-static LUAU_FORCEINLINE TValue* index2addr(lua_State* L, int idx)
+LUAU_FORCEINLINE TValue* index2addr(lua_State* L, int idx)
 {
     if (idx > 0)
     {
@@ -1014,7 +1014,7 @@ struct CallS
     int nresults;
 };
 
-static void f_call(lua_State* L, void* ud)
+void f_call(lua_State* L, void* ud)
 {
     struct CallS* c = cast_to(struct CallS*, ud);
     luaD_call(L, c->func, c->nresults);
@@ -1351,7 +1351,7 @@ void* lua_newbuffer(lua_State* L, size_t sz)
     return b->data;
 }
 
-static const char* aux_upvalue(StkId fi, int n, TValue** val)
+const char* aux_upvalue(StkId fi, int n, TValue** val)
 {
     Closure* f;
     if (!ttisfunction(fi))

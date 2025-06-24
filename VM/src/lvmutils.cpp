@@ -51,7 +51,7 @@ const float* luaV_tovector(const TValue* obj)
     return nullptr;
 }
 
-static StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1, const TValue* p2)
+StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1, const TValue* p2)
 {
     ptrdiff_t result = savestack(L, res);
     // using stack room beyond top is technically safe here, but for very complicated reasons:
@@ -74,7 +74,7 @@ static StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p
     return res;
 }
 
-static void callTM(lua_State* L, const TValue* f, const TValue* p1, const TValue* p2, const TValue* p3)
+void callTM(lua_State* L, const TValue* f, const TValue* p1, const TValue* p2, const TValue* p3)
 {
     // using stack room beyond top is technically safe here, but for very complicated reasons:
     // * The stack guarantees EXTRA_STACK room beyond stack_last (see luaD_reallocstack) will be allocated
@@ -174,7 +174,7 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
     luaG_runerror(L, "'__newindex' chain too long; possible loop");
 }
 
-static int call_binTM(lua_State* L, const TValue* p1, const TValue* p2, StkId res, TMS event)
+int call_binTM(lua_State* L, const TValue* p1, const TValue* p2, StkId res, TMS event)
 {
     const TValue* tm = luaT_gettmbyobj(L, p1, event); // try first operand
     if (ttisnil(tm))
@@ -185,7 +185,7 @@ static int call_binTM(lua_State* L, const TValue* p1, const TValue* p2, StkId re
     return 1;
 }
 
-static const TValue* get_compTM(lua_State* L, LuaTable* mt1, LuaTable* mt2, TMS event)
+const TValue* get_compTM(lua_State* L, LuaTable* mt1, LuaTable* mt2, TMS event)
 {
     const TValue* tm1 = fasttm(L, mt1, event);
     const TValue* tm2;
@@ -201,7 +201,7 @@ static const TValue* get_compTM(lua_State* L, LuaTable* mt1, LuaTable* mt2, TMS 
     return NULL;
 }
 
-static int call_orderTM(lua_State* L, const TValue* p1, const TValue* p2, TMS event, bool error = false)
+int call_orderTM(lua_State* L, const TValue* p1, const TValue* p2, TMS event, bool error = false)
 {
     const TValue* tm1 = luaT_gettmbyobj(L, p1, event);
     const TValue* tm2;

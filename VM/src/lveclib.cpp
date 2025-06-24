@@ -6,7 +6,7 @@
 
 #include <math.h>
 
-static int vector_create(lua_State* L)
+int vector_create(lua_State* L)
 {
     // checking argument count to avoid accepting 'nil' as a valid value
     int count = lua_gettop(L);
@@ -26,7 +26,7 @@ static int vector_create(lua_State* L)
     return 1;
 }
 
-static int vector_magnitude(lua_State* L)
+int vector_magnitude(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
 
@@ -39,7 +39,7 @@ static int vector_magnitude(lua_State* L)
     return 1;
 }
 
-static int vector_normalize(lua_State* L)
+int vector_normalize(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
 
@@ -56,7 +56,7 @@ static int vector_normalize(lua_State* L)
     return 1;
 }
 
-static int vector_cross(lua_State* L)
+int vector_cross(lua_State* L)
 {
     const float* a = luaL_checkvector(L, 1);
     const float* b = luaL_checkvector(L, 2);
@@ -70,7 +70,7 @@ static int vector_cross(lua_State* L)
     return 1;
 }
 
-static int vector_dot(lua_State* L)
+int vector_dot(lua_State* L)
 {
     const float* a = luaL_checkvector(L, 1);
     const float* b = luaL_checkvector(L, 2);
@@ -84,7 +84,7 @@ static int vector_dot(lua_State* L)
     return 1;
 }
 
-static int vector_angle(lua_State* L)
+int vector_angle(lua_State* L)
 {
     const float* a = luaL_checkvector(L, 1);
     const float* b = luaL_checkvector(L, 2);
@@ -107,7 +107,7 @@ static int vector_angle(lua_State* L)
     return 1;
 }
 
-static int vector_floor(lua_State* L)
+int vector_floor(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
 
@@ -120,7 +120,7 @@ static int vector_floor(lua_State* L)
     return 1;
 }
 
-static int vector_ceil(lua_State* L)
+int vector_ceil(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
 
@@ -133,7 +133,7 @@ static int vector_ceil(lua_State* L)
     return 1;
 }
 
-static int vector_abs(lua_State* L)
+int vector_abs(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
 
@@ -146,7 +146,7 @@ static int vector_abs(lua_State* L)
     return 1;
 }
 
-static int vector_sign(lua_State* L)
+int vector_sign(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
 
@@ -159,7 +159,7 @@ static int vector_sign(lua_State* L)
     return 1;
 }
 
-static int vector_clamp(lua_State* L)
+int vector_clamp(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
     const float* min = luaL_checkvector(L, 2);
@@ -184,7 +184,7 @@ static int vector_clamp(lua_State* L)
     return 1;
 }
 
-static int vector_min(lua_State* L)
+int vector_min(lua_State* L)
 {
     int n = lua_gettop(L);
     const float* v = luaL_checkvector(L, 1);
@@ -220,7 +220,7 @@ static int vector_min(lua_State* L)
     return 1;
 }
 
-static int vector_max(lua_State* L)
+int vector_max(lua_State* L)
 {
     int n = lua_gettop(L);
     const float* v = luaL_checkvector(L, 1);
@@ -256,7 +256,7 @@ static int vector_max(lua_State* L)
     return 1;
 }
 
-static int vector_index(lua_State* L)
+int vector_index(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
     size_t namelen = 0;
@@ -283,7 +283,7 @@ static int vector_index(lua_State* L)
     luaL_error(L, "attempt to index vector with '%s'", name);
 }
 
-static const luaL_Reg vectorlib[] = {
+const luaL_Reg vectorlib[] = {
     {"create", vector_create},
     {"magnitude", vector_magnitude},
     {"normalize", vector_normalize},
@@ -300,7 +300,7 @@ static const luaL_Reg vectorlib[] = {
     {NULL, NULL},
 };
 
-static void createmetatable(lua_State* L)
+void createmetatable(lua_State* L)
 {
     lua_createtable(L, 0, 1); // create metatable for vectors
 

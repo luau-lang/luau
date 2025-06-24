@@ -12,19 +12,19 @@
 #include <string.h>
 #include <stdio.h>
 
-static const char* getfuncname(Closure* f);
+const char* getfuncname(Closure* f);
 
-static int currentpc(lua_State* L, CallInfo* ci)
+int currentpc(lua_State* L, CallInfo* ci)
 {
     return pcRel(ci->savedpc, ci_func(ci)->l.p);
 }
 
-static int currentline(lua_State* L, CallInfo* ci)
+int currentline(lua_State* L, CallInfo* ci)
 {
     return luaG_getline(ci_func(ci)->l.p, currentpc(L, ci));
 }
 
-static Proto* getluaproto(CallInfo* ci)
+Proto* getluaproto(CallInfo* ci)
 {
     return (isLua(ci) ? cast_to(Proto*, ci_func(ci)->l.p) : NULL);
 }
@@ -101,7 +101,7 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     return name;
 }
 
-static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
+Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
 {
     Closure* cl = NULL;
     for (; *what; what++)
@@ -217,7 +217,7 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
     return f ? 1 : 0;
 }
 
-static const char* getfuncname(Closure* cl)
+const char* getfuncname(Closure* cl)
 {
     if (cl->isC)
     {
@@ -305,7 +305,7 @@ l_noret luaG_readonlyerror(lua_State* L)
     luaG_runerror(L, "attempt to modify a readonly table");
 }
 
-static void pusherror(lua_State* L, const char* msg)
+void pusherror(lua_State* L, const char* msg)
 {
     CallInfo* ci = L->ci;
     if (isLua(ci))
@@ -441,7 +441,7 @@ void lua_singlestep(lua_State* L, int enabled)
     L->singlestep = bool(enabled);
 }
 
-static int getmaxline(Proto* p)
+int getmaxline(Proto* p)
 {
     int result = -1;
 
@@ -461,7 +461,7 @@ static int getmaxline(Proto* p)
 }
 
 // Find the line number with instructions. If the provided line doesn't have any instruction, it should return the next valid line number.
-static int getnextline(Proto* p, int line)
+int getnextline(Proto* p, int line)
 {
     int closest = -1;
 
@@ -513,7 +513,7 @@ int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
     return target;
 }
 
-static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)
+void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)
 {
     memset(buffer, -1, size * sizeof(int));
 
@@ -557,7 +557,7 @@ void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage ca
     luaM_freearray(L, buffer, size, int, 0);
 }
 
-static size_t append(char* buf, size_t bufsize, size_t offset, const char* data)
+size_t append(char* buf, size_t bufsize, size_t offset, const char* data)
 {
     size_t size = strlen(data);
     size_t copy = offset + size >= bufsize ? bufsize - offset - 1 : size;
@@ -567,7 +567,7 @@ static size_t append(char* buf, size_t bufsize, size_t offset, const char* data)
 
 const char* lua_debugtrace(lua_State* L)
 {
-    static char buf[4096];
+    char buf[4096];
 
     const int limit1 = 10;
     const int limit2 = 10;

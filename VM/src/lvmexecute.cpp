@@ -193,10 +193,10 @@ inline bool luau_skipstep(uint8_t op)
 }
 
 template<bool SingleStep>
-static void luau_execute(lua_State* L)
+void luau_execute(lua_State* L)
 {
 #if VM_USE_CGOTO
-    static const void* kDispatchTable[256] = {VM_DISPATCH_TABLE()};
+    const void* kDispatchTable[256] = {VM_DISPATCH_TABLE()};
 #endif
 
     // the critical interpreter state, stored in locals for performance

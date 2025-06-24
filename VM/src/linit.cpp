@@ -4,7 +4,7 @@
 
 #include <stdlib.h>
 
-static const luaL_Reg lualibs[] = {
+const luaL_Reg lualibs[] = {
     {"", luaopen_base},
     {LUA_COLIBNAME, luaopen_coroutine},
     {LUA_TABLIBNAME, luaopen_table},
@@ -76,7 +76,7 @@ void luaL_sandboxthread(lua_State* L)
     lua_setsafeenv(L, LUA_GLOBALSINDEX, true);
 }
 
-static void* l_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
+void* l_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
 {
     (void)ud;
     (void)osize;

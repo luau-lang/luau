@@ -116,7 +116,7 @@ void luaV_getimport(lua_State* L, LuaTable* env, TValue* k, StkId res, uint32_t 
 }
 
 template<typename T>
-static T read(const char* data, size_t size, size_t& offset)
+T read(const char* data, size_t size, size_t& offset)
 {
     T result;
     memcpy(&result, data + offset, sizeof(T));
@@ -125,7 +125,7 @@ static T read(const char* data, size_t size, size_t& offset)
     return result;
 }
 
-static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
+unsigned int readVarInt(const char* data, size_t size, size_t& offset)
 {
     unsigned int result = 0;
     unsigned int shift = 0;
@@ -142,21 +142,21 @@ static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
     return result;
 }
 
-static TString* readString(TempBuffer<TString*>& strings, const char* data, size_t size, size_t& offset)
+TString* readString(TempBuffer<TString*>& strings, const char* data, size_t size, size_t& offset)
 {
     unsigned int id = readVarInt(data, size, offset);
 
     return id == 0 ? NULL : strings[id - 1];
 }
 
-static void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t id)
+void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t id)
 {
     struct ResolveImport
     {
         TValue* k;
         uint32_t id;
 
-        static void run(lua_State* L, void* ud)
+        void run(lua_State* L, void* ud)
         {
             ResolveImport* self = static_cast<ResolveImport*>(ud);
 
@@ -193,7 +193,7 @@ static void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t i
     }
 }
 
-static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemapping, uint32_t count)
+void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemapping, uint32_t count)
 {
     size_t offset = 0;
 
@@ -250,7 +250,7 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
     LUAU_ASSERT(offset == size);
 }
 
-static int loadsafe(
+int loadsafe(
     lua_State* L,
     TempBuffer<TString*>& strings,
     TempBuffer<Proto*>& protos,
@@ -622,7 +622,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
         int result;
 
-        static void run(lua_State* L, void* ud)
+        void run(lua_State* L, void* ud)
         {
             LoadContext* ctx = (LoadContext*)ud;
 

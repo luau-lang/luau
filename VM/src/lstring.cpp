@@ -68,7 +68,7 @@ void luaS_resize(lua_State* L, int newsize)
     tb->hash = newhash;
 }
 
-static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
+TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
 {
     if (l > MAXSSIZE)
         luaM_toobig(L);
@@ -160,7 +160,7 @@ TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
     return newlstr(L, str, l, h); // not found
 }
 
-static bool unlinkstr(lua_State* L, TString* ts)
+bool unlinkstr(lua_State* L, TString* ts)
 {
     global_State* g = L->global;
 
