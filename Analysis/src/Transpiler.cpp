@@ -1258,6 +1258,14 @@ struct Printer
 
             writer.symbol(")");
         }
+        else if (const auto& a = program.as<AstStatDeclareGlobal>())
+        {
+            writer.keyword("declare");
+            writer.identifier(a->name.value);
+
+            writer.symbol(":");
+            visualizeTypeAnnotation(*a->type);
+        }
         else
         {
             LUAU_ASSERT(!"Unknown AstStat");
