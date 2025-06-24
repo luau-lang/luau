@@ -452,7 +452,7 @@ void shrinkstackprotected(lua_State* L)
 {
     struct CallContext
     {
-        void run(lua_State* L, void* ud)
+        static void run(lua_State* L, void* ud)
         {
             shrinkstack(L);
         }
