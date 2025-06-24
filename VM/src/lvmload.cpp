@@ -156,7 +156,7 @@ void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t id)
         TValue* k;
         uint32_t id;
 
-        void run(lua_State* L, void* ud)
+        static void run(lua_State* L, void* ud)
         {
             ResolveImport* self = static_cast<ResolveImport*>(ud);
 
@@ -622,7 +622,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
         int result;
 
-        void run(lua_State* L, void* ud)
+        static void run(lua_State* L, void* ud)
         {
             LoadContext* ctx = (LoadContext*)ud;
 

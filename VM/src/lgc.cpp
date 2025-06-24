@@ -574,7 +574,7 @@ void tableresizeprotected(lua_State* L, LuaTable* t, int nhsize)
         LuaTable* t;
         int nhsize;
 
-        void run(lua_State* L, void* ud)
+        static void run(lua_State* L, void* ud)
         {
             CallContext* ctx = (CallContext*)ud;
 
@@ -688,7 +688,7 @@ void stringresizeprotected(lua_State* L, int newsize)
     {
         int newsize;
 
-        void run(lua_State* L, void* ud)
+        static void run(lua_State* L, void* ud)
         {
             CallContext* ctx = (CallContext*)ud;
 
