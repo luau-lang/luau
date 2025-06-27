@@ -92,7 +92,7 @@ static std::string runCode(lua_State* L, const std::string& source, int optimiza
     }
 }
 
-extern "C" const char* executeScript(const char* source, int optimizationLevel, int debugLevel)
+extern "C" const char* executeScriptWithOptions(const char* source, int optimizationLevel, int debugLevel)
 {
     // setup flags
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
@@ -120,7 +120,7 @@ extern "C" const char* executeScript(const char* source, int optimizationLevel, 
 
 extern "C" const char* executeScript(const char* source)
 {
-    return executeScript(source, 1, 1);
+    return executeScriptWithOptions(source, 1, 1);
 }
 
 static std::string compiledBytecode;
