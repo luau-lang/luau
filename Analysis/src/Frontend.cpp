@@ -388,30 +388,31 @@ double getTimestamp()
 } // namespace
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
-    : builtinTypes(NotNull{&builtinTypes_})
+    : useNewLuauSolver(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old)
+    , builtinTypes(NotNull{&builtinTypes_})
     , fileResolver(fileResolver)
     , moduleResolver(this)
     , moduleResolverForAutocomplete(this)
-    , globals(builtinTypes)
-    , globalsForAutocomplete(builtinTypes)
+    , globals(builtinTypes, getLuauSolverMode())
+    , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
     , configResolver(configResolver)
     , options(options)
 {
 }
 
-void Frontend::setLuauSolverSelectionFromWorkspace(bool newSolverEnabled)
+void Frontend::setLuauSolverSelectionFromWorkspace(SolverMode mode)
 {
-    useNewLuauSolver.store(newSolverEnabled);
+    useNewLuauSolver.store(mode);
 }
 
-bool Frontend::getLuauSolverSelection() const
+SolverMode Frontend::getLuauSolverMode() const
 {
-    return useNewLuauSolver.load();
-}
-
-bool Frontend::getLuauSolverSelectionFlagged() const
-{
-    return FFlag::LuauUseWorkspacePropToChooseSolver ? getLuauSolverSelection() : FFlag::LuauSolverV2;
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
+        return useNewLuauSolver.load();
+    else if (FFlag::LuauSolverV2)
+        return SolverMode::New;
+    else
+        return SolverMode::Old;
 }
 
 void Frontend::parse(const ModuleName& name)
@@ -464,7 +465,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
     FrontendOptions frontendOptions = optionOverride.value_or(options);
-    if (FFlag::LuauSolverV2)
+    if (getLuauSolverMode() == SolverMode::New)
         frontendOptions.forAutocomplete = false;
 
     if (std::optional<CheckResult> result = getCheckResult(name, true, frontendOptions.forAutocomplete))
@@ -524,7 +525,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 )
 {
     FrontendOptions frontendOptions = optionOverride.value_or(options);
-    if (FFlag::LuauSolverV2)
+    if (getLuauSolverMode() == SolverMode::New)
         frontendOptions.forAutocomplete = false;
 
     // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
@@ -709,7 +710,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
 std::optional<CheckResult> Frontend::getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete)
 {
-    if (FFlag::LuauSolverV2)
+    if (getLuauSolverMode() == SolverMode::New)
         forAutocomplete = false;
 
     auto it = sourceNodes.find(name);
@@ -1039,7 +1040,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     if (item.options.customModuleCheck)
         item.options.customModuleCheck(sourceModule, *module);
 
-    if (FFlag::LuauSolverV2 && mode == Mode::NoCheck)
+    if ((getLuauSolverMode() == SolverMode::New) && mode == Mode::NoCheck)
         module->errors.clear();
 
     if (item.options.runLintChecks)
@@ -1461,7 +1462,7 @@ ModulePtr check(
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
     unifierState.counters.iterationLimit = limits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
-    Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
+    Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}, SolverMode::New};
     SimplifierPtr simplifier = newSimplifier(NotNull{&result->internalTypes}, builtinTypes);
     TypeFunctionRuntime typeFunctionRuntime{iceHandler, NotNull{&limits}};
 
@@ -1728,7 +1729,7 @@ ModulePtr Frontend::check(
     TypeCheckLimits typeCheckLimits
 )
 {
-    if (FFlag::LuauSolverV2)
+    if (getLuauSolverMode() == SolverMode::New)
     {
         auto prepareModuleScopeWrap = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope)
         {
@@ -2055,6 +2056,12 @@ void Frontend::clear()
     moduleResolver.clearModules();
     moduleResolverForAutocomplete.clearModules();
     requireTrace.clear();
+}
+
+void Frontend::clearBuiltinEnvironments()
+{
+    environments.clear();
+    builtinDefinitions.clear();
 }
 
 } // namespace Luau

@@ -11,7 +11,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauArityMismatchOnUndersaturatedUnknownArguments)
-LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 
 namespace Luau
 {
@@ -201,6 +201,43 @@ bool OverloadResolver::isLiteral(AstExpr* expr)
            expr->is<AstExprConstantString>() || expr->is<AstExprFunction>() || expr->is<AstExprTable>();
 }
 
+void OverloadResolver::maybeEmplaceError(
+    ErrorVec* errors,
+    Location argLocation,
+    const SubtypingReasoning* reason,
+    const std::optional<TypeId> failedSubTy,
+    const std::optional<TypeId> failedSuperTy
+) const
+{
+    if (failedSubTy && failedSuperTy)
+    {
+        switch (shouldSuppressErrors(normalizer, *failedSubTy).orElse(shouldSuppressErrors(normalizer, *failedSuperTy)))
+        {
+        case ErrorSuppression::Suppress:
+            break;
+        case ErrorSuppression::NormalizationFailed:
+            errors->emplace_back(argLocation, NormalizationTooComplex{});
+            // intentionally fallthrough here since we couldn't prove this was error-suppressing
+            [[fallthrough]];
+        case ErrorSuppression::DoNotSuppress:
+            // TODO extract location from the SubtypingResult path and argExprs
+            switch (reason->variance)
+            {
+            case SubtypingVariance::Covariant:
+            case SubtypingVariance::Contravariant:
+                errors->emplace_back(argLocation, TypeMismatch{*failedSubTy, *failedSuperTy, TypeMismatch::CovariantContext});
+                break;
+            case SubtypingVariance::Invariant:
+                errors->emplace_back(argLocation, TypeMismatch{*failedSubTy, *failedSuperTy, TypeMismatch::InvariantContext});
+                break;
+            default:
+                LUAU_ASSERT(0);
+                break;
+            }
+        }
+    }
+}
+
 std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_(
     TypeId fnTy,
     const FunctionType* fn,
@@ -292,14 +329,44 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             return {Analysis::Ok, {}};
         }
 
-        if (FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2)
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
         {
-            if (reason.subPath == TypePath::Path{{TypePath::PackField::Arguments, TypePath::PackField::Tail}} && reason.superPath == justArguments)
+            // If we have an arity mismatch with generic type pack parameters, then subPath matches Args :: Tail :: ...
+            // and superPath matches Args :: ...
+            if (reason.subPath.components.size() >= 2 && reason.subPath.components[0] == TypePath::PackField::Arguments &&
+                reason.subPath.components[1] == TypePath::PackField::Tail && reason.superPath.components.size() >= 1 &&
+                reason.superPath.components[0] == TypePath::PackField::Arguments)
+            {
+                if (const auto [requiredHead, requiredTail] = flatten(fn->argTypes); requiredTail)
+                {
+                    if (const auto genericTail = get<GenericTypePack>(follow(requiredTail)); genericTail)
+                    {
+                        // Get the concrete type pack the generic is mapped to
+                        const auto mappedGenHead = flatten(*requiredTail, sr.mappedGenericPacks).first;
+
+                        const auto prospectiveHead = flatten(typ).first;
+
+                        // We're just doing arity checking here
+                        // We've flattened the type packs, so we can check prospectiveHead = requiredHead + mappedGenHead
+                        // Super path reasoning is just args, so we can ignore the tails
+                        const size_t neededHeadSize = requiredHead.size() + mappedGenHead.size();
+                        const size_t prospectiveHeadSize = prospectiveHead.size();
+                        if (prospectiveHeadSize != neededHeadSize)
+                        {
+                            TypeError error{fnExpr->location, CountMismatch{neededHeadSize, std::nullopt, prospectiveHeadSize, CountMismatch::Arg}};
+
+                            return {Analysis::ArityMismatch, {error}};
+                        }
+                    }
+                }
+            }
+
+            else if (reason.subPath == TypePath::Path{{TypePath::PackField::Arguments, TypePath::PackField::Tail}} &&
+                     reason.superPath == justArguments)
             {
                 // We have an arity mismatch if the argument tail is a generic type pack
                 if (auto fnArgs = get<TypePack>(fn->argTypes))
                 {
-                    // TODO: Determine whether arguments have incorrect type, incorrect count, or both (CLI-152070)
                     if (get<GenericTypePack>(fnArgs->tail))
                     {
                         auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
@@ -337,12 +404,18 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                           : argExprs->size() != 0        ? argExprs->back()->location
                                                          : fnExpr->location;
 
-            std::optional<TypeId> failedSubTy = traverseForType(fnTy, reason.subPath, builtinTypes);
-            std::optional<TypeId> failedSuperTy = traverseForType(prospectiveFunction, reason.superPath, builtinTypes);
+            std::optional<TypeId> failedSubTy = FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                                                    ? traverseForType(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
+                                                    : traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes);
+            std::optional<TypeId> failedSuperTy =
+                FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                    ? traverseForType(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
+                    : traverseForType_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 
-            if (failedSubTy && failedSuperTy)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+                maybeEmplaceError(&errors, argLocation, &reason, failedSubTy, failedSuperTy);
+            else if (failedSubTy && failedSuperTy)
             {
-
                 switch (shouldSuppressErrors(normalizer, *failedSubTy).orElse(shouldSuppressErrors(normalizer, *failedSuperTy)))
                 {
                 case ErrorSuppression::Suppress:
@@ -369,9 +442,36 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 }
             }
         }
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping && reason.superPath.components.size() > 1)
+        {
+            // traverseForIndex only has a value if path is of form [...PackSlice, Index]
+            if (const auto index =
+                    traverseForIndex(TypePath::Path{std::vector(reason.superPath.components.begin() + 1, reason.superPath.components.end())}))
+            {
+                if (index < argExprs->size())
+                    argLocation = argExprs->at(*index)->location;
+                else if (argExprs->size() != 0)
+                    argLocation = argExprs->back()->location;
+                else
+                {
+                    // this should never happen
+                    LUAU_ASSERT(false);
+                    argLocation = fnExpr->location;
+                }
+                std::optional<TypeId> failedSubTy = traverseForType(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena);
+                std::optional<TypeId> failedSuperTy =
+                    traverseForType(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena);
+                maybeEmplaceError(&errors, argLocation, &reason, failedSubTy, failedSuperTy);
+            }
+        }
 
-        std::optional<TypePackId> failedSubPack = traverseForPack(fnTy, reason.subPath, builtinTypes);
-        std::optional<TypePackId> failedSuperPack = traverseForPack(prospectiveFunction, reason.superPath, builtinTypes);
+        std::optional<TypePackId> failedSubPack = FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                                                      ? traverseForPack(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
+                                                      : traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes);
+        std::optional<TypePackId> failedSuperPack =
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                ? traverseForPack(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
+                : traverseForPack_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 
         if (failedSubPack && failedSuperPack)
         {

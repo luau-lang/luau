@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAG(LuauFollowTypeAlias)
 LUAU_FASTFLAG(LuauFollowExistingTypeFunction)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeFollowMetatable)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -2412,7 +2413,11 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_reduction_errors")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauUserTypeFunctionAliases, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+    };
 
     CheckResult result = check(R"(
 type Test<T, U> = setmetatable<T, U>
@@ -2424,11 +2429,10 @@ end
 local function ok(idx: get<>): number return idx end
     )");
 
-    // TODO: type solving fails to complete in this test because of the blocked NameConstraint on the 'Test' alias
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(
         toString(result.errors[1]) ==
-        R"('get' type function errored at runtime: [string "get"]:5: failed to reduce type function with: Type function instance setmetatable<number, string> is uninhabited)"
+        R"(Type function instance get<> is uninhabited)"
     );
 }
 

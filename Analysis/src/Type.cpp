@@ -31,6 +31,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -711,7 +712,7 @@ Property Property::create(std::optional<TypeId> read, std::optional<TypeId> writ
 
 TypeId Property::type_DEPRECATED() const
 {
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps && !FFlag::LuauUseWorkspacePropToChooseSolver)
         LUAU_ASSERT(!FFlag::LuauSolverV2);
 
     LUAU_ASSERT(readTy);
@@ -1001,7 +1002,7 @@ TypeId makeFunction(
     std::initializer_list<TypeId> retTypes
 );
 
-TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes); // BuiltinDefinitions.cpp
+TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode); // BuiltinDefinitions.cpp
 
 BuiltinTypes::BuiltinTypes()
     : arena(new TypeArena)

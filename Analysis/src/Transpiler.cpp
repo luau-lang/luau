@@ -10,8 +10,6 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauStoreLocalAnnotationColonPositions)
-
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -322,8 +320,7 @@ struct Printer
         writer.identifier(local.name.value);
         if (writeTypes && local.annotation)
         {
-            if (FFlag::LuauStoreLocalAnnotationColonPositions)
-                advance(colonPosition);
+            advance(colonPosition);
             writer.symbol(":");
             visualizeTypeAnnotation(*local.annotation);
         }
@@ -928,7 +925,7 @@ struct Printer
             for (size_t i = 0; i < a->vars.size; i++)
             {
                 varComma();
-                if (FFlag::LuauStoreLocalAnnotationColonPositions && cstNode)
+                if (cstNode)
                 {
                     LUAU_ASSERT(cstNode->varsAnnotationColonPositions.size > i);
                     visualize(*a->vars.data[i], cstNode->varsAnnotationColonPositions.data[i]);
@@ -957,10 +954,7 @@ struct Printer
 
             writer.keyword("for");
 
-            if (FFlag::LuauStoreLocalAnnotationColonPositions)
-                visualize(*a->var, cstNode ? cstNode->annotationColonPosition : Position{0, 0});
-            else
-                visualize(*a->var, Position{0, 0});
+            visualize(*a->var, cstNode ? cstNode->annotationColonPosition : Position{0, 0});
 
             if (cstNode)
                 advance(cstNode->equalsPosition);
@@ -994,7 +988,7 @@ struct Printer
             for (size_t i = 0; i < a->vars.size; i++)
             {
                 varComma();
-                if (FFlag::LuauStoreLocalAnnotationColonPositions && cstNode)
+                if (cstNode)
                 {
                     LUAU_ASSERT(cstNode->varsAnnotationColonPositions.size > i);
                     visualize(*a->vars.data[i], cstNode->varsAnnotationColonPositions.data[i]);
@@ -1317,7 +1311,7 @@ struct Printer
             writer.identifier(local->name.value);
             if (writeTypes && local->annotation)
             {
-                if (FFlag::LuauStoreLocalAnnotationColonPositions && cstNode)
+                if (cstNode)
                 {
                     LUAU_ASSERT(cstNode->argsAnnotationColonPositions.size > i);
                     advance(cstNode->argsAnnotationColonPositions.data[i]);
@@ -1335,7 +1329,7 @@ struct Printer
 
             if (func.varargAnnotation)
             {
-                if (FFlag::LuauStoreLocalAnnotationColonPositions && cstNode)
+                if (cstNode)
                 {
                     LUAU_ASSERT(cstNode->varargAnnotationColonPosition != Position({0, 0}));
                     advance(cstNode->varargAnnotationColonPosition);

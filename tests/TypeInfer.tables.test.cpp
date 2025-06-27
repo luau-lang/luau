@@ -33,9 +33,11 @@ LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauAutocompleteMissingFollows)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauRelateTablesAreNeverDisjoint)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -1721,6 +1723,7 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key")
 // Could be flaky if the fix has regressed.
 TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     // CLI-114792 We don't report MissingProperties
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
@@ -1738,8 +1741,8 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
     REQUIRE_EQ(1, mp->properties.size());
     CHECK_EQ(mp->properties[0], "a");
 
-    CHECK_EQ("{| [string]: string, a: string |}", toString(mp->superType));
-    CHECK_EQ("{|  |}", toString(mp->subType));
+    CHECK_EQ("{ [string]: string, a: string }", toString(mp->superType));
+    CHECK_EQ("{  }", toString(mp->subType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "casting_unsealed_tables_with_props_into_table_with_indexer")
@@ -2421,6 +2424,8 @@ local t: { a: {Foo}, b: number } = {
 // since mutating properties means table properties should be invariant.
 TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_tables_in_assignment_is_unsound")
 {
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
     CheckResult result = check(R"(
         --!strict
         local t = {}
@@ -2434,10 +2439,8 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
     if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
-        // FIXME CLI-151985
-        LUAU_CHECK_ERROR_COUNT(2, result);
+        LUAU_CHECK_ERROR_COUNT(1, result);
         LUAU_CHECK_ERROR(result, ExplicitFunctionAnnotationRecommended);
-        LUAU_CHECK_ERROR(result, ConstraintSolvingIncompleteError);
     }
     else if (FFlag::LuauSolverV2)
     {
@@ -2768,6 +2771,7 @@ TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_type_call")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     // CLI-114782
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
@@ -2779,7 +2783,7 @@ b()
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = { @metatable { __call: t1 }, {  } })");
+    CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = { @metatable {| __call: t1 |}, {|  |} })");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")

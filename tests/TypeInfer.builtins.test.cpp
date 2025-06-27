@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauWriteOnlyPropertyMangling)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
+LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1743,6 +1744,15 @@ TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
         end
 
         accept({ foo = "lol", foo = true })
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_into_any")
+{
+    ScopedFastFlag _{FFlag::LuauSuppressErrorsForMultipleNonviableOverloads, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+table.insert(1::any, 2::any)
     )"));
 }
 

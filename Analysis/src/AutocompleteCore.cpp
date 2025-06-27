@@ -162,7 +162,7 @@ static bool checkTypeMatch(
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
     SimplifierPtr simplifier = newSimplifier(NotNull{typeArena}, builtinTypes);
-    Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
+    Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}, module.checkedInNewSolver ? SolverMode::New : SolverMode::Old};
     if (module.checkedInNewSolver)
     {
         TypeCheckLimits limits;

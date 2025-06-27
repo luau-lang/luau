@@ -28,7 +28,8 @@ bool isSubtype(
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Simplifier> simplifier,
-    InternalErrorReporter& ice
+    InternalErrorReporter& ice,
+    SolverMode solverMode
 );
 bool isSubtype(
     TypePackId subPack,
@@ -36,7 +37,8 @@ bool isSubtype(
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Simplifier> simplifier,
-    InternalErrorReporter& ice
+    InternalErrorReporter& ice,
+    SolverMode solverMode
 );
 
 } // namespace Luau
@@ -311,14 +313,21 @@ class Normalizer
     DenseHashMap<std::pair<TypeId, TypeId>, bool, TypeIdPairHash> cachedIsInhabitedIntersection{{nullptr, nullptr}};
 
     bool withinResourceLimits();
+    bool useNewLuauSolver() const;
 
 public:
     TypeArena* arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<UnifierSharedState> sharedState;
     bool cacheInhabitance = false;
-
-    Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, bool cacheInhabitance = false);
+    SolverMode solverMode;
+    Normalizer(
+        TypeArena* arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<UnifierSharedState> sharedState,
+        SolverMode solver,
+        bool cacheInhabitance = false
+    );
     Normalizer(const Normalizer&) = delete;
     Normalizer(Normalizer&&) = delete;
     Normalizer() = delete;

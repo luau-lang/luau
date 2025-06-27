@@ -614,7 +614,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
 {
     {
         DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
+        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
         CheckResult result = check(R"(
             --!strict
             local t = { x = 10, y = 20 }
@@ -625,6 +625,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
     }
 
     {
+        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
         CheckResult result = check(R"(
             --!strict
             export type = number
@@ -636,7 +637,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
 
     {
         DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
+        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
         CheckResult result = check(R"(
             --!strict
             function string.() end
@@ -646,6 +647,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
     }
 
     {
+        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
         CheckResult result = check(R"(
             --!strict
             local function () end
@@ -656,6 +658,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
     }
 
     {
+        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
         CheckResult result = check(R"(
             --!strict
             local dm = {}
@@ -1153,7 +1156,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
             "\ncaused by:\n"
             "  Property 'getStoreFieldName' is not compatible.\n"
             "Type\n\t"
-            "'(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)'"
+            "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
             "\ncould not be converted into\n\t"
             "'(Policies, FieldSpecifier) -> string'"
             "\ncaused by:\n"
@@ -1161,10 +1164,10 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
             "Type\n\t"
             "'FieldSpecifier'"
             "\ncould not be converted into\n\t"
-            "'FieldSpecifier & {| from: number? |}'"
+            "'FieldSpecifier & { from: number? }'"
             "\ncaused by:\n"
             "  Not all intersection parts are compatible.\n"
-            "Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName'";
+            "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -2381,6 +2384,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "is_safe_integer_example")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_remover_heap_use_after_free")
 {
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if l0.n0.n0 then {n4(...,setmetatable(setmetatable(_),_)),_ == _,} elseif _.ceil._ then _ elseif _ then not _
     )"));

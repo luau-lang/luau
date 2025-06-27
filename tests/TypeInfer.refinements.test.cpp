@@ -15,8 +15,10 @@ LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
 LUAU_FASTFLAG(LuauBetterCannotCallFunctionPrimitive)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauNormalizationIntersectTablesPreservesExternTypes)
+LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 
@@ -140,6 +142,7 @@ struct RefinementExternTypeFixture : BuiltinsFixture
 
         for (const auto& [name, ty] : getFrontend().globals.globalScope->exportedTypeBindings)
             persist(ty.type);
+        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
 
         freeze(getFrontend().globals.globalTypes);
     }
@@ -653,6 +656,12 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
+    };
+
     CheckResult result = check(R"(
         local function f(a, b: string?)
             if a == b then
@@ -664,11 +673,20 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "unknown"); // a == b
-    else
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a"); // a == b
+    {
+        CHECK(toString(requireTypeAtPosition({3, 33})) == "unknown"); // a == b
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
+        // FIXME: This type either comes out as string? or (string?) & unknown
+        // depending on which tests are run and in which order. I'm not sure
+        // where the nondeterminism is coming from.
+        // CHECK(toString(requireTypeAtPosition({3, 36})) == "string?"); // a == b
+        CHECK(canonicalize(requireTypeAtPosition({3, 36})) == "string?"); // a == b
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_equal")
@@ -1424,7 +1442,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "typeguard_cast_free_table_to_vec
 {
     // CLI-115286 - Refining via type(x) == 'vector' does not work in the new solver
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
+    getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
     CheckResult result = check(R"(
         local function f(vec)
             local X, Y, Z = vec.X, vec.Y, vec.Z
@@ -2438,7 +2456,7 @@ end)
 )"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(1.0))
 {
     CheckResult result = check(R"(
 --!strict

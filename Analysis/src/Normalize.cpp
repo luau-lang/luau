@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -392,7 +393,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
     {
         for (const auto& [_, prop] : ttv->props)
         {
-            if (FFlag::LuauSolverV2)
+            if (useNewLuauSolver())
             {
                 // A table enclosing a read property whose type is uninhabitable is also itself uninhabitable,
                 // but not its write property. That just means the write property doesn't exist, and so is readonly.
@@ -719,11 +720,18 @@ static void assertInvariant(const NormalizedType& norm)
 #endif
 }
 
-Normalizer::Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, bool cacheInhabitance)
+Normalizer::Normalizer(
+    TypeArena* arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<UnifierSharedState> sharedState,
+    SolverMode solverMode,
+    bool cacheInhabitance
+)
     : arena(arena)
     , builtinTypes(builtinTypes)
     , sharedState(sharedState)
     , cacheInhabitance(cacheInhabitance)
+    , solverMode(solverMode)
 {
 }
 
@@ -1581,6 +1589,11 @@ bool Normalizer::withinResourceLimits()
             return false;
 
     return true;
+}
+
+bool Normalizer::useNewLuauSolver() const
+{
+    return FFlag::LuauUseWorkspacePropToChooseSolver ? (solverMode == SolverMode::New) : FFlag::LuauSolverV2;
 }
 
 NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect)
@@ -2457,7 +2470,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         {
             const auto& [_name, tprop] = *tfound;
             // TODO: variance issues here, which can't be fixed until we have read/write property types
-            if (FFlag::LuauSolverV2)
+            if (useNewLuauSolver())
             {
                 if (hprop.readTy.has_value())
                 {
@@ -3041,7 +3054,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     }
     else if (get<TableType>(there) || get<MetatableType>(there))
     {
-        if (FFlag::LuauSolverV2 && FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
+        if (useNewLuauSolver() && FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
         {
             NormalizedExternType externTypes = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);
@@ -3323,7 +3336,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     if (!get<NeverType>(norm.buffers))
         result.push_back(builtinTypes->bufferType);
 
-    if (FFlag::LuauSolverV2)
+    if (useNewLuauSolver())
     {
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
@@ -3361,30 +3374,50 @@ bool isSubtype(
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Simplifier> simplifier,
-    InternalErrorReporter& ice
+    InternalErrorReporter& ice,
+    SolverMode solverMode
 )
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    // Subtyping under DCR is not implemented using unification!
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
     {
-        Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
+        if (solverMode == SolverMode::New)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-        return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subTy, superTy);
+            return !u.failure;
+        }
     }
     else
     {
-        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+        if (FFlag::LuauSolverV2)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-        u.tryUnify(subTy, superTy);
-        return !u.failure;
+            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subTy, superTy);
+            return !u.failure;
+        }
     }
 }
 
@@ -3394,30 +3427,50 @@ bool isSubtype(
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Simplifier> simplifier,
-    InternalErrorReporter& ice
+    InternalErrorReporter& ice,
+    SolverMode solverMode
 )
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    // Subtyping under DCR is not implemented using unification!
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
     {
-        Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
+        if (solverMode == SolverMode::New)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-        return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+            return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subPack, superPack);
+            return !u.failure;
+        }
     }
     else
     {
-        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+        if (FFlag::LuauSolverV2)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-        u.tryUnify(subPack, superPack);
-        return !u.failure;
+            return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subPack, superPack);
+            return !u.failure;
+        }
     }
 }
 
