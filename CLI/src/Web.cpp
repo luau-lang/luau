@@ -17,10 +17,14 @@ static void setupState(lua_State* L)
     luaL_sandbox(L);
 }
 
-static std::string runCode(lua_State* L, const std::string& source)
+static std::string runCode(lua_State* L, const std::string& source, int optimizationLevel, int debugLevel)
 {
+    lua_CompileOptions options = {};
+    options.optimizationLevel = optimizationLevel;
+    options.debugLevel = debugLevel;
+
     size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(source.data(), source.length(), nullptr, &bytecodeSize);
+    char* bytecode = luau_compile(source.data(), source.length(), &options, &bytecodeSize);
     int result = luau_load(L, "=stdin", bytecode, bytecodeSize, 0);
     free(bytecode);
 
@@ -88,7 +92,7 @@ static std::string runCode(lua_State* L, const std::string& source)
     }
 }
 
-extern "C" const char* executeScript(const char* source)
+extern "C" const char* executeScript(const char* source, int optimizationLevel, int debugLevel)
 {
     // setup flags
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
@@ -109,7 +113,47 @@ extern "C" const char* executeScript(const char* source)
     static std::string result;
 
     // run code + collect error
-    result = runCode(L, source);
+    result = runCode(L, source, optimizationLevel, debugLevel);
 
     return result.empty() ? NULL : result.c_str();
+}
+
+extern "C" const char* executeScript(const char* source)
+{
+    return executeScript(source, 1, 1);
+}
+
+static std::string compiledBytecode;
+
+extern "C" const char* compileScript(const char* source, int optimizationLevel, int debugLevel)
+{
+    // setup flags
+    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+        if (strncmp(flag->name, "Luau", 4) == 0)
+            flag->value = true;
+
+    // setup compile options
+    lua_CompileOptions options = {};
+    options.optimizationLevel = optimizationLevel;
+    options.debugLevel = debugLevel;
+    
+    // compile source to bytecode
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), &options, &bytecodeSize);
+    
+    if (!bytecode) {
+        compiledBytecode.clear();
+        return NULL;
+    }
+
+    compiledBytecode.assign(bytecode, bytecodeSize);
+
+    free(bytecode);
+
+    return compiledBytecode.c_str();
+}
+
+extern "C" size_t getCompiledBytecodeSize()
+{
+    return compiledBytecode.size();
 }
