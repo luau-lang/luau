@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -47,12 +48,22 @@ TEST_CASE_FIXTURE(Fixture, "bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "free_types")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check("local a");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("'a", toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "free_types_stringify_the_same_regardless_of_solver")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+    TypeArena a;
+    TypeId t = a.addType(FreeType{getFrontend().globals.globalScope.get(), getFrontend().builtinTypes->neverType, getFrontend().builtinTypes->unknownType});
+
+    CHECK_EQ("'a", toString(t));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table")

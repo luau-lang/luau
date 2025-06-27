@@ -209,7 +209,7 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , builtinTypes(builtinTypes)
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
-    , normalizer(nullptr, builtinTypes, NotNull{&unifierState})
+    , normalizer(nullptr, builtinTypes, NotNull{&unifierState}, SolverMode::Old)
     , reusableInstantiation(TxnLog::empty(), nullptr, builtinTypes, {}, nullptr)
     , nilType(builtinTypes->nilType)
     , numberType(builtinTypes->numberType)

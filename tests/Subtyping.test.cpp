@@ -17,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 
 using namespace Luau;
 
@@ -67,7 +68,7 @@ struct SubtypeFixture : Fixture
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
     SimplifierPtr simplifier = newSimplifier(NotNull{&arena}, getBuiltins());
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
@@ -1386,6 +1387,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_function_instance")
 {
+    ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping, true};
+
     TypeId longTy = arena.addType(UnionType{
         {getBuiltins()->booleanType,
          getBuiltins()->bufferType,
@@ -1408,8 +1411,10 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, getBuiltins());
-        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, getBuiltins());
+        std::optional<TypeOrPack> optSubLeaf =
+            traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&result.mappedGenericPacks}, NotNull{&arena});
+        std::optional<TypeOrPack> optSuperLeaf =
+            traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&result.mappedGenericPacks}, NotNull{&arena});
 
         if (!optSubLeaf || !optSuperLeaf)
             CHECK(false);

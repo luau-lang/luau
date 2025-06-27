@@ -7,6 +7,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauEagerGeneralization4);
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch);
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -346,6 +348,11 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
 
 TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+    };
+
     CheckResult result = check(R"(
         local function mul(x: nil, y)
             return x ~= nil and x * y -- infers boolean | never, which is normalized into boolean
@@ -359,7 +366,7 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
 
         // CLI-114134 Egraph-based simplification.
         // CLI-116549 x ~= nil : false when x : nil
-        CHECK("<a>(nil, a) -> and<boolean, mul<nil & ~nil, a>>" == toString(requireType("mul")));
+        CHECK("<a>(nil, a) -> false | mul<nil & ~nil, a>" == toString(requireType("mul")));
     }
     else
     {

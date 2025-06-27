@@ -23,7 +23,7 @@ struct TryUnifyFixture : Fixture
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&unifierState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&unifierState}, SolverMode::Old};
     Unifier state{NotNull{&normalizer}, NotNull{globalScope.get()}, Location{}, Variance::Covariant};
 };
 

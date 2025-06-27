@@ -10,6 +10,7 @@
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/InferPolarity.h"
+#include "Luau/Module.h"
 #include "Luau/NotNull.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Symbol.h"
@@ -37,6 +38,7 @@ LUAU_FASTFLAGVARIABLE(LuauStringFormatImprovements)
 LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAGVARIABLE(LuauUpdateSetMetatableTypeSignature)
 LUAU_FASTFLAGVARIABLE(LuauUpdateGetMetatableTypeSignature)
+LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -317,7 +319,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     if (FFlag::LuauEagerGeneralization4)
         globalScope = globals.globalScope.get();
 
-    if (FFlag::LuauSolverV2)
+    if (frontend.getLuauSolverMode() == SolverMode::New)
         builtinTypeFunctions().addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
@@ -390,7 +392,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeId genericT = arena.addType(GenericType{globalScope, "T"});
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauUpdateGetMetatableTypeSignature)
+    if ((frontend.getLuauSolverMode() == SolverMode::New) && FFlag::LuauUpdateGetMetatableTypeSignature)
     {
         // getmetatable : <T>(T) -> getmetatable<T>
         TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().getmetatableFunc, {genericT}});
@@ -402,7 +404,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
     }
 
-    if (FFlag::LuauSolverV2)
+    if (frontend.getLuauSolverMode() == SolverMode::New)
     {
         TypeId tMetaMT = arena.addType(MetatableType{genericT, genericMT});
 
@@ -452,7 +454,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     attachMagicFunction(getGlobalBinding(globals, "assert"), std::make_shared<MagicAssert>());
 
-    if (FFlag::LuauSolverV2)
+    if (frontend.getLuauSolverMode() == SolverMode::New)
     {
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
         TypeId genericT = arena.addType(GenericType{globalScope, "T"});
@@ -471,7 +473,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (TableType* ttv = getMutable<TableType>(getGlobalBinding(globals, "table")))
     {
-        if (FFlag::LuauSolverV2)
+        if (frontend.getLuauSolverMode() == SolverMode::New)
         {
             // CLI-114044 - The new solver does not yet support generic tables,
             // which act, in an odd way, like generics that are constrained to
@@ -1227,7 +1229,7 @@ bool MagicFind::infer(const MagicFunctionCallContext& context)
     return true;
 }
 
-TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
+TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
 {
     NotNull<TypeArena> arena{builtinTypes->arena.get()};
 
@@ -1243,7 +1245,9 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
     const TypePackId oneStringPack = arena->addTypePack({stringType});
     const TypePackId anyTypePack = builtinTypes->anyTypePack;
 
-    const TypePackId variadicTailPack = FFlag::LuauSolverV2 ? builtinTypes->unknownTypePack : anyTypePack;
+    const TypePackId variadicTailPack = (FFlag::LuauUseWorkspacePropToChooseSolver && mode == SolverMode::New) ? builtinTypes->unknownTypePack
+                                        : FFlag::LuauSolverV2                                                  ? builtinTypes->unknownTypePack
+                                                                                                               : anyTypePack;
     const TypePackId emptyPack = arena->addTypePack({});
     const TypePackId stringVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{stringType}});
     const TypePackId numberVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{numberType}});

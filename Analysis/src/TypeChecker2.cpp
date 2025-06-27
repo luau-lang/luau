@@ -36,8 +36,11 @@ LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
 LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
+LUAU_FASTFLAGVARIABLE(LuauSuppressErrorsForMultipleNonviableOverloads)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 
 namespace Luau
 {
@@ -317,7 +320,7 @@ TypeChecker2::TypeChecker2(
     , ice(unifierState->iceHandler)
     , sourceModule(sourceModule)
     , module(module)
-    , normalizer{&module->internalTypes, builtinTypes, unifierState, /* cacheInhabitance */ true}
+    , normalizer{&module->internalTypes, builtinTypes, unifierState, SolverMode::New, /* cacheInhabitance */ true}
     , _subtyping{builtinTypes, NotNull{&module->internalTypes}, simplifier, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
     , subtyping(&_subtyping)
 {
@@ -1710,14 +1713,24 @@ void TypeChecker2::visitCall(AstExprCall* call)
         return; // Ok. Calling an uninhabited type is no-op.
     else if (!resolver.nonviableOverloads.empty())
     {
-        if (resolver.nonviableOverloads.size() == 1 && !isErrorSuppressing(call->func->location, resolver.nonviableOverloads.front().first))
-            reportErrors(resolver.nonviableOverloads.front().second);
+        if (FFlag::LuauSuppressErrorsForMultipleNonviableOverloads)
+        {
+            const bool reportedErrors =
+                reportNonviableOverloadErrors(resolver.nonviableOverloads, call->func->location, args.head.size(), call->location);
+            if (!reportedErrors)
+                return; // We did not report any errors, so we can just return.
+        }
         else
         {
-            std::string s = "None of the overloads for function that accept ";
-            s += std::to_string(args.head.size());
-            s += " arguments are compatible.";
-            reportError(GenericError{std::move(s)}, call->location);
+            if (resolver.nonviableOverloads.size() == 1 && !isErrorSuppressing(call->func->location, resolver.nonviableOverloads.front().first))
+                reportErrors(resolver.nonviableOverloads.front().second);
+            else
+            {
+                std::string s = "None of the overloads for function that accept ";
+                s += std::to_string(args.head.size());
+                s += " arguments are compatible.";
+                reportError(GenericError{std::move(s)}, call->location);
+            }
         }
     }
     else if (!resolver.arityMismatches.empty())
@@ -2046,19 +2059,24 @@ void TypeChecker2::visit(AstExprFunction* fn)
     // If the function type has a function annotation, we need to see if we can suggest an annotation
     if (normalizedFnTy)
     {
-        const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
-        LUAU_ASSERT(inferredFtv);
-
-        TypeFunctionReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
-        for (TypeId retTy : inferredFtv->retTypes)
+        if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+            suggestAnnotations(fn, normalizedFnTy->functions.parts.front());
+        else
         {
-            if (get<TypeFunctionInstanceType>(follow(retTy)))
+            const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
+            LUAU_ASSERT(inferredFtv);
+
+            TypeFunctionReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
+            for (TypeId retTy : inferredFtv->retTypes)
             {
-                TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
-                if (result.shouldRecommendAnnotation && !get<UnknownType>(result.guessedReturnType))
-                    reportError(
-                        ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, fn->location
-                    );
+                if (get<TypeFunctionInstanceType>(follow(retTy)))
+                {
+                    TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
+                    if (result.shouldRecommendAnnotation && !get<UnknownType>(result.guessedReturnType))
+                        reportError(
+                            ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, fn->location
+                        );
+                }
             }
         }
     }
@@ -2923,8 +2941,14 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
-        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
+        std::optional<TypeOrPack> optSubLeaf =
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                ? traverse(subTy, reasoning.subPath, builtinTypes, NotNull{&r.mappedGenericPacks}, subtyping->arena)
+                : traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes);
+        std::optional<TypeOrPack> optSuperLeaf =
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                ? traverse(superTy, reasoning.superPath, builtinTypes, NotNull{&r.mappedGenericPacks}, subtyping->arena)
+                : traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes);
 
         if (!optSubLeaf || !optSuperLeaf)
             ice->ice("Subtyping test returned a reasoning with an invalid path", location);
@@ -3473,7 +3497,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
-            if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, simplifier, *ice))
+            if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, simplifier, *ice, SolverMode::New))
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
         }
 
@@ -3550,7 +3574,47 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         return {NormalizationResult::False, {}};
 }
 
+void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
+{
+    const FunctionType* inferredFtv = get<FunctionType>(ty);
+    LUAU_ASSERT(inferredFtv);
 
+    VecDeque<TypeId> workList;
+    DenseHashSet<TypeId> seen{nullptr};
+
+    TypeFunctionReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
+    for (TypeId retTy : inferredFtv->retTypes)
+        workList.push_back(retTy);
+
+    while (!workList.empty())
+    {
+        TypeId t = follow(workList.front());
+        workList.pop_front();
+
+        if (seen.contains(t))
+            continue;
+        seen.insert(t);
+
+        if (auto ut = get<UnionType>(t))
+        {
+            for (TypeId t : ut)
+                workList.push_back(t);
+        }
+        else if (auto it = get<IntersectionType>(t))
+        {
+            for (TypeId t : it)
+                workList.push_back(t);
+        }
+        else if (get<TypeFunctionInstanceType>(t))
+        {
+            TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*expr, inferredFtv, t);
+            if (result.shouldRecommendAnnotation && !get<UnknownType>(result.guessedReturnType))
+                reportError(
+                    ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, expr->location
+                );
+        }
+    }
+}
 
 void TypeChecker2::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const
 {
@@ -3628,6 +3692,43 @@ bool TypeChecker2::isErrorSuppressing(Location loc, TypePackId tp)
 bool TypeChecker2::isErrorSuppressing(Location loc1, TypePackId tp1, Location loc2, TypePackId tp2)
 {
     return isErrorSuppressing(loc1, tp1) || isErrorSuppressing(loc2, tp2);
+}
+
+bool TypeChecker2::reportNonviableOverloadErrors(
+    std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads,
+    Location callFuncLocation,
+    size_t argHeadSize,
+    Location callLocation
+)
+{
+    // If multiple overloads report errors, we want to return an error reporting that multiple overloads have errors.
+    // If only one overload has errors, we want to report those errors.
+    std::optional<ErrorVec> reportedErrors;
+    bool multipleOverloadsHaveErrors = false;
+    for (auto& [ty, errs] : nonviableOverloads)
+    {
+        if (!isErrorSuppressing(callFuncLocation, ty) && !errs.empty())
+        {
+            if (reportedErrors)
+            {
+                multipleOverloadsHaveErrors = true;
+                break;
+            }
+            reportedErrors.emplace(errs);
+        }
+    }
+    if (multipleOverloadsHaveErrors)
+    {
+        reportError(MultipleNonviableOverloads{argHeadSize}, callLocation);
+        return true;
+    }
+    else if (reportedErrors)
+    {
+        reportErrors(std::move(*reportedErrors));
+        return true;
+    }
+
+    return false;
 }
 
 

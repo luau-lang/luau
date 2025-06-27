@@ -87,6 +87,13 @@ private:
     );
     size_t indexof(Analysis analysis);
     void add(Analysis analysis, TypeId ty, ErrorVec&& errors);
+    void maybeEmplaceError(
+        ErrorVec* errors,
+        Location argLocation,
+        const SubtypingReasoning* reason,
+        std::optional<TypeId> failedSubTy,
+        std::optional<TypeId> failedSuperTy
+    ) const;
 };
 
 struct SolveResult

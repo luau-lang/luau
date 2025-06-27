@@ -24,7 +24,7 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
         return {};
 
     ModulePtr module;
-    if (FFlag::LuauSolverV2)
+    if (frontend.getLuauSolverMode() == SolverMode::New)
         module = frontend.moduleResolver.getModule(moduleName);
     else
         module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
@@ -34,7 +34,7 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
 
     NotNull<BuiltinTypes> builtinTypes = frontend.builtinTypes;
     Scope* globalScope;
-    if (FFlag::LuauSolverV2)
+    if (frontend.getLuauSolverMode() == SolverMode::New)
         globalScope = frontend.globals.globalScope.get();
     else
         globalScope = frontend.globalsForAutocomplete.globalScope.get();

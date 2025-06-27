@@ -18,10 +18,10 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAGVARIABLE(LuauReturnMappedGenericPacksFromSubtyping)
 
 namespace Luau
 {
@@ -63,20 +63,52 @@ size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 }
 
 template<typename TID>
-static void assertReasoningValid(TID subTy, TID superTy, const SubtypingResult& result, NotNull<BuiltinTypes> builtinTypes)
+static void assertReasoningValid_DEPRECATED(TID subTy, TID superTy, const SubtypingResult& result, NotNull<BuiltinTypes> builtinTypes)
 {
     if (!FFlag::DebugLuauSubtypingCheckPathValidity)
         return;
 
     for (const SubtypingReasoning& reasoning : result.reasoning)
     {
-        LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes));
-        LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes));
+        LUAU_ASSERT(traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes));
+        LUAU_ASSERT(traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes));
+    }
+}
+
+template<typename TID>
+static void assertReasoningValid(TID subTy, TID superTy, const SubtypingResult& result, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+{
+    LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping);
+
+    if (!FFlag::DebugLuauSubtypingCheckPathValidity)
+        return;
+
+    for (const SubtypingReasoning& reasoning : result.reasoning)
+    {
+        LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes, NotNull{&result.mappedGenericPacks}, arena));
+        LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes, NotNull{&result.mappedGenericPacks}, arena));
     }
 }
 
 template<>
-void assertReasoningValid<TableIndexer>(TableIndexer subIdx, TableIndexer superIdx, const SubtypingResult& result, NotNull<BuiltinTypes> builtinTypes)
+void assertReasoningValid_DEPRECATED<TableIndexer>(
+    TableIndexer subIdx,
+    TableIndexer superIdx,
+    const SubtypingResult& result,
+    NotNull<BuiltinTypes> builtinTypes
+)
+{
+    // Empty method to satisfy the compiler.
+}
+
+template<>
+void assertReasoningValid<TableIndexer>(
+    TableIndexer subIdx,
+    TableIndexer superIdx,
+    const SubtypingResult& result,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+)
 {
     // Empty method to satisfy the compiler.
 }
@@ -481,6 +513,11 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
      * cacheable.
      */
 
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+    {
+        result.mappedGenericPacks = std::move(env.mappedGenericPacks);
+    }
+
     if (result.isCacheable)
         resultCache[{subTy, superTy}] = result;
 
@@ -490,12 +527,25 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
 SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope)
 {
     SubtypingEnvironment env;
-    return isCovariantWith(env, subTp, superTp, scope);
+
+    SubtypingResult result = isCovariantWith(env, subTp, superTp, scope);
+
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+    {
+        if (!env.mappedGenericPacks.empty())
+            result.mappedGenericPacks = std::move(env.mappedGenericPacks);
+    }
+
+    return result;
 }
 
 SubtypingResult Subtyping::cache(SubtypingEnvironment& env, SubtypingResult result, TypeId subTy, TypeId superTy)
 {
     const std::pair<TypeId, TypeId> p{subTy, superTy};
+
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping && !env.mappedGenericPacks.empty())
+        result.mappedGenericPacks = env.mappedGenericPacks;
+
     if (result.isCacheable)
         resultCache[p] = result;
     else
@@ -547,11 +597,27 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
     const SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
     if (cachedResult)
+    {
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        {
+            for (const auto& [genericTp, boundTp] : cachedResult->mappedGenericPacks)
+                env.mappedGenericPacks.try_insert(genericTp, boundTp);
+        }
+
         return *cachedResult;
+    }
 
     cachedResult = env.tryFindSubtypingResult({subTy, superTy});
     if (cachedResult)
+    {
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        {
+            for (const auto& [genericTp, boundTp] : cachedResult->mappedGenericPacks)
+                env.mappedGenericPacks.try_insert(genericTp, boundTp);
+        }
+
         return *cachedResult;
+    }
 
     // TODO: Do we care about returning a proof that this is error-suppressing?
     // e.g. given `a | error <: a | error` where both operands are pointer equal,
@@ -791,7 +857,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     else if (auto p = get2<SingletonType, TableType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
 
-    assertReasoningValid(subTy, superTy, result, builtinTypes);
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
+    else
+        assertReasoningValid_DEPRECATED(subTy, superTy, result, builtinTypes);
 
     return cache(env, std::move(result), subTy, superTy);
 }
@@ -840,14 +909,31 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     // <X>(X) -> () <: (T) -> ()
 
                     // Possible optimization: If headSize == 0 then we can just use subTp as-is.
-                    std::vector<TypeId> headSlice = FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2
+                    std::vector<TypeId> headSlice = FFlag::LuauReturnMappedGenericPacksFromSubtyping
                                                         ? std::vector<TypeId>(begin(superHead) + headSize, end(superHead))
                                                         : std::vector<TypeId>(begin(superHead), begin(superHead) + headSize);
                     TypePackId superTailPack = arena->addTypePack(std::move(headSlice), superTail);
 
                     if (TypePackId* other = env.getMappedPackBounds(*subTail))
-                        // TODO: TypePath can't express "slice of a pack + its tail".
-                        results.push_back(isCovariantWith(env, *other, superTailPack, scope).withSubComponent(TypePath::PackField::Tail));
+                    {
+                        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+                        {
+                            const TypePack* tp = get<TypePack>(*other);
+                            if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(tp->tail) : nullptr; vtp && vtp->hidden)
+                            {
+                                TypePackId taillessTp = arena->addTypePack(tp->head);
+                                results.push_back(isCovariantWith(env, taillessTp, superTailPack, scope)
+                                                      .withSubComponent(TypePath::PackField::Tail)
+                                                      .withSuperComponent(TypePath::PackSlice{headSize}));
+                            }
+                            else
+                                results.push_back(isCovariantWith(env, *other, superTailPack, scope)
+                                                      .withSubComponent(TypePath::PackField::Tail)
+                                                      .withSuperComponent(TypePath::PackSlice{headSize}));
+                        }
+                        else
+                            results.push_back(isCovariantWith(env, *other, superTailPack, scope).withSubComponent(TypePath::PackField::Tail));
+                    }
                     else
                         env.mappedGenericPacks.try_insert(*subTail, superTailPack);
 
@@ -897,17 +983,31 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     // <X...>(X...) -> () <: (T) -> ()
 
                     // Possible optimization: If headSize == 0 then we can just use subTp as-is.
-                    std::vector<TypeId> headSlice = FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2
+                    std::vector<TypeId> headSlice = FFlag::LuauReturnMappedGenericPacksFromSubtyping
                                                         ? std::vector<TypeId>(begin(subHead) + headSize, end(subHead))
                                                         : std::vector<TypeId>(begin(subHead), begin(subHead) + headSize);
                     TypePackId subTailPack = arena->addTypePack(std::move(headSlice), subTail);
 
                     if (TypePackId* other = env.getMappedPackBounds(*superTail))
-                        // TODO: TypePath can't express "slice of a pack + its tail".
-                        if (FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2)
-                            results.push_back(isCovariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
+                    {
+                        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+                        {
+                            const TypePack* tp = get<TypePack>(*other);
+                            if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(tp->tail) : nullptr; vtp && vtp->hidden)
+                            {
+                                TypePackId taillessTp = arena->addTypePack(tp->head);
+                                results.push_back(isCovariantWith(env, subTailPack, taillessTp, scope)
+                                                      .withSubComponent(TypePath::PackSlice{headSize})
+                                                      .withSuperComponent(TypePath::PackField::Tail));
+                            }
+                            else
+                                results.push_back(isCovariantWith(env, subTailPack, *other, scope)
+                                                      .withSubComponent(TypePath::PackSlice{headSize})
+                                                      .withSuperComponent(TypePath::PackField::Tail));
+                        }
                         else
                             results.push_back(isContravariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
+                    }
                     else
                         env.mappedGenericPacks.try_insert(*superTail, subTailPack);
 
@@ -1041,7 +1141,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     }
 
     SubtypingResult result = SubtypingResult::all(results);
-    assertReasoningValid(subTp, superTp, result, builtinTypes);
+
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        assertReasoningValid(subTp, superTp, result, builtinTypes, arena);
+    else
+        assertReasoningValid_DEPRECATED(subTp, superTp, result, builtinTypes);
 
     return result;
 }
@@ -1073,7 +1177,10 @@ SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy&
         }
     }
 
-    assertReasoningValid(subTy, superTy, result, builtinTypes);
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
+    else
+        assertReasoningValid_DEPRECATED(subTy, superTy, result, builtinTypes);
 
     return result;
 }
@@ -1091,7 +1198,11 @@ SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, SubTy&& su
             reasoning.variance = SubtypingVariance::Invariant;
     }
 
-    assertReasoningValid(subTy, superTy, result, builtinTypes);
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
+    else
+        assertReasoningValid_DEPRECATED(subTy, superTy, result, builtinTypes);
+
     return result;
 }
 

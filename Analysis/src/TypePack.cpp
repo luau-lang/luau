@@ -453,6 +453,33 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp,
     return {flattened, tail};
 }
 
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks)
+{
+    tp = mappedGenericPacks.contains(tp) ? *mappedGenericPacks.find(tp) : tp;
+
+    std::vector<TypeId> flattened;
+    std::optional<TypePackId> tail = std::nullopt;
+
+    while (tp)
+    {
+        TypePackIterator it(tp);
+
+        for (; it != end(tp); ++it)
+            flattened.push_back(*it);
+
+        if (const auto tpTail = it.tail(); tpTail && mappedGenericPacks.contains(*tpTail))
+        {
+            tp = *mappedGenericPacks.find(*tpTail);
+            continue;
+        }
+
+        tail = it.tail();
+        break;
+    }
+
+    return {flattened, tail};
+}
+
 bool isVariadic(TypePackId tp)
 {
     return isVariadic(tp, *TxnLog::empty());

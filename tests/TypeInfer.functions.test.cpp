@@ -28,8 +28,11 @@ LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -259,6 +262,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 
 TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_count")
 {
+    ScopedFastFlag _{FFlag::LuauSuppressErrorsForMultipleNonviableOverloads, true};
+
     CheckResult result = check(R"(
         local multiply: ((number)->number) & ((number)->string) & ((number, number)->number)
         multiply("")
@@ -268,9 +273,9 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
 
     if (FFlag::LuauSolverV2)
     {
-        GenericError* g = get<GenericError>(result.errors[0]);
-        REQUIRE(g);
-        CHECK(g->message == "None of the overloads for function that accept 1 arguments are compatible.");
+        MultipleNonviableOverloads* mno = get<MultipleNonviableOverloads>(result.errors[0]);
+        REQUIRE_MESSAGE(mno, "Expected MultipleNonviableOverloads but got " << result.errors[0]);
+        CHECK_EQ(mno->attemptedArgCount, 1);
     }
     else
     {
@@ -1388,6 +1393,7 @@ f(function(x) return x * 2 end)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     // FIXME: CLI-116133 bidirectional type inference needs to push expected types in for higher-order function calls
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
@@ -1414,7 +1420,7 @@ local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} e
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
+    REQUIRE_EQ("{| c: number, s: number |}", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
@@ -1690,6 +1696,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
 {
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
     CheckResult result = check(R"(
 local t: { f: ((x: number) -> number)? } = {}
 
@@ -1706,9 +1714,7 @@ end
 
     if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
-        // FIXME CLI-151985
-        LUAU_CHECK_ERROR_COUNT(3, result);
-        LUAU_CHECK_ERROR(result, ConstraintSolvingIncompleteError);
+        LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, WhereClauseNeeded); // x2
     }
     else if (FFlag::LuauSolverV2)
@@ -1776,6 +1782,8 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_unsealed_overwrite")
 {
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
     CheckResult result = check(R"(
 local t = { f = nil :: ((x: number) -> number)? }
 
@@ -1791,9 +1799,7 @@ end
 
     if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
     {
-        // FIXME CLI-151985
-        LUAU_CHECK_ERROR_COUNT(2, result);
-        LUAU_CHECK_ERROR(result, ConstraintSolvingIncompleteError);
+        LUAU_CHECK_ERROR_COUNT(1, result);
         LUAU_CHECK_ERROR(result, WhereClauseNeeded);
     }
     else if (FFlag::LuauSolverV2)
@@ -2669,10 +2675,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type_2")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
-    auto err = get<NotATable>(result.errors.back());
-    REQUIRE(err);
-    CHECK("a" == toString(err->ty));
+    LUAU_REQUIRE_ERROR(result, NotATable);
 }
 
 TEST_CASE_FIXTURE(Fixture, "local_function_fwd_decl_doesnt_crash")
