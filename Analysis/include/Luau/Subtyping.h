@@ -71,6 +71,7 @@ struct SubtypingResult
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
     SubtypingReasonings reasoning{kEmptyReasoning};
+    DenseHashMap<TypePackId, TypePackId> mappedGenericPacks{nullptr};
 
     // If this subtype result required testing free types, we might be making
     // assumptions about what the free type eventually resolves to.  If so,

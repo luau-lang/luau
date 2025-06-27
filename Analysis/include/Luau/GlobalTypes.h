@@ -13,7 +13,7 @@ namespace Luau
 
 struct GlobalTypes
 {
-    explicit GlobalTypes(NotNull<BuiltinTypes> builtinTypes);
+    explicit GlobalTypes(NotNull<BuiltinTypes> builtinTypes, SolverMode mode);
 
     NotNull<BuiltinTypes> builtinTypes; // Global types are based on builtin types
 
@@ -22,6 +22,8 @@ struct GlobalTypes
 
     ScopePtr globalScope;     // shared by all modules
     ScopePtr globalTypeFunctionScope; // shared by all modules
+
+    SolverMode mode = SolverMode::Old;
 };
 
 } // namespace Luau

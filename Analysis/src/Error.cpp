@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -420,10 +421,17 @@ struct ErrorConverter
         auto it = mtt->props.find("__call");
         if (it != mtt->props.end())
         {
-            if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            if (FFlag::LuauSolverAgnosticStringification)
+            {
                 return it->second.readTy;
+            }
             else
-                return it->second.type_DEPRECATED();
+            {
+                if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                    return it->second.readTy;
+                else
+                    return it->second.type_DEPRECATED();
+            }
         }
         else
             return std::nullopt;
@@ -877,6 +885,11 @@ struct ErrorConverter
         return "Different number of generic type pack parameters: subtype had " + std::to_string(e.subTyGenericPackCount) + ", supertype had " +
                std::to_string(e.superTyGenericPackCount) + ".";
     }
+
+    std::string operator()(const MultipleNonviableOverloads& e) const
+    {
+        return "None of the overloads for function that accept " + std::to_string(e.attemptedArgCount) + " arguments are compatible.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1275,6 +1288,11 @@ bool GenericTypePackCountMismatch::operator==(const GenericTypePackCountMismatch
     return subTyGenericPackCount == rhs.subTyGenericPackCount && superTyGenericPackCount == rhs.superTyGenericPackCount;
 }
 
+bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rhs) const
+{
+    return attemptedArgCount == rhs.attemptedArgCount;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1493,6 +1511,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, GenericTypePackCountMismatch>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, MultipleNonviableOverloads>)
     {
     }
     else

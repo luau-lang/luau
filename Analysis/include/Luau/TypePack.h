@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/TypeFwd.h"
@@ -230,6 +231,7 @@ bool isEmpty(TypePackId tp);
 /// Flattens out a type pack.  Also returns a valid TypePackId tail if the type pack's full size is not known
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp);
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const TxnLog& log);
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks);
 
 /// Returs true if the type pack arose from a function that is declared to be variadic.
 /// Returns *false* for function argument packs that are inferred to be safe to oversaturate!

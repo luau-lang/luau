@@ -20,7 +20,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauDeclareExternType)
 LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
-LUAU_FASTFLAGVARIABLE(LuauStoreLocalAnnotationColonPositions)
 LUAU_FASTFLAGVARIABLE(LuauCSTForReturnTypeFunctionTail)
 LUAU_FASTFLAGVARIABLE(LuauParseAttributeFixUninit)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
@@ -691,11 +690,7 @@ AstStat* Parser::parseFor()
             allocator.alloc<AstStatForIn>(Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location);
         if (options.storeCstData)
         {
-            if (FFlag::LuauStoreLocalAnnotationColonPositions)
-                cstNodeMap[node] =
-                    allocator.alloc<CstStatForIn>(extractAnnotationColonPositions(names), varsCommaPosition, copy(valuesCommaPositions));
-            else
-                cstNodeMap[node] = allocator.alloc<CstStatForIn>(AstArray<Position>{}, varsCommaPosition, copy(valuesCommaPositions));
+            cstNodeMap[node] = allocator.alloc<CstStatForIn>(extractAnnotationColonPositions(names), varsCommaPosition, copy(valuesCommaPositions));
         }
         return node;
     }
@@ -1019,11 +1014,7 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
         AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation);
         if (options.storeCstData)
         {
-            if (FFlag::LuauStoreLocalAnnotationColonPositions)
-                cstNodeMap[node] =
-                    allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
-            else
-                cstNodeMap[node] = allocator.alloc<CstStatLocal>(AstArray<Position>{}, varsCommaPositions, copy(valuesCommaPositions));
+            cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
         }
 
         return node;
@@ -1608,17 +1599,11 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 
     if (lexer.current().type != ')')
     {
-        if (FFlag::LuauStoreLocalAnnotationColonPositions)
-        {
-            if (cstNode)
-                std::tie(vararg, varargLocation, varargAnnotation) =
-                    parseBindingList(args, /* allowDot3= */ true, &cstNode->argsCommaPositions, nullptr, &cstNode->varargAnnotationColonPosition);
-            else
-                std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
-        }
-        else
+        if (cstNode)
             std::tie(vararg, varargLocation, varargAnnotation) =
-                parseBindingList(args, /* allowDot3= */ true, cstNode ? &cstNode->argsCommaPositions : nullptr);
+                parseBindingList(args, /* allowDot3= */ true, &cstNode->argsCommaPositions, nullptr, &cstNode->varargAnnotationColonPosition);
+        else
+            std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
     }
 
     std::optional<Location> argLocation;
@@ -1676,8 +1661,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     if (options.storeCstData)
     {
         cstNode->functionKeywordPosition = matchFunction.location.begin;
-        if (FFlag::LuauStoreLocalAnnotationColonPositions)
-            cstNode->argsAnnotationColonPositions = extractAnnotationColonPositions(args);
+        cstNode->argsAnnotationColonPositions = extractAnnotationColonPositions(args);
         cstNodeMap[node] = cstNode;
     }
 
@@ -1716,7 +1700,7 @@ Parser::Binding Parser::parseBinding()
     Position colonPosition = lexer.current().location.begin;
     AstType* annotation = parseOptionalType();
 
-    if (FFlag::LuauStoreLocalAnnotationColonPositions && options.storeCstData)
+    if (options.storeCstData)
         return Binding(*name, annotation, colonPosition);
     else
         return Binding(*name, annotation);
@@ -1724,7 +1708,6 @@ Parser::Binding Parser::parseBinding()
 
 AstArray<Position> Parser::extractAnnotationColonPositions(const TempVector<Binding>& bindings)
 {
-    LUAU_ASSERT(FFlag::LuauStoreLocalAnnotationColonPositions);
     TempVector<Position> annotationColonPositions(scratchPosition);
     for (size_t i = 0; i < bindings.size(); ++i)
         annotationColonPositions.push_back(bindings[i].colonPosition);
@@ -1755,7 +1738,7 @@ std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(
             AstTypePack* tailAnnotation = nullptr;
             if (lexer.current().type == ':')
             {
-                if (FFlag::LuauStoreLocalAnnotationColonPositions && varargAnnotationColonPosition)
+                if (varargAnnotationColonPosition)
                     *varargAnnotationColonPosition = lexer.current().location.begin;
 
                 nextLexeme();

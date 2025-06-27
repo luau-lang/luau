@@ -19,6 +19,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -534,6 +535,7 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
+    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
@@ -549,7 +551,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::Old};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
     u.tryUnify(option1, option2);
@@ -559,10 +561,10 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
     u.log.commit();
 
     ToStringOptions opts;
-    CHECK("a?" == toString(option1, opts));
+    CHECK("'a?" == toString(option1, opts));
 
     // CHECK("a?" == toString(option2, opts)); // This should hold, but does not.
-    CHECK("b?" == toString(option2, opts)); // This should not hold.
+    CHECK("'b?" == toString(option2, opts)); // This should not hold.
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
@@ -677,7 +679,7 @@ struct IsSubtypeFixture : Fixture
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), NotNull{simplifier.get()}, ice);
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), NotNull{simplifier.get()}, ice, SolverMode::New);
     }
 };
 } // namespace
@@ -962,6 +964,7 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
+    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
@@ -977,7 +980,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::Old};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
     u.tryUnify(option1, option2);
@@ -987,8 +990,8 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
     u.log.commit();
 
     ToStringOptions opts;
-    CHECK("a?" == toString(option1, opts));
-    CHECK("b?" == toString(option2, opts)); // should be `a?`.
+    CHECK("'a?" == toString(option1, opts));
+    CHECK("'b?" == toString(option2, opts)); // should be `a?`.
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_more_complex_unions_that_include_nil")
@@ -1279,7 +1282,7 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cache
     TypeArena arena;
     Scope globalScope(getBuiltins()->anyTypePack);
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::New};
 
     TypeId tableTy = arena.addType(TableType{});
     TableType* table = getMutable<TableType>(tableTy);

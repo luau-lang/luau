@@ -192,7 +192,7 @@ struct NonStrictTypeChecker
         , ice(ice)
         , arena(arena)
         , module(module)
-        , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
+        , normalizer{arena, builtinTypes, unifierState, SolverMode::New, /* cache inhabitance */ true}
         , subtyping{builtinTypes, arena, simplifier, NotNull(&normalizer), typeFunctionRuntime, ice}
         , dfg(dfg)
         , limits(limits)

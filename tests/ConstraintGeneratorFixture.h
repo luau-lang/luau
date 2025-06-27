@@ -20,7 +20,7 @@ struct ConstraintGeneratorFixture : Fixture
     ModulePtr mainModule;
     DcrLogger logger;
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::New};
     SimplifierPtr simplifier;
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&ice}, NotNull{&limits}};

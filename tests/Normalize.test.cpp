@@ -15,9 +15,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
-
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 using namespace Luau;
 
 namespace
@@ -34,7 +33,15 @@ struct IsSubtypeFixture : Fixture
 
         SimplifierPtr simplifier = newSimplifier(NotNull{&module->internalTypes}, getBuiltins());
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), NotNull{simplifier.get()}, ice);
+        return ::Luau::isSubtype(
+            a,
+            b,
+            NotNull{module->getModuleScope().get()},
+            getBuiltins(),
+            NotNull{simplifier.get()},
+            ice,
+            FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old
+        );
     }
 };
 } // namespace
@@ -447,7 +454,7 @@ struct NormalizeFixture : Fixture
     TypeArena arena;
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&unifierState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&unifierState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     Scope globalScope{getBuiltins()->anyTypePack};
 
     NormalizeFixture()
@@ -1216,7 +1223,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauSimplifyOutOfLine2, true},
-        {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true},
+        {FFlag::LuauReturnMappedGenericPacksFromSubtyping, true},
     };
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 

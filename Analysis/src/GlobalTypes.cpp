@@ -5,8 +5,9 @@
 namespace Luau
 {
 
-GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
+GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
     : builtinTypes(builtinTypes)
+    , mode(mode)
 {
     globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
     globalTypeFunctionScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
@@ -22,7 +23,7 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
     globalScope->addBuiltinTypeBinding("never", TypeFun{{}, builtinTypes->neverType});
 
     unfreeze(*builtinTypes->arena);
-    TypeId stringMetatableTy = makeStringMetatable(builtinTypes);
+    TypeId stringMetatableTy = makeStringMetatable(builtinTypes, mode);
     asMutable(builtinTypes->stringType)->ty.emplace<PrimitiveType>(PrimitiveType::String, stringMetatableTy);
     persist(stringMetatableTy);
     freeze(*builtinTypes->arena);

@@ -11,6 +11,7 @@
 #include "Luau/Location.h"
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
+#include "Luau/OrderedSet.h"
 #include "Luau/Substitution.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
@@ -121,8 +122,12 @@ struct ConstraintSolver
     // A mapping from free types to the number of unresolved constraints that mention them.
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
 
-    std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes;
-    std::unordered_map<TypeId, DenseHashSet<const Constraint*>> mutatedFreeTypeToConstraint;
+    // Clip with LuauUseOrderedTypeSetsInConstraints
+    std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes_DEPRECATED;
+    std::unordered_map<TypeId, DenseHashSet<const Constraint*>> mutatedFreeTypeToConstraint_DEPRECATED;
+
+    std::unordered_map<NotNull<const Constraint>, TypeIds> maybeMutatedFreeTypes;
+    std::unordered_map<TypeId, OrderedSet<const Constraint*>> mutatedFreeTypeToConstraint;
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};

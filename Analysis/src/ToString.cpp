@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticStringification)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -86,8 +87,14 @@ struct FindCyclicTypes final : TypeVisitor
     {
         if (!visited.insert(ty))
             return false;
-
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverAgnosticStringification)
+        {
+            LUAU_ASSERT(ft.lowerBound);
+            LUAU_ASSERT(ft.upperBound);
+            traverse(ft.lowerBound);
+            traverse(ft.upperBound);
+        }
+        else if (FFlag::LuauSolverV2)
         {
             // TODO: Replace these if statements with assert()s when we
             // delete FFlag::LuauSolverV2.
@@ -440,7 +447,7 @@ struct TypeStringifier
 
     void stringify(const std::string& name, const Property& prop)
     {
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
             return _newStringify(name, prop);
 
         emitKey(name);
@@ -503,9 +510,44 @@ struct TypeStringifier
     {
         state.result.invalid = true;
 
-        // TODO: ftv.lowerBound and ftv.upperBound should always be non-nil when
-        // the new solver is used. This can be replaced with an assert.
-        if (FFlag::LuauSolverV2 && ftv.lowerBound && ftv.upperBound)
+        // Free types are guaranteed to have upper and lower bounds now.
+        if (FFlag::LuauSolverAgnosticStringification)
+        {
+            LUAU_ASSERT(ftv.lowerBound);
+            LUAU_ASSERT(ftv.upperBound);
+            const TypeId lowerBound = follow(ftv.lowerBound);
+            const TypeId upperBound = follow(ftv.upperBound);
+            if (get<NeverType>(lowerBound) && get<UnknownType>(upperBound))
+            {
+                state.emit("'");
+                state.emit(state.getName(ty));
+                if (FInt::DebugLuauVerboseTypeNames >= 1)
+                    state.emit(ftv.polarity);
+            }
+            else
+            {
+                state.emit("(");
+                if (!get<NeverType>(lowerBound))
+                {
+                    stringify(lowerBound);
+                    state.emit(" <: ");
+                }
+                state.emit("'");
+                state.emit(state.getName(ty));
+
+                if (FInt::DebugLuauVerboseTypeNames >= 1)
+                    state.emit(ftv.polarity);
+
+                if (!get<UnknownType>(upperBound))
+                {
+                    state.emit(" <: ");
+                    stringify(upperBound);
+                }
+                state.emit(")");
+            }
+            return;
+        }
+        else if (FFlag::LuauSolverV2 && ftv.lowerBound && ftv.upperBound)
         {
             const TypeId lowerBound = follow(ftv.lowerBound);
             const TypeId upperBound = follow(ftv.upperBound);
@@ -545,13 +587,16 @@ struct TypeStringifier
 
         state.emit(state.getName(ty));
 
-        if (FFlag::LuauSolverV2 && FInt::DebugLuauVerboseTypeNames >= 1)
+        if (FFlag::LuauSolverAgnosticStringification && FInt::DebugLuauVerboseTypeNames >= 1)
             state.emit(ftv.polarity);
+        else if (FFlag::LuauSolverV2 && FInt::DebugLuauVerboseTypeNames >= 1)
+            state.emit(ftv.polarity);            
+
 
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
                 state.emitLevel(ftv.scope);
             else
                 state.emit(ftv.level);
@@ -583,7 +628,7 @@ struct TypeStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
                 state.emitLevel(gtv.scope);
             else
                 state.emit(gtv.level);
@@ -686,7 +731,7 @@ struct TypeStringifier
             state.emit(">");
         }
 
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
         {
             if (ftv.isCheckedFunction)
                 state.emit("@checked ");
@@ -783,10 +828,10 @@ struct TypeStringifier
 
         std::string openbrace = "@@@";
         std::string closedbrace = "@@@?!";
-        switch (state.opts.hideTableKind ? (FFlag::LuauSolverV2 ? TableState::Sealed : TableState::Unsealed) : ttv.state)
+        switch (state.opts.hideTableKind ? ((FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification) ? TableState::Sealed : TableState::Unsealed) : ttv.state)
         {
         case TableState::Sealed:
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
             {
                 openbrace = "{";
                 closedbrace = "}";
@@ -799,7 +844,7 @@ struct TypeStringifier
             }
             break;
         case TableState::Unsealed:
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
             {
                 state.result.invalid = true;
                 openbrace = "{|";
@@ -1314,7 +1359,7 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
                 state.emitLevel(pack.scope);
             else
                 state.emit(pack.level);
@@ -1336,7 +1381,7 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
                 state.emitLevel(pack.scope);
             else
                 state.emit(pack.level);

@@ -14,7 +14,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauClipVariadicAnysFromArgsToGenericFuncs2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 
 using namespace Luau;
 
@@ -824,7 +824,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_function_mutation")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2, true}};
+    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReturnMappedGenericPacksFromSubtyping, true}};
 
     fileResolver.source["game/A"] = R"(
 function test2(a: number, b: string)

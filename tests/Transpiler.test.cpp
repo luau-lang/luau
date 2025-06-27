@@ -12,7 +12,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauStoreLocalAnnotationColonPositions)
 LUAU_FASTFLAG(LuauCSTForReturnTypeFunctionTail)
 
 TEST_SUITE_BEGIN("TranspilerTests");
@@ -314,9 +313,6 @@ TEST_CASE("function_spaces_around_tokens")
 
 TEST_CASE("function_with_types_spaces_around_tokens")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauStoreLocalAnnotationColonPositions, true},
-    };
     std::string code = R"( function p<X, Y, Z...>(o: string, m: number, ...: any): string end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1132,9 +1128,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_reference_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_type_annotation_spaces_around_tokens")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauStoreLocalAnnotationColonPositions, true},
-    };
     std::string code = R"( local _: Type )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
@@ -1153,9 +1146,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_annotation_spaces_around_tokens")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_for_loop_annotation_spaces_around_tokens")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauStoreLocalAnnotationColonPositions, true},
-    };
     std::string code = R"( for i: number = 1, 10 do end )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
