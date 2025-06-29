@@ -148,3 +148,209 @@ LUALIB_API void luaL_openlibs(lua_State* L);
 // sandbox libraries and globals
 LUALIB_API void luaL_sandbox(lua_State* L);
 LUALIB_API void luaL_sandboxthread(lua_State* L);
+
+// lbaselib.cpp
+LUALIB_API int luaB_assert(lua_State* L);
+LUALIB_API int luaB_error(lua_State* L);
+LUALIB_API int luaB_print(lua_State* L);
+
+LUALIB_API int luaB_type(lua_State* L);
+LUALIB_API int luaB_typeof(lua_State* L);
+
+LUALIB_API int luaB_tonumber(lua_State* L);
+LUALIB_API int luaB_tostring(lua_State* L);
+
+LUALIB_API int luaB_getfenv(lua_State* L);
+LUALIB_API int luaB_setfenv(lua_State* L);
+
+LUALIB_API int luaB_getmetatable(lua_State* L);
+LUALIB_API int luaB_setmetatable(lua_State* L);
+
+LUALIB_API int luaB_rawequal(lua_State* L);
+LUALIB_API int luaB_rawget(lua_State* L);
+LUALIB_API int luaB_rawset(lua_State* L);
+LUALIB_API int luaB_rawlen(lua_State* L);
+
+LUALIB_API int luaB_next(lua_State* L);
+LUALIB_API int luaB_inext(lua_State* L);
+
+LUALIB_API int luaB_pairs(lua_State* L);
+LUALIB_API int luaB_ipairs(lua_State* L);
+
+LUALIB_API int luaB_pcally(lua_State* L);
+LUALIB_API int luaB_pcallcont(lua_State* L, int status);
+LUALIB_API void luaB_pcallrun(lua_State* L, void* ud);
+
+LUALIB_API int luaB_xpcally(lua_State* L);
+LUALIB_API int luaB_xpcallcont(lua_State* L, int status);
+LUALIB_API void luaB_xpcallerr(lua_State* L, void* ud);
+
+LUALIB_API int luaB_type(lua_State* L);
+LUALIB_API int luaB_typeof(lua_State* L);
+
+LUALIB_API int luaB_gcinfo(lua_State* L);
+LUALIB_API int luaB_select(lua_State* L);
+LUALIB_API int luaB_newproxy(lua_State* L);
+
+// lbitlib.cpp
+LUALIB_API unsigned int andaux(lua_State* L);
+LUALIB_API int b_arshift(lua_State* L);
+LUALIB_API int b_and(lua_State* L);
+LUALIB_API int b_not(lua_State* L);
+LUALIB_API int b_or(lua_State* L);
+LUALIB_API int b_xor(lua_State* L);
+LUALIB_API int b_test(lua_State* L);
+LUALIB_API int b_extract(lua_State* L);
+LUALIB_API int b_lrot(lua_State* L);
+LUALIB_API int b_lshift(lua_State* L);
+LUALIB_API int b_replace(lua_State* L);
+LUALIB_API int b_rrot(lua_State* L);
+LUALIB_API int b_rshift(lua_State* L);
+LUALIB_API int b_countlz(lua_State* L);
+LUALIB_API int b_countrz(lua_State* L);
+LUALIB_API int b_swap(lua_State* L);
+
+// lbuflib.cpp
+LUALIB_API int buffer_create(lua_State* L);
+LUALIB_API int buffer_fromstring(lua_State* L);
+LUALIB_API int buffer_tostring(lua_State* L);
+LUALIB_API int buffer_readstring(lua_State* L);
+LUALIB_API int buffer_writestring(lua_State* L);
+
+template<typename T>
+LUALIB_API int buffer_readinteger(lua_State* L);
+
+template<typename T>
+LUALIB_API int buffer_writeinteger(lua_State* L);
+
+template<typename T, typename StorageType>
+LUALIB_API int buffer_readfp(lua_State* L);
+
+template<typename T, typename StorageType>
+LUALIB_API int buffer_writefp(lua_State* L);
+
+LUALIB_API int buffer_len(lua_State* L);
+LUALIB_API int buffer_copy(lua_State* L);
+LUALIB_API int buffer_fill(lua_State* L);
+LUALIB_API int buffer_readbits(lua_State* L);
+LUALIB_API int buffer_writebits(lua_State* L);
+
+#if defined(LUAU_BIG_ENDIAN)
+template<typename T>
+LUALIB_API inline T buffer_swapbe(T v)
+#endif
+
+// lcorolib.cpp
+LUALIB_API int cocreate(lua_State* L);
+LUALIB_API int corunning(lua_State* L);
+LUALIB_API int costatus(lua_State* L);
+LUALIB_API int cowrap(lua_State* L);
+LUALIB_API int coyield(lua_State* L);
+LUALIB_API int coyieldable(lua_State* L);
+LUALIB_API int coclose(lua_State* L);
+LUALIB_API int coresumey(lua_State* L);
+LUALIB_API int coresumecont(lua_State* L, int status);
+
+// ldblib.cpp
+LUALIB_API int db_info(lua_State* L);
+LUALIB_API int db_traceback(lua_State* L);
+
+// lmathlib.cpp
+LUALIB_API int math_abs(lua_State* L);
+LUALIB_API int math_acos(lua_State* L);
+LUALIB_API int math_asin(lua_State* L);
+LUALIB_API int math_atan2(lua_State* L);
+LUALIB_API int math_atan(lua_State* L);
+LUALIB_API int math_ceil(lua_State* L);
+LUALIB_API int math_cosh(lua_State* L);
+LUALIB_API int math_cos(lua_State* L);
+LUALIB_API int math_deg(lua_State* L);
+LUALIB_API int math_exp(lua_State* L);
+LUALIB_API int math_floor(lua_State* L);
+LUALIB_API int math_fmod(lua_State* L);
+LUALIB_API int math_frexp(lua_State* L);
+LUALIB_API int math_ldexp(lua_State* L);
+LUALIB_API int math_log10(lua_State* L);
+LUALIB_API int math_log(lua_State* L);
+LUALIB_API int math_min(lua_State* L);
+LUALIB_API int math_max(lua_State* L);
+LUALIB_API int math_modf(lua_State* L);
+LUALIB_API int math_pow(lua_State* L);
+LUALIB_API int math_rad(lua_State* L);
+LUALIB_API int math_random(lua_State* L);
+LUALIB_API int math_randomseed(lua_State* L);
+LUALIB_API int math_sinh(lua_State* L);
+LUALIB_API int math_sin(lua_State* L);
+LUALIB_API int math_sqrt(lua_State* L);
+LUALIB_API int math_tanh(lua_State* L);
+LUALIB_API int math_tan(lua_State* L);
+LUALIB_API int math_noise(lua_State* L);
+LUALIB_API int math_sign(lua_State* L);
+LUALIB_API int math_round(lua_State* L);
+LUALIB_API int math_map(lua_State* L);
+LUALIB_API int math_lerp(lua_State* L);
+
+// loslib.cpp
+LUALIB_API int os_clock(lua_State* L);
+LUALIB_API int os_date(lua_State* L);
+LUALIB_API int os_difftime(lua_State* L);
+LUALIB_API int os_time(lua_State* L);
+
+// lstrlib.cpp
+LUALIB_API int str_byte(lua_State* L);
+LUALIB_API int str_char(lua_State* L);
+LUALIB_API int str_find(lua_State* L);
+LUALIB_API int str_format(lua_State* L);
+LUALIB_API int gmatch(lua_State* L);
+LUALIB_API int str_gsub(lua_State* L);
+LUALIB_API int str_len(lua_State* L);
+LUALIB_API int str_lower(lua_State* L);
+LUALIB_API int str_match(lua_State* L);
+LUALIB_API int str_rep(lua_State* L);
+LUALIB_API int str_reverse(lua_State* L);
+LUALIB_API int str_sub(lua_State* L);
+LUALIB_API int str_upper(lua_State* L);
+LUALIB_API int str_split(lua_State* L);
+LUALIB_API int str_pack(lua_State* L);
+LUALIB_API int str_packsize(lua_State* L);
+LUALIB_API int str_unpack(lua_State* L);
+
+// ltablib.cpp
+LUALIB_API int tconcat(lua_State* L);
+LUALIB_API int foreach(lua_State* L);
+LUALIB_API int foreachi(lua_State* L);
+LUALIB_API int getn(lua_State* L);
+LUALIB_API int maxn(lua_State* L);
+LUALIB_API int tinsert(lua_State* L);
+LUALIB_API int tremove(lua_State* L);
+LUALIB_API int tunpack(lua_State* L);
+LUALIB_API int tmove(lua_State* L);
+LUALIB_API int tcreate(lua_State* L);
+LUALIB_API int tfind(lua_State* L);
+LUALIB_API int tclear(lua_State* L);
+LUALIB_API int tfreeze(lua_State* L);
+LUALIB_API int tisfrozen(lua_State* L);
+LUALIB_API int tclone(lua_State* L);
+
+// lutf8lib.cpp
+LUALIB_API int byteoffset(lua_State* L);
+LUALIB_API int codepoint(lua_State* L);
+LUALIB_API int utfchar(lua_State* L);
+LUALIB_API int utflen(lua_State* L);
+LUALIB_API int iter_codes(lua_State* L);
+
+// lveclib.cpp
+LUALIB_API int vector_create(lua_State* L);
+LUALIB_API int vector_magnitude(lua_State* L);
+LUALIB_API int vector_normalize(lua_State* L);
+LUALIB_API int vector_cross(lua_State* L);
+LUALIB_API int vector_dot(lua_State* L);
+LUALIB_API int vector_angle(lua_State* L);
+LUALIB_API int vector_floor(lua_State* L);
+LUALIB_API int vector_ceil(lua_State* L);
+LUALIB_API int vector_abs(lua_State* L);
+LUALIB_API int vector_sign(lua_State* L);
+LUALIB_API int vector_clamp(lua_State* L);
+LUALIB_API int vector_max(lua_State* L);
+LUALIB_API int vector_min(lua_State* L);
+LUALIB_API int vector_index(lua_State* L);
