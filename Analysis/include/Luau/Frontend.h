@@ -173,11 +173,10 @@ struct Frontend
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
-    void setLuauSolverSelectionFromWorkspace(bool newSolverEnabled);
-    bool getLuauSolverSelection() const;
-    bool getLuauSolverSelectionFlagged() const;
+    void setLuauSolverSelectionFromWorkspace(SolverMode mode);
+    SolverMode getLuauSolverMode() const;
     // The default value assuming there is no workspace setup yet
-    std::atomic<bool> useNewLuauSolver{FFlag::LuauSolverV2};
+    std::atomic<SolverMode> useNewLuauSolver{FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     // Parse module graph and prepare SourceNode/SourceModule data, including required dependencies without running typechecking
     void parse(const ModuleName& name);
     void parseModules(const std::vector<ModuleName>& name);
@@ -205,6 +204,7 @@ struct Frontend
 
     void clearStats();
     void clear();
+    void clearBuiltinEnvironments();
 
     ScopePtr addEnvironment(const std::string& environmentName);
     ScopePtr getEnvironmentScope(const std::string& environmentName) const;
@@ -272,7 +272,6 @@ private:
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 
     ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete) const;
-
     std::unordered_map<std::string, ScopePtr> environments;
     std::unordered_map<std::string, std::function<void(Frontend&, GlobalTypes&, ScopePtr)>> builtinDefinitions;
 

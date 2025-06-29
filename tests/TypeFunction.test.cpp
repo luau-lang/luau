@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauErrorSuppressionTypeFunctionArgs)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauEmptyStringInKeyOf)
 
 struct TypeFunctionFixture : Fixture
@@ -743,6 +744,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true}
+    };
+
     CheckResult result = check(R"(
         local EnumVariants = {
             ["a"] = 1, ["b"] = 2, ["c"] = 3
@@ -758,9 +764,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
         fnB(result)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
-    CHECK(get<FunctionExitsWithoutReturning>(result.errors[1]));
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, FunctionExitsWithoutReturning);
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
@@ -1707,6 +1712,59 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_suppression_should_work_on_type_functi
     CHECK("Unknown type 'Colours'" == toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "fully_dispatch_type_function_that_is_parameterized_on_a_stuck_type_function")
+{
+    // In this test, we infer
+    //
+    // (c + d) : add<add<nil, nil>, *error-type*>
+    //
+    // This type function is stuck because it is parameterized on a stuck type
+    // function.  The call constraint must be able to dispatch.
+
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local function f()
+            local a
+            local b
+
+            local c = a + b
+
+            print(c + d)
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
+
+    CHECK("() -> ()" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "undefined_add_application")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+    };
+
+    CheckResult result = check(R"(
+        function add<A, B>(a: A, b: B): add<A, B>
+            return a + b
+        end
+
+        local s = add(5, "hello")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, UninhabitedTypeFunction);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_props")
 {
     if (!FFlag::LuauSolverV2)
@@ -1745,7 +1803,7 @@ struct TFFixture
     InternalErrorReporter ice;
     UnifierSharedState unifierState{&ice};
     SimplifierPtr simplifier = EqSatSimplification::newSimplifier(arena, getBuiltins());
-    Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}};
+    Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}, SolverMode::New};
     TypeCheckLimits limits;
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
 
@@ -1792,6 +1850,56 @@ TEST_CASE_FIXTURE(TFFixture, "or<'a, 'b>")
     FunctionGraphReductionResult res = reduceTypeFunctions(orType, Location{}, tfc);
 
     CHECK(res.reducedTypes.size() == 1);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "a_type_function_parameterized_on_generics_is_solved")
+{
+    TypeId a = arena->addType(GenericType{"A"});
+    TypeId b = arena->addType(GenericType{"B"});
+
+    TypeId addTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {a, b}});
+
+    reduceTypeFunctions(addTy, Location{}, tfc);
+
+    const auto tfit = get<TypeFunctionInstanceType>(addTy);
+    REQUIRE(tfit);
+
+    CHECK(tfit->state == TypeFunctionInstanceState::Solved);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_solved_tf_is_solved")
+{
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
+    TypeId a = arena->addType(GenericType{"A"});
+    TypeId b = arena->addType(GenericType{"B"});
+
+    TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {a, b}});
+
+    TypeId outerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.numberType, innerAddTy}});
+
+    reduceTypeFunctions(outerAddTy, Location{}, tfc);
+
+    const auto tfit = get<TypeFunctionInstanceType>(outerAddTy);
+    REQUIRE(tfit);
+
+    CHECK(tfit->state == TypeFunctionInstanceState::Solved);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_stuck_tf_is_stuck")
+{
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
+    TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.bufferType, builtinTypes_.booleanType}});
+
+    TypeId outerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.numberType, innerAddTy}});
+
+    reduceTypeFunctions(outerAddTy, Location{}, tfc);
+
+    const auto tfit = get<TypeFunctionInstanceType>(outerAddTy);
+    REQUIRE(tfit);
+
+    CHECK(tfit->state == TypeFunctionInstanceState::Stuck);
 }
 
 TEST_SUITE_END();

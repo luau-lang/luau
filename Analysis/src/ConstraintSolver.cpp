@@ -33,14 +33,15 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAGVARIABLE(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAGVARIABLE(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAGVARIABLE(LuauInsertErrorTypesIntoIndexerResult)
-LUAU_FASTFLAGVARIABLE(LuauClipVariadicAnysFromArgsToGenericFuncs2)
 LUAU_FASTFLAGVARIABLE(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAGVARIABLE(LuauMissingFollowInAssignIndexConstraint)
 LUAU_FASTFLAGVARIABLE(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeCheckFunctionCalls)
+LUAU_FASTFLAGVARIABLE(LuauUseOrderedTypeSetsInConstraints)
 
 namespace Luau
 {
@@ -418,10 +419,21 @@ void ConstraintSolver::run()
     // Free types that have no constraints at all can be generalized right away.
     if (FFlag::LuauEagerGeneralization4)
     {
-        for (TypeId ty : constraintSet.freeTypes)
+        if (FFlag::LuauUseOrderedTypeSetsInConstraints)
         {
-            if (auto it = mutatedFreeTypeToConstraint.find(ty); it == mutatedFreeTypeToConstraint.end() || it->second.empty())
-                generalizeOneType(ty);
+            for (TypeId ty : constraintSet.freeTypes)
+            {
+                if (auto it = mutatedFreeTypeToConstraint.find(ty); it == mutatedFreeTypeToConstraint.end() || it->second.empty())
+                    generalizeOneType(ty);
+            }
+        }
+        else
+        {
+            for (TypeId ty : constraintSet.freeTypes)
+            {
+                if (auto it = mutatedFreeTypeToConstraint_DEPRECATED.find(ty); it == mutatedFreeTypeToConstraint_DEPRECATED.end() || it->second.empty())
+                    generalizeOneType(ty);
+            }
         }
     }
 
@@ -466,40 +478,80 @@ void ConstraintSolver::run()
                 unblock(c);
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
 
-                const auto maybeMutated = maybeMutatedFreeTypes.find(c);
-                if (maybeMutated != maybeMutatedFreeTypes.end())
+                if (FFlag::LuauUseOrderedTypeSetsInConstraints)
                 {
-                    DenseHashSet<TypeId> seen{nullptr};
-                    for (auto ty : maybeMutated->second)
+                    if (const auto maybeMutated = maybeMutatedFreeTypes.find(c); maybeMutated != maybeMutatedFreeTypes.end())
                     {
-                        // There is a high chance that this type has been rebound
-                        // across blocked types, rebound free types, pending
-                        // expansion types, etc, so we need to follow it.
-                        ty = follow(ty);
-
-                        if (FFlag::LuauEagerGeneralization4)
+                        DenseHashSet<TypeId> seen{nullptr};
+                        for (auto ty : maybeMutated->second)
                         {
-                            if (seen.contains(ty))
-                                continue;
-                            seen.insert(ty);
+                            // There is a high chance that this type has been rebound
+                            // across blocked types, rebound free types, pending
+                            // expansion types, etc, so we need to follow it.
+                            ty = follow(ty);
+
+                            if (FFlag::LuauEagerGeneralization4)
+                            {
+                                if (seen.contains(ty))
+                                    continue;
+                                seen.insert(ty);
+                            }
+
+                            size_t& refCount = unresolvedConstraints[ty];
+                            if (refCount > 0)
+                                refCount -= 1;
+
+                            // We have two constraints that are designed to wait for the
+                            // refCount on a free type to be equal to 1: the
+                            // PrimitiveTypeConstraint and ReduceConstraint. We
+                            // therefore wake any constraint waiting for a free type's
+                            // refcount to be 1 or 0.
+                            if (refCount <= 1)
+                                unblock(ty, Location{});
+
+                            if (FFlag::LuauEagerGeneralization4 && refCount == 0)
+                                generalizeOneType(ty);
                         }
-
-                        size_t& refCount = unresolvedConstraints[ty];
-                        if (refCount > 0)
-                            refCount -= 1;
-
-                        // We have two constraints that are designed to wait for the
-                        // refCount on a free type to be equal to 1: the
-                        // PrimitiveTypeConstraint and ReduceConstraint. We
-                        // therefore wake any constraint waiting for a free type's
-                        // refcount to be 1 or 0.
-                        if (refCount <= 1)
-                            unblock(ty, Location{});
-
-                        if (FFlag::LuauEagerGeneralization4 && refCount == 0)
-                            generalizeOneType(ty);
                     }
                 }
+                else
+                {
+                    const auto maybeMutated = maybeMutatedFreeTypes_DEPRECATED.find(c);
+                    if (maybeMutated != maybeMutatedFreeTypes_DEPRECATED.end())
+                    {
+                        DenseHashSet<TypeId> seen{nullptr};
+                        for (auto ty : maybeMutated->second)
+                        {
+                            // There is a high chance that this type has been rebound
+                            // across blocked types, rebound free types, pending
+                            // expansion types, etc, so we need to follow it.
+                            ty = follow(ty);
+
+                            if (FFlag::LuauEagerGeneralization4)
+                            {
+                                if (seen.contains(ty))
+                                    continue;
+                                seen.insert(ty);
+                            }
+
+                            size_t& refCount = unresolvedConstraints[ty];
+                            if (refCount > 0)
+                                refCount -= 1;
+
+                            // We have two constraints that are designed to wait for the
+                            // refCount on a free type to be equal to 1: the
+                            // PrimitiveTypeConstraint and ReduceConstraint. We
+                            // therefore wake any constraint waiting for a free type's
+                            // refcount to be 1 or 0.
+                            if (refCount <= 1)
+                                unblock(ty, Location{});
+
+                            if (FFlag::LuauEagerGeneralization4 && refCount == 0)
+                                generalizeOneType(ty);
+                        }
+                    }
+                }
+
 
                 if (logger)
                 {
@@ -664,27 +716,57 @@ struct TypeSearcher : TypeVisitor
 
 void ConstraintSolver::initFreeTypeTracking()
 {
-    for (NotNull<Constraint> c : this->constraints)
+    if (FFlag::LuauUseOrderedTypeSetsInConstraints)
     {
-        unsolvedConstraints.emplace_back(c);
-
-        auto maybeMutatedTypesPerConstraint = c->getMaybeMutatedFreeTypes();
-        for (auto ty : maybeMutatedTypesPerConstraint)
+        for (auto c : this->constraints)
         {
-            auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
-            refCount += 1;
+            unsolvedConstraints.emplace_back(c);
 
-            if (FFlag::LuauEagerGeneralization4)
+            auto maybeMutatedTypesPerConstraint = c->getMaybeMutatedFreeTypes();
+            for (auto ty : maybeMutatedTypesPerConstraint)
             {
-                auto [it, fresh] = mutatedFreeTypeToConstraint.try_emplace(ty, nullptr);
-                it->second.insert(c.get());
+                auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
+                refCount += 1;
+
+                if (FFlag::LuauEagerGeneralization4)
+                {
+                    auto [it, fresh] = mutatedFreeTypeToConstraint.try_emplace(ty);
+                    it->second.insert(c.get());
+                }
+            }
+            maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
+
+            for (NotNull<const Constraint> dep : c->dependencies)
+            {
+                block(dep, c);
             }
         }
-        maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
+    }
+    else
+    {
 
-        for (NotNull<const Constraint> dep : c->dependencies)
+        for (NotNull<Constraint> c : this->constraints)
         {
-            block(dep, c);
+            unsolvedConstraints.emplace_back(c);
+
+            auto maybeMutatedTypesPerConstraint = c->getMaybeMutatedFreeTypes_DEPRECATED();
+            for (auto ty : maybeMutatedTypesPerConstraint)
+            {
+                auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
+                refCount += 1;
+
+                if (FFlag::LuauEagerGeneralization4)
+                {
+                    auto [it, fresh] = mutatedFreeTypeToConstraint_DEPRECATED.try_emplace(ty, nullptr);
+                    it->second.insert(c.get());
+                }
+            }
+            maybeMutatedFreeTypes_DEPRECATED.emplace(c, maybeMutatedTypesPerConstraint);
+
+            for (NotNull<const Constraint> dep : c->dependencies)
+            {
+                block(dep, c);
+            }
         }
     }
 }
@@ -1538,51 +1620,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
         if (c.result != result)
             emplaceTypePack<BoundTypePack>(asMutable(c.result), result);
-
-        if (FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2)
-        {
-            FunctionType* inferredFuncTy = getMutable<FunctionType>(inferredTy);
-            LUAU_ASSERT(inferredFuncTy);
-
-            // Strip variadic anys from the argTypes of any functionType arguments
-            const auto [argsHead, argsTail] = flatten(inferredFuncTy->argTypes);
-            TypePack clippedArgs = {{}, argsTail};
-            bool clippedAny = false;
-
-            for (TypeId t : argsHead)
-            {
-                const FunctionType* f = get<FunctionType>(follow(t));
-                if (!f || !f->argTypes)
-                {
-                    clippedArgs.head.push_back(t);
-                    continue;
-                }
-
-                const TypePack* argTp = get<TypePack>(follow(f->argTypes));
-                if (!argTp || !argTp->tail)
-                {
-                    clippedArgs.head.push_back(t);
-                    continue;
-                }
-
-                if (const VariadicTypePack* argTpTail = get<VariadicTypePack>(follow(argTp->tail));
-                    argTpTail && argTpTail->hidden && argTpTail->ty == builtinTypes->anyType)
-                {
-                    const TypePackId anyLessArgTp = arena->addTypePack(TypePack{argTp->head});
-                    // Mint a new FunctionType in case the original came from another module
-                    const TypeId newFuncTypeId = arena->addType(FunctionType{anyLessArgTp, f->retTypes});
-                    FunctionType* newFunc = getMutable<FunctionType>(newFuncTypeId);
-                    newFunc->argNames = f->argNames;
-                    clippedArgs.head.push_back(newFuncTypeId);
-                    clippedAny = true;
-                }
-                else
-                    clippedArgs.head.push_back(t);
-            }
-
-            if (clippedAny)
-                inferredFuncTy->argTypes = arena->addTypePack(std::move(clippedArgs));
-        }
     }
 
     for (const auto& [expanded, additions] : u2.expandedFreeTypes)
@@ -1922,7 +1959,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             // Generic types are skipped over entirely, for now.
             if (containsGenerics.hasGeneric(expectedArgTy))
             {
-                if (!FFlag::LuauClipVariadicAnysFromArgsToGenericFuncs2 || !lambdaTy || !lambdaTy->argTypes)
+                if (!lambdaTy || !lambdaTy->argTypes)
                     continue;
 
                 const TypePack* argTp = get<TypePack>(follow(lambdaTy->argTypes));
@@ -3630,7 +3667,11 @@ bool ConstraintSolver::isBlocked(TypeId ty) const
     ty = follow(ty);
 
     if (auto tfit = get<TypeFunctionInstanceType>(ty))
+    {
+        if (FFlag::LuauStuckTypeFunctionsStillDispatch && tfit->state != TypeFunctionInstanceState::Unsolved)
+            return false;
         return uninhabitedTypeFunctions.contains(ty) == false;
+    }
 
     return nullptr != get<BlockedType>(ty) || nullptr != get<PendingExpansionType>(ty);
 }
@@ -3739,21 +3780,42 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
 
     if (FFlag::LuauEagerGeneralization4)
     {
-        auto it = mutatedFreeTypeToConstraint.find(source);
-        if (it != mutatedFreeTypeToConstraint.end())
+        if (FFlag::LuauUseOrderedTypeSetsInConstraints)
         {
-            const DenseHashSet<const Constraint*>& constraintsAffectedBySource = it->second;
 
-            auto [it2, fresh2] = mutatedFreeTypeToConstraint.try_emplace(target, DenseHashSet<const Constraint*>{nullptr});
-            DenseHashSet<const Constraint*>& constraintsAffectedByTarget = it2->second;
-
-            // auto [it2, fresh] = mutatedFreeTypeToConstraint.try_emplace(target, DenseHashSet<const Constraint*>{nullptr});
-            for (const Constraint* constraint : constraintsAffectedBySource)
+            if (auto it = mutatedFreeTypeToConstraint.find(source); it != mutatedFreeTypeToConstraint.end())
             {
-                constraintsAffectedByTarget.insert(constraint);
+                const OrderedSet<const Constraint*>& constraintsAffectedBySource = it->second;
+                auto [it2, fresh2] = mutatedFreeTypeToConstraint.try_emplace(target);
 
-                auto [it3, fresh3] = maybeMutatedFreeTypes.try_emplace(NotNull{constraint}, DenseHashSet<TypeId>{nullptr});
-                it3->second.insert(target);
+                OrderedSet<const Constraint*>& constraintsAffectedByTarget = it2->second;
+
+                for (const Constraint* constraint : constraintsAffectedBySource)
+                {
+                    constraintsAffectedByTarget.insert(constraint);
+                    auto [it3, fresh3] = maybeMutatedFreeTypes.try_emplace(NotNull{constraint}, TypeIds{});
+                    it3->second.insert(target);
+                }
+            }
+        }
+        else
+        {
+            auto it = mutatedFreeTypeToConstraint_DEPRECATED.find(source);
+            if (it != mutatedFreeTypeToConstraint_DEPRECATED.end())
+            {
+                const DenseHashSet<const Constraint*>& constraintsAffectedBySource = it->second;
+
+                auto [it2, fresh2] = mutatedFreeTypeToConstraint_DEPRECATED.try_emplace(target, DenseHashSet<const Constraint*>{nullptr});
+                DenseHashSet<const Constraint*>& constraintsAffectedByTarget = it2->second;
+
+                // auto [it2, fresh] = mutatedFreeTypeToConstraint.try_emplace(target, DenseHashSet<const Constraint*>{nullptr});
+                for (const Constraint* constraint : constraintsAffectedBySource)
+                {
+                    constraintsAffectedByTarget.insert(constraint);
+
+                    auto [it3, fresh3] = maybeMutatedFreeTypes_DEPRECATED.try_emplace(NotNull{constraint}, DenseHashSet<TypeId>{nullptr});
+                    it3->second.insert(target);
+                }
             }
         }
     }

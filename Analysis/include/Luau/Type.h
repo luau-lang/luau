@@ -39,6 +39,12 @@ struct Constraint;
 struct Subtyping;
 struct TypeChecker2;
 
+enum struct SolverMode
+{
+    Old,
+    New
+};
+
 /**
  * There are three kinds of type variables:
  * - `Free` variables are metavariables, which stand for unconstrained types.
@@ -612,6 +618,21 @@ struct UserDefinedFunctionData
     DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias{""};
 };
 
+enum struct TypeFunctionInstanceState
+{
+    // Indicates that further reduction might be possible.
+    Unsolved,
+
+    // Further reduction is not possible because one of the parameters is generic.
+    Solved,
+
+    // Further reduction is not possible because the application is undefined.
+    // This always indicates an error in the code.
+    //
+    // eg add<nil, nil>
+    Stuck,
+};
+
 /**
  * An instance of a type function that has not yet been reduced to a more concrete
  * type. The constraint solver receives a constraint to reduce each
@@ -628,6 +649,8 @@ struct TypeFunctionInstanceType
 
     std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
     UserDefinedFunctionData userFuncData;
+
+    TypeFunctionInstanceState state = TypeFunctionInstanceState::Unsolved;
 
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
@@ -970,7 +993,7 @@ struct BuiltinTypes
     TypeId errorRecoveryType(TypeId guess) const;
     TypePackId errorRecoveryTypePack(TypePackId guess) const;
 
-    friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes);
+    friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode);
     friend struct GlobalTypes;
 
 private:

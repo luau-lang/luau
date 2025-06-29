@@ -496,6 +496,14 @@ struct GenericTypePackCountMismatch
     bool operator==(const GenericTypePackCountMismatch& rhs) const;
 };
 
+// Error during subtyping when the number of generic type packs between compared types does not match
+struct MultipleNonviableOverloads
+{
+    size_t attemptedArgCount;
+
+    bool operator==(const MultipleNonviableOverloads& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -550,7 +558,8 @@ using TypeErrorData = Variant<
     UnexpectedArrayLikeTableItem,
     CannotCheckDynamicStringFormatCalls,
     GenericTypeCountMismatch,
-    GenericTypePackCountMismatch>;
+    GenericTypePackCountMismatch,
+    MultipleNonviableOverloads>;
 
 struct TypeErrorSummary
 {

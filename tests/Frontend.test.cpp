@@ -1359,7 +1359,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
 
     FrontendOptions opts;
     opts.forAutocomplete = true;
-
+    getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
     getFrontend().check("game/A", opts);
 
     CHECK(nullptr == getFrontend().moduleResolver.getModule("game/A"));
@@ -1731,6 +1731,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_resolver")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, false};
+    getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
 
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = "return require(game:GetService('Gui').Modules.A)";

@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauSimplificationTableExternType)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauRelateTablesAreNeverDisjoint)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAGVARIABLE(LuauMissingSeenSetRelate)
 
 namespace Luau
 {
@@ -597,7 +598,12 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
                     if (auto propInExternType = re->props.find(name); propInExternType != re->props.end())
                     {
                         Relation propRel;
-                        if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                        if (FFlag::LuauMissingSeenSetRelate)
+                        {
+                            LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
+                            propRel = relate(*prop.readTy, *propInExternType->second.readTy, seen);
+                        }
+                        else if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
                         {
                             LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
                             propRel = relate(*prop.readTy, *propInExternType->second.readTy);

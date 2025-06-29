@@ -57,6 +57,7 @@ LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauOccursCheckForRefinement)
+LUAU_FASTFLAGVARIABLE(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAGVARIABLE(LuauEmptyStringInKeyOf)
 
@@ -257,6 +258,10 @@ struct TypeFunctionReducer
         /// reducible later.
         Irreducible,
 
+        /// A type function that cannot be reduced any further because it has no valid reduction.
+        /// eg add<number, string>
+        Stuck,
+
         /// Some type functions can operate on generic parameters
         Generic,
 
@@ -313,8 +318,15 @@ struct TypeFunctionReducer
             if (seen.contains(t))
                 continue;
 
-            if (is<TypeFunctionInstanceType>(t))
+            if (auto tfit = get<TypeFunctionInstanceType>(t))
             {
+                if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+                {
+                    if (tfit->state == TypeFunctionInstanceState::Stuck)
+                        return SkipTestResult::Stuck;
+                    else if (tfit->state == TypeFunctionInstanceState::Solved)
+                        return SkipTestResult::Generic;
+                }
                 for (auto cyclicTy : cyclicTypeFunctions)
                 {
                     if (t == cyclicTy)
@@ -382,6 +394,35 @@ struct TypeFunctionReducer
             result.reducedPacks.insert(subject);
     }
 
+    TypeFunctionInstanceState getState(TypeId ty) const
+    {
+        auto tfit = get<TypeFunctionInstanceType>(ty);
+        LUAU_ASSERT(tfit);
+        return tfit->state;
+    }
+
+    void setState(TypeId ty, TypeFunctionInstanceState state) const
+    {
+        if (ty->owningArena != ctx.arena)
+            return;
+
+        TypeFunctionInstanceType* tfit = getMutable<TypeFunctionInstanceType>(ty);
+        LUAU_ASSERT(tfit);
+        tfit->state = state;
+    }
+
+    TypeFunctionInstanceState getState(TypePackId tp) const
+    {
+        return TypeFunctionInstanceState::Unsolved;
+    }
+
+    void setState(TypePackId tp, TypeFunctionInstanceState state) const
+    {
+        // We do not presently have any type pack functions at all.
+        (void)tp;
+        (void)state;
+    }
+
     template<typename T>
     void handleTypeFunctionReduction(T subject, TypeFunctionReductionResult<T> reduction)
     {
@@ -402,6 +443,24 @@ struct TypeFunctionReducer
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is uninhabited\n", toString(subject, {true}).c_str());
 
+                if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+                {
+                    if (getState(subject) == TypeFunctionInstanceState::Unsolved)
+                    {
+                        if (reduction.reductionStatus == Reduction::Erroneous)
+                            setState(subject, TypeFunctionInstanceState::Stuck);
+                        else if (reduction.reductionStatus == Reduction::Irreducible)
+                            setState(subject, TypeFunctionInstanceState::Solved);
+                        else if (reduction.reductionStatus == Reduction::MaybeOk)
+                        {
+                            // We cannot make progress because something is unsolved, but we're also forcing.
+                            setState(subject, TypeFunctionInstanceState::Stuck);
+                        }
+                        else
+                            ctx.ice->ice("Unexpected TypeFunctionInstanceState");
+                    }
+                }
+
                 if constexpr (std::is_same_v<T, TypeId>)
                     result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
                 else if constexpr (std::is_same_v<T, TypePackId>)
@@ -409,6 +468,9 @@ struct TypeFunctionReducer
             }
             else if (reduction.reductionStatus == Reduction::MaybeOk && !force)
             {
+                // We're not forcing and the reduction couldn't proceed, but it isn't obviously busted.
+                // Report that this type blocks further reduction.
+
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf(
                         "%s is irreducible; blocked on %zu types, %zu packs\n",
@@ -423,6 +485,8 @@ struct TypeFunctionReducer
                 for (TypePackId b : reduction.blockedPacks)
                     result.blockedPacks.insert(b);
             }
+            else
+                LUAU_ASSERT(!"Unreachable");
         }
     }
 
@@ -438,12 +502,33 @@ struct TypeFunctionReducer
         {
             SkipTestResult skip = testForSkippability(p);
 
+            if (skip == SkipTestResult::Stuck)
+            {
+                // SkipTestResult::Stuck cannot happen when this flag is unset.
+                LUAU_ASSERT(FFlag::LuauStuckTypeFunctionsStillDispatch);
+                if (FFlag::DebugLuauLogTypeFamilies)
+                    printf("%s is stuck!\n", toString(subject, {true}).c_str());
+
+                irreducible.insert(subject);
+                setState(subject, TypeFunctionInstanceState::Stuck);
+
+                return false;
+            }
             if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !tfit->function->canReduceGenerics))
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
-                    printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+                {
+                    if (skip == SkipTestResult::Generic)
+                        printf("%s is solved due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+                    else
+                        printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+                }
 
                 irreducible.insert(subject);
+
+                if (skip == SkipTestResult::Generic)
+                    setState(subject, TypeFunctionInstanceState::Solved);
+
                 return false;
             }
             else if (skip == SkipTestResult::Defer)
@@ -555,6 +640,9 @@ struct TypeFunctionReducer
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("Irreducible due to irreducible/pending and a non-cyclic function\n");
+
+                if (tfit->state == TypeFunctionInstanceState::Stuck || tfit->state == TypeFunctionInstanceState::Solved)
+                    tryGuessing(subject);
 
                 return;
             }
@@ -732,7 +820,14 @@ FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
 {
-    return is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
+    if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+    {
+        if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
+            return true;
+        return is<BlockedType, PendingExpansionType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
+    }
+    else
+        return is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
 template<typename F, typename... Args>
@@ -3268,7 +3363,7 @@ bool searchPropsAndIndexer(
                 indexType = follow(tblIndexer->indexResultType);
         }
 
-        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, ctx->simplifier, *ctx->ice))
+        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, ctx->simplifier, *ctx->ice, SolverMode::New))
         {
             TypeId idxResultTy = follow(tblIndexer->indexResultType);
 

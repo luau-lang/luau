@@ -381,9 +381,6 @@ Unifier::Unifier(NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Loc
     , sharedState(*normalizer->sharedState)
 {
     LUAU_ASSERT(sharedState.iceHandler);
-
-    // Unifier is not usable when this flag is enabled! Please consider using Subtyping instead.
-    LUAU_ASSERT(!FFlag::LuauSolverV2);
 }
 
 void Unifier::tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection, const LiteralProperties* literalProperties)

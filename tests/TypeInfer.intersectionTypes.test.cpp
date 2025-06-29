@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1149,6 +1150,8 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 {
+    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping, true};
+
     CheckResult result = check(R"(
         function f<a...>()
             function g(x : ((a...) -> ()) & ((number,a...) -> number))
@@ -1162,15 +1165,17 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 
     if (FFlag::LuauSolverV2)
     {
-        const std::string expected = "Type\n\t"
-                                     "'((a...) -> ()) & ((number, a...) -> number)'"
-                                     "\ncould not be converted into\n\t"
-                                     "'((a...) -> ()) & ((number, a...) -> number)'; \n"
-                                     "this is because \n\t"
-                                     " * in the 1st component of the intersection, the function returns is `()` in the former type and `number` in "
-                                     "the latter type, and `()` is not a subtype of `number`\n\t"
-                                     " * in the 2nd component of the intersection, the function takes a tail of `a...` and in the 1st component of "
-                                     "the intersection, the function takes a tail of `a...`, and `a...` is not a supertype of `a...`";
+        // TODO: CLI-159120 - this error message is bogus
+        const std::string expected =
+            "Type\n\t"
+            "'((a...) -> ()) & ((number, a...) -> number)'"
+            "\ncould not be converted into\n\t"
+            "'((a...) -> ()) & ((number, a...) -> number)'; \n"
+            "this is because \n\t"
+            " * in the 1st component of the intersection, the function returns is `()` in the former type and `number` in "
+            "the latter type, and `()` is not a subtype of `number`\n\t"
+            " * in the 2nd component of the intersection, the function takes a tail of `number, a...` and in the 1st component of "
+            "the intersection, the function takes a tail of `number, a...`, and `number, a...` is not a supertype of `number, a...`";
         CHECK(expected == toString(result.errors[0]));
     }
     else

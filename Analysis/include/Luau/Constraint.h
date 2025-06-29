@@ -6,6 +6,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 #include "Luau/TypeFwd.h"
+#include "Luau/TypeIds.h"
 
 #include <string>
 #include <memory>
@@ -316,7 +317,11 @@ struct Constraint
 
     std::vector<NotNull<Constraint>> dependencies;
 
-    DenseHashSet<TypeId> getMaybeMutatedFreeTypes() const;
+    // Clip with LuauUseOrderedTypeSetsInConstraints
+    DenseHashSet<TypeId> getMaybeMutatedFreeTypes_DEPRECATED() const;
+
+    TypeIds getMaybeMutatedFreeTypes() const;
+
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;
