@@ -13,6 +13,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -335,6 +337,11 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+    };
+
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
         type Y = { y: (string) -> string }
@@ -350,9 +357,14 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 
     if (FFlag::LuauSolverV2)
     {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
         CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
-        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'w' to table 'X & Y'");
+        // I'm not writing this as a `toString` check, those are awful.
+        auto err1 = get<TypeMismatch>(result.errors[1]);
+        REQUIRE(err1);
+        CHECK_EQ("number", toString(err1->givenType));
+        CHECK_EQ("string", toString(err1->wantedType));
+        CHECK_EQ(toString(result.errors[2]), "Cannot add property 'w' to table 'X & Y'");
     }
     else
     {

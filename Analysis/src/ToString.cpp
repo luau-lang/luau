@@ -2023,6 +2023,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             return "table_check " + tos(c.expectedType) + " :> " + tos(c.exprType);
         else if constexpr (std::is_same_v<T, SimplifyConstraint>)
             return "simplify " + tos(c.ty);
+        else if constexpr (std::is_same_v<T, PushFunctionTypeConstraint>)
+            return "push_function_type " + tos(c.expectedFunctionType) + " => " + tos(c.functionType);
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

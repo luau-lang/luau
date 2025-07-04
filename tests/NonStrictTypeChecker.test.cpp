@@ -17,6 +17,8 @@
 
 LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
+LUAU_FASTFLAG(LuauNewNonStrictMoreUnknownSymbols)
+LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 
 using namespace Luau;
 
@@ -190,12 +192,22 @@ local x
 abs(lower(x))
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 4), "abs", result);
+    if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 4), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 10), "lower", result);
+    }
+    else
+    {
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 4), "abs", result);
+    }
 }
 
 
-TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_warns_with_never_local")
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_does_not_warn_with_never_local")
 {
     CheckResult result = checkNonStrict(R"(
 local x : never
@@ -205,10 +217,14 @@ else
     lower(x)
 end
 )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 8), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 10), "lower", result);
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 8), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 10), "lower", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_warns_nil_branches")
@@ -251,7 +267,13 @@ if cond() then
 end
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 8), "abs", result);
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_no_else_err_in_cond")
@@ -269,12 +291,29 @@ end
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_expr_should_warn")
 {
     CheckResult result = checkNonStrict(R"(
+local x = 42
+local y = if cond() then abs(x) else lower(x)
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 43), "lower", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_expr_should_not_warn_for_never")
+{
+    CheckResult result = checkNonStrict(R"(
 local x : never
 local y = if cond() then abs(x) else lower(x)
 )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 29), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 43), "lower", result);
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 29), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 43), "lower", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_expr_doesnt_warn_else_branch")
@@ -355,10 +394,20 @@ function f(x)
     lower(x)
 end
 )");
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
-    NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
+
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
+        NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_sequencing_errors_2")
@@ -369,10 +418,19 @@ local t = {function(x)
     lower(x)
 end}
 )");
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
-    CHECK(toString(result.errors[2]) == "Argument x with type 'unknown' is used in a way that will run time error");
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(toString(result.errors[0]) == "Argument x with type 'unknown' is used in a way that will run time error");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
+        CHECK(toString(result.errors[2]) == "Argument x with type 'unknown' is used in a way that will run time error");
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "local_fn_produces_error")
@@ -401,7 +459,7 @@ local y = function() lower(x) end
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_if_warns_never")
 {
     CheckResult result = checkNonStrict(R"(
-function f(x)
+function f(x: never)
     if cond() then
         abs(x)
     else
@@ -409,9 +467,15 @@ function f(x)
     end
 end
 )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 12), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 14), "lower", result);
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 12), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 14), "lower", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_if_no_else")
@@ -720,5 +784,40 @@ TEST_CASE_FIXTURE(Fixture, "incomplete_function_annotation")
 
     LUAU_REQUIRE_ERRORS(result);
 }
+
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_function_calls")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictMoreUnknownSymbols, true};
+
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local function foo() : ()
+            bar()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownSymbol* err = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ(err->name, "bar");
+    CHECK_EQ(err->context, UnknownSymbol::Context::Binding);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_one_sided_conditionals")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictMoreUnknownSymbols, true};
+
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local function foo(cond) : ()
+            if cond then
+                bar()
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownSymbol* err = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ(err->name, "bar");
+    CHECK_EQ(err->context, UnknownSymbol::Context::Binding);
+}
+
 
 TEST_SUITE_END();

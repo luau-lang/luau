@@ -494,6 +494,9 @@ private:
     );
 
     TypeId simplifyUnion(const ScopePtr& scope, Location location, TypeId left, TypeId right);
+
+    void updateRValueRefinements(const ScopePtr& scope, DefId def, TypeId ty) const;
+    void updateRValueRefinements(Scope* scope, DefId def, TypeId ty) const;
 };
 
 } // namespace Luau

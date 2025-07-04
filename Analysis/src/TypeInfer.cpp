@@ -32,6 +32,7 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
 
@@ -303,7 +304,11 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     normalizer.clearCaches();
     normalizer.arena = nullptr;
 
-    currentModule->clonePublicInterface(builtinTypes, *iceHandler);
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
+        currentModule->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::Old);
+    else
+        currentModule->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
+
     freeze(currentModule->internalTypes);
     freeze(currentModule->interfaceTypes);
 

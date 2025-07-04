@@ -152,7 +152,9 @@ struct Module
     // Once a module has been typechecked, we clone its public interface into a
     // separate arena. This helps us to force Type ownership into a DAG rather
     // than a DCG.
-    void clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
+    void clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
+
+    void clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode);
 };
 
 } // namespace Luau
