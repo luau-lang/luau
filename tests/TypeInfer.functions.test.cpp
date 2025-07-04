@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3194,6 +3195,116 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_pack_variadic")
         local foo : () -> (...string) = (nil :: any)
         print(string.format("%s %s %s", foo()))
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_annotated_explicit_self")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+    };
+
+    CheckResult results = check(R"(
+        type MyObject = {
+            fn: (self: MyObject) -> number,
+            field: number
+        }
+
+        local Foo = {} :: MyObject
+
+        function Foo:fn()
+            local _ = self
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    LUAU_REQUIRE_ERROR(results, FunctionExitsWithoutReturning); // `Foo:fn` should return a `number`
+    CHECK_EQ("MyObject", toString(requireTypeAtPosition({9, 24})));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "oss_1871")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+    };
+
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type Test = {
+            [string]: (string) -> ()
+        }
+
+        local TestTbl: Test = {}
+
+        function TestTbl.Hello(Param)
+            local _ = Param
+        end
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({8, 25})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type IIOManager = {
+            __index: IIOManager,
+            write: (self: IOManager, text: string, label: string?) -> number,
+        }
+
+        export type IOManager = setmetatable<{
+            buffer: {string},
+            memory: { [string]: number }
+        }, IIOManager>;
+
+        local IO = {} :: IIOManager
+        IO.__index = IO
+
+        function IO:write(text, label)
+            local _ = self
+            local _ = text
+            local _ = label
+            return 42
+        end
+
+        return IO
+    )"));
+    CHECK_EQ("IOManager", toString(requireTypeAtPosition({15, 25})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({16, 25})));
+    CHECK_EQ("string?", toString(requireTypeAtPosition({17, 25})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Object = {
+            foobar: <T>(number, string, T) -> T
+        }
+
+        local Obj = {} :: Object
+        function Obj.foobar(bing, quxx, dunno)
+            local _ = bing
+            local _ = quxx
+            return dunno
+        end
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({7, 24})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({8, 24})));
+    // NOTE: This specifically _isn't_ `T` as defined by `Object.foobar`
+    CHECK_EQ("a", toString(requireTypeAtPosition({9, 21})));
 }
 
 TEST_SUITE_END();

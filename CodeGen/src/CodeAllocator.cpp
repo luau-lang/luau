@@ -5,6 +5,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodeGenAllocationCheck)
+
 #if defined(_WIN32)
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -52,7 +54,7 @@ static void freePagesImpl(uint8_t* mem, size_t size)
         CODEGEN_ASSERT(!"failed to deallocate block memory");
 }
 
-static void makePagesExecutable(uint8_t* mem, size_t size)
+static void makePagesExecutable_DEPRECATED(uint8_t* mem, size_t size)
 {
     CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
     CODEGEN_ASSERT(size == alignToPageSize(size));
@@ -60,6 +62,15 @@ static void makePagesExecutable(uint8_t* mem, size_t size)
     DWORD oldProtect;
     if (VirtualProtect(mem, size, PAGE_EXECUTE_READ, &oldProtect) == 0)
         CODEGEN_ASSERT(!"Failed to change page protection");
+}
+
+[[nodiscard]] static bool makePagesExecutable(uint8_t* mem, size_t size)
+{
+    CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
+    CODEGEN_ASSERT(size == alignToPageSize(size));
+
+    DWORD oldProtect;
+    return VirtualProtect(mem, size, PAGE_EXECUTE_READ, &oldProtect) != 0;
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
@@ -91,13 +102,21 @@ static void freePagesImpl(uint8_t* mem, size_t size)
         CODEGEN_ASSERT(!"Failed to deallocate block memory");
 }
 
-static void makePagesExecutable(uint8_t* mem, size_t size)
+static void makePagesExecutable_DEPRECATED(uint8_t* mem, size_t size)
 {
     CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
     CODEGEN_ASSERT(size == alignToPageSize(size));
 
     if (mprotect(mem, size, PROT_READ | PROT_EXEC) != 0)
         CODEGEN_ASSERT(!"Failed to change page protection");
+}
+
+[[nodiscard]] static bool makePagesExecutable(uint8_t* mem, size_t size)
+{
+    CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
+    CODEGEN_ASSERT(size == alignToPageSize(size));
+
+    return mprotect(mem, size, PROT_READ | PROT_EXEC) == 0;
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
@@ -184,7 +203,16 @@ bool CodeAllocator::allocate(
 
     size_t pageAlignedSize = alignToPageSize(startOffset + totalSize);
 
-    makePagesExecutable(blockPos, pageAlignedSize);
+    if (FFlag::LuauCodeGenAllocationCheck)
+    {
+        if (!makePagesExecutable(blockPos, pageAlignedSize))
+            return false;
+    }
+    else
+    {
+        makePagesExecutable_DEPRECATED(blockPos, pageAlignedSize);
+    }
+
     flushInstructionCache(blockPos + codeOffset, codeSize);
 
     result = blockPos + startOffset;

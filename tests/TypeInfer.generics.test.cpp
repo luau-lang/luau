@@ -18,6 +18,8 @@ LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
 using namespace Luau;
 
@@ -1234,6 +1236,13 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
 
 TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
 {
+    // Prior to `LuauPushFunctionTypesInFunctionStatement`, we _always_ forced
+    // a constraint when solving this block.
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+    };
+
     CheckResult result = check(R"(
         local T = {}
 

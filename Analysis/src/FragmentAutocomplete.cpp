@@ -40,6 +40,8 @@ LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPopulateRefinedTypesInFragmentFromOldSolver)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
+LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
+LUAU_FASTFLAGVARIABLE(LuauPopulateSelfTypesInFragment)
 
 namespace Luau
 {
@@ -421,6 +423,15 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     {
                         if (globFun->location.contains(cursorPos))
                         {
+                            if (FFlag::LuauPopulateSelfTypesInFragment)
+                            {
+                                if (auto local = globFun->func->self)
+                                {
+                                    localStack.push_back(local);
+                                    localMap[local->name] = local;
+                                }
+                            }
+
                             for (AstLocal* loc : globFun->func->args)
                             {
                                 localStack.push_back(loc);
@@ -603,7 +614,17 @@ struct UsageFinder : public AstVisitor
         if (auto ref = dfg->getRefinementKey(expr))
             mentionedDefs.insert(ref->def);
         if (auto local = expr->as<AstExprLocal>())
-            localBindingsReferenced.emplace_back(dfg->getDef(local), local->local);
+        {
+            if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
+            {
+                auto def = dfg->getDef(local);
+                localBindingsReferenced.emplace_back(def, local->local);
+                symbolsToRefine.emplace_back(def, Symbol(local->local));                
+            }
+            else
+                localBindingsReferenced.emplace_back(dfg->getDef(local), local->local);
+
+        }
         return true;
     }
 
@@ -611,6 +632,11 @@ struct UsageFinder : public AstVisitor
     {
         if (FFlag::LuauGlobalVariableModuleIsolation)
             globalDefsToPrePopulate.emplace_back(global->name, dfg->getDef(global));
+        if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
+        {
+            auto def = dfg->getDef(global);
+            symbolsToRefine.emplace_back(def, Symbol(global->name));            
+        }
         return true;
     }
 
@@ -633,6 +659,7 @@ struct UsageFinder : public AstVisitor
     std::vector<std::pair<Name, Name>> referencedImportedBindings{{"", ""}};
     std::vector<std::pair<AstName, const Def*>> globalDefsToPrePopulate;
     std::vector<AstName> globalFunctionsReferenced;
+    std::vector<std::pair<const Def*, Symbol>> symbolsToRefine;
 };
 
 // Runs the `UsageFinder` traversal on the fragment and grabs all of the types that are
@@ -685,7 +712,20 @@ void cloneTypesFromFragment(
         }
     }
 
-    if (FFlag::LuauPopulateRefinedTypesInFragmentFromOldSolver && !staleModule->checkedInNewSolver)
+    if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
+    {
+        for (const auto& [d, syms] : f.symbolsToRefine)
+        {
+            for (const Scope* stale = staleScope; stale; stale = stale->parent.get())
+            {
+                if (auto res = stale->refinements.find(syms); res != stale->refinements.end())
+                {
+                    destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
+                }
+            }
+        }
+    }
+    else if (FFlag::LuauPopulateRefinedTypesInFragmentFromOldSolver && !staleModule->checkedInNewSolver)
     {
         for (const auto& [d, loc] : f.localBindingsReferenced)
         {

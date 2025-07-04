@@ -60,6 +60,7 @@ LUAU_FASTFLAGVARIABLE(LuauOccursCheckForRefinement)
 LUAU_FASTFLAGVARIABLE(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAGVARIABLE(LuauEmptyStringInKeyOf)
+LUAU_FASTFLAGVARIABLE(LuauAvoidExcessiveTypeCopying)
 
 namespace Luau
 {
@@ -2455,6 +2456,39 @@ struct RefineTypeScrubber : public Substitution
 
 };
 
+bool occurs(TypeId haystack, TypeId needle, DenseHashSet<TypeId>& seen)
+{
+    if (needle == haystack)
+        return true;
+
+    if (seen.contains(haystack))
+        return false;
+
+    seen.insert(haystack);
+
+    if (auto ut = get<UnionType>(haystack))
+    {
+        for (auto option : ut)
+            if (occurs(option, needle, seen))
+                return true;
+    }
+
+    if (auto it = get<UnionType>(haystack))
+    {
+        for (auto part : it)
+            if (occurs(part, needle, seen))
+                return true;
+    }
+
+    return false;
+}
+
+bool occurs(TypeId haystack, TypeId needle)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    return occurs(haystack, needle, seen);
+}
+
 } // namespace
 
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
@@ -2485,9 +2519,12 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         // Instead, we can clip the recursive part:
         //
         //  t1 where t1 = refine<T | t1, Y> => refine<T, Y>
-        RefineTypeScrubber rts{ctx, instance};
-        if (auto result = rts.substitute(targetTy))
-            targetTy = *result;
+        if (!FFlag::LuauAvoidExcessiveTypeCopying || occurs(targetTy, instance))
+        {
+            RefineTypeScrubber rts{ctx, instance};
+            if (auto result = rts.substitute(targetTy))
+                targetTy = *result;
+        }
     }
 
     std::vector<TypeId> discriminantTypes;

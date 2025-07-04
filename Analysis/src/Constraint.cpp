@@ -4,6 +4,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
 namespace Luau
 {
@@ -222,6 +223,14 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes_DEPRECATED() const
         rci.traverse(tcc->exprType);
     }
 
+    if (FFlag::LuauPushFunctionTypesInFunctionStatement)
+    {
+        if (auto pftc = get<PushFunctionTypeConstraint>(*this))
+        {
+            rci.traverse(pftc->functionType);
+        }
+    }
+
     return types;
 }
 
@@ -316,6 +325,14 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     else if (auto tcc = get<TableCheckConstraint>(*this))
     {
         rci.traverse(tcc->exprType);
+    }
+
+    if (FFlag::LuauPushFunctionTypesInFunctionStatement)
+    {
+        if (auto pftc = get<PushFunctionTypeConstraint>(*this))
+        {
+            rci.traverse(pftc->functionType);
+        }
     }
 
     return types;

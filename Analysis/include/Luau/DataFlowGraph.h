@@ -46,6 +46,8 @@ struct DataFlowGraph
 
     const RefinementKey* getRefinementKey(const AstExpr* expr) const;
 
+    std::optional<Symbol> getSymbolFromDef(const Def* def) const;
+
 private:
     DataFlowGraph(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena);
 
@@ -63,6 +65,7 @@ private:
     // There's no AstStatDeclaration, and it feels useless to introduce it just to enforce an invariant in one place.
     // All keys in this maps are really only statements that ambiently declares a symbol.
     DenseHashMap<const AstStat*, const Def*> declaredDefs{nullptr};
+    DenseHashMap<const Def*, Symbol> defToSymbol{nullptr};
 
     DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys{nullptr};
     friend struct DataFlowGraphBuilder;

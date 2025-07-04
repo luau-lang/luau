@@ -42,6 +42,8 @@ LUAU_FASTFLAGVARIABLE(LuauMissingFollowInAssignIndexConstraint)
 LUAU_FASTFLAGVARIABLE(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAGVARIABLE(LuauUseOrderedTypeSetsInConstraints)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauAvoidExcessiveTypeCopying)
 
 namespace Luau
 {
@@ -776,7 +778,7 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
     ty = follow(ty);
     const FreeType* freeTy = get<FreeType>(ty);
 
-    std::string saveme = toString(ty, opts);
+    std::string saveme = FFlag::DebugLuauLogSolver ? toString(ty, opts) : "[FFlag::DebugLuauLogSolver Off]";
 
     // Some constraints (like prim) will also replace a free type with something
     // concrete. If so, our work is already done.
@@ -904,6 +906,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*eqc, constraint);
     else if (auto sc = get<SimplifyConstraint>(*constraint))
         success = tryDispatch(*sc, constraint);
+    else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
+        success = tryDispatch(*pftc, constraint);
     else
         LUAU_ASSERT(false);
 
@@ -1845,7 +1849,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
 
         for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
         {
-            const TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
+            TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
             const TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
             AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
@@ -1875,21 +1879,38 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
                      expr->is<AstExprConstantNil>() || (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls && expr->is<AstExprTable>()))
             {
-                ReferentialReplacer replacer{arena, NotNull{&replacements}, NotNull{&replacementPacks}};
-                if (auto res = replacer.substitute(expectedArgTy))
+                if (FFlag::LuauAvoidExcessiveTypeCopying)
                 {
-                    if (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls)
+                    if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
                     {
-                        // If we do this replacement and there are type
-                        // functions in the final type, then we need to
-                        // ensure those get reduced.
-                        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-                        queuer.traverse(*res);
+                        ReferentialReplacer replacer{arena, NotNull{&replacements}, NotNull{&replacementPacks}};
+                        if (auto res = replacer.substitute(expectedArgTy))
+                        {
+                            InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+                            queuer.traverse(*res);
+                            expectedArgTy = *res;
+                        }
                     }
-                    u2.unify(actualArgTy, *res);
+                    u2.unify(actualArgTy, expectedArgTy);
                 }
                 else
-                    u2.unify(actualArgTy, expectedArgTy);
+                {
+                    ReferentialReplacer replacer{arena, NotNull{&replacements}, NotNull{&replacementPacks}};
+                    if (auto res = replacer.substitute(expectedArgTy))
+                    {
+                        if (FFlag::LuauTableLiteralSubtypeCheckFunctionCalls)
+                        {
+                            // If we do this replacement and there are type
+                            // functions in the final type, then we need to
+                            // ensure those get reduced.
+                            InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+                            queuer.traverse(*res);
+                        }
+                        u2.unify(actualArgTy, *res);
+                    }
+                    else
+                        u2.unify(actualArgTy, expectedArgTy);
+                }
             }
             else if (!FFlag::LuauTableLiteralSubtypeCheckFunctionCalls && expr->is<AstExprTable>() &&
                      !ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
@@ -2507,6 +2528,23 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
             {
                 LUAU_ASSERT(lhsTable->remainingProps > 0);
                 lhsTable->remainingProps -= 1;
+
+                // For some code like:
+                //
+                //  local T = {}
+                //  function T:foo()
+                //         return T:bar(5)
+                //  end
+                //  function T:bar(i)
+                //        return i
+                //  end
+                //
+                // We need to wake up an unsealed table if it previously
+                // was blocked on missing a member. In the above, we may
+                // try to solve for `hasProp T "bar"`, block, then never
+                // wake up without forcing a constraint.
+                if (FFlag::LuauPushFunctionTypesInFunctionStatement)
+                    unblock(lhsType, constraint->location);
             }
 
             return true;
@@ -2902,6 +2940,104 @@ bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Co
         result = simplifyUnion(constraint->scope, constraint->location, result, ty);
     }
     emplaceType<BoundType>(asMutable(target), result);
+    return true;
+}
+
+namespace
+{
+
+struct ContainsAnyGeneric final : public TypeOnceVisitor
+{
+    bool found = false;
+
+    explicit ContainsAnyGeneric()
+        : TypeOnceVisitor(true)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        found = found || is<GenericType>(ty);
+        return !found;
+    }
+
+    bool visit(TypePackId ty) override
+    {
+        found = found || is<GenericTypePack>(ty);
+        return !found;
+    }
+
+    static bool hasAnyGeneric(TypeId ty)
+    {
+        ContainsAnyGeneric cg;
+        cg.traverse(ty);
+        return cg.found;
+    }
+
+    static bool hasAnyGeneric(TypePackId tp)
+    {
+        ContainsAnyGeneric cg;
+        cg.traverse(tp);
+        return cg.found;
+    }
+};
+
+} // namespace
+
+bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<const Constraint> constraint)
+{
+    // NOTE: This logic could probably be combined with that of
+    // `FunctionCheckConstraint`, but that constraint currently does a few
+    // different things.
+
+    auto expectedFn = get<FunctionType>(follow(c.expectedFunctionType));
+    auto fn = get<FunctionType>(follow(c.functionType));
+
+    // If either the expected type or given type aren't functions, then bail.
+    if (!expectedFn || !fn)
+        return true;
+
+    auto expectedParams = begin(expectedFn->argTypes);
+    auto params = begin(fn->argTypes);
+
+    if (expectedParams == end(expectedFn->argTypes) || params == end(fn->argTypes))
+        return true;
+
+    if (c.isSelf)
+    {
+        if (is<FreeType>(follow(*params)))
+        {
+            shiftReferences(*params, *expectedParams);
+            bind(constraint, *params, *expectedParams);
+        }
+        expectedParams++;
+        params++;
+    }
+
+    // `idx` is an index into the arguments of the attached `AstExprFunction`,
+    // we don't need to increment it with respect to arguments in case of a
+    // `self` type.
+    size_t idx = 0;
+    while (idx < c.expr->args.size && expectedParams != end(expectedFn->argTypes) && params != end(fn->argTypes))
+    {
+        // If we have an explicitly annotated parameter, a non-free type for
+        // the parameter, or the expected type contains a generic, bail.
+        // - Annotations should be respected above all else;
+        // - a non-free-type is unexpected, so just bail;
+        // - a generic in the expected type might cause us to leak a generic, so bail.
+        if (!c.expr->args.data[idx]->annotation && get<FreeType>(*params) && !ContainsAnyGeneric::hasAnyGeneric(*expectedParams))
+        {
+            shiftReferences(*params, *expectedParams);
+            bind(constraint, *params, *expectedParams);
+        }
+        expectedParams++;
+        params++;
+        idx++;
+    }
+
+    if (!c.expr->returnAnnotation && get<FreeTypePack>(fn->retTypes) && !ContainsAnyGeneric::hasAnyGeneric(expectedFn->retTypes))
+        bind(constraint, fn->retTypes, expectedFn->retTypes);
+
     return true;
 }
 
