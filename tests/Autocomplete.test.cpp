@@ -22,6 +22,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 LUAU_FASTFLAG(LuauImplicitTableIndexerKeys2)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
 using namespace Luau;
 
@@ -4692,6 +4693,45 @@ TEST_CASE_FIXTURE(ACFixture, "bidirectional_autocomplete_in_function_call")
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("left"), 1);
     CHECK_EQ(ac.entryMap.count("right"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_via_bidirectional_self")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+    };
+
+    check(R"(
+        type IAccount = {
+            __index: IAccount,
+            new : (string, number) -> Account,
+            report: (self: Account) -> (),
+        }
+
+        export type Account = setmetatable<{
+            name: string,
+            balance: number
+        }, IAccount>;
+
+        local Account = {} :: IAccount
+        Account.__index = Account
+
+        function Account.new(name, balance): Account
+            local self = {}
+            self.name = name
+            self.balance = balance
+            return setmetatable(self, Account)
+        end
+
+        function Account:report()
+            print("My balance is: " .. self.@1)
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("name"), 1);
+    CHECK_EQ(ac.entryMap.count("balance"), 1);
 }
 
 TEST_SUITE_END();

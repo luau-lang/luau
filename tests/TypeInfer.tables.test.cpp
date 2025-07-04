@@ -38,6 +38,7 @@ LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauDfgForwardNilFromAndOr)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6085,6 +6086,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
     CHECK_EQ(R"("Alt" | "Space" | "Tab")", toString(err->wantedType));
     // FIXME: CLI-157899
     CHECK_EQ(R"("Alt" | "Ctrl" | "Space" | "Tab")", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1888_and_or_subscriptable")
+{
+    ScopedFastFlag _{FFlag::LuauDfgForwardNilFromAndOr, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type CachedValue<T> = {
+            future: any,
+            timestamp: number,
+            ttl: number?,
+        }
+
+        type Cache<T> = { [string]: CachedValue<T> }
+        type CacheMap = { [string]: Cache<any> }
+
+        local _caches: CacheMap = {}
+
+        local CacheManager = {}
+
+        function CacheManager:has(cacheName: string, id: string): boolean
+            local cache = _caches[cacheName]
+            local entry = cache and cache[id]
+            return entry ~= nil
+        end
+    )"));
 }
 
 TEST_SUITE_END();

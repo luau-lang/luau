@@ -17,6 +17,8 @@ LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAGVARIABLE(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAGVARIABLE(LuauDfgAllowUpdatesInLoops)
+LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
+LUAU_FASTFLAGVARIABLE(LuauDfgForwardNilFromAndOr)
 
 namespace Luau
 {
@@ -105,6 +107,14 @@ const RefinementKey* DataFlowGraph::getRefinementKey(const AstExpr* expr) const
         return *key;
 
     return nullptr;
+}
+
+std::optional<Symbol> DataFlowGraph::getSymbolFromDef(const Def* def) const
+{
+    if (auto ref = defToSymbol.find(def))
+        return *ref;
+
+    return std::nullopt;
 }
 
 std::optional<DefId> DfgScope::lookup(Symbol symbol) const
@@ -1051,12 +1061,16 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprLocal* l)
 {
     DefId def = lookup(l->local, l->local->location);
     const RefinementKey* key = keyArena->leaf(def);
+    if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
+        graph.defToSymbol[def] = l->local;
     return {def, key};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprGlobal* g)
 {
     DefId def = lookup(g->name, g->location);
+    if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
+        graph.defToSymbol[def] = g->name;
     return {def, keyArena->leaf(def)};
 }
 
@@ -1216,10 +1230,23 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprUnary* u)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprBinary* b)
 {
-    visitExpr(b->left);
-    visitExpr(b->right);
+    if (FFlag::LuauDfgForwardNilFromAndOr)
+    {
+        auto left = visitExpr(b->left);
+        auto right = visitExpr(b->right);
+        // I think there's some subtlety here. There are probably cases where
+        // X or Y / X and Y can _never_ "be subscripted."
+        auto subscripted = (b->op == AstExprBinary::And || b->op == AstExprBinary::Or) &&
+                           (containsSubscriptedDefinition(left.def) || containsSubscriptedDefinition(right.def));
+        return {defArena->freshCell(Symbol{}, b->location, subscripted), nullptr};
+    }
+    else
+    {
+        visitExpr(b->left);
+        visitExpr(b->right);
 
-    return {defArena->freshCell(Symbol{}, b->location), nullptr};
+        return {defArena->freshCell(Symbol{}, b->location), nullptr};
+    }
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)

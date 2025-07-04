@@ -1672,7 +1672,10 @@ ModulePtr check(
     }
 
     unfreeze(result->interfaceTypes);
-    result->clonePublicInterface(builtinTypes, *iceHandler);
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
+        result->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
+    else
+        result->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
 
     if (FFlag::DebugLuauForbidInternalTypes)
     {

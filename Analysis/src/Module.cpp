@@ -275,7 +275,7 @@ Module::~Module()
     unfreeze(internalTypes);
 }
 
-void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
     CloneState cloneState{builtinTypes};
 
@@ -283,6 +283,50 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
 
     TypePackId returnType = moduleScope->returnType;
     std::optional<TypePackId> varargPack = FFlag::LuauSolverV2 ? std::nullopt : moduleScope->varargPack;
+
+    TxnLog log;
+    ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
+
+    returnType = clonePublicInterface.cloneTypePack(returnType);
+
+    moduleScope->returnType = returnType;
+    if (varargPack)
+    {
+        varargPack = clonePublicInterface.cloneTypePack(*varargPack);
+        moduleScope->varargPack = varargPack;
+    }
+
+    for (auto& [name, tf] : moduleScope->exportedTypeBindings)
+    {
+        tf = clonePublicInterface.cloneTypeFun(tf);
+    }
+
+    for (auto& [name, ty] : declaredGlobals)
+    {
+        ty = clonePublicInterface.cloneType(ty);
+    }
+
+    if (FFlag::LuauUserTypeFunctionAliases)
+    {
+        for (auto& tf : typeFunctionAliases)
+        {
+            *tf = clonePublicInterface.cloneTypeFun(*tf);
+        }
+    }
+
+    // Copy external stuff over to Module itself
+    this->returnType = moduleScope->returnType;
+    this->exportedTypeBindings = moduleScope->exportedTypeBindings;
+}
+
+void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode)
+{
+    CloneState cloneState{builtinTypes};
+
+    ScopePtr moduleScope = getModuleScope();
+
+    TypePackId returnType = moduleScope->returnType;
+    std::optional<TypePackId> varargPack = mode == SolverMode::New ? std::nullopt : moduleScope->varargPack;
 
     TxnLog log;
     ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
