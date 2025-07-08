@@ -50,7 +50,7 @@ static int vector_normalize(lua_State* L)
 #endif
 
     if (magSq == 0.0f)
-        return luaL_error(L, "cannot normalize a zero-length vector");
+        luaL_error(L, "cannot normalize a zero-length vector");
 
     float invSqrt = 1.0f / sqrtf(magSq);
 
