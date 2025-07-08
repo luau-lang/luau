@@ -44,12 +44,19 @@ static int vector_normalize(lua_State* L)
     const float* v = luaL_checkvector(L, 1);
 
 #if LUA_VECTOR_SIZE == 4
-    float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+    float magSq = v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3];
+#else
+    float magSq = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+#endif
 
+    if (magSq == 0.0f)
+        return luaL_error(L, "cannot normalize a zero-length vector");
+
+    float invSqrt = 1.0f / sqrtf(magSq);
+
+#if LUA_VECTOR_SIZE == 4
     lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt, v[3] * invSqrt);
 #else
-    float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-
     lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt);
 #endif
 
