@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
+#include "Luau/TypeOrPack.h"
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
 #include "Luau/VisitType.h"
@@ -20,14 +21,6 @@ namespace Luau
 namespace
 {
 
-using Kind = Variant<TypeId, TypePackId>;
-
-template<typename T>
-const T* get(const Kind& kind)
-{
-    return get_if<T>(&kind);
-}
-
 class TypeCloner
 {
 
@@ -38,7 +31,7 @@ protected:
     // A queue of kinds where we cloned it, but whose interior types hasn't
     // been updated to point to new clones. Once all of its interior types
     // has been updated, it gets removed from the queue.
-    std::vector<Kind> queue;
+    std::vector<TypeOrPack> queue;
 
     NotNull<SeenTypes> types;
     NotNull<SeenTypePacks> packs;
@@ -116,7 +109,7 @@ private:
             if (hasExceededIterationLimit())
                 break;
 
-            Kind kind = queue.back();
+            TypeOrPack kind = queue.back();
             queue.pop_back();
 
             if (find(kind))
@@ -147,7 +140,7 @@ protected:
         return std::nullopt;
     }
 
-    std::optional<Kind> find(Kind kind) const
+    std::optional<TypeOrPack> find(TypeOrPack kind) const
     {
         if (auto ty = get<TypeId>(kind))
             return find(*ty);
@@ -265,7 +258,7 @@ private:
         );
     }
 
-    void cloneChildren(Kind kind)
+    void cloneChildren(TypeOrPack kind)
     {
         if (auto ty = get<TypeId>(kind))
             return cloneChildren(*ty);

@@ -2,8 +2,10 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/Scope.h"
+#include "Luau/TypeFunctionRuntimeBuilder.h"
+#include "Luau/Type.h"
 #include "Luau/Variant.h"
-#include "Luau/TypeFwd.h"
 
 #include <optional>
 #include <string>
@@ -15,16 +17,21 @@ using lua_State = struct lua_State;
 namespace Luau
 {
 
-struct TypeFunctionRuntime;
+struct InternalErrorReporter;
+struct TypeCheckLimits;
+struct TypeFunctionRuntimeBuilderState;
+
+struct LuauTempThreadPopper
+{
+    explicit LuauTempThreadPopper(lua_State* L);
+    ~LuauTempThreadPopper();
+
+    lua_State* L = nullptr;
+};
+
+using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 void* typeFunctionAlloc(void* ud, void* ptr, size_t osize, size_t nsize);
-
-// Replica of types from Type.h
-struct TypeFunctionType;
-using TypeFunctionTypeId = const TypeFunctionType*;
-
-struct TypeFunctionTypePackVar;
-using TypeFunctionTypePackId = const TypeFunctionTypePackVar*;
 
 struct TypeFunctionPrimitiveType
 {
@@ -273,6 +280,42 @@ T* getMutable(TypeFunctionTypeId tv)
 
     return tv ? Luau::get_if<T>(&const_cast<TypeFunctionType*>(tv)->type) : nullptr;
 }
+
+struct TypeFunctionRuntime
+{
+    TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
+    ~TypeFunctionRuntime();
+
+    // Return value is an error message if registration failed
+    std::optional<std::string> registerFunction(AstStatTypeFunction* function);
+
+    // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
+    TypedAllocator<TypeFunctionType> typeArena;
+    TypedAllocator<TypeFunctionTypePackVar> typePackArena;
+
+    NotNull<InternalErrorReporter> ice;
+    NotNull<TypeCheckLimits> limits;
+
+    StateRef state;
+
+    // Set of functions which have their environment table initialized
+    DenseHashSet<AstStatTypeFunction*> initialized{nullptr};
+
+    // Evaluation of type functions should only be performed in the absence of parse errors in the source module
+    bool allowEvaluation = true;
+
+    // Root scope in which the type function operates in, set up by ConstraintGenerator
+    ScopePtr rootScope;
+
+    // Output created by 'print' function
+    std::vector<std::string> messages;
+
+    // Type builder, valid for the duration of a single evaluation
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = nullptr;
+
+private:
+    void prepareState();
+};
 
 std::optional<std::string> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
 

@@ -15,9 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauDfgIfBlocksShouldRespectControlFlow)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
@@ -158,7 +156,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
-    ScopedFastFlag _{FFlag::LuauAddCallConstraintForIterableFunctions, true};
     CheckResult result = check(R"(
         local n
         local s
@@ -187,7 +184,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauAddCallConstraintForIterableFunctions, true},
         {FFlag::LuauSimplifyOutOfLine2, true},
         {FFlag::LuauDfgAllowUpdatesInLoops, true},
     };
@@ -289,14 +285,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauAddCallConstraintForIterableFunctions)
-    {
+    if (FFlag::LuauSolverV2)
         LUAU_REQUIRE_NO_ERRORS(result);
-    }
     else
-    {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -1286,7 +1278,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
 {
-    ScopedFastFlag _{FFlag::LuauAddCallConstraintForIterableFunctions, true};
     ScopedFastFlag v1{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
@@ -1504,10 +1495,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_is_linearish")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauDfgIfBlocksShouldRespectControlFlow, true},
-        {FFlag::LuauDfgAllowUpdatesInLoops, true},
-    };
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local x = nil

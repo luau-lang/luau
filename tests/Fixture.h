@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Config.h"
 #include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"

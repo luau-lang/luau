@@ -1545,6 +1545,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         // Outside of safe environment, environment traversal for an import can execute custom code
         if (!state.inSafeEnv)
             state.invalidateUserCall();
+
+        state.invalidateValuePropagation();
         break;
     case IrCmd::CONCAT:
         state.invalidateRegisterRange(vmRegOp(inst.a), function.uintOp(inst.b));

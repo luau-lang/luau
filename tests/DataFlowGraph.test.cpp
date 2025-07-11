@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauDoNotAddUpvalueTypesToLocalType)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 struct DataFlowGraphFixture
@@ -447,8 +446,6 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node_3")
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "function_captures_are_phi_nodes_of_all_versions")
 {
-    ScopedFastFlag _{FFlag::LuauDoNotAddUpvalueTypesToLocalType, true};
-
     dfg(R"(
         local x = 5
 

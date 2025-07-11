@@ -25,43 +25,7 @@ struct TypeFunctionRuntimeBuilderState;
 struct TypeFunctionContext;
 class Normalizer;
 
-using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
-
-struct TypeFunctionRuntime
-{
-    TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
-    ~TypeFunctionRuntime();
-
-    // Return value is an error message if registration failed
-    std::optional<std::string> registerFunction(AstStatTypeFunction* function);
-
-    // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
-    TypedAllocator<TypeFunctionType> typeArena;
-    TypedAllocator<TypeFunctionTypePackVar> typePackArena;
-
-    NotNull<InternalErrorReporter> ice;
-    NotNull<TypeCheckLimits> limits;
-
-    StateRef state;
-
-    // Set of functions which have their environment table initialized
-    DenseHashSet<AstStatTypeFunction*> initialized{nullptr};
-
-    // Evaluation of type functions should only be performed in the absence of parse errors in the source module
-    bool allowEvaluation = true;
-
-    // Root scope in which the type function operates in, set up by ConstraintGenerator
-    ScopePtr rootScope;
-
-    // Output created by 'print' function
-    std::vector<std::string> messages;
-
-    // Type builder, valid for the duration of a single evaluation
-    TypeFunctionRuntimeBuilderState* runtimeBuilder = nullptr;
-
-private:
-    void prepareState();
-};
+struct TypeFunctionRuntime;
 
 struct TypeFunctionContext
 {
@@ -203,7 +167,7 @@ struct FunctionGraphReductionResult
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, TypeFunctionContext, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force = false);
 
 /**
  * Attempt to reduce all instances of any type or type pack functions in the type
@@ -217,53 +181,13 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, TypeFunctionContext, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force = false);
 
-struct BuiltinTypeFunctions
-{
-    BuiltinTypeFunctions();
-
-    TypeFunction userFunc;
-
-    TypeFunction notFunc;
-    TypeFunction lenFunc;
-    TypeFunction unmFunc;
-
-    TypeFunction addFunc;
-    TypeFunction subFunc;
-    TypeFunction mulFunc;
-    TypeFunction divFunc;
-    TypeFunction idivFunc;
-    TypeFunction powFunc;
-    TypeFunction modFunc;
-
-    TypeFunction concatFunc;
-
-    TypeFunction andFunc;
-    TypeFunction orFunc;
-
-    TypeFunction ltFunc;
-    TypeFunction leFunc;
-    TypeFunction eqFunc;
-
-    TypeFunction refineFunc;
-    TypeFunction singletonFunc;
-    TypeFunction unionFunc;
-    TypeFunction intersectFunc;
-
-    TypeFunction keyofFunc;
-    TypeFunction rawkeyofFunc;
-    TypeFunction indexFunc;
-    TypeFunction rawgetFunc;
-
-    TypeFunction setmetatableFunc;
-    TypeFunction getmetatableFunc;
-
-    TypeFunction weakoptionalFunc;
-
-    void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
-};
-
-const BuiltinTypeFunctions& builtinTypeFunctions();
+/* Returns true if the type provided should block a type function from reducing.
+ *
+ * Most type functions cannot dispatch if one of their operands is a
+ * BlockedType, a PendingExpansionType, or an unsolved TypeFunctionInstanceType.
+ */
+bool isPending(TypeId ty, ConstraintSolver* solver);
 
 } // namespace Luau

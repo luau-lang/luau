@@ -18,7 +18,6 @@ LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauWriteOnlyPropertyMangling)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
-LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -1767,8 +1766,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_known_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_unknown_property")
 {
-    ScopedFastFlag _{FFlag::LuauTypeCheckerStricterIndexCheck, true};
-
     CheckResult results = check(R"(
         if bit32.scrambleEggs then
         end

@@ -8,7 +8,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauImplicitTableIndexerKeys2)
+LUAU_FASTFLAGVARIABLE(LuauImplicitTableIndexerKeys3)
 
 namespace Luau
 {
@@ -147,7 +147,7 @@ struct IndexCollector : public TypeOnceVisitor
 
 bool ExpectedTypeVisitor::visit(AstExprIndexExpr* expr)
 {
-    if (!FFlag::LuauImplicitTableIndexerKeys2)
+    if (!FFlag::LuauImplicitTableIndexerKeys3)
         return true;
 
     if (auto ty = astTypes->find(expr->expr))

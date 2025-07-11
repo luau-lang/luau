@@ -1221,6 +1221,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::GET_CACHED_IMPORT:
     {
+        regs.assertAllFree();
+        regs.assertNoSpills();
+
         Label skip, exit;
 
         // If the constant for the import is set, we will use it directly, otherwise we have to call an import path lookup function
@@ -1241,9 +1244,10 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         emitUpdateBase(build);
         build.jmp(exit);
 
+        build.setLabel(skip);
+
         ScopedRegX64 tmp1{regs, SizeX64::xmmword};
 
-        build.setLabel(skip);
         build.vmovups(tmp1.reg, luauConstant(vmConstOp(inst.b)));
         build.vmovups(luauReg(vmRegOp(inst.a)), tmp1.reg);
         build.setLabel(exit);

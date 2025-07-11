@@ -175,6 +175,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Autocomplete.h
     Analysis/include/Luau/AutocompleteTypes.h
     Analysis/include/Luau/BuiltinDefinitions.h
+    Analysis/include/Luau/BuiltinTypeFunctions.h
     Analysis/include/Luau/Cancellation.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Constraint.h
@@ -248,6 +249,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Unifier.h
     Analysis/include/Luau/Unifier2.h
     Analysis/include/Luau/UnifierSharedState.h
+    Analysis/include/Luau/UserDefinedTypeFunction.h
     Analysis/include/Luau/VisitType.h
 
     Analysis/src/Anyification.cpp
@@ -257,6 +259,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Autocomplete.cpp
     Analysis/src/AutocompleteCore.cpp
     Analysis/src/BuiltinDefinitions.cpp
+    Analysis/src/BuiltinTypeFunctions.cpp
     Analysis/src/Clone.cpp
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGenerator.cpp
@@ -316,6 +319,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
     Analysis/src/Unifier2.cpp
+    Analysis/src/UserDefinedTypeFunction.cpp
 )
 
 # Luau.EqSat Sources

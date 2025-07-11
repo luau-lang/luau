@@ -15,7 +15,6 @@
 #include "doctest.h"
 #include <iostream>
 
-LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAG(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
@@ -737,8 +736,6 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict")
 {
-    ScopedFastFlag sff{FFlag::LuauNewNonStrictVisitTypes2, true};
-
     CheckResult result = check(Mode::Nonstrict, R"(
         --!nonstrict
         local foo: Foo = 1
@@ -752,8 +749,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict_2")
 {
-    ScopedFastFlag sff{FFlag::LuauNewNonStrictVisitTypes2, true};
-
     CheckResult result = check(Mode::Nonstrict, R"(
         --!nonstrict
         local foo = 1 :: Foo

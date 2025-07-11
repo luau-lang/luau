@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAG(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
@@ -1180,10 +1179,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_type_in_alias_segfault")
         export type FieldConfigMap<TSource, TContext> = Map<string, FieldConfig<TSource, TContext>>
     )");
 
-    if (FFlag::LuauNewNonStrictVisitTypes2)
-        LUAU_CHECK_ERROR_COUNT(2, result);
-    else
-        LUAU_CHECK_NO_ERRORS(result);
+    LUAU_CHECK_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalization")
