@@ -22,7 +22,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
@@ -240,14 +239,8 @@ struct NonStrictTypeChecker
         if (noTypeFunctionErrors.find(instance))
             return instance;
 
-        ErrorVec errors =
-            reduceTypeFunctions(
-                instance,
-                location,
-                TypeFunctionContext{arena, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits},
-                true
-            )
-                .errors;
+        TypeFunctionContext context{arena, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits};
+        ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -340,8 +333,7 @@ struct NonStrictTypeChecker
                 {
                     ctx.remove(dfg->getDef(local));
 
-                    if (FFlag::LuauNewNonStrictVisitTypes2)
-                        visit(local->annotation);
+                    visit(local->annotation);
                 }
             }
             else
@@ -426,8 +418,7 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatFor* forStatement)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-            visit(forStatement->var->annotation);
+        visit(forStatement->var->annotation);
 
         // TODO: throwing out context based on same principle as existing code?
         if (forStatement->from)
@@ -441,11 +432,8 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatForIn* forInStatement)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-        {
-            for (auto var : forInStatement->vars)
-                visit(var->annotation);
-        }
+        for (auto var : forInStatement->vars)
+            visit(var->annotation);
 
         for (AstExpr* rhs : forInStatement->values)
             visit(rhs, ValueContext::RValue);
@@ -482,11 +470,8 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatTypeAlias* typeAlias)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-        {
-            visitGenerics(typeAlias->generics, typeAlias->genericPacks);
-            visit(typeAlias->type);
-        }
+        visitGenerics(typeAlias->generics, typeAlias->genericPacks);
+        visit(typeAlias->type);
 
         return {};
     }
@@ -498,37 +483,30 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatDeclareFunction* declFn)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-        {
-            visitGenerics(declFn->generics, declFn->genericPacks);
-            visit(declFn->params);
-            visit(declFn->retTypes);
-        }
+        visitGenerics(declFn->generics, declFn->genericPacks);
+        visit(declFn->params);
+        visit(declFn->retTypes);
 
         return {};
     }
 
     NonStrictContext visit(AstStatDeclareGlobal* declGlobal)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-            visit(declGlobal->type);
+        visit(declGlobal->type);
 
         return {};
     }
 
     NonStrictContext visit(AstStatDeclareExternType* declClass)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
+        if (declClass->indexer)
         {
-            if (declClass->indexer)
-            {
-                visit(declClass->indexer->indexType);
-                visit(declClass->indexer->resultType);
-            }
-
-            for (auto prop : declClass->props)
-                visit(prop.ty);
+            visit(declClass->indexer->indexType);
+            visit(declClass->indexer->resultType);
         }
+
+        for (auto prop : declClass->props)
+            visit(prop.ty);
 
         return {};
     }
@@ -793,19 +771,15 @@ struct NonStrictTypeChecker
             }
             remainder.remove(dfg->getDef(local));
 
-            if (FFlag::LuauNewNonStrictVisitTypes2)
-                visit(local->annotation);
+            visit(local->annotation);
         }
 
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-        {
-            visitGenerics(exprFn->generics, exprFn->genericPacks);
+        visitGenerics(exprFn->generics, exprFn->genericPacks);
 
-            visit(exprFn->returnAnnotation);
+        visit(exprFn->returnAnnotation);
 
-            if (exprFn->varargAnnotation)
-                visit(exprFn->varargAnnotation);
-        }
+        if (exprFn->varargAnnotation)
+            visit(exprFn->varargAnnotation);
 
         return remainder;
     }
@@ -836,8 +810,7 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprTypeAssertion* typeAssertion)
     {
-        if (FFlag::LuauNewNonStrictVisitTypes2)
-            visit(typeAssertion->annotation);
+        visit(typeAssertion->annotation);
 
         return visit(typeAssertion->expr, ValueContext::RValue);
     }
@@ -868,8 +841,6 @@ struct NonStrictTypeChecker
 
     void visit(AstType* ty)
     {
-        LUAU_ASSERT(FFlag::LuauNewNonStrictVisitTypes2);
-
         // If this node is `nullptr`, early exit.
         if (!ty)
             return;
@@ -1081,8 +1052,6 @@ struct NonStrictTypeChecker
 
     void visit(AstTypePack* pack)
     {
-        LUAU_ASSERT(FFlag::LuauNewNonStrictVisitTypes2);
-
         // If there is no pack node, early exit.
         if (!pack)
             return;

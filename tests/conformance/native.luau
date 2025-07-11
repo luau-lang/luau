@@ -513,6 +513,23 @@ end
 assert(extramath3(2) == "number")
 assert(extramath3("2") == "number")
 
+local function scopedrestorefailurea(format: string, b: buffer): (string, buffer)
+	local H1F, H2F, H3F, H4F = buffer.readu32(b, 0), buffer.readu32(b, 8), buffer.readu32(b, 16), buffer.readu32(b, 24)
+	local H5F, H6F, _, _ = buffer.readu32(b, 32), buffer.readu32(b, 40), buffer.readu32(b, 48), buffer.readu32(b, 56)
+	local H1B, H2B, H3B, H4B = buffer.readu32(b, 4), buffer.readu32(b, 12), buffer.readu32(b, 20), buffer.readu32(b, 28)
+	local H5B, H6B, _, _ = buffer.readu32(b, 36), buffer.readu32(b, 44), buffer.readu32(b, 52), buffer.readu32(b, 60)
+
+	return string.format(format, H1F, H1B, H2F, H2B, H3F, H3B, H4F, H4B, H5F, H5B, H6F, H6B), b
+end
+
+local function scopedrestorefailureb()
+  local data = buffer.create(64)
+  buffer.fill(data, 0, 0x12, 64)
+  assert(scopedrestorefailurea(string.rep("%08x", 12), data) == string.rep("12", 48))
+end
+
+scopedrestorefailureb()
+
 local function slotcachelimit1()
   local tbl = {
     f1 = function() return 1 end,

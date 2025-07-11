@@ -56,4 +56,10 @@ struct BuiltinTypes;
 
 using TypeOrPack = Variant<TypeId, TypePackId>;
 
+struct TypeFunctionType;
+using TypeFunctionTypeId = const TypeFunctionType*;
+
+struct TypeFunctionTypePackVar;
+using TypeFunctionTypePackId = const TypeFunctionTypePackVar*;
+
 } // namespace Luau

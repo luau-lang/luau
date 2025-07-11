@@ -21,7 +21,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauExpectedTypeVisitor)
-LUAU_FASTFLAG(LuauImplicitTableIndexerKeys2)
+LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
 using namespace Luau;
@@ -4622,7 +4622,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
         // Somewhat surprisingly, the old solver didn't cover this case.
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauExpectedTypeVisitor, true},
-        {FFlag::LuauImplicitTableIndexerKeys2, true},
+        {FFlag::LuauImplicitTableIndexerKeys3, true},
     };
 
     check(R"(
@@ -4649,7 +4649,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_witho
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauExpectedTypeVisitor, true},
-        {FFlag::LuauImplicitTableIndexerKeys2, false},
+        {FFlag::LuauImplicitTableIndexerKeys3, true},
     };
 
     check(R"(

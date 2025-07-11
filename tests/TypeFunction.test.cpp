@@ -1813,7 +1813,7 @@ struct TFFixture
 
     BuiltinTypeFunctions builtinTypeFunctions;
 
-    TypeFunctionContext tfc{
+    TypeFunctionContext tfc_{
         arena,
         getBuiltins(),
         NotNull{globalScope.get()},
@@ -1823,6 +1823,8 @@ struct TFFixture
         NotNull{&ice},
         NotNull{&limits}
     };
+
+    NotNull<TypeFunctionContext> tfc{&tfc_};
 };
 
 TEST_CASE_FIXTURE(TFFixture, "refine<G, ~(false?)>")

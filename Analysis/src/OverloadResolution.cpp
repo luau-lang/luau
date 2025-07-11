@@ -246,8 +246,9 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
     const std::vector<AstExpr*>* argExprs
 )
 {
+    TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, ice, limits};
     FunctionGraphReductionResult result = reduceTypeFunctions(
-        fnTy, callLoc, TypeFunctionContext{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, ice, limits}, /*force=*/true
+        fnTy, callLoc, NotNull{&context}, /*force=*/true
     );
     if (!result.errors.empty())
         return {OverloadIsNonviable, result.errors};

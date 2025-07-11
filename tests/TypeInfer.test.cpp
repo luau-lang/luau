@@ -24,9 +24,7 @@ LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauInsertErrorTypesIntoIndexerResult)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
@@ -1214,27 +1212,14 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 
     if (FFlag::LuauSolverV2)
     {
-        if (FFlag::LuauReportSubtypingErrors)
-        {
-            CHECK(4 == result.errors.size());
-            CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
-            CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-            CHECK(Location{{3, 45}, {3, 46}} == result.errors[2].location);
-            CHECK(Location{{3, 22}, {3, 41}} == result.errors[3].location);
+        CHECK(4 == result.errors.size());
+        CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
+        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
+        CHECK(Location{{3, 45}, {3, 46}} == result.errors[2].location);
+        CHECK(Location{{3, 22}, {3, 41}} == result.errors[3].location);
 
-            for (const TypeError& e : result.errors)
-                CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
-        }
-        else
-        {
-            CHECK(3 == result.errors.size());
-            CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
-            CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-            CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
-            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
-            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[1]));
-            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[2]));
-        }
+        for (const TypeError& e : result.errors)
+            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
     }
     else
     {
@@ -1986,7 +1971,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_allows_singleton_union_or_intersection")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauMagicFreezeCheckBlocked2, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local f = table.freeze
         f(table)
@@ -1995,7 +1980,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauMagicFreezeCheckBlocked2, true}};
+    ScopedFastFlag _ {FFlag::LuauSolverV2, true};
     // This is the original fuzzer version of the above issue.
     CheckResult results = check(R"(
         local function l0()
@@ -2116,8 +2101,6 @@ local _
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_missing_follow_table_freeze")
 {
-    ScopedFastFlag _{FFlag::LuauMagicFreezeCheckBlocked2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         if _:freeze(_)[_][_] then
         else

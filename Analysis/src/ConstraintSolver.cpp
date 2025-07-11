@@ -34,7 +34,6 @@ LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAGVARIABLE(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAGVARIABLE(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAGVARIABLE(LuauInsertErrorTypesIntoIndexerResult)
 LUAU_FASTFLAGVARIABLE(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
@@ -633,8 +632,9 @@ void ConstraintSolver::finalizeTypeFunctions()
         TypeId ty = follow(t);
         if (get<TypeFunctionInstanceType>(ty))
         {
+            TypeFunctionContext context{NotNull{this}, constraint->scope, NotNull{constraint}};
             FunctionGraphReductionResult result =
-                reduceTypeFunctions(t, constraint->location, TypeFunctionContext{NotNull{this}, constraint->scope, NotNull{constraint}}, true);
+                reduceTypeFunctions(t, constraint->location, NotNull{&context}, true);
 
             for (TypeId r : result.reducedTypes)
                 unblock(r, constraint->location);
@@ -2772,8 +2772,9 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId ty = follow(c.ty);
-    FunctionGraphReductionResult result =
-        reduceTypeFunctions(ty, constraint->location, TypeFunctionContext{NotNull{this}, constraint->scope, constraint}, force);
+
+    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint};
+    FunctionGraphReductionResult result = reduceTypeFunctions(ty, constraint->location, NotNull{&context}, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -2824,8 +2825,9 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypePackId tp = follow(c.tp);
-    FunctionGraphReductionResult result =
-        reduceTypeFunctions(tp, constraint->location, TypeFunctionContext{NotNull{this}, constraint->scope, constraint}, force);
+
+    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint};
+    FunctionGraphReductionResult result = reduceTypeFunctions(tp, constraint->location, NotNull{&context}, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -3204,50 +3206,20 @@ bool ConstraintSolver::tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy
     // the type of the `nextAstFragment` is the `nextTy`.
     (*c.astForInNextTypes)[c.nextAstFragment] = nextTy;
 
-    if (FFlag::LuauAddCallConstraintForIterableFunctions)
-    {
-        // Construct a FunctionCallConstraint, to help us learn about the type of the loop variables being assigned to in this iterable
-        TypePackId tableTyPack = arena->addTypePack({tableTy});
+    // Construct a FunctionCallConstraint, to help us learn about the type of the loop variables being assigned to in this iterable
+    TypePackId tableTyPack = arena->addTypePack({tableTy});
 
-        TypePackId variablesPack = arena->addTypePack(BlockedTypePack{});
+    TypePackId variablesPack = arena->addTypePack(BlockedTypePack{});
 
-        auto callConstraint = pushConstraint(constraint->scope, constraint->location, FunctionCallConstraint{nextTy, tableTyPack, variablesPack});
+    auto callConstraint = pushConstraint(constraint->scope, constraint->location, FunctionCallConstraint{nextTy, tableTyPack, variablesPack});
 
-        getMutable<BlockedTypePack>(variablesPack)->owner = callConstraint.get();
+    getMutable<BlockedTypePack>(variablesPack)->owner = callConstraint.get();
 
-        auto unpackConstraint = unpackAndAssign(c.variables, variablesPack, constraint);
+    auto unpackConstraint = unpackAndAssign(c.variables, variablesPack, constraint);
 
-        inheritBlocks(constraint, callConstraint);
+    inheritBlocks(constraint, callConstraint);
 
-        inheritBlocks(unpackConstraint, callConstraint);
-    }
-    else
-    {
-        const TypePackId nextRetPack = nextFn->retTypes;
-        TypePackIterator it = begin(nextRetPack);
-        std::vector<TypeId> modifiedNextRetHead;
-
-        // The first value is never nil in the context of the loop, even if it's nil
-        // in the next function's return type, because the loop will not advance if
-        // it's nil.
-        if (it != end(nextRetPack))
-        {
-            TypeId firstRet = *it;
-            TypeId modifiedFirstRet = stripNil(builtinTypes, *arena, firstRet);
-            modifiedNextRetHead.push_back(modifiedFirstRet);
-            ++it;
-        }
-
-        for (; it != end(nextRetPack); ++it)
-            modifiedNextRetHead.push_back(*it);
-
-        TypePackId modifiedNextRetPack = arena->addTypePack(std::move(modifiedNextRetHead), it.tail());
-
-        auto unpackConstraint = unpackAndAssign(c.variables, modifiedNextRetPack, constraint);
-
-        inheritBlocks(constraint, unpackConstraint);
-    }
-
+    inheritBlocks(unpackConstraint, callConstraint);
     return true;
 }
 

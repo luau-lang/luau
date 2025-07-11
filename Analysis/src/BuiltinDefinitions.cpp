@@ -2,6 +2,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 #include "Luau/Ast.h"
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/ConstraintGenerator.h"
@@ -35,7 +36,6 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatImprovements)
-LUAU_FASTFLAGVARIABLE(LuauMagicFreezeCheckBlocked2)
 LUAU_FASTFLAGVARIABLE(LuauUpdateSetMetatableTypeSignature)
 LUAU_FASTFLAGVARIABLE(LuauUpdateGetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
@@ -1781,15 +1781,12 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
     std::optional<TypeId> resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
 
-    if (FFlag::LuauMagicFreezeCheckBlocked2)
+    if (resultTy && !get<BlockedType>(follow(resultTy)))
     {
-        if (resultTy && !get<BlockedType>(follow(resultTy)))
-        {
-            // If there's an existing result type, but it's _not_ blocked, then
-            // we aren't type stating this builtin and should fall back to
-            // regular inference.
-            return false;
-        }
+        // If there's an existing result type, but it's _not_ blocked, then
+        // we aren't type stating this builtin and should fall back to
+        // regular inference.
+        return false;
     }
 
     std::optional<TypeId> frozenType = freezeTable(inputType, context);

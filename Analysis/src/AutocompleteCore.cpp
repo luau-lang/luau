@@ -26,7 +26,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMissingFollows)
-LUAU_FASTFLAG(LuauImplicitTableIndexerKeys2)
+LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -578,16 +578,40 @@ static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node
 
     ty = follow(ty);
 
-    if (auto ss = get<StringSingleton>(get<SingletonType>(ty)))
+    if (FFlag::LuauImplicitTableIndexerKeys3)
     {
-        result[formatKey(ss->value)] = AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct};
-    }
-    else if (auto uty = get<UnionType>(ty))
-    {
-        for (auto el : uty)
+        if (auto ss = get<StringSingleton>(get<SingletonType>(ty)))
         {
-            if (auto ss = get<StringSingleton>(get<SingletonType>(el)))
-                result[formatKey(ss->value)] = AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct};
+            // This is purposefully `try_emplace` as we don't want to override any existing entries.
+            result.try_emplace(formatKey(ss->value), AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct});
+        }
+        else if (auto uty = get<UnionType>(ty))
+        {
+            for (auto el : uty)
+            {
+                if (auto ss = get<StringSingleton>(get<SingletonType>(el)))
+                {
+                    // This is purposefully `try_emplace` as we don't want to override any existing entries.
+                    result.try_emplace(
+                        formatKey(ss->value), AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct}
+                    );
+                }
+            }
+        }
+    }
+    else
+    {
+        if (auto ss = get<StringSingleton>(get<SingletonType>(ty)))
+        {
+            result[formatKey(ss->value)] = AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct};
+        }
+        else if (auto uty = get<UnionType>(ty))
+        {
+            for (auto el : uty)
+            {
+                if (auto ss = get<StringSingleton>(get<SingletonType>(el)))
+                    result[formatKey(ss->value)] = AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct};
+            }
         }
     }
 };
@@ -2030,7 +2054,7 @@ AutocompleteResult autocomplete_(
     {
         AutocompleteEntryMap result;
 
-        if (!FFlag::LuauImplicitTableIndexerKeys2)
+        if (!FFlag::LuauImplicitTableIndexerKeys3)
         {
             if (auto it = module->astExpectedTypes.find(node->asExpr()))
                 autocompleteStringSingleton(*it, false, node, position, result);
@@ -2053,7 +2077,7 @@ AutocompleteResult autocomplete_(
             }
         }
 
-        if (FFlag::LuauImplicitTableIndexerKeys2)
+        if (FFlag::LuauImplicitTableIndexerKeys3)
         {
             if (auto it = module->astExpectedTypes.find(node->asExpr()))
                 autocompleteStringSingleton(*it, false, node, position, result);
