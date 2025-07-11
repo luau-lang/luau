@@ -20,7 +20,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauDeclareExternType)
 LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
-LUAU_FASTFLAGVARIABLE(LuauCSTForReturnTypeFunctionTail)
 LUAU_FASTFLAGVARIABLE(LuauParseAttributeFixUninit)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 
@@ -1903,10 +1902,8 @@ AstTypePack* Parser::parseReturnType()
     // possibly () -> ReturnType
     if (lexer.current().type != ')')
     {
-        if (FFlag::LuauCSTForReturnTypeFunctionTail && options.storeCstData)
+        if (options.storeCstData)
             varargAnnotation = parseTypeList(result, resultNames, &commaPositions, &nameColonPositions);
-        else if (options.storeCstData)
-            varargAnnotation = parseTypeList(result, resultNames, &commaPositions);
         else
             varargAnnotation = parseTypeList(result, resultNames);
     }
@@ -1950,7 +1947,7 @@ AstTypePack* Parser::parseReturnType()
     Position returnArrowPosition = lexer.current().location.begin;
     AstType* tail = parseFunctionTypeTail(begin, {nullptr, 0}, {}, {}, copy(result), copy(resultNames), varargAnnotation);
 
-    if (FFlag::LuauCSTForReturnTypeFunctionTail && options.storeCstData && tail->is<AstTypeFunction>())
+    if (options.storeCstData && tail->is<AstTypeFunction>())
     {
         cstNodeMap[tail] = allocator.alloc<CstTypeFunction>(
             Position{0, 0},

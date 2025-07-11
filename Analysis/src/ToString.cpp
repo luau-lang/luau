@@ -16,7 +16,6 @@
 #include "Luau/TypeOrPack.h"
 
 #include <algorithm>
-#include <stdexcept>
 #include <string>
 
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)

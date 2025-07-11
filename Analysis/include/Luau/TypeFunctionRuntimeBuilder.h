@@ -1,20 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
-#include "Luau/TypeFunctionRuntime.h"
 
 namespace Luau
 {
 
-using Kind = Variant<TypeId, TypePackId>;
-
-template<typename T>
-const T* get(const Kind& kind)
-{
-    return get_if<T>(&kind);
-}
+struct TypeFunctionContext;
 
 using TypeFunctionKind = Variant<TypeFunctionTypeId, TypeFunctionTypePackId>;
 

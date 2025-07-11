@@ -16,7 +16,7 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCodeGenSimplifyImport)
+LUAU_FASTFLAG(LuauCodeGenSimplifyImport2)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -500,7 +500,7 @@ bb_bytecode_1:
 
 TEST_CASE("DseInitialStackState")
 {
-    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport, true};
+    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1567,7 +1567,7 @@ end
 
 TEST_CASE("ForInManualAnnotation")
 {
-    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport, true};
+    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(

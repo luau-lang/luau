@@ -13,7 +13,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 
@@ -1063,8 +1062,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 {
-    ScopedFastFlag _{FFlag::LuauReportSubtypingErrors, true};
-
     CheckResult result = check(R"(
         function _(l0:((typeof((pcall)))|((((t0)->())|(typeof(-67108864)))|(any)))|(any),...):(((typeof(0))|(any))|(any),typeof(-67108864),any)
             xpcall(_,_,_)

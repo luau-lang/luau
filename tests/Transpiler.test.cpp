@@ -12,8 +12,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauCSTForReturnTypeFunctionTail)
-
 TEST_SUITE_BEGIN("TranspilerTests");
 
 TEST_CASE("test_1")
@@ -2055,9 +2053,6 @@ TEST_CASE("transpile_type_function_return_types")
 
 TEST_CASE("transpile_chained_function_types")
 {
-    ScopedFastFlag fflags[] = {
-        {FFlag::LuauCSTForReturnTypeFunctionTail, true},
-    };
     std::string code = R"( type Foo = () -> () -> () )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 

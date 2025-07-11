@@ -12,7 +12,7 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenSimplifyImport)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenSimplifyImport2)
 
 namespace Luau
 {
@@ -1217,7 +1217,7 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     int k = LUAU_INSN_D(*pc);
     uint32_t aux = pc[1];
 
-    if (FFlag::LuauCodeGenSimplifyImport)
+    if (FFlag::LuauCodeGenSimplifyImport2)
     {
         build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
         build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));

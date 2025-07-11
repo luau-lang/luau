@@ -30,10 +30,8 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
-LUAU_FASTFLAGVARIABLE(LuauReportSubtypingErrors)
 LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
@@ -499,16 +497,11 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         return instance;
     seenTypeFunctionInstances.insert(instance);
 
-    ErrorVec errors =
-        reduceTypeFunctions(
-            instance,
-            location,
-            TypeFunctionContext{
-                NotNull{&module->internalTypes}, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits
-            },
-            true
-        )
-            .errors;
+    TypeFunctionContext context{
+        NotNull{&module->internalTypes}, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits
+    };
+
+    ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
     if (!isErrorSuppressing(location, instance))
         reportErrors(std::move(errors));
     return instance;
@@ -1417,24 +1410,16 @@ void TypeChecker2::visit(AstExprConstantBool* expr)
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
     SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
-    if (FFlag::LuauReportSubtypingErrors)
+    if (!isErrorSuppressing(expr->location, inferredType))
     {
-        if (!isErrorSuppressing(expr->location, inferredType))
-        {
-            if (!r.isSubtype)
-                reportError(TypeMismatch{inferredType, bestType}, expr->location);
-            if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
-            {
-                for (auto& e : r.errors)
-                    e.location = expr->location;
-            }
-            reportErrors(r.errors);
-        }
-    }
-    else
-    {
-        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+        if (!r.isSubtype)
             reportError(TypeMismatch{inferredType, bestType}, expr->location);
+        if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
+        {
+            for (auto& e : r.errors)
+                e.location = expr->location;
+        }
+        reportErrors(r.errors);
     }
 }
 
@@ -1459,24 +1444,16 @@ void TypeChecker2::visit(AstExprConstantString* expr)
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
     SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
-    if (FFlag::LuauReportSubtypingErrors)
+    if (!isErrorSuppressing(expr->location, inferredType))
     {
-        if (!isErrorSuppressing(expr->location, inferredType))
-        {
-            if (!r.isSubtype)
-                reportError(TypeMismatch{inferredType, bestType}, expr->location);
-            if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
-            {
-                for (auto& e : r.errors)
-                    e.location = expr->location;
-            }
-            reportErrors(r.errors);
-        }
-    }
-    else
-    {
-        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+        if (!r.isSubtype)
             reportError(TypeMismatch{inferredType, bestType}, expr->location);
+        if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
+        {
+            for (auto& e : r.errors)
+                e.location = expr->location;
+        }
+        reportErrors(r.errors);
     }
 }
 
@@ -1545,17 +1522,13 @@ void TypeChecker2::visitCall(AstExprCall* call)
         if (result.isSubtype)
             fnTy = follow(*selectedOverloadTy);
 
-        if (FFlag::LuauReportSubtypingErrors)
-        {
-            if (!isErrorSuppressing(call->location, *selectedOverloadTy))
-                if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
-                {
-                    for (auto& e : result.errors)
-                        e.location = call->location;
-                }
-            reportErrors(std::move(result.errors));
-        }
-
+        if (!isErrorSuppressing(call->location, *selectedOverloadTy))
+            if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
+            {
+                for (auto& e : result.errors)
+                    e.location = call->location;
+            }
+        reportErrors(std::move(result.errors));
         if (result.normalizationTooComplex)
         {
             reportError(NormalizationTooComplex{}, call->func->location);
@@ -3220,17 +3193,13 @@ bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location
     NotNull<Scope> scope{findInnermostScope(location)};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
-    if (FFlag::LuauReportSubtypingErrors)
-    {
-        if (!isErrorSuppressing(location, subTy))
-            if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
-            {
-                for (auto& e : r.errors)
-                    e.location = location;
-            }
-        reportErrors(std::move(r.errors));
-    }
-
+    if (!isErrorSuppressing(location, subTy))
+        if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
+        {
+            for (auto& e : r.errors)
+                e.location = location;
+        }
+    reportErrors(std::move(r.errors));
     if (r.normalizationTooComplex)
         reportError(NormalizationTooComplex{}, location);
 
@@ -3245,17 +3214,13 @@ bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location 
     NotNull<Scope> scope{findInnermostScope(location)};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
-    if (FFlag::LuauReportSubtypingErrors)
-    {
-        if (!isErrorSuppressing(location, subTy))
-            if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
-            {
-                for (auto& e : r.errors)
-                    e.location = location;
-            }
-        reportErrors(std::move(r.errors));
-    }
-
+    if (!isErrorSuppressing(location, subTy))
+        if (FFlag::LuauSubtypingCheckFunctionGenericCounts)
+        {
+            for (auto& e : r.errors)
+                e.location = location;
+        }
+    reportErrors(std::move(r.errors));
     if (r.normalizationTooComplex)
         reportError(NormalizationTooComplex{}, location);
 
@@ -3501,17 +3466,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
         }
 
-        if (FFlag::LuauTypeCheckerStricterIndexCheck)
-        {
-            return {NormalizationResult::False, {builtinTypes->unknownType}};
-        }
-        else
-        {
-            // if we are in a conditional context, we treat the property as present and `unknown` because
-            // we may be _refining_ `tableTy` to include that property. we will want to revisit this a bit
-            // in the future once luau has support for exact tables since this only applies when inexact.
-            return {inConditional(typeContext) ? NormalizationResult::True : NormalizationResult::False, {builtinTypes->unknownType}};
-        }
+        return {NormalizationResult::False, {builtinTypes->unknownType}};
     }
     else if (const ExternType* cls = get<ExternType>(ty))
     {

@@ -737,8 +737,6 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
 
 std::string toStringHuman(const TypePath::Path& path)
 {
-    LUAU_ASSERT(FFlag::LuauSolverV2);
-
     enum class State
     {
         Initial,

@@ -1384,7 +1384,10 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     case IrCmd::GET_CACHED_IMPORT:
     {
+        regs.spill(build, index);
+
         Label skip, exit;
+
         RegisterA64 tempTag = regs.allocTemp(KindA64::w);
 
         AddressA64 addrConstTag = tempAddr(inst.b, offsetof(TValue, tt));
@@ -1395,8 +1398,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.cbnz(tempTag, skip);
 
         {
-            size_t spills = regs.spill(build, index);
-
             build.mov(x0, rState);
             build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
             build.mov(w2, importOp(inst.c));
@@ -1404,15 +1405,13 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, getImport)));
             build.blr(x4);
 
-            regs.restore(build, spills); // Need to restore before skip so that registers are in a consistent state
-
             emitUpdateBase(build);
             build.b(exit);
         }
 
-        RegisterA64 tempTv = regs.allocTemp(KindA64::q);
-
         build.setLabel(skip);
+
+        RegisterA64 tempTv = regs.allocTemp(KindA64::q);
 
         AddressA64 addrConst = tempAddr(inst.b, 0);
         build.ldr(tempTv, addrConst);

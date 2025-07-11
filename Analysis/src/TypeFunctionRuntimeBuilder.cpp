@@ -2,7 +2,6 @@
 
 #include "Luau/TypeFunctionRuntimeBuilder.h"
 
-#include "Luau/Ast.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
@@ -12,6 +11,7 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeOrPack.h"
 #include "Luau/ToString.h"
 
 #include <optional>
@@ -41,7 +41,7 @@ class TypeFunctionSerializer
     // queue.back() should always return two of same type in their respective sides
     // For example `auto [first, second] = queue.back()`: if first is PrimitiveType,
     // second must be TypeFunctionPrimitiveType; else there should be an error
-    std::vector<std::tuple<Kind, TypeFunctionKind>> queue;
+    std::vector<std::tuple<TypeOrPack, TypeFunctionKind>> queue;
 
     SeenTypes types;     // Mapping of TypeIds that have been shallow serialized to TypeFunctionTypeIds
     SeenTypePacks packs; // Mapping of TypePackIds that have been shallow serialized to TypeFunctionTypePackIds
@@ -121,7 +121,7 @@ private:
         return std::nullopt;
     }
 
-    std::optional<TypeFunctionKind> find(Kind kind) const
+    std::optional<TypeFunctionKind> find(TypeOrPack kind) const
     {
         if (auto ty = get<TypeId>(kind))
             return find(*ty);
@@ -316,7 +316,7 @@ private:
         }
     }
 
-    void serializeChildren(Kind kind, TypeFunctionKind tfkind)
+    void serializeChildren(TypeOrPack kind, TypeFunctionKind tfkind)
     {
         if (auto [ty, tfty] = std::tuple{get<TypeId>(kind), get<TypeFunctionTypeId>(tfkind)}; ty && tfty)
             serializeChildren(*ty, *tfty);
@@ -496,7 +496,7 @@ class TypeFunctionDeserializer
     // queue.back() should always return two of same type in their respective sides
     // For example `auto [first, second] = queue.back()`: if first is TypeFunctionPrimitiveType,
     // second must be PrimitiveType; else there should be an error
-    std::vector<std::tuple<TypeFunctionKind, Kind>> queue;
+    std::vector<std::tuple<TypeFunctionKind, TypeOrPack>> queue;
 
     // Generic types and packs currently in scope
     // Generics are resolved by name even if runtime generic type pointers are different
@@ -600,7 +600,7 @@ private:
         return std::nullopt;
     }
 
-    std::optional<Kind> find(TypeFunctionKind kind) const
+    std::optional<TypeOrPack> find(TypeFunctionKind kind) const
     {
         if (auto ty = get<TypeFunctionTypeId>(kind))
             return find(*ty);
@@ -824,7 +824,7 @@ private:
             state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
     }
 
-    void deserializeChildren(TypeFunctionKind tfkind, Kind kind)
+    void deserializeChildren(TypeFunctionKind tfkind, TypeOrPack kind)
     {
         if (auto [ty, tfty] = std::tuple{get<TypeId>(kind), get<TypeFunctionTypeId>(tfkind)}; ty && tfty)
             deserializeChildren(*tfty, *ty);

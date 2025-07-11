@@ -9,12 +9,10 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
-LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
@@ -785,7 +783,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names_old_solver")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_types")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauSubtypingCheckFunctionGenericCounts, true}};
+    ScopedFastFlag _{FFlag::LuauSubtypingCheckFunctionGenericCounts, true};
 
     CheckResult result = check(R"(
 type C = () -> ()
@@ -818,7 +816,7 @@ local d: D = c
 }
 TEST_CASE_FIXTURE(Fixture, "generic_function_mismatch_with_argument")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauSubtypingCheckFunctionGenericCounts, true}};
+    ScopedFastFlag _{FFlag::LuauSubtypingCheckFunctionGenericCounts, true};
 
     CheckResult result = check(R"(
 type C = (number) -> ()
@@ -852,7 +850,7 @@ local d: D = c
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauReportSubtypingErrors, true}, {FFlag::LuauSubtypingCheckFunctionGenericCounts, true}};
+    ScopedFastFlag _{FFlag::LuauSubtypingCheckFunctionGenericCounts, true};
 
     CheckResult result = check(R"(
 type C = () -> ()
@@ -1530,7 +1528,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded"
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
     ScopedFastFlag _[] = {
-        {FFlag::LuauReportSubtypingErrors, true},
         {FFlag::LuauSubtypingCheckFunctionGenericCounts, true},
         {FFlag::LuauEagerGeneralization4, true},
     };

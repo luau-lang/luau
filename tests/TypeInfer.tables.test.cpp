@@ -23,8 +23,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
-LUAU_FASTFLAG(LuauReportSubtypingErrors)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
@@ -3818,10 +3816,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauReportSubtypingErrors, true},
-        {FFlag::LuauEagerGeneralization4, true},
-    };
+    ScopedFastFlag _{FFlag::LuauEagerGeneralization4, true};
 
     CheckResult result = check(R"(
         local function f(s)
@@ -5696,7 +5691,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_in_indexer_with_compound_assig
 TEST_CASE_FIXTURE(Fixture, "stop_refining_new_table_indices_for_non_primitive_tables")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    ScopedFastFlag stricterIndexCheck{FFlag::LuauTypeCheckerStricterIndexCheck, true};
 
     CheckResult result = check(R"(
         local foo:{val:number} = {val = 1}

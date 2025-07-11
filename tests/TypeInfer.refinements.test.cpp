@@ -12,15 +12,14 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauAddCallConstraintForIterableFunctions)
 LUAU_FASTFLAG(LuauSimplificationTableExternType)
 LUAU_FASTFLAG(LuauBetterCannotCallFunctionPrimitive)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAG(LuauTypeCheckerStricterIndexCheck)
 LUAU_FASTFLAG(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAG(LuauRefineNoRefineAlways)
 
 using namespace Luau;
 
@@ -1944,10 +1943,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_clone_it")
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_a_param_that_got_resolved_during_constraint_solving_stage")
 {
-    // CLI-117134 - Applying a refinement causes an optional value access error.
-    if (FFlag::LuauSolverV2)
-        return;
-
     CheckResult result = check(R"(
         type Id<T> = T
 
@@ -2216,14 +2211,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauAddCallConstraintForIterableFunctions)
-    {
-        CHECK_EQ("(unknown) -> (~nil, unknown)", toString(requireType("f")));
-    }
-    else
-    {
-        CHECK_EQ("(unknown) -> (unknown, unknown)", toString(requireType("f")));
-    }
+    CHECK_EQ("(unknown) -> (~nil, unknown)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "conditional_refinement_should_stay_error_suppressing")
@@ -2713,7 +2701,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_single")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauBetterCannotCallFunctionPrimitive, true},
-        {FFlag::LuauTypeCheckerStricterIndexCheck, true},
         {FFlag::LuauRefineTablesWithReadType, true},
     };
 
@@ -2734,7 +2721,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_union")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauBetterCannotCallFunctionPrimitive, true},
-        {FFlag::LuauTypeCheckerStricterIndexCheck, true},
         {FFlag::LuauRefineTablesWithReadType, true},
     };
 
@@ -2828,6 +2814,36 @@ TEST_CASE_FIXTURE(Fixture, "limit_complexity_of_arithmetic_type_functions" * doc
     // We do not care what the errors are, only that this type checks in a
     // reasonable amount of time.
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_by_no_refine_should_always_reduce")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag refineNoRefineAlways{FFlag::LuauRefineNoRefineAlways, true};
+
+    CheckResult result = check(R"(
+        function foo(t): boolean return true end
+
+        function select<K, V>(t: { [K]: V }, columns: { K }): { [K]: V }
+            local result = {}
+            if foo(t) then
+                for k, v in t do
+                    if table.find(columns, k) then
+                        result[k] = v -- was TypeError: Type function instance refine<intersect<K, ~nil>, *no-refine*> is uninhabited
+                    end
+                end
+            else
+                for k, v in pairs(t) do
+                    if table.find(columns, k) then
+                        result[k] = v
+                    end
+                end
+            end
+            return result
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

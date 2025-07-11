@@ -392,7 +392,7 @@ enum class IrCmd : uint8_t
     // C: Rn or unsigned int (key)
     SET_TABLE,
 
-    // TODO: remove with FFlagLuauCodeGenSimplifyImport
+    // TODO: remove with FFlagLuauCodeGenSimplifyImport2
     // Lookup a value in the environment
     // A: Rn (where to store the result)
     // B: unsigned int (import path)

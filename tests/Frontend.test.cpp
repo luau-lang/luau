@@ -16,7 +16,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauNewNonStrictVisitTypes2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 namespace
@@ -977,10 +976,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
     LUAU_REQUIRE_NO_ERRORS(resultA);
 
     CheckResult resultB = getFrontend().check("B");
-    if (FFlag::LuauSolverV2 && !FFlag::LuauNewNonStrictVisitTypes2)
-        LUAU_REQUIRE_NO_ERRORS(resultB);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, resultB);
+    LUAU_REQUIRE_ERROR_COUNT(1, resultB);
 
     CheckResult resultC = getFrontend().check("C");
     LUAU_REQUIRE_ERROR_COUNT(1, resultC);
