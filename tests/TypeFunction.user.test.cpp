@@ -16,7 +16,7 @@ LUAU_FASTFLAG(LuauFollowTypeAlias)
 LUAU_FASTFLAG(LuauFollowExistingTypeFunction)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeFollowMetatable)
-LUAU_FASTFLAG(DebugLuauTypeFunClassNameMethod)
+LUAU_FASTFLAG(DebugLuauTypeFunExternNameMethod)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2508,7 +2508,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_externtype_classname_api")
 {
     ScopedFastFlag sff[]{
         {FFlag::LuauSolverV2, true},
-        {FFlag::DebugLuauTypeFunClassNameMethod, true}
+        {FFlag::DebugLuauTypeFunExternNameMethod, true}
     };
 
     loadDefinition(R"(
@@ -2520,7 +2520,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_externtype_classname_api")
     CheckResult result = check(R"(
         type function pass(arg, compare)
             if (arg:is("class")) then
-                assert(arg:classname() == compare:value())
+                assert(arg:externname() == compare:value())
             end
 
             return types.unknown
