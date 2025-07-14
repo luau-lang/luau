@@ -22,6 +22,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
+LUAU_FASTFLAGVARIABLE(DebugLuauTypeFunClassNameMethod, false)
 
 namespace Luau
 {
@@ -1315,6 +1316,24 @@ static int getWriteParent(lua_State* L)
     return 1;
 }
 
+// Luau: `self:classname() -> string?`
+// Returns the name of a class or 'nil' if there's no name.
+static int getExternTypeName(lua_State* L) {
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfEx = get<TypeFunctionExternType>(self);
+    if (!tfEx)
+        luaL_error(L, "type.classname: expected self to be a class, but got %s instead", getTag(L, self).c_str());
+
+    if (auto exTy = get<ExternType>(tfEx->externTy))
+    {
+        lua_pushstring(L, exTy->name.c_str());
+    }
+    else
+        lua_pushnil(L);
+
+    return 1;
+}
+
 // Luau: `self:name() -> string?`
 // Returns the name of the generic or 'nil' if the generic is unnamed
 static int getGenericName(lua_State* L)
@@ -1741,6 +1760,7 @@ void registerTypeUserData(lua_State* L)
         //  Extern type methods
         {"readparent", getReadParent},
         {"writeparent", getWriteParent},
+        {(FFlag::DebugLuauTypeFunClassNameMethod) ? "classname" : nullptr, (FFlag::DebugLuauTypeFunClassNameMethod) ? getExternTypeName : nullptr},
 
         // Function type methods (cont.)
         {"setgenerics", setFunctionGenerics},
