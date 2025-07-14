@@ -1760,7 +1760,6 @@ void registerTypeUserData(lua_State* L)
         //  Extern type methods
         {"readparent", getReadParent},
         {"writeparent", getWriteParent},
-        {(FFlag::DebugLuauTypeFunClassNameMethod) ? "classname" : nullptr, (FFlag::DebugLuauTypeFunClassNameMethod) ? getExternTypeName : nullptr},
 
         // Function type methods (cont.)
         {"setgenerics", setFunctionGenerics},
@@ -1770,6 +1769,7 @@ void registerTypeUserData(lua_State* L)
         {"name", getGenericName},
         {"ispack", getGenericIsPack},
 
+        {(FFlag::DebugLuauTypeFunClassNameMethod) ? "classname" : nullptr, (FFlag::DebugLuauTypeFunClassNameMethod) ? getExternTypeName : nullptr},
         {nullptr, nullptr}
     };
 
