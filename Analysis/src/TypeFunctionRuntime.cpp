@@ -22,7 +22,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
-LUAU_FASTFLAGVARIABLE(DebugLuauTypeFunClassNameMethod)
+LUAU_FASTFLAGVARIABLE(DebugLuauTypeFunExternNameMethod)
 
 namespace Luau
 {
@@ -1769,7 +1769,7 @@ void registerTypeUserData(lua_State* L)
         {"name", getGenericName},
         {"ispack", getGenericIsPack},
 
-        {(FFlag::DebugLuauTypeFunClassNameMethod) ? "classname" : nullptr, (FFlag::DebugLuauTypeFunClassNameMethod) ? getExternTypeName : nullptr},
+        {(FFlag::DebugLuauTypeFunExternNameMethod) ? "externname" : nullptr, (FFlag::DebugLuauTypeFunExternNameMethod) ? getExternTypeName : nullptr},
         {nullptr, nullptr}
     };
 
