@@ -22,7 +22,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
-LUAU_FASTFLAGVARIABLE(DebugLuauTypeFunClassNameMethod, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauTypeFunClassNameMethod)
 
 namespace Luau
 {
