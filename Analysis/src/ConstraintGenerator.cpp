@@ -39,20 +39,18 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAGVARIABLE(LuauEnableWriteOnlyProperties)
-LUAU_FASTFLAGVARIABLE(LuauAvoidDoubleNegation)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAGVARIABLE(LuauDisablePrimitiveInferenceInLargeTables)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAGVARIABLE(LuauSkipLvalueForCompoundAssignment)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_FASTFLAGVARIABLE(LuauFollowTypeAlias)
-LUAU_FASTFLAGVARIABLE(LuauFollowExistingTypeFunction)
 LUAU_FASTFLAGVARIABLE(LuauRefineTablesWithReadType)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTracksRValueRefinements)
 LUAU_FASTFLAGVARIABLE(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAGVARIABLE(LuauInferActualIfElseExprType)
+LUAU_FASTFLAGVARIABLE(LuauDoNotPrototypeTableIndex)
 
 namespace Luau
 {
@@ -584,13 +582,8 @@ void ConstraintGenerator::computeRefinement(
         // if we have a negative sense, then we need to negate the discriminant
         if (!sense)
         {
-            if (FFlag::LuauAvoidDoubleNegation)
-            {
-                if (auto nt = get<NegationType>(follow(discriminantTy)))
-                    discriminantTy = nt->ty;
-                else
-                    discriminantTy = arena->addType(NegationType{discriminantTy});
-            }
+            if (auto nt = get<NegationType>(follow(discriminantTy)))
+                discriminantTy = nt->ty;
             else
                 discriminantTy = arena->addType(NegationType{discriminantTy});
         }
@@ -958,8 +951,7 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                 auto addToEnvironment =
                     [this, &globalNameCollector](UserDefinedFunctionData& userFuncData, ScopePtr scope, const Name& name, TypeFun tf, size_t level)
                 {
-                    if (auto ty = get<TypeFunctionInstanceType>(FFlag::LuauFollowTypeAlias ? follow(tf.type) : tf.type);
-                        ty && ty->userFuncData.definition)
+                    if (auto ty = get<TypeFunctionInstanceType>(follow(tf.type)); ty && ty->userFuncData.definition)
                     {
                         if (userFuncData.environmentFunction.find(name))
                             return;
@@ -972,8 +964,7 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                                 scope->bindings[ty->userFuncData.definition->name] = Binding{existing->typeId, ty->userFuncData.definition->location};
                         }
                     }
-                    else if (FFlag::LuauUserTypeFunctionAliases &&
-                             !get<TypeFunctionInstanceType>(FFlag::LuauFollowTypeAlias ? follow(tf.type) : tf.type))
+                    else if (!get<TypeFunctionInstanceType>(follow(tf.type)))
                     {
                         if (userFuncData.environmentAlias.find(name))
                             return;
@@ -995,7 +986,7 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                 };
 
                 // Go up the scopes to register type functions and alises, but without reaching into the global scope
-                for (Scope* curr = scope.get(); curr && (!FFlag::LuauUserTypeFunctionAliases || curr != globalScope.get()); curr = curr->parent.get())
+                for (Scope* curr = scope.get(); curr && curr != globalScope.get(); curr = curr->parent.get())
                 {
                     for (auto& [name, tf] : curr->privateTypeBindings)
                         addToEnvironment(userFuncData, typeFunctionEnvScope, name, tf, level);
@@ -1931,18 +1922,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     if (!existingFunctionTy)
         ice->ice("checkAliases did not populate type function name", function->nameLocation);
 
-    if (FFlag::LuauFollowExistingTypeFunction)
-    {
-        TypeId unpackedTy = follow(*existingFunctionTy);
+    TypeId unpackedTy = follow(*existingFunctionTy);
 
-        if (auto bt = get<BlockedType>(unpackedTy); bt && nullptr == bt->getOwner())
-            emplaceType<BoundType>(asMutable(unpackedTy), generalizedTy);
-    }
-    else
-    {
-        if (auto bt = get<BlockedType>(*existingFunctionTy); bt && nullptr == bt->getOwner())
-            emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedTy);
-    }
+    if (auto bt = get<BlockedType>(unpackedTy); bt && nullptr == bt->getOwner())
+        emplaceType<BoundType>(asMutable(unpackedTy), generalizedTy);
 
     return ControlFlow::None;
 }
@@ -2807,7 +2790,7 @@ Inference ConstraintGenerator::checkIndexName(
 
     if (key)
     {
-        if (auto ty = lookup(scope, indexLocation, key->def))
+        if (auto ty = lookup(scope, indexLocation, key->def, !FFlag::LuauDoNotPrototypeTableIndex))
             return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
         if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
@@ -3119,7 +3102,10 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
     applyRefinements(elseScope, ifElse->falseExpr->location, refinementArena.negation(refinement));
     TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
 
-    return Inference{expectedType ? *expectedType : makeUnion(scope, ifElse->location, thenType, elseType)};
+    if (FFlag::LuauInferActualIfElseExprType)
+        return Inference{makeUnion(scope, ifElse->location, thenType, elseType)};
+    else
+        return Inference{expectedType ? *expectedType : makeUnion(scope, ifElse->location, thenType, elseType)};
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)

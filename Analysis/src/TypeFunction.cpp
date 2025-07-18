@@ -37,7 +37,6 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAGVARIABLE(LuauNotAllBinaryTypeFunsHaveDefaults)
-LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauOccursCheckForRefinement)

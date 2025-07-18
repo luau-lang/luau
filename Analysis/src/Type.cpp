@@ -32,6 +32,8 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticVisitType)
+LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticSetType)
 
 namespace Luau
 {
@@ -722,7 +724,7 @@ TypeId Property::type_DEPRECATED() const
 void Property::setType(TypeId ty)
 {
     readTy = ty;
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticSetType)
         writeTy = ty;
 }
 

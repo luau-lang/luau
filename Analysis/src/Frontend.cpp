@@ -44,10 +44,11 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_FASTFLAGVARIABLE(LuauNewSolverTypecheckCatchTimeouts)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauTrackTypeAllocations)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
+LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 
 namespace Luau
 {
@@ -1576,7 +1577,7 @@ ModulePtr check(
         for (auto& [name, tf] : result->exportedTypeBindings)
             tf.type = builtinTypes->errorType;
     }
-    else if (FFlag::LuauNewSolverTypecheckCatchTimeouts)
+    else
     {
         try
         {
@@ -1622,40 +1623,15 @@ ModulePtr check(
             result->cancelled = true;
         }
     }
-    else
+
+    // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
+    // this means we won't give this warning if types seem totally nonsensical, but there are no other errors.
+    // this is probably, on the whole, a good decision to not annoy users though.
+    if (FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
     {
-        switch (mode)
-        {
-        case Mode::Nonstrict:
-            Luau::checkNonStrict(
-                builtinTypes,
-                NotNull{simplifier.get()},
-                NotNull{&typeFunctionRuntime},
-                iceHandler,
-                NotNull{&unifierState},
-                NotNull{&dfg},
-                NotNull{&limits},
-                sourceModule,
-                result.get()
-            );
-            break;
-        case Mode::Definition:
-            // fallthrough intentional
-        case Mode::Strict:
-            Luau::check(
-                builtinTypes,
-                NotNull{simplifier.get()},
-                NotNull{&typeFunctionRuntime},
-                NotNull{&unifierState},
-                NotNull{&limits},
-                logger.get(),
-                sourceModule,
-                result.get()
-            );
-            break;
-        case Mode::NoCheck:
-            break;
-        };
+        if (result->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(result->errors[0]) &&
+            !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
+            result->errors.clear();
     }
 
     if (FFlag::LuauExpectedTypeVisitor)

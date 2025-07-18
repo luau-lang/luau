@@ -11,9 +11,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
-LUAU_FASTFLAG(LuauFollowTypeAlias)
-LUAU_FASTFLAG(LuauFollowExistingTypeFunction)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeFollowMetatable)
 
@@ -2257,7 +2254,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_type_function_name")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     CheckResult result = check(R"(
 type Test<T> = T?
@@ -2279,7 +2275,6 @@ local y: foo<{b: number}> = { b = 2 }
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_values")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     CheckResult result = check(R"(
 type Test = { a: number }
@@ -2303,8 +2298,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_with_reduction")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
-
     CheckResult result = check(R"(
 type Test<T> = rawget<T, "a">
 
@@ -2326,8 +2319,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_implicit_export")
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     fileResolver.source["game/A"] = R"(
 type Test<T> = rawget<T, "a">
@@ -2356,7 +2347,6 @@ local y: Test.foo<{ a: string }> = "x"
 TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_not_too_many_globals")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     CheckResult result = check(R"(
 type function get()
@@ -2372,7 +2362,6 @@ local function ok(idx: get<>): number return idx end
 TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_not_enough_arguments")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     CheckResult result = check(R"(
 type Test<A, B> = (a: A, b: B) -> A
@@ -2391,7 +2380,6 @@ local function ok(idx: get<>): number return idx end
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_can_call_packs")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     CheckResult result = check(R"(
 type Test<T, U...> = (U...) -> T
@@ -2414,7 +2402,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_reduction_errors")
         return;
 
     ScopedFastFlag sff[] = {
-        {FFlag::LuauUserTypeFunctionAliases, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
     };
@@ -2439,7 +2426,6 @@ local function ok(idx: get<>): number return idx end
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unreferenced_do_not_block")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauUserTypeFunctionAliases{FFlag::LuauUserTypeFunctionAliases, true};
 
     CheckResult result = check(R"(
 type function foo(t)
@@ -2458,8 +2444,6 @@ local x: foo<boolean>
 
 TEST_CASE_FIXTURE(Fixture, "udtf_type_alias_registration_follows")
 {
-    ScopedFastFlag luauFollowTypeAlias{FFlag::LuauFollowTypeAlias, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
 export type t110 = ""type--"
 function _<t32...,t0...,t0...,t0...>(...):(any)&(any)
@@ -2490,7 +2474,6 @@ end
 TEST_CASE_FIXTURE(Fixture, "udtf_double_definition")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauFollowExistingTypeFunction{FFlag::LuauFollowExistingTypeFunction, true};
 
     CheckResult result = check(R"(
 type function t0<A>()

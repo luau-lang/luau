@@ -12,8 +12,6 @@
 #include "lua.h"
 #include "lualib.h"
 
-LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
-
 namespace Luau
 {
 
@@ -200,14 +198,11 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     for (auto typeParam : typeParams)
         check.traverse(follow(typeParam));
 
-    if (FFlag::LuauUserTypeFunctionAliases)
+    // Check that our environment doesn't depend on any type aliases that are blocked
+    for (auto& [name, definition] : typeFunction->userFuncData.environmentAlias)
     {
-        // Check that our environment doesn't depend on any type aliases that are blocked
-        for (auto& [name, definition] : typeFunction->userFuncData.environmentAlias)
-        {
-            if (definition.first->typeParams.empty() && definition.first->typePackParams.empty())
-                check.traverse(follow(definition.first->type));
-        }
+        if (definition.first->typeParams.empty() && definition.first->typePackParams.empty())
+            check.traverse(follow(definition.first->type));
     }
 
     if (!check.blockingTypes.empty())
@@ -281,35 +276,32 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             }
         }
 
-        if (FFlag::LuauUserTypeFunctionAliases)
+        for (auto& [name, definition] : typeFunction->userFuncData.environmentAlias)
         {
-            for (auto& [name, definition] : typeFunction->userFuncData.environmentAlias)
+            // Filter visibility based on original scope depth
+            if (definition.second >= curr.second)
             {
-                // Filter visibility based on original scope depth
-                if (definition.second >= curr.second)
+                if (definition.first->typeParams.empty() && definition.first->typePackParams.empty())
                 {
-                    if (definition.first->typeParams.empty() && definition.first->typePackParams.empty())
+                    TypeId ty = follow(definition.first->type);
+
+                    // This is checked at the top of the function, and should still be true.
+                    LUAU_ASSERT(!isPending(ty, ctx->solver));
+
+                    TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
+
+                    // Only register aliases that are representable in type environment
+                    if (runtimeBuilder->errors.empty())
                     {
-                        TypeId ty = follow(definition.first->type);
-
-                        // This is checked at the top of the function, and should still be true.
-                        LUAU_ASSERT(!isPending(ty, ctx->solver));
-
-                        TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
-
-                        // Only register aliases that are representable in type environment
-                        if (runtimeBuilder->errors.empty())
-                        {
-                            allocTypeUserData(L, serializedTy->type);
-                            lua_setfield(L, -2, name.c_str());
-                        }
-                    }
-                    else
-                    {
-                        lua_pushlightuserdata(L, definition.first);
-                        lua_pushcclosure(L, evaluateTypeAliasCall, name.c_str(), 1);
+                        allocTypeUserData(L, serializedTy->type);
                         lua_setfield(L, -2, name.c_str());
                     }
+                }
+                else
+                {
+                    lua_pushlightuserdata(L, definition.first);
+                    lua_pushcclosure(L, evaluateTypeAliasCall, name.c_str(), 1);
+                    lua_setfield(L, -2, name.c_str());
                 }
             }
         }
@@ -388,4 +380,4 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     return {retTypeId, Reduction::MaybeOk, {}, {}, std::nullopt, ctx->typeFunctionRuntime->messages};
 }
 
-}
+} // namespace Luau
