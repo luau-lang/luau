@@ -863,9 +863,20 @@ struct NonStrictTypeChecker
 
     void visit(AstTypeReference* ty)
     {
-        // No further validation is necessary in this case. The main logic for
-        // _luau_print is contained in lookupAnnotation.
-        if (FFlag::DebugLuauMagicTypes && ty->name == "_luau_print")
+        if (FFlag::DebugLuauMagicTypes)
+        {
+            // No further validation is necessary in this case.
+            if (ty->name == kLuauPrint)
+                return;
+
+            if (ty->name == kLuauForceConstraintSolvingIncomplete)
+            {
+                reportError(ConstraintSolvingIncompleteError{}, ty->location);
+                return;
+            }
+        }
+
+        if (FFlag::DebugLuauMagicTypes && (ty->name == kLuauPrint || ty->name == kLuauForceConstraintSolvingIncomplete))
             return;
 
         for (const AstTypeOrPack& param : ty->parameters)

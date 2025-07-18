@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauYieldableContinuations)
-
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
 
@@ -262,79 +260,55 @@ void luaD_call(lua_State* L, StkId func, int nresults)
     if (++L->nCcalls >= LUAI_MAXCCALLS)
         luaD_checkCstack(L);
 
-    if (FFlag::LuauYieldableContinuations)
+    // when called from a yieldable C function, maintain yieldable invariant (baseCcalls <= nCcalls)
+    bool fromyieldableccall = false;
+
+    if (L->ci != L->base_ci)
     {
-        // when called from a yieldable C function, maintain yieldable invariant (baseCcalls <= nCcalls)
-        bool fromyieldableccall = false;
+        Closure* ccl = clvalue(L->ci->func);
 
-        if (L->ci != L->base_ci)
+        if (ccl->isC && ccl->c.cont)
         {
-            Closure* ccl = clvalue(L->ci->func);
-
-            if (ccl->isC && ccl->c.cont)
-            {
-                fromyieldableccall = true;
-                L->baseCcalls++;
-            }
+            fromyieldableccall = true;
+            L->baseCcalls++;
         }
-
-        ptrdiff_t funcoffset = savestack(L, func);
-        ptrdiff_t cioffset = saveci(L, L->ci);
-
-        if (luau_precall(L, func, nresults) == PCRLUA)
-        {                                        // is a Lua function?
-            L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
-
-            bool oldactive = L->isactive;
-            L->isactive = true;
-            luaC_threadbarrier(L);
-
-            luau_execute(L); // call it
-
-            if (!oldactive)
-                L->isactive = false;
-        }
-
-        bool yielded = L->status == LUA_YIELD || L->status == LUA_BREAK;
-
-        if (fromyieldableccall)
-        {
-            // restore original yieldable invariant
-            // in case of an error, this would either be restored by luaD_pcall or the thread would no longer be resumable
-            L->baseCcalls--;
-
-            // on yield, we have to set the CallInfo top of the C function including slots for expected results, to restore later
-            if (yielded)
-            {
-                CallInfo* callerci = restoreci(L, cioffset);
-                callerci->top = restorestack(L, funcoffset) + (nresults != LUA_MULTRET ? nresults : 0);
-            }
-        }
-
-        if (nresults != LUA_MULTRET && !yielded)
-            L->top = restorestack(L, funcoffset) + nresults;
     }
-    else
+
+    ptrdiff_t funcoffset = savestack(L, func);
+    ptrdiff_t cioffset = saveci(L, L->ci);
+
+    if (luau_precall(L, func, nresults) == PCRLUA)
+    {                                        // is a Lua function?
+        L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
+
+        bool oldactive = L->isactive;
+        L->isactive = true;
+        luaC_threadbarrier(L);
+
+        luau_execute(L); // call it
+
+        if (!oldactive)
+            L->isactive = false;
+    }
+
+    bool yielded = L->status == LUA_YIELD || L->status == LUA_BREAK;
+
+    if (fromyieldableccall)
     {
-        ptrdiff_t old_func = savestack(L, func);
+        // restore original yieldable invariant
+        // in case of an error, this would either be restored by luaD_pcall or the thread would no longer be resumable
+        L->baseCcalls--;
 
-        if (luau_precall(L, func, nresults) == PCRLUA)
-        {                                        // is a Lua function?
-            L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
-
-            bool oldactive = L->isactive;
-            L->isactive = true;
-            luaC_threadbarrier(L);
-
-            luau_execute(L); // call it
-
-            if (!oldactive)
-                L->isactive = false;
+        // on yield, we have to set the CallInfo top of the C function including slots for expected results, to restore later
+        if (yielded)
+        {
+            CallInfo* callerci = restoreci(L, cioffset);
+            callerci->top = restorestack(L, funcoffset) + (nresults != LUA_MULTRET ? nresults : 0);
         }
-
-        if (nresults != LUA_MULTRET)
-            L->top = restorestack(L, old_func) + nresults;
     }
+
+    if (nresults != LUA_MULTRET && !yielded)
+        L->top = restorestack(L, funcoffset) + nresults;
 
     L->nCcalls--;
     luaC_checkGC(L);
@@ -380,18 +354,9 @@ static void resume_continue(lua_State* L)
             // C continuation; we expect this to be followed by Lua continuations
             int n = cl->c.cont(L, 0);
 
-            if (FFlag::LuauYieldableContinuations)
-            {
-                // continuation can break or yield again
-                if (L->status == LUA_BREAK || L->status == LUA_YIELD)
-                    break;
-            }
-            else
-            {
-                // Continuation can break again
-                if (L->status == LUA_BREAK)
-                    break;
-            }
+            // continuation can break or yield again
+            if (L->status == LUA_BREAK || L->status == LUA_YIELD)
+                break;
 
             luau_poscall(L, L->top - n);
         }
@@ -436,7 +401,7 @@ static void resume(lua_State* L, void* ud)
                 // finish interrupted execution of `OP_CALL'
                 luau_poscall(L, firstArg);
             }
-            else if (FFlag::LuauYieldableContinuations)
+            else
             {
                 // restore arguments we have protected for C continuation
                 L->base = L->ci->base;
@@ -647,7 +612,7 @@ static void restore_stack_limit(lua_State* L)
 int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t ef)
 {
     unsigned short oldnCcalls = L->nCcalls;
-    unsigned short oldbaseCcalls = FFlag::LuauYieldableContinuations ? L->baseCcalls : 0;
+    unsigned short oldbaseCcalls = L->baseCcalls;
     ptrdiff_t old_ci = saveci(L, L->ci);
     bool oldactive = L->isactive;
     int status = luaD_rawrunprotected(L, func, u);
@@ -681,11 +646,9 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
 
         bool yieldable = L->nCcalls <= L->baseCcalls; // Inlined logic from 'lua_isyieldable' to avoid potential for an out of line call.
 
-        // restore nCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
+        // restore nCcalls and baseCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
         L->nCcalls = oldnCcalls;
-
-        if (FFlag::LuauYieldableContinuations)
-            L->baseCcalls = oldbaseCcalls;
+        L->baseCcalls = oldbaseCcalls;
 
         // an error occurred, check if we have a protected error callback
         if (yieldable && L->global->cb.debugprotectederror)

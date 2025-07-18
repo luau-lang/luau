@@ -32,13 +32,14 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
-LUAU_FASTFLAGVARIABLE(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAGVARIABLE(LuauSuppressErrorsForMultipleNonviableOverloads)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauInferActualIfElseExprType)
+LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 
 namespace Luau
 {
@@ -47,7 +48,6 @@ namespace Luau
 // TODO move these
 using PrintLineProc = void (*)(const std::string&);
 extern PrintLineProc luauPrintLine;
-
 
 /* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
  * TypeChecker2 uses this to maintain knowledge about which scope encloses every
@@ -289,11 +289,11 @@ void check(
 
     typeChecker.visit(sourceModule.root);
 
-    // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
-    // this means we won't give this warning if types seem totally nonsensical, but there are no other errors.
-    // this is probably, on the whole, a good decision to not annoy users though.
-    if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]))
-        module->errors.clear();
+    if (!FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
+    {
+        if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]))
+            module->errors.clear();
+    }
 
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);
@@ -539,7 +539,7 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
 {
     if (FFlag::DebugLuauMagicTypes)
     {
-        if (auto ref = annotation->as<AstTypeReference>(); ref && ref->name == "_luau_print" && ref->parameters.size > 0)
+        if (auto ref = annotation->as<AstTypeReference>(); ref && ref->name == kLuauPrint && ref->parameters.size > 0)
         {
             if (auto ann = ref->parameters.data[0].type)
             {
@@ -549,6 +549,11 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
                 );
                 return follow(argTy);
             }
+        }
+        else if (auto ref = annotation->as<AstTypeReference>(); ref && ref->name == kLuauForceConstraintSolvingIncomplete)
+        {
+            reportError(ConstraintSolvingIncompleteError{}, ref->location);
+            return builtinTypes->anyType;
         }
     }
 
@@ -1288,7 +1293,7 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
     // We will not visit type aliases that do not have an associated scope,
     // this means that (probably) this was a duplicate type alias or a
     // type alias with an illegal name (like `typeof`).
-    if (FFlag::LuauSkipMalformedTypeAliases && !module->astScopes.contains(stat))
+    if (!module->astScopes.contains(stat))
         return;
 
     visitGenerics(stat->generics, stat->genericPacks);
@@ -2634,7 +2639,7 @@ void TypeChecker2::visit(AstTypeReference* ty)
 {
     // No further validation is necessary in this case. The main logic for
     // _luau_print is contained in lookupAnnotation.
-    if (FFlag::DebugLuauMagicTypes && ty->name == "_luau_print")
+    if (FFlag::DebugLuauMagicTypes && (ty->name == kLuauPrint || ty->name == kLuauForceConstraintSolvingIncomplete))
         return;
 
     for (const AstTypeOrPack& param : ty->parameters)
@@ -3050,6 +3055,30 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
 {
     auto exprType = follow(lookupType(expr));
     expectedType = follow(expectedType);
+
+    if (FFlag::LuauInferActualIfElseExprType)
+    {
+        if (auto group = expr->as<AstExprGroup>())
+        {
+            return testPotentialLiteralIsSubtype(group->expr, expectedType);
+        }
+        else if (auto ifElse = expr->as<AstExprIfElse>())
+        {
+            bool passes = testPotentialLiteralIsSubtype(ifElse->trueExpr, expectedType);
+            passes &= testPotentialLiteralIsSubtype(ifElse->falseExpr, expectedType);
+            return passes;
+        }
+        else if (auto binExpr = expr->as<AstExprBinary>(); binExpr && binExpr->op == AstExprBinary::Or)
+        {
+            // In this case: `{ ... } or { ... }` is literal _enough_ that
+            // we should do this covariant check. 
+            auto relaxedExpectedLhs = module->internalTypes.addType(UnionType{{builtinTypes->falsyType, expectedType}});
+            bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
+            passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
+            return passes;
+        }
+        // FIXME: We probably should do a check for `and` here.
+    }
 
     auto exprTable = expr->as<AstExprTable>();
     auto exprTableType = get<TableType>(exprType);

@@ -35,7 +35,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAGVARIABLE(LuauGuardAgainstMalformedTypeAliasExpansion2)
-LUAU_FASTFLAGVARIABLE(LuauInsertErrorTypesIntoIndexerResult)
 LUAU_FASTFLAGVARIABLE(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAGVARIABLE(LuauMissingFollowInAssignIndexConstraint)
 LUAU_FASTFLAGVARIABLE(LuauRemoveTypeCallsForReadWriteProps)
@@ -43,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAGVARIABLE(LuauUseOrderedTypeSetsInConstraints)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauAvoidExcessiveTypeCopying)
+LUAU_FASTFLAGVARIABLE(LuauForceSimplifyConstraint)
 
 namespace Luau
 {
@@ -905,7 +905,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto eqc = get<EqualityConstraint>(*constraint))
         success = tryDispatch(*eqc, constraint);
     else if (auto sc = get<SimplifyConstraint>(*constraint))
-        success = tryDispatch(*sc, constraint);
+        success = tryDispatch(*sc, constraint, force);
     else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
         success = tryDispatch(*pftc, constraint);
     else
@@ -2286,8 +2286,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
                 continue;
 
             r = follow(r);
-            if (FFlag::LuauInsertErrorTypesIntoIndexerResult || !get<ErrorType>(r))
-                results.insert(r);
+            results.insert(r);
         }
 
         if (0 == results.size())
@@ -2911,7 +2910,7 @@ struct FindAllUnionMembers : TypeOnceVisitor
     }
 };
 
-bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId target = follow(c.ty);
 
@@ -2927,7 +2926,14 @@ bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Co
 
     FindAllUnionMembers finder;
     finder.traverse(target);
-    if (!finder.blockedTys.empty())
+    // Clip this comment with LuauForceSimplifyConstraint
+    //
+    // The flagging logic is roughly: if `LuauForceSimplifyConstraint` is
+    // _not_ set, then we ignore the input `force`, as the RHS of the &&
+    // is always true. Otherwise, when the flag is set, the RHS of the &&
+    // is equivalent to `!force`: we only block on types when we're not
+    // being force solved.
+    if (!finder.blockedTys.empty() && !(FFlag::LuauForceSimplifyConstraint && force))
     {
         for (TypeId ty : finder.blockedTys)
             block(ty, constraint);
@@ -3873,6 +3879,19 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
     // this stops us from keeping unnecessary counts for e.g. primitive types.
     if (!isReferenceCountedType(target))
         return;
+
+    if (FFlag::LuauForceSimplifyConstraint)
+    {
+        // This can happen in the _very_ specific case of:
+        //
+        //  local Tbl = {}
+        //  Tbl.__index = Tbl
+        //
+        // This would probably not be required if table type stating worked in
+        // a reasonable manner.
+        if (source == target)
+            return;
+    }
 
     auto sourceRefs = unresolvedConstraints.find(source);
     if (sourceRefs)

@@ -11,6 +11,7 @@
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSolverAgnosticVisitType)
 
 namespace Luau
 {
@@ -231,7 +232,20 @@ struct GenericTypeVisitor
         }
         else if (auto ftv = get<FreeType>(ty))
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverAgnosticVisitType)
+            {
+                if (visit(ty, *ftv))
+                {
+                    // Regardless of the choice of solver, all free types are guaranteed to have
+                    // lower and upper bounds
+                    LUAU_ASSERT(ftv->lowerBound);
+                    LUAU_ASSERT(ftv->upperBound);
+
+                    traverse(ftv->lowerBound);
+                    traverse(ftv->upperBound);
+                }
+            }
+            else if (FFlag::LuauSolverV2)
             {
                 if (visit(ty, *ftv))
                 {
@@ -281,7 +295,7 @@ struct GenericTypeVisitor
                 {
                     for (auto& [_name, prop] : ttv->props)
                     {
-                        if (FFlag::LuauSolverV2)
+                        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
                         {
                             if (auto ty = prop.readTy)
                                 traverse(*ty);
@@ -319,7 +333,7 @@ struct GenericTypeVisitor
             {
                 for (const auto& [name, prop] : etv->props)
                 {
-                    if (FFlag::LuauSolverV2)
+                    if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
                     {
                         if (auto ty = prop.readTy)
                             traverse(*ty);

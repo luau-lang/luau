@@ -16,6 +16,7 @@ using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
+LUAU_FASTFLAG(LuauScopeMethodsAreSolverAgnostic)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -892,6 +893,30 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "ice_while_checking_script_due_to_scopes_not_being_solver_agnostic")
+{
+    // This is intentional - if LuauSolverV2 is false, but we elect the new solver, we should still follow
+    // new solver code paths.
+    // This is necessary to repro an ice that can occur in studio
+    ScopedFastFlag luauSolverOff{FFlag::LuauSolverV2, false};
+    getFrontend().setLuauSolverSelectionFromWorkspace(SolverMode::New);
+    ScopedFastFlag sff{FFlag::LuauScopeMethodsAreSolverAgnostic, true};
+
+    auto result = check(R"(
+local function ExitSeat(player, character, seat, weld)
+    --Find vehicle model
+    local model
+    local newParent = seat
+    repeat
+        model = newParent
+        newParent = model.Parent
+    until newParent.ClassName ~= "Model"
+    local part, _ = Raycast(seat.Position, dir, dist, {character, model})
+end
+)");
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

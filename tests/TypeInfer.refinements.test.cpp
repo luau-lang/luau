@@ -17,9 +17,10 @@ LUAU_FASTFLAG(LuauBetterCannotCallFunctionPrimitive)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
-LUAU_FASTFLAG(LuauAvoidDoubleNegation)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways)
+LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint)
 
 using namespace Luau;
 
@@ -1271,10 +1272,7 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauAvoidDoubleNegation, true},
-        {FFlag::LuauRefineTablesWithReadType, true},
-    };
+    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
 
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
@@ -2248,6 +2246,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "globals_can_be_narrowed_too")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+        {FFlag::LuauForceSimplifyConstraint, true},
+    };
+
     CheckResult result = check(R"(
         local function isIndexKey(k, contiguousLength)
             return type(k) == "number"
@@ -2257,7 +2262,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    // For some reason we emit three error here.
+    for (const auto& e : result.errors)
+        CHECK(get<ExplicitFunctionAnnotationRecommended>(e));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_variant")
@@ -2844,6 +2853,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_by_no_refine_should_always_reduce")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_name_index_without_prior_assignment_from_branch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDoNotPrototypeTableIndex, true},
+    };
+
+    // The important part of this test case is:
+    // - `CharEntry` is represented as a phi node in the data flow graph;
+    // - We never _set_ `CharEntry.Player` prior to accessing it.
+    CheckResult results = check(R"(
+        local GetDictionary : (unknown, boolean) -> { Player: {} }? = nil :: any
+
+        local CharEntry = GetDictionary(nil, false)
+        if not CharEntry then
+            CharEntry = GetDictionary(nil, true)
+        end
+
+        local x = CharEntry.Player
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK(get<OptionalValueAccess>(results.errors[0]));
+    CHECK_EQ("{  }", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_120460_table_access_on_phi_node")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotPrototypeTableIndex, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function foo(bar: string): string
+            local baz: boolean = true
+            if baz then
+                local _ = (bar:sub(1))
+            else
+                local _ = (bar:sub(1))
+            end
+            return bar:sub(2) -- previously this would be `...never`
+        end
+    )"));
 }
 
 TEST_SUITE_END();
