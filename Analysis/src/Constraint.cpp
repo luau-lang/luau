@@ -1,10 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/Constraint.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint)
 
 namespace Luau
 {
@@ -61,9 +63,12 @@ struct ReferenceCountInitializer_DEPRECATED : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId, const TypeFunctionInstanceType&) override
+    bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
     {
-        return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
+        if (FFlag::LuauForceSimplifyConstraint)
+            return tfit.function->canReduceGenerics;
+        else
+            return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
     }
 };
 
@@ -112,9 +117,12 @@ struct ReferenceCountInitializer : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId, const TypeFunctionInstanceType&) override
+    bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
     {
-        return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
+        if (FFlag::LuauForceSimplifyConstraint)
+            return tfit.function->canReduceGenerics;
+        else
+            return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
     }
 };
 

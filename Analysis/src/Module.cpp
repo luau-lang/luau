@@ -15,7 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauUserTypeFunctionAliases)
 
 namespace Luau
 {
@@ -306,12 +305,9 @@ void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes,
         ty = clonePublicInterface.cloneType(ty);
     }
 
-    if (FFlag::LuauUserTypeFunctionAliases)
+    for (auto& tf : typeFunctionAliases)
     {
-        for (auto& tf : typeFunctionAliases)
-        {
-            *tf = clonePublicInterface.cloneTypeFun(*tf);
-        }
+        *tf = clonePublicInterface.cloneTypeFun(*tf);
     }
 
     // Copy external stuff over to Module itself
@@ -350,12 +346,9 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
         ty = clonePublicInterface.cloneType(ty);
     }
 
-    if (FFlag::LuauUserTypeFunctionAliases)
+    for (auto& tf : typeFunctionAliases)
     {
-        for (auto& tf : typeFunctionAliases)
-        {
-            *tf = clonePublicInterface.cloneTypeFun(*tf);
-        }
+        *tf = clonePublicInterface.cloneTypeFun(*tf);
     }
 
     // Copy external stuff over to Module itself

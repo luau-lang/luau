@@ -254,7 +254,7 @@ public:
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint);
 
-    bool tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     bool tryDispatch(const PushFunctionTypeConstraint& c, NotNull<const Constraint> constraint);
 

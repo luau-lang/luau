@@ -347,4 +347,18 @@ bool isApproximatelyTruthyType(TypeId ty);
 // Unwraps any grouping expressions iteratively.
 AstExpr* unwrapGroup(AstExpr* expr);
 
+// These are magic types used in `TypeChecker2` and `NonStrictTypeChecker`
+//
+// `_luau_print` causes it's argument to be printed out, as in:
+//
+//      local x: _luau_print<number>
+//
+// ... will cause `number` to be printed.
+inline constexpr char kLuauPrint[] = "_luau_print";
+// `_luau_force_constraint_solving_incomplete` will cause us to _always_ emit
+// a constraint solving incomplete error to test semantics around that specific
+// error.
+inline constexpr char kLuauForceConstraintSolvingIncomplete[] = "_luau_force_constraint_solving_incomplete";
+
+
 } // namespace Luau

@@ -36,10 +36,7 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauYieldableContinuations)
-LUAU_FASTFLAG(LuauHeapNameDetails)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_DYNAMIC_FASTFLAG(LuauGcAgainstOom)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -785,8 +782,6 @@ static void* blockableRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 TEST_CASE("GC")
 {
-    ScopedFastFlag luauGcAgainstOom{DFFlag::LuauGcAgainstOom, true};
-
     runConformance(
         "gc.luau",
         [](lua_State* L)
@@ -1062,8 +1057,6 @@ int passthroughCallWithStateContinuation(lua_State* L, int status)
 
 TEST_CASE("CYield")
 {
-    ScopedFastFlag luauYieldableContinuations{FFlag::LuauYieldableContinuations, true};
-
     runConformance(
         "cyield.luau",
         [](lua_State* L)
@@ -2322,8 +2315,6 @@ TEST_CASE("StringConversion")
 
 TEST_CASE("GCDump")
 {
-    ScopedFastFlag luauHeapNameDetails{FFlag::LuauHeapNameDetails, true};
-
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
     extern void luaC_enumheap(

@@ -25,8 +25,6 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauAvoidDoubleNegation)
-LUAU_FASTFLAG(LuauInsertErrorTypesIntoIndexerResult)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
@@ -35,6 +33,12 @@ LUAU_FASTFLAG(LuauMissingFollowInAssignIndexConstraint)
 LUAU_FASTFLAG(LuauOccursCheckForRefinement)
 LUAU_FASTFLAG(LuauInferPolarityOfReadWriteProperties)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauInferActualIfElseExprType)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint)
+LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 
 using namespace Luau;
 
@@ -2118,10 +2122,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_missing_follow_table_freeze")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_double_negation" * doctest::timeout(0.5))
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAvoidDoubleNegation, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     // We don't care about errors, only that we don't OOM during typechecking.
     LUAU_REQUIRE_ERRORS(check(R"(
 local _ = _
@@ -2153,8 +2155,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_has_indexer_can_create_cyclic_union")
 {
-    ScopedFastFlag _{FFlag::LuauInsertErrorTypesIntoIndexerResult, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         local _ = nil
         repeat
@@ -2440,6 +2440,155 @@ _ = {n0=_,},if _._ then ... else if _[if _ then _ else ({nil,})].setmetatable th
 return _._G,_
 end then _._G else ...
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1815_verbatim")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauInferActualIfElseExprType, true},
+        // This is needed so that we don't hide the string literal free types
+        // behind a `union<_, _>`
+        {FFlag::LuauSimplifyOutOfLine2, true}, 
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+    };
+
+    CheckResult results = check(R"(
+        --!strict
+        local item: "foo" = "bar"
+        item = if true then "foo" else "foo"
+
+        local item2: "foo" = if true then "doge" else "doge2"
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(3, results);
+    CHECK_EQ(results.errors[0].location, Location{{2, 28}, {2, 33}});
+    auto err1 = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err1);
+    CHECK_EQ("\"foo\"", toString(err1->wantedType));
+    CHECK_EQ("\"bar\"", toString(err1->givenType));
+    CHECK_EQ(results.errors[1].location, Location{{5, 42}, {5, 48}});
+    auto err2 = get<TypeMismatch>(results.errors[1]);
+    REQUIRE(err2);
+    CHECK_EQ("\"foo\"", toString(err2->wantedType));
+    CHECK_EQ("\"doge\"", toString(err2->givenType));
+    CHECK_EQ(results.errors[2].location, Location{{5, 54}, {5, 61}});
+    auto err3 = get<TypeMismatch>(results.errors[2]);
+    REQUIRE(err3);
+    CHECK_EQ("\"foo\"", toString(err3->wantedType));
+    CHECK_EQ("\"doge2\"", toString(err3->givenType));
+
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_then_else_bidirectional_inference")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauInferActualIfElseExprType, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+    };
+
+    CheckResult results = check(R"(
+        type foo = {
+            bar: (() -> string)?,
+        }
+        local qux: foo = if false then {} else 10
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->givenType));
+    CHECK_EQ("foo", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_then_else_two_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauInferActualIfElseExprType, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+    };
+
+    CheckResult results = check(R"(
+        type foo = {
+            bar: () -> string,
+        }
+        local qux: foo = if false then {} else 10
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, results);
+    auto err1 = get<MissingProperties>(results.errors[0]);
+    REQUIRE(err1);
+    CHECK_EQ("foo", toString(err1->superType));
+    CHECK_EQ("{  }", toString(err1->subType));
+    auto err2 = get<TypeMismatch>(results.errors[1]);
+    REQUIRE(err2);
+    CHECK_EQ("foo", toString(err2->wantedType));
+    CHECK_EQ("number", toString(err2->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "simplify_constraint_can_force")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauForceSimplifyConstraint, true},
+        {FFlag::LuauSimplifyOutOfLine2, true},
+        // NOTE: Feel free to clip this test when this flag is clipped.
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local foo = nil
+
+        bar(function()
+            if foo then
+                foo.baz()
+            end
+        end)
+
+        foo = {}
+
+        foo.a = {
+            foo.b
+        }
+    )");
+
+    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
+}
+
+TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauMagicTypes, true},
+        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
+    };
+
+    CheckResult results = check(R"(
+        local function _f(_x: _luau_force_constraint_solving_incomplete) end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(Fixture, "non_standalone_constraint_solving_incomplete_is_hidden")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauMagicTypes, true},
+        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
+    };
+
+    CheckResult results = check(R"(
+        local function _f(_x: _luau_force_constraint_solving_incomplete) end
+        local x: number = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, results);
+    CHECK(get<ConstraintSolvingIncompleteError>(results.errors[0]));
+    CHECK(get<TypeMismatch>(results.errors[1]));
 }
 
 TEST_SUITE_END();

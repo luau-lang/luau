@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
-LUAU_FASTFLAG(LuauSkipMalformedTypeAliases)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -1257,10 +1256,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_bad_name")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSkipMalformedTypeAliases, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type typeof = typeof(nil :: any)
@@ -1276,7 +1272,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_duplicate_with_typeof")
     //
     //  type Foo = typeof(setmetatable({} :: SomeType, {} :: SomeMetatableType))
     //
-    ScopedFastFlag _{FFlag::LuauSkipMalformedTypeAliases, true};
     CheckResult result = check(R"(
         type A = typeof(nil :: any)
         type A = typeof(nil :: any)
