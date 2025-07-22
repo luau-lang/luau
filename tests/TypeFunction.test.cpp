@@ -1054,34 +1054,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
     // Should not crash!
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_andGeneralTypeFunction_dependency_issue1")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typefunc_dependency_issue1")
 {
     if (!FFlag::LuauSolverV2)
         return;
 
-    // Missing Dependency Fix check
+        CheckResult check1 = check(R"(
+local tbl_A = {} :: typeof({entry1 = 1})
+tbl_A.entry1b = "hi"
 
-    CheckResult result = check(R"(
-        --!strict
+type tbl_B = {entry2: nil}
+local tbl_C = nil :: getmetatable< typeof( setmetatable({}, {entry3b="abc2"}) ) >
+tbl_C.entry3 = "abc" 
+tbl_C.entry4 = "hi2"
 
-        local PlayerData = {
-            Coins = 0,
-            Level = 1,
-            Exp = 0,
-            MaxExp = 100
-        }
+local test = nil :: typeof(tbl_C)
+local tbl_ABC = nil :: typeof(tbl_A) & tbl_B & typeof(tbl_C)
 
-        type Keys = keyof<typeof(PlayerData)>
+local indexesABC = nil :: keyof<typeof(tbl_ABC)>
+)");
 
-        -- This function makes it think that there's going to be a pending expansion
-        local function UpdateData(key: Keys, value)
-            PlayerData[key] = value
-        end
+    auto test1 = requireType("indexesABC");
 
-        UpdateData("Coins", 2)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (auto ty = follow(test1)->ty.get_if<UnionType>())
+    {
+        CHECK_EQ(ty->options.size(), 6);
+    }
+    else
+        LUAU_ASSERT(false); // It should be a UnionType
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
