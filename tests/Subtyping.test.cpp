@@ -15,7 +15,9 @@
 
 #include <initializer_list>
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
 
 using namespace Luau;
 
@@ -65,14 +67,14 @@ struct SubtypeFixture : Fixture
     TypeArena arena;
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
-    SimplifierPtr simplifier = newSimplifier(NotNull{&arena}, builtinTypes);
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    SimplifierPtr simplifier = newSimplifier(NotNull{&arena}, getBuiltins());
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    ScopePtr rootScope{new Scope(builtinTypes->emptyTypePack)};
+    ScopePtr rootScope{new Scope(getBuiltins()->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
 
     Subtyping subtyping = mkSubtyping();
@@ -81,7 +83,7 @@ struct SubtypeFixture : Fixture
     Subtyping mkSubtyping()
     {
         return Subtyping{
-            builtinTypes, NotNull{&arena}, NotNull{simplifier.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}
+            getBuiltins(), NotNull{&arena}, NotNull{simplifier.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}
         };
     }
 
@@ -151,19 +153,19 @@ struct SubtypeFixture : Fixture
 
     TypeId cls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
     {
-        return arena.addType(ClassType{name, {}, parent.value_or(builtinTypes->classType), {}, {}, nullptr, "", {}});
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->externType), {}, {}, nullptr, "", {}});
     }
 
-    TypeId cls(const std::string& name, ClassType::Props&& props)
+    TypeId cls(const std::string& name, ExternType::Props&& props)
     {
         TypeId ty = cls(name);
-        getMutable<ClassType>(ty)->props = std::move(props);
+        getMutable<ExternType>(ty)->props = std::move(props);
         return ty;
     }
 
     TypeId opt(TypeId ty)
     {
-        return join(ty, builtinTypes->nilType);
+        return join(ty, getBuiltins()->nilType);
     }
 
     TypeId cyclicTable(std::function<void(TypeId, TableType*)>&& cb)
@@ -201,10 +203,10 @@ struct SubtypeFixture : Fixture
     TypeId trueSingleton = arena.addType(SingletonType{BooleanSingleton{true}});
     TypeId falseSingleton = arena.addType(SingletonType{BooleanSingleton{false}});
     TypeId helloOrWorldType = join(helloType, worldType);
-    TypeId trueOrFalseType = join(builtinTypes->trueType, builtinTypes->falseType);
+    TypeId trueOrFalseType = join(getBuiltins()->trueType, getBuiltins()->falseType);
 
     TypeId helloAndWorldType = meet(helloType, worldType);
-    TypeId booleanAndTrueType = meet(builtinTypes->booleanType, builtinTypes->trueType);
+    TypeId booleanAndTrueType = meet(getBuiltins()->booleanType, getBuiltins()->trueType);
 
     /**
      * class
@@ -227,15 +229,15 @@ struct SubtypeFixture : Fixture
     TypeId vec2Class =
         cls("Vec2",
             {
-                {"X", builtinTypes->numberType},
-                {"Y", builtinTypes->numberType},
+                {"X", getBuiltins()->numberType},
+                {"Y", getBuiltins()->numberType},
             });
 
     TypeId readOnlyVec2Class =
         cls("ReadOnlyVec2",
             {
-                {"X", Property::readonly(builtinTypes->numberType)},
-                {"Y", Property::readonly(builtinTypes->numberType)},
+                {"X", Property::readonly(getBuiltins()->numberType)},
+                {"Y", Property::readonly(getBuiltins()->numberType)},
             });
 
     // "hello" | "hello"
@@ -245,67 +247,67 @@ struct SubtypeFixture : Fixture
     const TypeId nothingToNothingType = fn({}, {});
 
     // (number) -> string
-    const TypeId numberToStringType = fn({builtinTypes->numberType}, {builtinTypes->stringType});
+    const TypeId numberToStringType = fn({getBuiltins()->numberType}, {getBuiltins()->stringType});
 
     // (unknown) -> string
-    const TypeId unknownToStringType = fn({builtinTypes->unknownType}, {builtinTypes->stringType});
+    const TypeId unknownToStringType = fn({getBuiltins()->unknownType}, {getBuiltins()->stringType});
 
     // (number) -> ()
-    const TypeId numberToNothingType = fn({builtinTypes->numberType}, {});
+    const TypeId numberToNothingType = fn({getBuiltins()->numberType}, {});
 
     // () -> number
-    const TypeId nothingToNumberType = fn({}, {builtinTypes->numberType});
+    const TypeId nothingToNumberType = fn({}, {getBuiltins()->numberType});
 
     // (number) -> number
-    const TypeId numberToNumberType = fn({builtinTypes->numberType}, {builtinTypes->numberType});
+    const TypeId numberToNumberType = fn({getBuiltins()->numberType}, {getBuiltins()->numberType});
 
     // (number) -> unknown
-    const TypeId numberToUnknownType = fn({builtinTypes->numberType}, {builtinTypes->unknownType});
+    const TypeId numberToUnknownType = fn({getBuiltins()->numberType}, {getBuiltins()->unknownType});
 
     // (number) -> (string, string)
-    const TypeId numberToTwoStringsType = fn({builtinTypes->numberType}, {builtinTypes->stringType, builtinTypes->stringType});
+    const TypeId numberToTwoStringsType = fn({getBuiltins()->numberType}, {getBuiltins()->stringType, getBuiltins()->stringType});
 
     // (number) -> (string, unknown)
-    const TypeId numberToStringAndUnknownType = fn({builtinTypes->numberType}, {builtinTypes->stringType, builtinTypes->unknownType});
+    const TypeId numberToStringAndUnknownType = fn({getBuiltins()->numberType}, {getBuiltins()->stringType, getBuiltins()->unknownType});
 
     // (number, number) -> string
-    const TypeId numberNumberToStringType = fn({builtinTypes->numberType, builtinTypes->numberType}, {builtinTypes->stringType});
+    const TypeId numberNumberToStringType = fn({getBuiltins()->numberType, getBuiltins()->numberType}, {getBuiltins()->stringType});
 
     // (unknown, number) -> string
-    const TypeId unknownNumberToStringType = fn({builtinTypes->unknownType, builtinTypes->numberType}, {builtinTypes->stringType});
+    const TypeId unknownNumberToStringType = fn({getBuiltins()->unknownType, getBuiltins()->numberType}, {getBuiltins()->stringType});
 
     // (number, string) -> string
-    const TypeId numberAndStringToStringType = fn({builtinTypes->numberType, builtinTypes->stringType}, {builtinTypes->stringType});
+    const TypeId numberAndStringToStringType = fn({getBuiltins()->numberType, getBuiltins()->stringType}, {getBuiltins()->stringType});
 
     // (number, ...string) -> string
     const TypeId numberAndStringsToStringType =
-        fn({builtinTypes->numberType}, VariadicTypePack{builtinTypes->stringType}, {builtinTypes->stringType});
+        fn({getBuiltins()->numberType}, VariadicTypePack{getBuiltins()->stringType}, {getBuiltins()->stringType});
 
     // (number, ...string?) -> string
     const TypeId numberAndOptionalStringsToStringType =
-        fn({builtinTypes->numberType}, VariadicTypePack{builtinTypes->optionalStringType}, {builtinTypes->stringType});
+        fn({getBuiltins()->numberType}, VariadicTypePack{getBuiltins()->optionalStringType}, {getBuiltins()->stringType});
 
     // (...number) -> number
     const TypeId numbersToNumberType =
-        arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{builtinTypes->numberType}), arena.addTypePack({builtinTypes->numberType})});
+        arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{getBuiltins()->numberType}), arena.addTypePack({getBuiltins()->numberType})});
 
     // <T>(T) -> ()
-    const TypeId genericTToNothingType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({genericT}), builtinTypes->emptyTypePack});
+    const TypeId genericTToNothingType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({genericT}), getBuiltins()->emptyTypePack});
 
     // <T>(T) -> T
     const TypeId genericTToTType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({genericT}), arena.addTypePack({genericT})});
 
     // <U>(U) -> ()
-    const TypeId genericUToNothingType = arena.addType(FunctionType{{genericU}, {}, arena.addTypePack({genericU}), builtinTypes->emptyTypePack});
+    const TypeId genericUToNothingType = arena.addType(FunctionType{{genericU}, {}, arena.addTypePack({genericU}), getBuiltins()->emptyTypePack});
 
     // <T>() -> T
-    const TypeId genericNothingToTType = arena.addType(FunctionType{{genericT}, {}, builtinTypes->emptyTypePack, arena.addTypePack({genericT})});
+    const TypeId genericNothingToTType = arena.addType(FunctionType{{genericT}, {}, getBuiltins()->emptyTypePack, arena.addTypePack({genericT})});
 
     // <A...>(A...) -> A...
     const TypeId genericAsToAsType = arena.addType(FunctionType{{}, {genericAs}, genericAs, genericAs});
 
     // <A...>(A...) -> number
-    const TypeId genericAsToNumberType = arena.addType(FunctionType{{}, {genericAs}, genericAs, arena.addTypePack({builtinTypes->numberType})});
+    const TypeId genericAsToNumberType = arena.addType(FunctionType{{}, {genericAs}, genericAs, arena.addTypePack({getBuiltins()->numberType})});
 
     // <B...>(B...) -> B...
     const TypeId genericBsToBsType = arena.addType(FunctionType{{}, {genericBs}, genericBs, genericBs});
@@ -314,10 +316,10 @@ struct SubtypeFixture : Fixture
     const TypeId genericBsToCsType = arena.addType(FunctionType{{}, {genericBs, genericCs}, genericBs, genericCs});
 
     // <A...>() -> A...
-    const TypeId genericNothingToAsType = arena.addType(FunctionType{{}, {genericAs}, builtinTypes->emptyTypePack, genericAs});
+    const TypeId genericNothingToAsType = arena.addType(FunctionType{{}, {genericAs}, getBuiltins()->emptyTypePack, genericAs});
 
     // { lower : string -> string }
-    TypeId tableWithLower = tbl(TableType::Props{{"lower", fn({builtinTypes->stringType}, {builtinTypes->stringType})}});
+    TypeId tableWithLower = tbl(TableType::Props{{"lower", fn({getBuiltins()->stringType}, {getBuiltins()->stringType})}});
     // { insaneThingNoScalarHas : () -> () }
     TypeId tableWithoutScalarProp = tbl(TableType::Props{{"insaneThingNoScalarHas", fn({}, {})}});
 };
@@ -407,15 +409,15 @@ TEST_SUITE_BEGIN("Subtyping");
 
 // We would like to write </: to mean "is not a subtype," but rotest does not like that at all, so we instead use <!:
 
-TEST_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->anyType);
-TEST_IS_NOT_SUBTYPE(builtinTypes->numberType, builtinTypes->stringType);
+TEST_IS_SUBTYPE(getBuiltins()->numberType, getBuiltins()->anyType);
+TEST_IS_NOT_SUBTYPE(getBuiltins()->numberType, getBuiltins()->stringType);
 
 TEST_CASE_FIXTURE(SubtypeFixture, "basic_reducible_sub_type_function")
 {
     // add<number, number> <: number
     TypeId typeFunctionNum =
-        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {builtinTypes->numberType, builtinTypes->numberType}, {}});
-    TypeId superTy = builtinTypes->numberType;
+        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {getBuiltins()->numberType, getBuiltins()->numberType}, {}});
+    TypeId superTy = getBuiltins()->numberType;
     SubtypingResult result = isSubtype(typeFunctionNum, superTy);
     CHECK(result.isSubtype);
 }
@@ -424,8 +426,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "basic_reducible_super_type_function")
 {
     // number <: add<number, number> ~ number
     TypeId typeFunctionNum =
-        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {builtinTypes->numberType, builtinTypes->numberType}, {}});
-    TypeId subTy = builtinTypes->numberType;
+        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {getBuiltins()->numberType, getBuiltins()->numberType}, {}});
+    TypeId subTy = getBuiltins()->numberType;
     SubtypingResult result = isSubtype(subTy, typeFunctionNum);
     CHECK(result.isSubtype);
 }
@@ -434,8 +436,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "basic_irreducible_sub_type_function")
 {
     // add<string, boolean> ~ never <: number
     TypeId typeFunctionNum =
-        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {builtinTypes->stringType, builtinTypes->booleanType}, {}});
-    TypeId superTy = builtinTypes->numberType;
+        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {getBuiltins()->stringType, getBuiltins()->booleanType}, {}});
+    TypeId superTy = getBuiltins()->numberType;
     SubtypingResult result = isSubtype(typeFunctionNum, superTy);
     CHECK(result.isSubtype);
 }
@@ -444,8 +446,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "basic_irreducible_super_type_function")
 {
     // number <\: add<string, boolean> ~ irreducible/never
     TypeId typeFunctionNum =
-        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {builtinTypes->stringType, builtinTypes->booleanType}, {}});
-    TypeId subTy = builtinTypes->numberType;
+        arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {getBuiltins()->stringType, getBuiltins()->booleanType}, {}});
+    TypeId subTy = getBuiltins()->numberType;
     SubtypingResult result = isSubtype(subTy, typeFunctionNum);
     CHECK(!result.isSubtype);
 }
@@ -456,7 +458,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "basic_type_function_with_generics")
     TypeId addTypeFunction = arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.addFunc}, {genericT, genericU}, {}});
     FunctionType ft{{genericT, genericU}, {}, arena.addTypePack({genericT, genericU}), arena.addTypePack({addTypeFunction})};
     TypeId functionType = arena.addType(std::move(ft));
-    FunctionType superFt{arena.addTypePack({builtinTypes->numberType, builtinTypes->numberType}), arena.addTypePack({builtinTypes->numberType})};
+    FunctionType superFt{arena.addTypePack({getBuiltins()->numberType, getBuiltins()->numberType}), arena.addTypePack({getBuiltins()->numberType})};
     TypeId superFunction = arena.addType(std::move(superFt));
     SubtypingResult result = isSubtype(functionType, superFunction);
     CHECK(result.isSubtype);
@@ -464,12 +466,12 @@ TEST_CASE_FIXTURE(SubtypeFixture, "basic_type_function_with_generics")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "variadic_subpath_in_pack")
 {
-    TypePackId subTArgs = arena.addTypePack(TypePack{{builtinTypes->stringType, builtinTypes->stringType}, builtinTypes->anyTypePack});
-    TypePackId superTArgs = arena.addTypePack(TypePack{{builtinTypes->numberType}, builtinTypes->anyTypePack});
+    TypePackId subTArgs = arena.addTypePack(TypePack{{getBuiltins()->stringType, getBuiltins()->stringType}, getBuiltins()->anyTypePack});
+    TypePackId superTArgs = arena.addTypePack(TypePack{{getBuiltins()->numberType}, getBuiltins()->anyTypePack});
     // (string, string, ...any) -> number
-    TypeId functionSub = arena.addType(FunctionType{subTArgs, arena.addTypePack({builtinTypes->numberType})});
+    TypeId functionSub = arena.addType(FunctionType{subTArgs, arena.addTypePack({getBuiltins()->numberType})});
     // (number, ...any) -> string
-    TypeId functionSuper = arena.addType(FunctionType{superTArgs, arena.addTypePack({builtinTypes->stringType})});
+    TypeId functionSuper = arena.addType(FunctionType{superTArgs, arena.addTypePack({getBuiltins()->stringType})});
 
 
     SubtypingResult result = isSubtype(functionSub, functionSuper);
@@ -496,37 +498,37 @@ TEST_CASE_FIXTURE(SubtypeFixture, "any <: unknown")
 {
     // We have added this as an exception - the set of inhabitants of any is exactly the set of inhabitants of unknown (since error has no
     // inhabitants). any = err | unknown, so under semantic subtyping, {} U unknown = unknown
-    CHECK_IS_SUBTYPE(builtinTypes->anyType, builtinTypes->unknownType);
+    CHECK_IS_SUBTYPE(getBuiltins()->anyType, getBuiltins()->unknownType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number? <: unknown")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->optionalNumberType, builtinTypes->unknownType);
+    CHECK_IS_SUBTYPE(getBuiltins()->optionalNumberType, getBuiltins()->unknownType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: unknown")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->unknownType);
+    CHECK_IS_SUBTYPE(getBuiltins()->numberType, getBuiltins()->unknownType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: number")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->numberType);
+    CHECK_IS_SUBTYPE(getBuiltins()->numberType, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: number?")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->optionalNumberType);
+    CHECK_IS_SUBTYPE(getBuiltins()->numberType, getBuiltins()->optionalNumberType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <: string")
 {
-    CHECK_IS_SUBTYPE(helloType, builtinTypes->stringType);
+    CHECK_IS_SUBTYPE(helloType, getBuiltins()->stringType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "string <!: \"hello\"")
 {
-    CHECK_IS_NOT_SUBTYPE(builtinTypes->stringType, helloType);
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->stringType, helloType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <: \"hello\"")
@@ -536,22 +538,22 @@ TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <: \"hello\"")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true <: boolean")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->trueType, builtinTypes->booleanType);
+    CHECK_IS_SUBTYPE(getBuiltins()->trueType, getBuiltins()->booleanType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true <: true | false")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->trueType, trueOrFalseType);
+    CHECK_IS_SUBTYPE(getBuiltins()->trueType, trueOrFalseType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true | false <!: true")
 {
-    CHECK_IS_NOT_SUBTYPE(trueOrFalseType, builtinTypes->trueType);
+    CHECK_IS_NOT_SUBTYPE(trueOrFalseType, getBuiltins()->trueType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true | false <: boolean")
 {
-    CHECK_IS_SUBTYPE(trueOrFalseType, builtinTypes->booleanType);
+    CHECK_IS_SUBTYPE(trueOrFalseType, getBuiltins()->booleanType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true | false <: true | false")
@@ -561,22 +563,22 @@ TEST_CASE_FIXTURE(SubtypeFixture, "true | false <: true | false")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" | \"world\" <: number")
 {
-    CHECK_IS_NOT_SUBTYPE(helloOrWorldType, builtinTypes->numberType);
+    CHECK_IS_NOT_SUBTYPE(helloOrWorldType, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "string <!: ('hello' | 'hello')")
 {
-    CHECK_IS_NOT_SUBTYPE(builtinTypes->stringType, helloOrHelloType);
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->stringType, helloOrHelloType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true <: boolean & true")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->trueType, booleanAndTrueType);
+    CHECK_IS_SUBTYPE(getBuiltins()->trueType, booleanAndTrueType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "boolean & true <: true")
 {
-    CHECK_IS_SUBTYPE(booleanAndTrueType, builtinTypes->trueType);
+    CHECK_IS_SUBTYPE(booleanAndTrueType, getBuiltins()->trueType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "boolean & true <: boolean & true")
@@ -586,12 +588,12 @@ TEST_CASE_FIXTURE(SubtypeFixture, "boolean & true <: boolean & true")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" & \"world\" <: number")
 {
-    CHECK_IS_SUBTYPE(helloAndWorldType, builtinTypes->numberType);
+    CHECK_IS_SUBTYPE(helloAndWorldType, getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "false <!: boolean & true")
 {
-    CHECK_IS_NOT_SUBTYPE(builtinTypes->falseType, booleanAndTrueType);
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->falseType, booleanAndTrueType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "(unknown) -> string <: (number) -> string")
@@ -733,9 +735,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> () <!: <T>(T) -> ()")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>() -> (T, T) <!: () -> (string, number)")
 {
-    TypeId nothingToTwoTs = arena.addType(FunctionType{{genericT}, {}, builtinTypes->emptyTypePack, arena.addTypePack({genericT, genericT})});
+    TypeId nothingToTwoTs = arena.addType(FunctionType{{genericT}, {}, getBuiltins()->emptyTypePack, arena.addTypePack({genericT, genericT})});
 
-    TypeId nothingToStringAndNumber = fn({}, {builtinTypes->stringType, builtinTypes->numberType});
+    TypeId nothingToStringAndNumber = fn({}, {getBuiltins()->stringType, getBuiltins()->numberType});
 
     CHECK_IS_NOT_SUBTYPE(nothingToTwoTs, nothingToStringAndNumber);
 }
@@ -812,27 +814,27 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{} <: {}")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <: {}")
 {
-    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({}));
+    CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{} <!: {x: number}")
 {
-    CHECK_IS_NOT_SUBTYPE(tbl({}), tbl({{"x", builtinTypes->numberType}}));
+    CHECK_IS_NOT_SUBTYPE(tbl({}), tbl({{"x", getBuiltins()->numberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <!: {x: string}")
 {
-    CHECK_IS_NOT_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->stringType}}));
+    CHECK_IS_NOT_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", getBuiltins()->stringType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <!: {x: number?}")
 {
-    CHECK_IS_NOT_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->optionalNumberType}}));
+    CHECK_IS_NOT_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", getBuiltins()->optionalNumberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: number?} <!: {x: number}")
 {
-    CHECK_IS_NOT_SUBTYPE(tbl({{"x", builtinTypes->optionalNumberType}}), tbl({{"x", builtinTypes->numberType}}));
+    CHECK_IS_NOT_SUBTYPE(tbl({{"x", getBuiltins()->optionalNumberType}}), tbl({{"x", getBuiltins()->numberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
@@ -844,43 +846,43 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { read x: number }")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", Property::readonly(builtinTypes->numberType)}}));
+    CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", Property::readonly(getBuiltins()->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { write x: number }")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", Property::writeonly(builtinTypes->numberType)}}));
+    CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", Property::writeonly(getBuiltins()->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: \"hello\" } <: { read x: string }")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    CHECK_IS_SUBTYPE(tbl({{"x", helloType}}), tbl({{"x", Property::readonly(builtinTypes->stringType)}}));
+    CHECK_IS_SUBTYPE(tbl({{"x", helloType}}), tbl({{"x", Property::readonly(getBuiltins()->stringType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: string } <: { write x: string }")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->stringType}}), tbl({{"x", Property::writeonly(builtinTypes->stringType)}}));
+    CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->stringType}}), tbl({{"x", Property::writeonly(getBuiltins()->stringType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <: { @metatable {} }")
 {
-    CHECK_IS_SUBTYPE(meta({{"x", builtinTypes->numberType}}), meta({}));
+    CHECK_IS_SUBTYPE(meta({{"x", getBuiltins()->numberType}}), meta({}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { @metatable { x: boolean } }")
 {
-    CHECK_IS_NOT_SUBTYPE(meta({{"x", builtinTypes->numberType}}), meta({{"x", builtinTypes->booleanType}}));
+    CHECK_IS_NOT_SUBTYPE(meta({{"x", getBuiltins()->numberType}}), meta({{"x", getBuiltins()->booleanType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <!: { @metatable { x: boolean } }")
 {
-    CHECK_IS_NOT_SUBTYPE(meta({}), meta({{"x", builtinTypes->booleanType}}));
+    CHECK_IS_NOT_SUBTYPE(meta({}), meta({{"x", getBuiltins()->booleanType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <: {}")
@@ -890,85 +892,92 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <: {}")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { u: boolean }, x: number } <: { x: number }")
 {
-    CHECK_IS_SUBTYPE(meta({{"u", builtinTypes->booleanType}}, {{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->numberType}}));
+    CHECK_IS_SUBTYPE(meta({{"u", getBuiltins()->booleanType}}, {{"x", getBuiltins()->numberType}}), tbl({{"x", getBuiltins()->numberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { x: number }")
 {
-    CHECK_IS_NOT_SUBTYPE(meta({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->numberType}}));
+    CHECK_IS_NOT_SUBTYPE(meta({{"x", getBuiltins()->numberType}}), tbl({{"x", getBuiltins()->numberType}}));
 }
 
-TEST_IS_SUBTYPE(builtinTypes->tableType, tbl({}));
-TEST_IS_SUBTYPE(tbl({}), builtinTypes->tableType);
+TEST_IS_SUBTYPE(getBuiltins()->tableType, tbl({}));
+TEST_IS_SUBTYPE(tbl({}), getBuiltins()->tableType);
 
 // Negated subtypes
-TEST_IS_NOT_SUBTYPE(negate(builtinTypes->neverType), builtinTypes->stringType);
-TEST_IS_SUBTYPE(negate(builtinTypes->unknownType), builtinTypes->stringType);
-TEST_IS_SUBTYPE(negate(builtinTypes->anyType), builtinTypes->stringType);
-TEST_IS_SUBTYPE(negate(meet(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
-TEST_IS_SUBTYPE(negate(join(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
+TEST_IS_NOT_SUBTYPE(negate(getBuiltins()->neverType), getBuiltins()->stringType);
+TEST_IS_SUBTYPE(negate(getBuiltins()->unknownType), getBuiltins()->stringType);
+TEST_IS_SUBTYPE(negate(getBuiltins()->anyType), getBuiltins()->stringType);
+TEST_IS_SUBTYPE(negate(meet(getBuiltins()->neverType, getBuiltins()->unknownType)), getBuiltins()->stringType);
+TEST_IS_SUBTYPE(negate(join(getBuiltins()->neverType, getBuiltins()->unknownType)), getBuiltins()->stringType);
 
 // Negated supertypes: never/unknown/any/error
-TEST_IS_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->neverType));
-TEST_IS_SUBTYPE(builtinTypes->neverType, negate(builtinTypes->unknownType));
-TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->unknownType));
-TEST_IS_SUBTYPE(builtinTypes->numberType, negate(builtinTypes->anyType));
-TEST_IS_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->anyType));
+TEST_IS_SUBTYPE(getBuiltins()->stringType, negate(getBuiltins()->neverType));
+TEST_IS_SUBTYPE(getBuiltins()->neverType, negate(getBuiltins()->unknownType));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->stringType, negate(getBuiltins()->unknownType));
+TEST_IS_SUBTYPE(getBuiltins()->numberType, negate(getBuiltins()->anyType));
+TEST_IS_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->anyType));
 
 // Negated supertypes: unions
-TEST_IS_SUBTYPE(builtinTypes->booleanType, negate(join(builtinTypes->stringType, builtinTypes->numberType)));
-TEST_IS_SUBTYPE(rootClass, negate(join(childClass, builtinTypes->numberType)));
-TEST_IS_SUBTYPE(str("foo"), negate(join(builtinTypes->numberType, builtinTypes->booleanType)));
-TEST_IS_NOT_SUBTYPE(str("foo"), negate(join(builtinTypes->stringType, builtinTypes->numberType)));
-TEST_IS_NOT_SUBTYPE(childClass, negate(join(rootClass, builtinTypes->numberType)));
-TEST_IS_NOT_SUBTYPE(numbersToNumberType, negate(join(builtinTypes->functionType, rootClass)));
+TEST_IS_SUBTYPE(getBuiltins()->booleanType, negate(join(getBuiltins()->stringType, getBuiltins()->numberType)));
+TEST_IS_SUBTYPE(rootClass, negate(join(childClass, getBuiltins()->numberType)));
+TEST_IS_SUBTYPE(str("foo"), negate(join(getBuiltins()->numberType, getBuiltins()->booleanType)));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(join(getBuiltins()->stringType, getBuiltins()->numberType)));
+TEST_IS_NOT_SUBTYPE(childClass, negate(join(rootClass, getBuiltins()->numberType)));
+TEST_IS_NOT_SUBTYPE(numbersToNumberType, negate(join(getBuiltins()->functionType, rootClass)));
 
 // Negated supertypes: intersections
-TEST_IS_SUBTYPE(builtinTypes->booleanType, negate(meet(builtinTypes->stringType, str("foo"))));
-TEST_IS_SUBTYPE(builtinTypes->trueType, negate(meet(builtinTypes->booleanType, builtinTypes->numberType)));
-TEST_IS_SUBTYPE(rootClass, negate(meet(builtinTypes->classType, childClass)));
-TEST_IS_SUBTYPE(childClass, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
-TEST_IS_SUBTYPE(builtinTypes->unknownType, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
-TEST_IS_NOT_SUBTYPE(str("foo"), negate(meet(builtinTypes->stringType, negate(str("bar")))));
+TEST_IS_SUBTYPE(getBuiltins()->booleanType, negate(meet(getBuiltins()->stringType, str("foo"))));
+TEST_IS_SUBTYPE(getBuiltins()->trueType, negate(meet(getBuiltins()->booleanType, getBuiltins()->numberType)));
+TEST_IS_SUBTYPE(rootClass, negate(meet(getBuiltins()->externType, childClass)));
+TEST_IS_SUBTYPE(childClass, negate(meet(getBuiltins()->externType, getBuiltins()->numberType)));
+TEST_IS_SUBTYPE(getBuiltins()->unknownType, negate(meet(getBuiltins()->externType, getBuiltins()->numberType)));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(meet(getBuiltins()->stringType, negate(str("bar")))));
 
 // Negated supertypes: tables and metatables
-TEST_IS_SUBTYPE(tbl({}), negate(builtinTypes->numberType));
-TEST_IS_NOT_SUBTYPE(tbl({}), negate(builtinTypes->tableType));
-TEST_IS_SUBTYPE(meta({}), negate(builtinTypes->numberType));
-TEST_IS_NOT_SUBTYPE(meta({}), negate(builtinTypes->tableType));
+TEST_IS_SUBTYPE(tbl({}), negate(getBuiltins()->numberType));
+TEST_IS_NOT_SUBTYPE(tbl({}), negate(getBuiltins()->tableType));
+TEST_IS_SUBTYPE(meta({}), negate(getBuiltins()->numberType));
+TEST_IS_NOT_SUBTYPE(meta({}), negate(getBuiltins()->tableType));
 
 // Negated supertypes: Functions
-TEST_IS_SUBTYPE(numberToNumberType, negate(builtinTypes->classType));
-TEST_IS_NOT_SUBTYPE(numberToNumberType, negate(builtinTypes->functionType));
+TEST_IS_SUBTYPE(numberToNumberType, negate(getBuiltins()->externType));
+TEST_IS_NOT_SUBTYPE(numberToNumberType, negate(getBuiltins()->functionType));
 
 // Negated supertypes: Primitives and singletons
-TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->stringType));
-TEST_IS_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->numberType));
-TEST_IS_SUBTYPE(str("foo"), meet(builtinTypes->stringType, negate(str("bar"))));
-TEST_IS_NOT_SUBTYPE(builtinTypes->trueType, negate(builtinTypes->booleanType));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->stringType, negate(getBuiltins()->stringType));
+TEST_IS_SUBTYPE(getBuiltins()->stringType, negate(getBuiltins()->numberType));
+TEST_IS_SUBTYPE(str("foo"), meet(getBuiltins()->stringType, negate(str("bar"))));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->trueType, negate(getBuiltins()->booleanType));
 TEST_IS_NOT_SUBTYPE(str("foo"), negate(str("foo")));
-TEST_IS_NOT_SUBTYPE(str("foo"), negate(builtinTypes->stringType));
-TEST_IS_SUBTYPE(builtinTypes->falseType, negate(builtinTypes->trueType));
-TEST_IS_SUBTYPE(builtinTypes->falseType, meet(builtinTypes->booleanType, negate(builtinTypes->trueType)));
-TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, meet(builtinTypes->booleanType, negate(builtinTypes->trueType)));
-TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(str("foo")));
-TEST_IS_NOT_SUBTYPE(builtinTypes->booleanType, negate(builtinTypes->falseType));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(getBuiltins()->stringType));
+TEST_IS_SUBTYPE(getBuiltins()->falseType, negate(getBuiltins()->trueType));
+TEST_IS_SUBTYPE(getBuiltins()->falseType, meet(getBuiltins()->booleanType, negate(getBuiltins()->trueType)));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->stringType, meet(getBuiltins()->booleanType, negate(getBuiltins()->trueType)));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->stringType, negate(str("foo")));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->booleanType, negate(getBuiltins()->falseType));
 
-// Negated supertypes: Classes
-TEST_IS_SUBTYPE(rootClass, negate(builtinTypes->tableType));
-TEST_IS_NOT_SUBTYPE(rootClass, negate(builtinTypes->classType));
+// Negated supertypes: extern types
+TEST_IS_SUBTYPE(rootClass, negate(getBuiltins()->tableType));
+TEST_IS_NOT_SUBTYPE(rootClass, negate(getBuiltins()->externType));
 TEST_IS_NOT_SUBTYPE(childClass, negate(rootClass));
-TEST_IS_NOT_SUBTYPE(childClass, meet(builtinTypes->classType, negate(rootClass)));
-TEST_IS_SUBTYPE(anotherChildClass, meet(builtinTypes->classType, negate(childClass)));
+TEST_IS_NOT_SUBTYPE(childClass, meet(getBuiltins()->externType, negate(rootClass)));
+TEST_IS_SUBTYPE(anotherChildClass, meet(getBuiltins()->externType, negate(childClass)));
+
+// Negated primitives against unknown
+TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->booleanType));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->numberType));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->stringType));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->threadType));
+TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->bufferType));
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
 {
-    CHECK_IS_SUBTYPE(rootClass, builtinTypes->classType);
+    CHECK_IS_SUBTYPE(rootClass, getBuiltins()->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: class")
 {
-    CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), getBuiltins()->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: Child | AnotherChild")
@@ -983,33 +992,33 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child | Root <: Root")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: class")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), getBuiltins()->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: class")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, rootClass), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(meet(childClass, rootClass), getBuiltins()->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: class")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), builtinTypes->classType);
+    CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), getBuiltins()->externType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")
 {
-    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), builtinTypes->numberType);
+    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~GrandchildOne <!: number")
 {
-    CHECK_IS_NOT_SUBTYPE(meet(childClass, negate(grandchildOneClass)), builtinTypes->numberType);
+    CHECK_IS_NOT_SUBTYPE(meet(childClass, negate(grandchildOneClass)), getBuiltins()->numberType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "semantic_subtyping_disj")
 {
-    TypeId subTy = builtinTypes->unknownType;
-    TypeId superTy = join(negate(builtinTypes->numberType), negate(builtinTypes->stringType));
+    TypeId subTy = getBuiltins()->unknownType;
+    TypeId superTy = join(negate(getBuiltins()->numberType), negate(getBuiltins()->stringType));
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(result.isSubtype);
 }
@@ -1020,14 +1029,14 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <: t2 wh
     TypeId t1 = cyclicTable(
         [&](TypeId ty, TableType* tt)
         {
-            tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+            tt->props["trim"] = fn({ty}, {getBuiltins()->stringType});
         }
     );
 
     TypeId t2 = cyclicTable(
         [&](TypeId ty, TableType* tt)
         {
-            tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+            tt->props["trim"] = fn({ty}, {getBuiltins()->stringType});
         }
     );
 
@@ -1039,7 +1048,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <!: t2 w
     TypeId t1 = cyclicTable(
         [&](TypeId ty, TableType* tt)
         {
-            tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+            tt->props["trim"] = fn({ty}, {getBuiltins()->stringType});
         }
     );
 
@@ -1065,7 +1074,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> t1} <!: t2 where
     TypeId t2 = cyclicTable(
         [&](TypeId ty, TableType* tt)
         {
-            tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+            tt->props["trim"] = fn({ty}, {getBuiltins()->stringType});
         }
     );
 
@@ -1075,8 +1084,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> t1} <!: t2 where
 TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <: { X: number, Y: number }")
 {
     TypeId xy = tbl({
-        {"X", builtinTypes->numberType},
-        {"Y", builtinTypes->numberType},
+        {"X", getBuiltins()->numberType},
+        {"Y", getBuiltins()->numberType},
     });
 
     CHECK_IS_SUBTYPE(vec2Class, xy);
@@ -1085,7 +1094,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <: { X: number, Y: number }")
 TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <: { X: number }")
 {
     TypeId x = tbl({
-        {"X", builtinTypes->numberType},
+        {"X", getBuiltins()->numberType},
     });
 
     CHECK_IS_SUBTYPE(vec2Class, x);
@@ -1094,8 +1103,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <: { X: number }")
 TEST_CASE_FIXTURE(SubtypeFixture, "{ X: number, Y: number } <!: Vec2")
 {
     TypeId xy = tbl({
-        {"X", builtinTypes->numberType},
-        {"Y", builtinTypes->numberType},
+        {"X", getBuiltins()->numberType},
+        {"Y", getBuiltins()->numberType},
     });
 
     CHECK_IS_NOT_SUBTYPE(xy, vec2Class);
@@ -1104,7 +1113,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ X: number, Y: number } <!: Vec2")
 TEST_CASE_FIXTURE(SubtypeFixture, "{ X: number } <!: Vec2")
 {
     TypeId x = tbl({
-        {"X", builtinTypes->numberType},
+        {"X", getBuiltins()->numberType},
     });
 
     CHECK_IS_NOT_SUBTYPE(x, vec2Class);
@@ -1113,36 +1122,36 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ X: number } <!: Vec2")
 TEST_CASE_FIXTURE(SubtypeFixture, "table & { X: number, Y: number } <!: Vec2")
 {
     TypeId x = tbl({
-        {"X", builtinTypes->numberType},
-        {"Y", builtinTypes->numberType},
+        {"X", getBuiltins()->numberType},
+        {"Y", getBuiltins()->numberType},
     });
 
-    CHECK_IS_NOT_SUBTYPE(meet(builtinTypes->tableType, x), vec2Class);
+    CHECK_IS_NOT_SUBTYPE(meet(getBuiltins()->tableType, x), vec2Class);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <!: table & { X: number, Y: number }")
 {
     TypeId xy = tbl({
-        {"X", builtinTypes->numberType},
-        {"Y", builtinTypes->numberType},
+        {"X", getBuiltins()->numberType},
+        {"Y", getBuiltins()->numberType},
     });
 
-    CHECK_IS_NOT_SUBTYPE(vec2Class, meet(builtinTypes->tableType, xy));
+    CHECK_IS_NOT_SUBTYPE(vec2Class, meet(getBuiltins()->tableType, xy));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "ReadOnlyVec2 <!: { X: number, Y: number}")
 {
-    CHECK_IS_NOT_SUBTYPE(readOnlyVec2Class, tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}));
+    CHECK_IS_NOT_SUBTYPE(readOnlyVec2Class, tbl({{"X", getBuiltins()->numberType}, {"Y", getBuiltins()->numberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "ReadOnlyVec2 <: { read X: number, read Y: number}")
 {
     CHECK_IS_SUBTYPE(
-        readOnlyVec2Class, tbl({{"X", Property::readonly(builtinTypes->numberType)}, {"Y", Property::readonly(builtinTypes->numberType)}})
+        readOnlyVec2Class, tbl({{"X", Property::readonly(getBuiltins()->numberType)}, {"Y", Property::readonly(getBuiltins()->numberType)}})
     );
 }
 
-TEST_IS_SUBTYPE(vec2Class, tbl({{"X", Property::readonly(builtinTypes->numberType)}, {"Y", Property::readonly(builtinTypes->numberType)}}));
+TEST_IS_SUBTYPE(vec2Class, tbl({{"X", Property::readonly(getBuiltins()->numberType)}, {"Y", Property::readonly(getBuiltins()->numberType)}}));
 
 TEST_IS_NOT_SUBTYPE(tbl({{"P", grandchildOneClass}}), tbl({{"P", Property::rw(rootClass)}}));
 TEST_IS_SUBTYPE(tbl({{"P", grandchildOneClass}}), tbl({{"P", Property::readonly(rootClass)}}));
@@ -1165,55 +1174,55 @@ TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <!: { insaneThingNoScalarHas : () -
 
 TEST_CASE_FIXTURE(SubtypeFixture, "string <: { lower : (string) -> string }")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->stringType, tableWithLower);
+    CHECK_IS_SUBTYPE(getBuiltins()->stringType, tableWithLower);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "string <!: { insaneThingNoScalarHas : () -> () }")
 {
-    CHECK_IS_NOT_SUBTYPE(builtinTypes->stringType, tableWithoutScalarProp);
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->stringType, tableWithoutScalarProp);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "~fun & (string) -> number <: (string) -> number")
 {
-    CHECK_IS_SUBTYPE(meet(negate(builtinTypes->functionType), numberToStringType), numberToStringType);
+    CHECK_IS_SUBTYPE(meet(negate(getBuiltins()->functionType), numberToStringType), numberToStringType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "(string) -> number <: ~fun & (string) -> number")
 {
-    CHECK_IS_NOT_SUBTYPE(numberToStringType, meet(negate(builtinTypes->functionType), numberToStringType));
+    CHECK_IS_NOT_SUBTYPE(numberToStringType, meet(negate(getBuiltins()->functionType), numberToStringType));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "~\"a\" & ~\"b\" & string <: { lower : (string) -> ()}")
 {
-    CHECK_IS_SUBTYPE(meet(meet(negate(aType), negate(bType)), builtinTypes->stringType), tableWithLower);
+    CHECK_IS_SUBTYPE(meet(meet(negate(aType), negate(bType)), getBuiltins()->stringType), tableWithLower);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "\"a\" | (~\"b\" & string) <: { lower : (string) -> ()}")
 {
-    CHECK_IS_SUBTYPE(join(aType, meet(negate(bType), builtinTypes->stringType)), tableWithLower);
+    CHECK_IS_SUBTYPE(join(aType, meet(negate(bType), getBuiltins()->stringType)), tableWithLower);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: { lower: (string) -> string }")
 {
-    auto base = meet(join(builtinTypes->stringType, builtinTypes->numberType), join(aType, trueSingleton));
+    auto base = meet(join(getBuiltins()->stringType, getBuiltins()->numberType), join(aType, trueSingleton));
     CHECK_IS_SUBTYPE(base, tableWithLower);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: ~~number")
 {
-    CHECK_IS_SUBTYPE(builtinTypes->numberType, negate(negate(builtinTypes->numberType)));
+    CHECK_IS_SUBTYPE(getBuiltins()->numberType, negate(negate(getBuiltins()->numberType)));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "~~number <: number")
 {
-    CHECK_IS_SUBTYPE(negate(negate(builtinTypes->numberType)), builtinTypes->numberType);
+    CHECK_IS_SUBTYPE(negate(negate(getBuiltins()->numberType)), getBuiltins()->numberType);
 }
 
 // See https://github.com/luau-lang/luau/issues/767
 TEST_CASE_FIXTURE(SubtypeFixture, "(...any) -> () <: <T>(T...) -> ()")
 {
-    TypeId anysToNothing = arena.addType(FunctionType{builtinTypes->anyTypePack, builtinTypes->emptyTypePack});
-    TypeId genericTToAnys = arena.addType(FunctionType{genericAs, builtinTypes->emptyTypePack});
+    TypeId anysToNothing = arena.addType(FunctionType{getBuiltins()->anyTypePack, getBuiltins()->emptyTypePack});
+    TypeId genericTToAnys = arena.addType(FunctionType{genericAs, getBuiltins()->emptyTypePack});
 
     CHECK_MESSAGE(isSubtype(anysToNothing, genericTToAnys).isSubtype, "(...any) -> () <: <T>(T...) -> ()");
 }
@@ -1222,8 +1231,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(...any) -> () <: <T>(T...) -> ()")
 TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
 {
     TypeId unknownsToNothing =
-        arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{builtinTypes->unknownType}), builtinTypes->emptyTypePack});
-    TypeId genericTToAnys = arena.addType(FunctionType{genericAs, builtinTypes->emptyTypePack});
+        arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{getBuiltins()->unknownType}), getBuiltins()->emptyTypePack});
+    TypeId genericTToAnys = arena.addType(FunctionType{genericAs, getBuiltins()->emptyTypePack});
 
     CHECK_MESSAGE(isSubtype(unknownsToNothing, genericTToAnys).isSubtype, "(...unknown) -> () <: <T>(T...) -> ()");
 }
@@ -1231,31 +1240,30 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
 TEST_CASE_FIXTURE(SubtypeFixture, "bill")
 {
     TypeId a = arena.addType(TableType{
-        {{"a", builtinTypes->stringType}}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, TypeLevel{}, nullptr, TableState::Sealed
+        {{"a", getBuiltins()->stringType}}, TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType}, TypeLevel{}, nullptr, TableState::Sealed
     });
 
     TypeId b = arena.addType(TableType{
-        {{"a", builtinTypes->stringType}}, TableIndexer{builtinTypes->stringType, builtinTypes->numberType}, TypeLevel{}, nullptr, TableState::Sealed
+        {{"a", getBuiltins()->stringType}}, TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType}, TypeLevel{}, nullptr, TableState::Sealed
     });
 
     CHECK(isSubtype(a, b).isSubtype);
     CHECK(isSubtype(b, a).isSubtype);
 }
 
-// TEST_CASE_FIXTURE(SubtypeFixture, "({[string]: number, a: string}) -> () <: ({[string]: number, a: string}) -> ()")
-TEST_CASE_FIXTURE(SubtypeFixture, "fred")
+TEST_CASE_FIXTURE(SubtypeFixture, "({[string]: number, a: string}) -> () <: ({[string]: number, a: string}) -> ()")
 {
     auto makeTheType = [&]()
     {
         TypeId argType = arena.addType(TableType{
-            {{"a", builtinTypes->stringType}},
-            TableIndexer{builtinTypes->stringType, builtinTypes->numberType},
+            {{"a", getBuiltins()->stringType}},
+            TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
             TypeLevel{},
             nullptr,
             TableState::Sealed
         });
 
-        return arena.addType(FunctionType{arena.addTypePack({argType}), builtinTypes->emptyTypePack});
+        return arena.addType(FunctionType{arena.addTypePack({argType}), getBuiltins()->emptyTypePack});
     };
 
     TypeId a = makeTheType();
@@ -1278,61 +1286,61 @@ TEST_CASE_FIXTURE(SubtypeFixture, "unknown <: X")
 
     TypeId genericX = arena.addType(GenericType(childScope.get(), "X"));
 
-    SubtypingResult usingGlobalScope = isSubtype(builtinTypes->unknownType, genericX);
-    CHECK_MESSAGE(!usingGlobalScope.isSubtype, "Expected " << builtinTypes->unknownType << " </: " << genericX);
+    SubtypingResult usingGlobalScope = isSubtype(getBuiltins()->unknownType, genericX);
+    CHECK_MESSAGE(!usingGlobalScope.isSubtype, "Expected " << getBuiltins()->unknownType << " </: " << genericX);
 
     Subtyping childSubtyping{mkSubtyping()};
 
-    SubtypingResult usingChildScope = childSubtyping.isSubtype(builtinTypes->unknownType, genericX, NotNull{childScope.get()});
-    CHECK_MESSAGE(usingChildScope.isSubtype, "Expected " << builtinTypes->unknownType << " <: " << genericX);
+    SubtypingResult usingChildScope = childSubtyping.isSubtype(getBuiltins()->unknownType, genericX, NotNull{childScope.get()});
+    CHECK_MESSAGE(usingChildScope.isSubtype, "Expected " << getBuiltins()->unknownType << " <: " << genericX);
 
     Subtyping grandChildSubtyping{mkSubtyping()};
 
-    SubtypingResult usingGrandChildScope = grandChildSubtyping.isSubtype(builtinTypes->unknownType, genericX, NotNull{grandChildScope.get()});
-    CHECK_MESSAGE(usingGrandChildScope.isSubtype, "Expected " << builtinTypes->unknownType << " <: " << genericX);
+    SubtypingResult usingGrandChildScope = grandChildSubtyping.isSubtype(getBuiltins()->unknownType, genericX, NotNull{grandChildScope.get()});
+    CHECK_MESSAGE(usingGrandChildScope.isSubtype, "Expected " << getBuiltins()->unknownType << " <: " << genericX);
 }
 
-TEST_IS_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), tbl({}));
-TEST_IS_NOT_SUBTYPE(tbl({}), idx(builtinTypes->numberType, builtinTypes->numberType));
+TEST_IS_SUBTYPE(idx(getBuiltins()->numberType, getBuiltins()->numberType), tbl({}));
+TEST_IS_NOT_SUBTYPE(tbl({}), idx(getBuiltins()->numberType, getBuiltins()->numberType));
 
-TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), idx(builtinTypes->numberType, builtinTypes->numberType));
-TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), tbl({{"X", builtinTypes->numberType}}));
-
-TEST_IS_NOT_SUBTYPE(
-    idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType),
-    idx(builtinTypes->numberType, builtinTypes->numberType)
-);
-TEST_IS_NOT_SUBTYPE(
-    idx(builtinTypes->numberType, builtinTypes->numberType),
-    idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType)
-);
+TEST_IS_NOT_SUBTYPE(tbl({{"X", getBuiltins()->numberType}}), idx(getBuiltins()->numberType, getBuiltins()->numberType));
+TEST_IS_NOT_SUBTYPE(idx(getBuiltins()->numberType, getBuiltins()->numberType), tbl({{"X", getBuiltins()->numberType}}));
 
 TEST_IS_NOT_SUBTYPE(
-    idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)),
-    idx(builtinTypes->numberType, builtinTypes->numberType)
+    idx(join(getBuiltins()->numberType, getBuiltins()->stringType), getBuiltins()->numberType),
+    idx(getBuiltins()->numberType, getBuiltins()->numberType)
 );
 TEST_IS_NOT_SUBTYPE(
-    idx(builtinTypes->numberType, builtinTypes->numberType),
-    idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType))
+    idx(getBuiltins()->numberType, getBuiltins()->numberType),
+    idx(join(getBuiltins()->numberType, getBuiltins()->stringType), getBuiltins()->numberType)
 );
 
-TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), idx(builtinTypes->stringType, builtinTypes->numberType));
-TEST_IS_SUBTYPE(idx(builtinTypes->stringType, builtinTypes->numberType), tbl({{"X", builtinTypes->numberType}}));
+TEST_IS_NOT_SUBTYPE(
+    idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType)),
+    idx(getBuiltins()->numberType, getBuiltins()->numberType)
+);
+TEST_IS_NOT_SUBTYPE(
+    idx(getBuiltins()->numberType, getBuiltins()->numberType),
+    idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType))
+);
 
-TEST_IS_NOT_SUBTYPE(tbl({{"X", opt(builtinTypes->numberType)}}), idx(builtinTypes->stringType, builtinTypes->numberType));
-TEST_IS_NOT_SUBTYPE(idx(builtinTypes->stringType, builtinTypes->numberType), tbl({{"X", opt(builtinTypes->numberType)}}));
+TEST_IS_NOT_SUBTYPE(tbl({{"X", getBuiltins()->numberType}}), idx(getBuiltins()->stringType, getBuiltins()->numberType));
+TEST_IS_SUBTYPE(idx(getBuiltins()->stringType, getBuiltins()->numberType), tbl({{"X", getBuiltins()->numberType}}));
 
-TEST_IS_SUBTYPE(tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}), tbl({{"X", builtinTypes->numberType}}));
-TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}));
+TEST_IS_NOT_SUBTYPE(tbl({{"X", opt(getBuiltins()->numberType)}}), idx(getBuiltins()->stringType, getBuiltins()->numberType));
+TEST_IS_NOT_SUBTYPE(idx(getBuiltins()->stringType, getBuiltins()->numberType), tbl({{"X", opt(getBuiltins()->numberType)}}));
+
+TEST_IS_SUBTYPE(tbl({{"X", getBuiltins()->numberType}, {"Y", getBuiltins()->numberType}}), tbl({{"X", getBuiltins()->numberType}}));
+TEST_IS_NOT_SUBTYPE(tbl({{"X", getBuiltins()->numberType}}), tbl({{"X", getBuiltins()->numberType}, {"Y", getBuiltins()->numberType}}));
 
 TEST_CASE_FIXTURE(SubtypeFixture, "interior_tests_are_cached")
 {
-    TypeId tableA = tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}});
-    TypeId tableB = tbl({{"X", builtinTypes->optionalNumberType}, {"Y", builtinTypes->optionalNumberType}});
+    TypeId tableA = tbl({{"X", getBuiltins()->numberType}, {"Y", getBuiltins()->numberType}});
+    TypeId tableB = tbl({{"X", getBuiltins()->optionalNumberType}, {"Y", getBuiltins()->optionalNumberType}});
 
     CHECK_IS_NOT_SUBTYPE(tableA, tableB);
 
-    const SubtypingResult* cachedResult = subtyping.peekCache().find({builtinTypes->numberType, builtinTypes->optionalNumberType});
+    const SubtypingResult* cachedResult = subtyping.peekCache().find({getBuiltins()->numberType, getBuiltins()->optionalNumberType});
     REQUIRE(cachedResult);
 
     CHECK(cachedResult->isSubtype);
@@ -1372,27 +1380,29 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
     TypeId tableToPropType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({tbl({{"x", genericT}})}), arena.addTypePack({genericT})});
 
     // ({ method: <T>({ x: T }) -> T, x: number }) -> number
-    TypeId otherType = fn({tbl({{"method", tableToPropType}, {"x", builtinTypes->numberType}})}, {builtinTypes->numberType});
+    TypeId otherType = fn({tbl({{"method", tableToPropType}, {"x", getBuiltins()->numberType}})}, {getBuiltins()->numberType});
 
     CHECK_IS_SUBTYPE(tableToPropType, otherType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_function_instance")
 {
+    ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping, true};
+
     TypeId longTy = arena.addType(UnionType{
-        {builtinTypes->booleanType,
-         builtinTypes->bufferType,
-         builtinTypes->classType,
-         builtinTypes->functionType,
-         builtinTypes->numberType,
-         builtinTypes->stringType,
-         builtinTypes->tableType,
-         builtinTypes->threadType}
+        {getBuiltins()->booleanType,
+         getBuiltins()->bufferType,
+         getBuiltins()->externType,
+         getBuiltins()->functionType,
+         getBuiltins()->numberType,
+         getBuiltins()->stringType,
+         getBuiltins()->tableType,
+         getBuiltins()->threadType}
     });
-    TypeId tblTy = tbl({{"depth", builtinTypes->unknownType}});
+    TypeId tblTy = tbl({{"depth", getBuiltins()->unknownType}});
     TypeId combined = meet(longTy, tblTy);
-    TypeId subTy = arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.unionFunc}, {combined, builtinTypes->neverType}, {}});
-    TypeId superTy = builtinTypes->neverType;
+    TypeId subTy = arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.unionFunc}, {combined, getBuiltins()->neverType}, {}});
+    TypeId superTy = getBuiltins()->neverType;
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
 
@@ -1401,8 +1411,10 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
-        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
+        std::optional<TypeOrPack> optSubLeaf =
+            traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&result.mappedGenericPacks}, NotNull{&arena});
+        std::optional<TypeOrPack> optSuperLeaf =
+            traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&result.mappedGenericPacks}, NotNull{&arena});
 
         if (!optSubLeaf || !optSuperLeaf)
             CHECK(false);
@@ -1415,8 +1427,8 @@ TEST_SUITE_BEGIN("Subtyping.Subpaths");
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
 {
-    TypeId subTy = tbl({{"X", builtinTypes->numberType}});
-    TypeId superTy = tbl({{"X", builtinTypes->booleanType}});
+    TypeId subTy = tbl({{"X", getBuiltins()->numberType}});
+    TypeId superTy = tbl({{"X", getBuiltins()->booleanType}});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1432,8 +1444,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_indexers")
 {
-    TypeId subTy = idx(builtinTypes->numberType, builtinTypes->stringType);
-    TypeId superTy = idx(builtinTypes->stringType, builtinTypes->numberType);
+    TypeId subTy = idx(getBuiltins()->numberType, getBuiltins()->stringType);
+    TypeId superTy = idx(getBuiltins()->stringType, getBuiltins()->numberType);
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1456,8 +1468,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_indexers")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments")
 {
-    TypeId subTy = fn({builtinTypes->numberType}, {});
-    TypeId superTy = fn({builtinTypes->stringType}, {});
+    TypeId subTy = fn({getBuiltins()->numberType}, {});
+    TypeId superTy = fn({getBuiltins()->stringType}, {});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1472,7 +1484,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "arity_mismatch")
 {
-    TypeId subTy = fn({builtinTypes->numberType}, {});
+    TypeId subTy = fn({getBuiltins()->numberType}, {});
     TypeId superTy = fn({}, {});
 
     SubtypingResult result = isSubtype(subTy, superTy);
@@ -1488,8 +1500,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "arity_mismatch")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments_tail")
 {
-    TypeId subTy = fn({}, VariadicTypePack{builtinTypes->numberType}, {});
-    TypeId superTy = fn({}, VariadicTypePack{builtinTypes->stringType}, {});
+    TypeId subTy = fn({}, VariadicTypePack{getBuiltins()->numberType}, {});
+    TypeId superTy = fn({}, VariadicTypePack{getBuiltins()->stringType}, {});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1504,8 +1516,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments_tail")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "fn_rets")
 {
-    TypeId subTy = fn({}, {builtinTypes->numberType});
-    TypeId superTy = fn({}, {builtinTypes->stringType});
+    TypeId subTy = fn({}, {getBuiltins()->numberType});
+    TypeId superTy = fn({}, {getBuiltins()->stringType});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1520,8 +1532,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_rets")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "fn_rets_tail")
 {
-    TypeId subTy = fn({}, {}, VariadicTypePack{builtinTypes->numberType});
-    TypeId superTy = fn({}, {}, VariadicTypePack{builtinTypes->stringType});
+    TypeId subTy = fn({}, {}, VariadicTypePack{getBuiltins()->numberType});
+    TypeId superTy = fn({}, {}, VariadicTypePack{getBuiltins()->stringType});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1536,8 +1548,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_rets_tail")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "nested_table_properties")
 {
-    TypeId subTy = tbl({{"X", tbl({{"Y", tbl({{"Z", builtinTypes->numberType}})}})}});
-    TypeId superTy = tbl({{"X", tbl({{"Y", tbl({{"Z", builtinTypes->stringType}})}})}});
+    TypeId subTy = tbl({{"X", tbl({{"Y", tbl({{"Z", getBuiltins()->numberType}})}})}});
+    TypeId superTy = tbl({{"X", tbl({{"Y", tbl({{"Z", getBuiltins()->stringType}})}})}});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1553,8 +1565,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "nested_table_properties")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "string_table_mt")
 {
-    TypeId subTy = builtinTypes->stringType;
-    TypeId superTy = tbl({{"X", builtinTypes->numberType}});
+    TypeId subTy = getBuiltins()->stringType;
+    TypeId superTy = tbl({{"X", getBuiltins()->numberType}});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1572,8 +1584,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "string_table_mt")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "negation")
 {
-    TypeId subTy = builtinTypes->numberType;
-    TypeId superTy = negate(builtinTypes->numberType);
+    TypeId subTy = getBuiltins()->numberType;
+    TypeId superTy = negate(getBuiltins()->numberType);
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1587,8 +1599,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "negation")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
 {
-    TypeId subTy = tbl({{"X", builtinTypes->stringType}, {"Y", builtinTypes->numberType}});
-    TypeId superTy = tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->stringType}});
+    TypeId subTy = tbl({{"X", getBuiltins()->stringType}, {"Y", getBuiltins()->numberType}});
+    TypeId superTy = tbl({{"X", getBuiltins()->numberType}, {"Y", getBuiltins()->stringType}});
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
@@ -1607,6 +1619,44 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
             },
         }
     );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
+{
+    // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
+    // (~(false?), ~(false?)) -> (~(false?) & ~(false?)) | ~(false?)
+
+    TypeId aTy = arena.addType(GenericType{"A"});
+    getMutable<GenericType>(aTy)->scope = moduleScope.get();
+    TypeId bTy = arena.addType(GenericType{"B"});
+    getMutable<GenericType>(bTy)->scope = moduleScope.get();
+
+    TypeId genericFunctionTy =
+        arena.addType(FunctionType{{aTy, bTy}, {}, arena.addTypePack({aTy, bTy}), arena.addTypePack({join(meet(aTy, getBuiltins()->truthyType), bTy)})}
+        );
+
+    const TypeId truthyTy = getBuiltins()->truthyType;
+
+    TypeId actualFunctionTy = fn({truthyTy, truthyTy}, {join(meet(truthyTy, getBuiltins()->truthyType), truthyTy)});
+
+    SubtypingResult result = isSubtype(genericFunctionTy, actualFunctionTy);
+
+    CHECK(result.isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
+{
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+
+    TypeId argTy = arena.freshType(getBuiltins(), moduleScope.get());
+    FreeType* freeArg = getMutable<FreeType>(argTy);
+    REQUIRE(freeArg);
+    freeArg->lowerBound = arena.addType(SingletonType{StringSingleton{"five"}});
+    freeArg->upperBound = getBuiltins()->stringType;
+
+    SubtypingResult result = isSubtype(getBuiltins()->stringType, argTy);
+    CHECK(result.isSubtype);
+    REQUIRE(1 == result.assumedConstraints.size());
 }
 
 TEST_SUITE_END();

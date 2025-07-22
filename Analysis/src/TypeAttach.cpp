@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeAttach.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Error.h"
 #include "Luau/Module.h"
 #include "Luau/RecursionCounter.h"
@@ -12,6 +13,8 @@
 #include "Luau/TypeFunction.h"
 
 #include <string>
+
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
@@ -194,10 +197,44 @@ public:
 
             char* name = allocateString(*allocator, propName);
 
-            props.data[idx].name = AstName(name);
-            props.data[idx].type = Luau::visit(*this, prop.type()->ty);
-            props.data[idx].location = Location();
-            idx++;
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            {
+                if (prop.isShared())
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                    props.data[idx].access = AstTableAccess::ReadWrite;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
+                else
+                {
+                    if (prop.readTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                        props.data[idx].access = AstTableAccess::Read;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+
+                    if (prop.writeTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
+                        props.data[idx].access = AstTableAccess::Write;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+                }
+            }
+            else
+            {
+                props.data[idx].name = AstName(name);
+                props.data[idx].type = Luau::visit(*this, prop.type_DEPRECATED()->ty);
+                props.data[idx].location = Location();
+                idx++;
+            }
         }
 
         AstTableIndexer* indexer = nullptr;
@@ -217,38 +254,72 @@ public:
         return Luau::visit(*this, mtv.table->ty);
     }
 
-    AstType* operator()(const ClassType& ctv)
+    AstType* operator()(const ExternType& etv)
     {
         RecursionCounter counter(&count);
 
-        char* name = allocateString(*allocator, ctv.name);
+        char* name = allocateString(*allocator, etv.name);
 
-        if (!options.expandClassProps || hasSeen(&ctv) || count > 1)
+        if (!options.expandExternTypeProps || hasSeen(&etv) || count > 1)
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{name}, std::nullopt, Location());
 
         AstArray<AstTableProp> props;
-        props.size = ctv.props.size();
+        props.size = etv.props.size();
         props.data = static_cast<AstTableProp*>(allocator->allocate(sizeof(AstTableProp) * props.size));
 
         int idx = 0;
-        for (const auto& [propName, prop] : ctv.props)
+        for (const auto& [propName, prop] : etv.props)
         {
             char* name = allocateString(*allocator, propName);
 
-            props.data[idx].name = AstName{name};
-            props.data[idx].type = Luau::visit(*this, prop.type()->ty);
-            props.data[idx].location = Location();
-            idx++;
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            {
+                if (prop.isShared())
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                    props.data[idx].access = AstTableAccess::ReadWrite;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
+                else
+                {
+                    if (prop.readTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                        props.data[idx].access = AstTableAccess::Read;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+
+                    if (prop.writeTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
+                        props.data[idx].access = AstTableAccess::Write;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+                }
+            }
+            else
+            {
+                props.data[idx].name = AstName{name};
+                props.data[idx].type = Luau::visit(*this, prop.type_DEPRECATED()->ty);
+                props.data[idx].location = Location();
+                idx++;
+            }
         }
 
         AstTableIndexer* indexer = nullptr;
-        if (ctv.indexer)
+        if (etv.indexer)
         {
             RecursionCounter counter(&count);
 
             indexer = allocator->alloc<AstTableIndexer>();
-            indexer->indexType = Luau::visit(*this, ctv.indexer->indexType->ty);
-            indexer->resultType = Luau::visit(*this, ctv.indexer->indexResultType->ty);
+            indexer->indexType = Luau::visit(*this, etv.indexer->indexType->ty);
+            indexer->resultType = Luau::visit(*this, etv.indexer->indexResultType->ty);
         }
 
         return allocator->alloc<AstTypeTable>(Location(), props, indexer);
@@ -305,7 +376,7 @@ public:
             std::optional<AstArgumentName>* arg = &argNames.data[i++];
 
             if (el)
-                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), el->location));
+                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), Location()));
             else
                 new (arg) std::optional<AstArgumentName>();
         }
@@ -325,8 +396,9 @@ public:
         if (retTail)
             retTailAnnotation = rehydrate(*retTail);
 
+        auto returnAnnotation = allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{returnTypes, retTailAnnotation});
         return allocator->alloc<AstTypeFunction>(
-            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
+            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, returnAnnotation
         );
     }
     AstType* operator()(const ErrorType&)
@@ -594,7 +666,7 @@ public:
                 if (tail)
                     variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
 
-                fn->returnAnnotation = AstTypeList{typeAstPack(ret), variadicAnnotation};
+                fn->returnAnnotation = allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{typeAstPack(ret), variadicAnnotation});
             }
         }
 

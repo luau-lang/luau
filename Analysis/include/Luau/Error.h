@@ -332,11 +332,11 @@ struct TypePackMismatch
     bool operator==(const TypePackMismatch& rhs) const;
 };
 
-struct DynamicPropertyLookupOnClassesUnsafe
+struct DynamicPropertyLookupOnExternTypesUnsafe
 {
     TypeId ty;
 
-    bool operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const;
+    bool operator==(const DynamicPropertyLookupOnExternTypesUnsafe& rhs) const;
 };
 
 struct UninhabitedTypeFunction
@@ -455,6 +455,55 @@ struct UserDefinedTypeFunctionError
     bool operator==(const UserDefinedTypeFunctionError& rhs) const;
 };
 
+struct ReservedIdentifier
+{
+    std::string name;
+
+    bool operator==(const ReservedIdentifier& rhs) const;
+};
+
+struct UnexpectedArrayLikeTableItem
+{
+    bool operator==(const UnexpectedArrayLikeTableItem&) const
+    {
+        return true;
+    }
+};
+
+struct CannotCheckDynamicStringFormatCalls
+{
+    bool operator==(const CannotCheckDynamicStringFormatCalls&) const
+    {
+        return true;
+    }
+};
+
+// Error during subtyping when the number of generic types between compared types does not match
+struct GenericTypeCountMismatch
+{
+    size_t subTyGenericCount;
+    size_t superTyGenericCount;
+
+    bool operator==(const GenericTypeCountMismatch& rhs) const;
+};
+
+// Error during subtyping when the number of generic type packs between compared types does not match
+struct GenericTypePackCountMismatch
+{
+    size_t subTyGenericPackCount;
+    size_t superTyGenericPackCount;
+
+    bool operator==(const GenericTypePackCountMismatch& rhs) const;
+};
+
+// Error during subtyping when the number of generic type packs between compared types does not match
+struct MultipleNonviableOverloads
+{
+    size_t attemptedArgCount;
+
+    bool operator==(const MultipleNonviableOverloads& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -492,7 +541,7 @@ using TypeErrorData = Variant<
     TypesAreUnrelated,
     NormalizationTooComplex,
     TypePackMismatch,
-    DynamicPropertyLookupOnClassesUnsafe,
+    DynamicPropertyLookupOnExternTypesUnsafe,
     UninhabitedTypeFunction,
     UninhabitedTypePackFunction,
     WhereClauseNeeded,
@@ -504,7 +553,13 @@ using TypeErrorData = Variant<
     UnexpectedTypeInSubtyping,
     UnexpectedTypePackInSubtyping,
     ExplicitFunctionAnnotationRecommended,
-    UserDefinedTypeFunctionError>;
+    UserDefinedTypeFunctionError,
+    ReservedIdentifier,
+    UnexpectedArrayLikeTableItem,
+    CannotCheckDynamicStringFormatCalls,
+    GenericTypeCountMismatch,
+    GenericTypePackCountMismatch,
+    MultipleNonviableOverloads>;
 
 struct TypeErrorSummary
 {

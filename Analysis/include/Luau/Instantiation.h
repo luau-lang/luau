@@ -133,9 +133,9 @@ struct GenericTypeFinder : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const Luau::ClassType&) override
+    bool visit(TypeId ty, const Luau::ExternType&) override
     {
-        // During function instantiation, classes are not traversed even if they have generics
+        // During function instantiation, extern types are not traversed even if they have generics
         return false;
     }
 };

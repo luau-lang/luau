@@ -140,7 +140,7 @@ private:
     void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
     void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
-    void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
+    void tryUnifyWithExternType(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyNegations(TypeId subTy, TypeId superTy);
 
     TypePackId tryApplyOverloadedFunction(TypeId function, const NormalizedFunctionType& overloads, TypePackId args);

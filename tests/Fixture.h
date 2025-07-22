@@ -1,8 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Config.h"
-#include "Luau/Differ.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
@@ -28,6 +29,10 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 
+LUAU_FASTFLAG(LuauTypeFunOptional)
+LUAU_FASTFLAG(LuauUpdateSetMetatableTypeSignature)
+LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
+
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::LuauSolverV2, FFlag::DebugLuauForceAllNewSolverTests};
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD() DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(__LINE__)
@@ -37,10 +42,45 @@ namespace Luau
 
 struct TypeChecker;
 
+struct TestRequireNode : RequireNode
+{
+    TestRequireNode(ModuleName moduleName, std::unordered_map<ModuleName, std::string>* allSources)
+        : moduleName(std::move(moduleName))
+        , allSources(allSources)
+    {
+    }
+
+    std::string getLabel() const override;
+    std::string getPathComponent() const override;
+    std::unique_ptr<RequireNode> resolvePathToNode(const std::string& path) const override;
+    std::vector<std::unique_ptr<RequireNode>> getChildren() const override;
+    std::vector<RequireAlias> getAvailableAliases() const override;
+
+    ModuleName moduleName;
+    std::unordered_map<ModuleName, std::string>* allSources;
+};
+
+struct TestFileResolver;
+struct TestRequireSuggester : RequireSuggester
+{
+    TestRequireSuggester(TestFileResolver* resolver)
+        : resolver(resolver)
+    {
+    }
+
+    std::unique_ptr<RequireNode> getNode(const ModuleName& name) const override;
+    TestFileResolver* resolver;
+};
+
 struct TestFileResolver
     : FileResolver
     , ModuleResolver
 {
+    TestFileResolver()
+        : FileResolver(std::make_shared<TestRequireSuggester>(this))
+    {
+    }
+
     std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
 
     const ModulePtr getModule(const ModuleName& moduleName) const override;
@@ -107,10 +147,14 @@ struct Fixture
     TypeId requireTypeAlias(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
+    std::string canonicalize(TypeId ty);
+
     // While most flags can be flipped inside the unit test, some code changes affect the state that is part of Fixture initialization
     // Most often those are changes related to builtin type definitions.
     // In that case, flag can be forced to 'true' using the example below:
     // ScopedFastFlag sff_LuauExampleFlagDefinition{FFlag::LuauExampleFlagDefinition, true};
+    ScopedFastFlag sff_LuauUpdateSetMetatableTypeSignature{FFlag::LuauUpdateSetMetatableTypeSignature, true};
+    ScopedFastFlag sff_LuauUpdateGetMetatableTypeSignature{FFlag::LuauUpdateGetMetatableTypeSignature, true};
 
     // Arena freezing marks the `TypeArena`'s underlying memory as read-only, raising an access violation whenever you mutate it.
     // This is useful for tracking down violations of Luau's memory model.
@@ -120,9 +164,8 @@ struct Fixture
     TestConfigResolver configResolver;
     NullModuleResolver moduleResolver;
     std::unique_ptr<SourceModule> sourceModule;
-    Frontend frontend;
     InternalErrorReporter ice;
-    NotNull<BuiltinTypes> builtinTypes;
+    
 
     std::string decorateWithTypes(const std::string& code);
 
@@ -139,14 +182,27 @@ struct Fixture
     void registerTestTypes();
 
     LoadDefinitionFileResult loadDefinition(const std::string& source, bool forAutocomplete = false);
-
+    // TODO: test theory about dynamic dispatch
+    NotNull<BuiltinTypes> getBuiltins();
+    virtual Frontend& getFrontend();
 private:
     bool hasDumpedErrors = false;
+protected:
+    bool forAutocomplete = false;
+    std::optional<Frontend> frontend;
+    BuiltinTypes* builtinTypes = nullptr;
+
+    TypeArena simplifierArena;
+    SimplifierPtr simplifier{nullptr, nullptr};
 };
 
 struct BuiltinsFixture : Fixture
 {
     explicit BuiltinsFixture(bool prepareAutocomplete = false);
+
+    // For the purpose of our tests, we're always the latest version of type functions.
+    ScopedFastFlag sff_optionalInTypeFunctionLib{FFlag::LuauTypeFunOptional, true};
+    Frontend& getFrontend() override;
 };
 
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);
@@ -177,8 +233,8 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Wa
 
 std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
-void registerHiddenTypes(Frontend* frontend);
-void createSomeClasses(Frontend* frontend);
+void registerHiddenTypes(Frontend& frontend);
+void createSomeExternTypes(Frontend& frontend);
 
 template<typename E>
 const E* findError(const CheckResult& result)
@@ -191,84 +247,6 @@ const E* findError(const CheckResult& result)
 
     return nullptr;
 }
-
-template<typename BaseFixture>
-struct DifferFixtureGeneric : BaseFixture
-{
-    std::string normalizeWhitespace(std::string msg)
-    {
-        std::string normalizedMsg = "";
-        bool wasWhitespace = true;
-        for (char c : msg)
-        {
-            bool isWhitespace = c == ' ' || c == '\n';
-            if (wasWhitespace && isWhitespace)
-                continue;
-            normalizedMsg += isWhitespace ? ' ' : c;
-            wasWhitespace = isWhitespace;
-        }
-        if (wasWhitespace)
-            normalizedMsg.pop_back();
-        return normalizedMsg;
-    }
-
-    void compareNe(TypeId left, TypeId right, const std::string& expectedMessage, bool multiLine)
-    {
-        compareNe(left, std::nullopt, right, std::nullopt, expectedMessage, multiLine);
-    }
-
-    void compareNe(
-        TypeId left,
-        std::optional<std::string> symbolLeft,
-        TypeId right,
-        std::optional<std::string> symbolRight,
-        const std::string& expectedMessage,
-        bool multiLine
-    )
-    {
-        DifferResult diffRes = diffWithSymbols(left, right, symbolLeft, symbolRight);
-        REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
-        std::string diffMessage = diffRes.diffError->toString(multiLine);
-        CHECK_EQ(expectedMessage, diffMessage);
-    }
-
-    void compareTypesNe(
-        const std::string& leftSymbol,
-        const std::string& rightSymbol,
-        const std::string& expectedMessage,
-        bool forwardSymbol = false,
-        bool multiLine = false
-    )
-    {
-        if (forwardSymbol)
-        {
-            compareNe(
-                BaseFixture::requireType(leftSymbol), leftSymbol, BaseFixture::requireType(rightSymbol), rightSymbol, expectedMessage, multiLine
-            );
-        }
-        else
-        {
-            compareNe(
-                BaseFixture::requireType(leftSymbol), std::nullopt, BaseFixture::requireType(rightSymbol), std::nullopt, expectedMessage, multiLine
-            );
-        }
-    }
-
-    void compareEq(TypeId left, TypeId right)
-    {
-        DifferResult diffRes = diff(left, right);
-        CHECK(!diffRes.diffError);
-        if (diffRes.diffError)
-            INFO(diffRes.diffError->toString());
-    }
-
-    void compareTypesEq(const std::string& leftSymbol, const std::string& rightSymbol)
-    {
-        compareEq(BaseFixture::requireType(leftSymbol), BaseFixture::requireType(rightSymbol));
-    }
-};
-using DifferFixture = DifferFixtureGeneric<Fixture>;
-using DifferFixtureWithBuiltins = DifferFixtureGeneric<BuiltinsFixture>;
 
 } // namespace Luau
 

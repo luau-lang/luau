@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 struct DataFlowGraphFixture
 {
@@ -44,6 +45,16 @@ struct DataFlowGraphFixture
         T* node = query<T, N>(module, nths);
         REQUIRE(node);
         return graph->getDef(node);
+    }
+
+    void checkOperands(const Phi* phi, std::vector<DefId> operands)
+    {
+        Set<const Def*> operandSet{nullptr};
+        for (auto o : operands)
+            operandSet.insert(o.get());
+        CHECK(phi->operands.size() == operandSet.size());
+        for (auto o : phi->operands)
+            CHECK(operandSet.contains(o.get()));
     }
 };
 
@@ -118,6 +129,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi")
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_while")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     dfg(R"(
         local x
 
@@ -132,8 +145,9 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_while")
     DefId x1 = getDef<AstExprLocal, 1>(); // x = true
     DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
 
-    CHECK(x0 == x1);
-    CHECK(x1 == x2);
+    auto phi = get<Phi>(x2);
+    REQUIRE(phi);
+    checkOperands(phi, {x0, x1});
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_while")
@@ -156,6 +170,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_while")
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_repeat")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     dfg(R"(
         local x
 
@@ -170,7 +186,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_repeat")
     DefId x1 = getDef<AstExprLocal, 1>(); // x = true
     DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
 
-    CHECK(x0 == x1);
+    CHECK(x0 != x1);
     CHECK(x1 == x2);
 }
 
@@ -194,6 +210,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_repeat")
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_for")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     dfg(R"(
         local x
 
@@ -208,8 +226,9 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_for")
     DefId x1 = getDef<AstExprLocal, 1>(); // x = true
     DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
 
-    CHECK(x0 == x1);
-    CHECK(x1 == x2);
+    auto phi = get<Phi>(x2);
+    REQUIRE(phi);
+    checkOperands(phi, {x0, x1});
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_for")
@@ -232,6 +251,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_for")
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_for_in")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     dfg(R"(
         local x
 
@@ -246,8 +267,9 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_for_in")
     DefId x1 = getDef<AstExprLocal, 1>(); // x = true
     DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
 
-    CHECK(x0 == x1);
-    CHECK(x1 == x2);
+    auto phi = get<Phi>(x2);
+    REQUIRE(phi);
+    checkOperands(phi, {x0, x1});
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_for_in")
@@ -270,6 +292,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_for_in")
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_preexisting_property_not_owned_by_while")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     dfg(R"(
         local t = {}
         t.x = 5
@@ -285,8 +309,9 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_preexisting_property_not_owned_b
     DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = true
     DefId x3 = getDef<AstExprIndexName, 3>(); // local y = t.x
 
-    CHECK(x1 == x2);
-    CHECK(x2 == x3);
+    auto phi = get<Phi>(x3);
+    REQUIRE(phi);
+    checkOperands(phi, {x1, x2});
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_non_preexisting_property_not_owned_by_while")
@@ -439,15 +464,14 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "function_captures_are_phi_nodes_of_all_
     DefId x4 = getDef<AstExprLocal, 3>(); // x = "five"
 
     CHECK(x1 != x2);
-    CHECK(x2 != x3);
+    CHECK(x2 == x3);
     CHECK(x3 != x4);
 
     const Phi* phi = get<Phi>(x2);
     REQUIRE(phi);
-    REQUIRE(phi->operands.size() == 3);
+    REQUIRE(phi->operands.size() == 2);
     CHECK(phi->operands.at(0) == x1);
-    CHECK(phi->operands.at(1) == x3);
-    CHECK(phi->operands.at(2) == x4);
+    CHECK(phi->operands.at(1) == x4);
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "function_captures_are_phi_nodes_of_all_versions_properties")

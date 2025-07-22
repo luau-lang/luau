@@ -14,7 +14,12 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
-LUAU_FASTFLAG(LuauMetatableTypeFunctions)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauErrorSuppressionTypeFunctionArgs)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
+LUAU_FASTFLAG(LuauEmptyStringInKeyOf)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -52,14 +57,14 @@ struct TypeFunctionFixture : Fixture
             }
         };
 
-        unfreeze(frontend.globals.globalTypes);
-        TypeId t = frontend.globals.globalTypes.addType(GenericType{"T"});
+        unfreeze(getFrontend().globals.globalTypes);
+        TypeId t = getFrontend().globals.globalTypes.addType(GenericType{"T"});
         GenericTypeDefinition genericT{t};
 
-        ScopePtr globalScope = frontend.globals.globalScope;
+        ScopePtr globalScope = getFrontend().globals.globalScope;
         globalScope->exportedTypeBindings["Swap"] =
-            TypeFun{{genericT}, frontend.globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFunction}, {t}, {}})};
-        freeze(frontend.globals.globalTypes);
+            TypeFun{{genericT}, getFrontend().globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFunction}, {t}, {}})};
+        freeze(getFrontend().globals.globalTypes);
     }
 };
 
@@ -148,17 +153,15 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
         local b = impossible(true)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(6, result);
-    CHECK(toString(result.errors[0]) == "Type function instance Swap<Swap<T>> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type function instance Swap<T> is uninhabited");
-    CHECK(toString(result.errors[2]) == "Type function instance Swap<Swap<T>> is uninhabited");
-    CHECK(toString(result.errors[3]) == "Type function instance Swap<T> is uninhabited");
-    CHECK(toString(result.errors[4]) == "Type function instance Swap<Swap<T>> is uninhabited");
-    CHECK(toString(result.errors[5]) == "Type function instance Swap<T> is uninhabited");
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Type 'number' could not be converted into 'never'");
+    CHECK(toString(result.errors[1]) == "Type 'boolean' could not be converted into 'never'");
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
 {
+    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
+
     if (!FFlag::LuauSolverV2)
         return;
 
@@ -172,9 +175,8 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(requireType("a")) == "{string}");
     CHECK(toString(requireType("b")) == "{number}");
-    // FIXME: table types are constructing a trivial union here.
-    CHECK(toString(requireType("c")) == "{Swap<boolean | boolean | boolean>}");
-    CHECK(toString(result.errors[0]) == "Type function instance Swap<boolean | boolean | boolean> is uninhabited");
+    CHECK(toString(requireType("c")) == "{Swap<boolean>}");
+    CHECK(toString(result.errors[0]) == "Type function instance Swap<boolean> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "function_internal_functions")
@@ -349,6 +351,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
         type KeysOfMyObject = keyof<MyObject>
@@ -359,16 +363,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"x\" | \"y\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"x\" | \"y\"", toString(tm->wantedType));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
 {
     if (!FFlag::LuauSolverV2)
         return;
+
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local metatable = { __index = {w = 1} }
@@ -382,10 +388,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->wantedType));
+    CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_single_entry_no_uniontype")
@@ -427,6 +433,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     if (!FFlag::LuauSolverV2)
         return;
 
@@ -442,21 +450,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"z\"", toString(tpm->wantedTp));
-    CHECK_EQ("string", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"z\"", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
 
-    tpm = get<TypePackMismatch>(result.errors[1]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"z\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+    tm = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(tm);
+    CHECK_EQ("\"z\"", toString(tm->wantedType));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_of_differing_tables")
 {
     if (!FFlag::LuauSolverV2)
         return;
+
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
@@ -468,10 +478,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_o
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"z\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"y\" | \"z\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"z\"", toString(tm->wantedType));
+    CHECK_EQ("\"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_never_for_empty_table")
@@ -494,6 +504,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
         type KeysOfMyObject = rawkeyof<MyObject>
@@ -504,16 +516,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"x\" | \"y\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"x\" | \"y\"", toString(tm->wantedType));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
 {
     if (!FFlag::LuauSolverV2)
         return;
+
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local metatable = { __index = {w = 1} }
@@ -527,10 +541,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"x\" | \"y\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"x\" | \"y\"", toString(tm->wantedType));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_errors_if_it_has_nontable_part")
@@ -556,6 +570,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_unio
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
         type MyOtherObject = { w: number, y: number, z: number }
@@ -566,10 +582,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_unio
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"z\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"y\" | \"z\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"z\"", toString(tm->wantedType));
+    CHECK_EQ("\"y\" | \"z\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_never_for_empty_table")
@@ -587,10 +603,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_never_for_empty_table
     CHECK(toString(requireType("foo")) == "never");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_on_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_on_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
+
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type KeysOfMyObject = keyof<BaseClass>
@@ -601,13 +619,13 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_on_classes")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"BaseMethod\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"BaseField\" | \"BaseMethod\" | \"Touched\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"BaseMethod\"", toString(tm->wantedType));
+    CHECK_EQ("\"BaseField\" | \"BaseMethod\" | \"Touched\"", toString(tm->givenType));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_errors_if_it_has_nonclass_part")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_errors_if_it_has_nonclass_part")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -624,7 +642,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_errors_if_it_has_nonclass_p
     CHECK(toString(result.errors[1]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_common_subset_if_union_of_differing_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_common_subset_if_union_of_differing_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -638,7 +656,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_common_subset_if_union_of_d
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_with_parent_classes_too")
+TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_with_parent_extern_types_too")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -652,7 +670,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_with_parent_classes_t
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "binary_type_function_works_with_default_argument")
+TEST_CASE_FIXTURE(ExternTypeFixture, "binary_type_function_works_with_default_argument")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -667,7 +685,7 @@ TEST_CASE_FIXTURE(ClassFixture, "binary_type_function_works_with_default_argumen
     CHECK("() -> number" == toString(requireType("thunk")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "vector2_multiply_is_overloaded")
+TEST_CASE_FIXTURE(ExternTypeFixture, "vector2_multiply_is_overloaded")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -726,6 +744,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true}
+    };
+
     CheckResult result = check(R"(
         local EnumVariants = {
             ["a"] = 1, ["b"] = 2, ["c"] = 3
@@ -741,9 +764,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
         fnB(result)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
-    CHECK(get<FunctionExitsWithoutReturning>(result.errors[1]));
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, FunctionExitsWithoutReturning);
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
@@ -904,10 +926,92 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_of_any_is_any")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        type T = index<any, "a">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "any");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        local PlayerData = {}
+
+        type Keys = index<typeof(PlayerData), true>
+
+        local function UpdateData(key: Keys)
+            PlayerData[key] = 4
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK(toString(requireTypeAlias("Keys")) == "index<PlayerData, true>");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff2")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        local PlayerData = {}
+
+        type Keys = index<typeof(PlayerData), number>
+
+        local function UpdateData(key: Keys)
+            PlayerData[key] = 4
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("Keys")) == "number");
+}
+
+#if 0
+// CLI-148701
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_should_not_crash_on_cyclic_stuff3")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        local PlayerData = {
+            Coins = 0,
+            Level = 1,
+            Exp = 0,
+            MapExp = 100,
+        }
+
+        type Keys = index<typeof(PlayerData), true>
+
+        local function UpdateData(key: Keys, value)
+            PlayerData[key] = value
+        end
+
+        UpdateData("Coins", 2)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("Keys")) == "unknown");
+}
+#endif
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
 {
     if (!FFlag::LuauSolverV2)
         return;
+
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
@@ -921,10 +1025,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("boolean", toString(tpm->wantedTp));
-    CHECK_EQ("string", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("boolean", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
@@ -995,6 +1099,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    // t :: t1 where t1 = {metatable {__index: t1, __tostring: (t1) -> string}}
+    CheckResult result = check(R"(
+        local mt = {}
+        local t = setmetatable({}, mt)
+        mt.__index = t
+
+        function mt:__tostring()
+            return t.p
+        end
+
+        type IndexFromT = index<typeof(t), "p">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
+    CHECK_EQ("Property '\"p\"' does not exist on type 't'", toString(result.errors[1]));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_generic_types")
 {
     if (!FFlag::LuauSolverV2)
@@ -1033,6 +1160,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_bad_indexer")
     CHECK(toString(result.errors[1]) == "Property 'boolean' does not exist on type 'MyObject'");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metamethods")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        type Foo = {x: string}
+        local t = {}
+        setmetatable(t, {
+            __index = function(x: string): Foo
+                return {x = x}
+            end
+        })
+
+        type Bar = index<typeof(t), "bar">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+
+    CHECK_EQ(toString(requireTypeAlias("Bar"), {true}), "{ x: string }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metamethods2")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+        type Foo = {x: string}
+        local t = {}
+        setmetatable(t, {
+            __index = function(x: string): Foo
+                return {x = x}
+            end
+        })
+
+        type Bar = index<typeof(t), number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_var_indexer")
 {
     if (!FFlag::LuauSolverV2)
@@ -1045,9 +1215,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_var_indexer")
         type errType1 = index<MyObject, key>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Second argument to index<MyObject, _> is not a valid index type");
-    CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+    if (FFlag::LuauErrorSuppressionTypeFunctionArgs)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(toString(result.errors[0]) == "Unknown type 'key'");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        CHECK(toString(result.errors[0]) == "Second argument to index<MyObject, _> is not a valid index type");
+        CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_union_type_indexer")
@@ -1096,7 +1274,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_rfc_alternative_section"
         type MyObject = {a: string}
         type MyObject2 = {a: string, b: number}
 
-        local function edgeCase(param: MyObject) 
+        local function edgeCase(param: MyObject)
             type unknownType = index<typeof(param), "b">
         end
     )");
@@ -1105,7 +1283,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_rfc_alternative_section"
     CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject'");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "index_type_function_works_on_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -1119,7 +1297,7 @@ TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes_with_parents")
+TEST_CASE_FIXTURE(ExternTypeFixture, "index_type_function_works_on_extern_types_with_parents")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -1164,6 +1342,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
         type RawAType = rawget<MyObject, "a">
@@ -1175,10 +1355,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("boolean", toString(tpm->wantedTp));
-    CHECK_EQ("string", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("boolean", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_array")
@@ -1206,9 +1386,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_errors_w_var_indexer")
         type errType1 = rawget<MyObject, key>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Second argument to rawget<MyObject, _> is not a valid index type");
-    CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+
+    if (FFlag::LuauErrorSuppressionTypeFunctionArgs)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(toString(result.errors[0]) == "Unknown type 'key'");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        CHECK(toString(result.errors[0]) == "Second argument to rawget<MyObject, _> is not a valid index type");
+        CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexer")
@@ -1264,7 +1453,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatable
     CHECK(toString(result.errors[1]) == "Property '\"Bar\" | \"Foo\"' does not exist on type 'exampleClass3'");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "rawget_type_function_errors_w_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "rawget_type_function_errors_w_extern_types")
 {
     if (!FFlag::LuauSolverV2)
         return;
@@ -1295,7 +1484,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_len_type_function_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1313,7 +1502,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_metatable_2")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1337,7 +1526,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatable_with_metatable_metamethod")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1357,7 +1546,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatab
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_invalid_set")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1369,7 +1558,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_invalid
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_nontable_metatable")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1381,7 +1570,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_nontabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_type_function_returns_nil_if_no_metatable")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1408,7 +1597,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_type_function_returns_nil_if_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1424,7 +1613,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_union")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1435,21 +1624,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_u
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const PrimitiveType* stringType = get<PrimitiveType>(builtinTypes->stringType);
+    const PrimitiveType* stringType = get<PrimitiveType>(getBuiltins()->stringType);
     REQUIRE(stringType->metatable);
 
     TypeArena arena = TypeArena{};
 
-    std::string expected1 = toString(arena.addType(UnionType{{*stringType->metatable, builtinTypes->emptyTableType}}), {true});
+    std::string expected1 = toString(arena.addType(UnionType{{*stringType->metatable, getBuiltins()->emptyTableType}}), {true});
     CHECK_EQ(toString(requireTypeAlias("Metatable"), {true}), expected1);
 
-    std::string expected2 = toString(arena.addType(IntersectionType{{*stringType->metatable, builtinTypes->emptyTableType}}), {true});
+    std::string expected2 = toString(arena.addType(IntersectionType{{*stringType->metatable, getBuiltins()->emptyTableType}}), {true});
     CHECK_EQ(toString(requireTypeAlias("IntersectMetatable"), {true}), expected2);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_string")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1459,7 +1648,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_s
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const PrimitiveType* stringType = get<PrimitiveType>(builtinTypes->stringType);
+    const PrimitiveType* stringType = get<PrimitiveType>(getBuiltins()->stringType);
     REQUIRE(stringType->metatable);
 
     std::string expected = toString(*stringType->metatable, {true});
@@ -1470,7 +1659,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable_for_s
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_respects_metatable_metamethod")
 {
-    if (!FFlag::LuauSolverV2 || !FFlag::LuauMetatableTypeFunctions)
+    if (!FFlag::LuauSolverV2)
         return;
 
     CheckResult result = check(R"(
@@ -1482,6 +1671,267 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_respects_metatable_metamethod")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(toString(requireTypeAlias("Metatable")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_function_correct_cycle_check")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+type foo<T> = { a: add<T, T>, b : add<T, T> }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "len_typefun_on_metatable")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+local t = setmetatable({}, { __mode = "v" })
+
+local function f()
+    table.insert(t, {})
+    print(#t * 100)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "has_prop_on_irreducible_type_function")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+local test = "a" + "b"
+print(test.a)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "Operator '+' could not be applied to operands of types string and string; there is no corresponding overload for __add" ==
+        toString(result.errors[0])
+    );
+    CHECK("Type 'add<string, string>' does not have key 'a'" == toString(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_suppression_should_work_on_type_functions")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag errorSuppressionTypeFunctionArgs{FFlag::LuauErrorSuppressionTypeFunctionArgs, true};
+
+    CheckResult result = check(R"(
+        local Colours = {
+            Red = 1,
+            Blue = 2,
+            Green = 3,
+            Taupe = 4,
+        }
+
+        -- namespace mixup here, Colours isn't a type, it's a normal identifier
+        export type Colour = keyof<Colours>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Unknown type 'Colours'" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fully_dispatch_type_function_that_is_parameterized_on_a_stuck_type_function")
+{
+    // In this test, we infer
+    //
+    // (c + d) : add<add<nil, nil>, *error-type*>
+    //
+    // This type function is stuck because it is parameterized on a stuck type
+    // function.  The call constraint must be able to dispatch.
+
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local function f()
+            local a
+            local b
+
+            local c = a + b
+
+            print(c + d)
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
+
+    CHECK("() -> ()" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "undefined_add_application")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+    };
+
+    CheckResult result = check(R"(
+        function add<A, B>(a: A, b: B): add<A, B>
+            return a + b
+        end
+
+        local s = add(5, "hello")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, UninhabitedTypeFunction);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_props")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag _{FFlag::LuauEmptyStringInKeyOf, true};
+
+    loadDefinition(R"(
+        declare class Foobar
+            one: boolean
+            [""]: number
+        end
+    )");
+
+    CheckResult results = check(R"(
+        export type FoobarKeys = keyof<Foobar>;
+        export type TableKeys = keyof<{ [""]: string, two: boolean }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+    CHECK_EQ(R"("" | "one")", toString(requireTypeAlias("FoobarKeys")));
+    CHECK_EQ(R"("" | "two")", toString(requireTypeAlias("TableKeys")));
+
+}
+
+struct TFFixture
+{
+    TypeArena arena_;
+    NotNull<TypeArena> arena{&arena_};
+
+    BuiltinTypes builtinTypes_;
+    NotNull<BuiltinTypes> getBuiltins(){ return NotNull{&builtinTypes_};}
+
+    ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
+
+    InternalErrorReporter ice;
+    UnifierSharedState unifierState{&ice};
+    SimplifierPtr simplifier = EqSatSimplification::newSimplifier(arena, getBuiltins());
+    Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}, SolverMode::New};
+    TypeCheckLimits limits;
+    TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
+
+    const ScopedFastFlag sff[1] = {
+        {FFlag::LuauEagerGeneralization4, true},
+    };
+
+    BuiltinTypeFunctions builtinTypeFunctions;
+
+    TypeFunctionContext tfc_{
+        arena,
+        getBuiltins(),
+        NotNull{globalScope.get()},
+        NotNull{simplifier.get()},
+        NotNull{&normalizer},
+        NotNull{&runtime},
+        NotNull{&ice},
+        NotNull{&limits}
+    };
+
+    NotNull<TypeFunctionContext> tfc{&tfc_};
+};
+
+TEST_CASE_FIXTURE(TFFixture, "refine<G, ~(false?)>")
+{
+    TypeId g = arena->addType(GenericType{globalScope.get(), Polarity::Negative});
+
+    TypeId refineTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.refineFunc, {g, getBuiltins()->truthyType}});
+
+    FunctionGraphReductionResult res = reduceTypeFunctions(refineTy, Location{}, tfc);
+
+    CHECK(res.reducedTypes.size() == 1);
+
+    CHECK(res.errors.size() == 0);
+    CHECK(res.irreducibleTypes.size() == 0);
+    CHECK(res.blockedTypes.size() == 0);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "or<'a, 'b>")
+{
+    TypeId aType = arena->freshType(getBuiltins(), globalScope.get());
+    TypeId bType = arena->freshType(getBuiltins(), globalScope.get());
+
+    TypeId orType = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.orFunc, {aType, bType}});
+
+    FunctionGraphReductionResult res = reduceTypeFunctions(orType, Location{}, tfc);
+
+    CHECK(res.reducedTypes.size() == 1);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "a_type_function_parameterized_on_generics_is_solved")
+{
+    TypeId a = arena->addType(GenericType{"A"});
+    TypeId b = arena->addType(GenericType{"B"});
+
+    TypeId addTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {a, b}});
+
+    reduceTypeFunctions(addTy, Location{}, tfc);
+
+    const auto tfit = get<TypeFunctionInstanceType>(addTy);
+    REQUIRE(tfit);
+
+    CHECK(tfit->state == TypeFunctionInstanceState::Solved);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_solved_tf_is_solved")
+{
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
+    TypeId a = arena->addType(GenericType{"A"});
+    TypeId b = arena->addType(GenericType{"B"});
+
+    TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {a, b}});
+
+    TypeId outerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.numberType, innerAddTy}});
+
+    reduceTypeFunctions(outerAddTy, Location{}, tfc);
+
+    const auto tfit = get<TypeFunctionInstanceType>(outerAddTy);
+    REQUIRE(tfit);
+
+    CHECK(tfit->state == TypeFunctionInstanceState::Solved);
+}
+
+TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_stuck_tf_is_stuck")
+{
+    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+
+    TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.bufferType, builtinTypes_.booleanType}});
+
+    TypeId outerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.numberType, innerAddTy}});
+
+    reduceTypeFunctions(outerAddTy, Location{}, tfc);
+
+    const auto tfit = get<TypeFunctionInstanceType>(outerAddTy);
+    REQUIRE(tfit);
+
+    CHECK(tfit->state == TypeFunctionInstanceState::Stuck);
 }
 
 TEST_SUITE_END();

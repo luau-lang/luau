@@ -40,11 +40,11 @@ struct InConditionalContext
     TypeContext* typeContext;
     TypeContext oldValue;
 
-    explicit InConditionalContext(TypeContext* c)
+    explicit InConditionalContext(TypeContext* c, TypeContext newValue = TypeContext::Condition)
         : typeContext(c)
         , oldValue(*c)
     {
-        *typeContext = TypeContext::Condition;
+        *typeContext = newValue;
     }
 
     ~InConditionalContext()
@@ -288,5 +288,77 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
  * @param ty Free type to track.
  */
 void trackInteriorFreeType(Scope* scope, TypeId ty);
+
+void trackInteriorFreeTypePack(Scope* scope, TypePackId tp);
+
+// A fast approximation of subTy <: superTy
+bool fastIsSubtype(TypeId subTy, TypeId superTy);
+
+/**
+ * @param tables A list of potential table parts of a union
+ * @param exprType Type of the expression to match
+ * @return An element of `tables` that best matches `exprType`.
+ */
+std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+
+/**
+ * @param item A member of a table in an AST
+ * @return Whether the item is a key-value pair with a statically defined string key.
+ *
+ * ```
+ * {
+ *      ["foo"] = ..., -- is a record
+ *      bar = ..., -- is a record
+ *      ..., -- not a record: non-string key (number)
+ *      [true] = ..., -- not a record: non-string key (boolean)
+ *      [ foobar() ] = ..., -- not a record: unknown key value.
+ *      ["foo" .. "bar"] = ..., -- not a record (don't make us handle it).
+ * }
+ * ```
+ */
+bool isRecord(const AstExprTable::Item& item);
+
+/**
+ * Do a quick check for whether the type `ty` is exactly `false | nil`. This
+ * will *not* do any sort of semantic analysis, for example the type:
+ *
+ *      (boolean?) & (false | nil)
+ *
+ * ... will not be considered falsy, despite it being semantically equivalent
+ * to `false | nil`.
+ *
+ * @return Whether the input is approximately `false | nil`.
+ */
+bool isApproximatelyFalsyType(TypeId ty);
+
+/**
+ * Do a quick check for whether the type `ty` is exactly `~(false | nil)`.
+ * This will *not* do any sort of semantic analysis, for example the type:
+ *
+ *      unknown & ~(false | nil)
+ *
+ * ... will not be considered falsy, despite it being semantically equivalent
+ * to `~(false | nil)`.
+ *
+ * @return Whether the input is approximately `~(false | nil)`.
+ */
+bool isApproximatelyTruthyType(TypeId ty);
+
+// Unwraps any grouping expressions iteratively.
+AstExpr* unwrapGroup(AstExpr* expr);
+
+// These are magic types used in `TypeChecker2` and `NonStrictTypeChecker`
+//
+// `_luau_print` causes it's argument to be printed out, as in:
+//
+//      local x: _luau_print<number>
+//
+// ... will cause `number` to be printed.
+inline constexpr char kLuauPrint[] = "_luau_print";
+// `_luau_force_constraint_solving_incomplete` will cause us to _always_ emit
+// a constraint solving incomplete error to test semantics around that specific
+// error.
+inline constexpr char kLuauForceConstraintSolvingIncomplete[] = "_luau_force_constraint_solving_incomplete";
+
 
 } // namespace Luau

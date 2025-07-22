@@ -7,8 +7,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauVectorLibNativeDot);
-
 namespace Luau
 {
 namespace CodeGen
@@ -590,7 +588,6 @@ void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::faddp(RegisterA64 dst, RegisterA64 src)
 {
-    LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
     CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
     CODEGEN_ASSERT(dst.kind == src.kind);
 

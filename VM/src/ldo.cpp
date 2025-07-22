@@ -17,9 +17,6 @@
 
 #include <string.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauStackLimit, false)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauPopIncompleteCi, false)
-
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
 
@@ -183,10 +180,10 @@ static void correctstack(lua_State* L, TValue* oldstack)
 void luaD_reallocstack(lua_State* L, int newsize, int fornewci)
 {
     // throw 'out of memory' error because space for a custom error message cannot be guaranteed here
-    if (DFFlag::LuauStackLimit && newsize > MAX_STACK_SIZE)
+    if (newsize > MAX_STACK_SIZE)
     {
-        // reallocation was performaed to setup a new CallInfo frame, which we have to remove
-        if (DFFlag::LuauPopIncompleteCi && fornewci)
+        // reallocation was performed to setup a new CallInfo frame, which we have to remove
+        if (fornewci)
         {
             CallInfo* cip = L->ci - 1;
 
@@ -221,17 +218,7 @@ void luaD_reallocCI(lua_State* L, int newsize)
 
 void luaD_growstack(lua_State* L, int n)
 {
-    if (DFFlag::LuauPopIncompleteCi)
-    {
-        luaD_reallocstack(L, getgrownstacksize(L, n), 0);
-    }
-    else
-    {
-        if (n <= L->stacksize) // double size is enough?
-            luaD_reallocstack(L, 2 * L->stacksize, 0);
-        else
-            luaD_reallocstack(L, L->stacksize + n, 0);
-    }
+    luaD_reallocstack(L, getgrownstacksize(L, n), 0);
 }
 
 CallInfo* luaD_growCI(lua_State* L)
@@ -273,7 +260,22 @@ void luaD_call(lua_State* L, StkId func, int nresults)
     if (++L->nCcalls >= LUAI_MAXCCALLS)
         luaD_checkCstack(L);
 
-    ptrdiff_t old_func = savestack(L, func);
+    // when called from a yieldable C function, maintain yieldable invariant (baseCcalls <= nCcalls)
+    bool fromyieldableccall = false;
+
+    if (L->ci != L->base_ci)
+    {
+        Closure* ccl = clvalue(L->ci->func);
+
+        if (ccl->isC && ccl->c.cont)
+        {
+            fromyieldableccall = true;
+            L->baseCcalls++;
+        }
+    }
+
+    ptrdiff_t funcoffset = savestack(L, func);
+    ptrdiff_t cioffset = saveci(L, L->ci);
 
     if (luau_precall(L, func, nresults) == PCRLUA)
     {                                        // is a Lua function?
@@ -289,8 +291,24 @@ void luaD_call(lua_State* L, StkId func, int nresults)
             L->isactive = false;
     }
 
-    if (nresults != LUA_MULTRET)
-        L->top = restorestack(L, old_func) + nresults;
+    bool yielded = L->status == LUA_YIELD || L->status == LUA_BREAK;
+
+    if (fromyieldableccall)
+    {
+        // restore original yieldable invariant
+        // in case of an error, this would either be restored by luaD_pcall or the thread would no longer be resumable
+        L->baseCcalls--;
+
+        // on yield, we have to set the CallInfo top of the C function including slots for expected results, to restore later
+        if (yielded)
+        {
+            CallInfo* callerci = restoreci(L, cioffset);
+            callerci->top = restorestack(L, funcoffset) + (nresults != LUA_MULTRET ? nresults : 0);
+        }
+    }
+
+    if (nresults != LUA_MULTRET && !yielded)
+        L->top = restorestack(L, funcoffset) + nresults;
 
     L->nCcalls--;
     luaC_checkGC(L);
@@ -336,8 +354,8 @@ static void resume_continue(lua_State* L)
             // C continuation; we expect this to be followed by Lua continuations
             int n = cl->c.cont(L, 0);
 
-            // Continuation can break again
-            if (L->status == LUA_BREAK)
+            // continuation can break or yield again
+            if (L->status == LUA_BREAK || L->status == LUA_YIELD)
                 break;
 
             luau_poscall(L, L->top - n);
@@ -369,6 +387,7 @@ static void resume(lua_State* L, void* ud)
     else
     {
         // resume from previous yield or break
+        LUAU_ASSERT(firstArg >= L->base);
         LUAU_ASSERT(L->status == LUA_YIELD || L->status == LUA_BREAK);
         L->status = 0;
 
@@ -381,6 +400,11 @@ static void resume(lua_State* L, void* ud)
             {
                 // finish interrupted execution of `OP_CALL'
                 luau_poscall(L, firstArg);
+            }
+            else
+            {
+                // restore arguments we have protected for C continuation
+                L->base = L->ci->base;
             }
         }
         else
@@ -482,6 +506,8 @@ static void resume_finish(lua_State* L, int status)
 
 int lua_resume(lua_State* L, lua_State* from, int nargs)
 {
+    api_check(L, L->top - L->base >= nargs);
+
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
         return resume_error(L, "cannot resume non-suspended coroutine", nargs);
@@ -511,6 +537,8 @@ int lua_resume(lua_State* L, lua_State* from, int nargs)
 
 int lua_resumeerror(lua_State* L, lua_State* from)
 {
+    api_check(L, L->top - L->base >= 1);
+
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
         return resume_error(L, "cannot resume non-suspended coroutine", 1);
@@ -584,6 +612,7 @@ static void restore_stack_limit(lua_State* L)
 int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t ef)
 {
     unsigned short oldnCcalls = L->nCcalls;
+    unsigned short oldbaseCcalls = L->baseCcalls;
     ptrdiff_t old_ci = saveci(L, L->ci);
     bool oldactive = L->isactive;
     int status = luaD_rawrunprotected(L, func, u);
@@ -617,8 +646,9 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
 
         bool yieldable = L->nCcalls <= L->baseCcalls; // Inlined logic from 'lua_isyieldable' to avoid potential for an out of line call.
 
-        // restore nCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
+        // restore nCcalls and baseCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
         L->nCcalls = oldnCcalls;
+        L->baseCcalls = oldbaseCcalls;
 
         // an error occurred, check if we have a protected error callback
         if (yieldable && L->global->cb.debugprotectederror)

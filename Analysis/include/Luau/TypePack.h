@@ -1,11 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Common.h"
+#include "Luau/DenseHash.h"
+#include "Luau/NotNull.h"
+#include "Luau/Polarity.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
-#include "Luau/TypeFwd.h"
-#include "Luau/NotNull.h"
-#include "Luau/Common.h"
 
 #include <optional>
 #include <set>
@@ -26,12 +28,14 @@ struct TypeFunctionInstanceTypePack;
 struct FreeTypePack
 {
     explicit FreeTypePack(TypeLevel level);
-    explicit FreeTypePack(Scope* scope);
+    explicit FreeTypePack(Scope* scope, Polarity polarity = Polarity::Unknown);
     FreeTypePack(Scope* scope, TypeLevel level);
 
     int index;
     TypeLevel level;
     Scope* scope = nullptr;
+
+    Polarity polarity = Polarity::Unknown;
 };
 
 struct GenericTypePack
@@ -40,7 +44,7 @@ struct GenericTypePack
     GenericTypePack();
     explicit GenericTypePack(TypeLevel level);
     explicit GenericTypePack(const Name& name);
-    explicit GenericTypePack(Scope* scope);
+    explicit GenericTypePack(Scope* scope, Polarity polarity = Polarity::Unknown);
     GenericTypePack(TypeLevel level, const Name& name);
     GenericTypePack(Scope* scope, const Name& name);
 
@@ -49,6 +53,8 @@ struct GenericTypePack
     Scope* scope = nullptr;
     Name name;
     bool explicitName = false;
+
+    Polarity polarity = Polarity::Unknown;
 };
 
 using BoundTypePack = Unifiable::Bound<TypePackId>;
@@ -100,9 +106,9 @@ struct TypeFunctionInstanceTypePack
 
 struct TypePackVar
 {
-    explicit TypePackVar(const TypePackVariant& ty);
-    explicit TypePackVar(TypePackVariant&& ty);
-    TypePackVar(TypePackVariant&& ty, bool persistent);
+    explicit TypePackVar(const TypePackVariant& tp);
+    explicit TypePackVar(TypePackVariant&& tp);
+    TypePackVar(TypePackVariant&& tp, bool persistent);
 
     bool operator==(const TypePackVar& rhs) const;
 
@@ -169,6 +175,7 @@ struct TypePackIterator
 
 private:
     TypePackId currentTypePack = nullptr;
+    TypePackId tailCycleCheck = nullptr;
     const TypePack* tp = nullptr;
     size_t currentIndex = 0;
 
@@ -178,6 +185,8 @@ private:
 TypePackIterator begin(TypePackId tp);
 TypePackIterator begin(TypePackId tp, const TxnLog* log);
 TypePackIterator end(TypePackId tp);
+
+TypePackId getTail(TypePackId tp);
 
 using SeenSet = std::set<std::pair<const void*, const void*>>;
 
@@ -222,6 +231,7 @@ bool isEmpty(TypePackId tp);
 /// Flattens out a type pack.  Also returns a valid TypePackId tail if the type pack's full size is not known
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp);
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const TxnLog& log);
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks);
 
 /// Returs true if the type pack arose from a function that is declared to be variadic.
 /// Returns *false* for function argument packs that are inferred to be safe to oversaturate!

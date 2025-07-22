@@ -15,8 +15,9 @@
 #include "doctest.h"
 #include <iostream>
 
-LUAU_FASTFLAG(LuauNewNonStrictWarnOnUnknownGlobals)
-LUAU_FASTFLAG(LuauNonStrictVisitorImprovements)
+LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
+LUAU_FASTFLAG(LuauNewNonStrictMoreUnknownSymbols)
+LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 
 using namespace Luau;
 
@@ -65,7 +66,9 @@ struct NonStrictTypeCheckerFixture : Fixture
 
     NonStrictTypeCheckerFixture()
     {
-        registerHiddenTypes(&frontend);
+        // Force the frontend
+        getFrontend();
+        registerHiddenTypes(getFrontend());
         registerTestTypes();
     }
 
@@ -86,7 +89,7 @@ struct NonStrictTypeCheckerFixture : Fixture
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
-        return frontend.check(moduleName);
+        return getFrontend().check(moduleName);
     }
 
     std::string definitions = R"BUILTIN_SRC(
@@ -188,12 +191,22 @@ local x
 abs(lower(x))
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 4), "abs", result);
+    if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 4), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 10), "lower", result);
+    }
+    else
+    {
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 4), "abs", result);
+    }
 }
 
 
-TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_warns_with_never_local")
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_does_not_warn_with_never_local")
 {
     CheckResult result = checkNonStrict(R"(
 local x : never
@@ -203,10 +216,14 @@ else
     lower(x)
 end
 )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 8), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 10), "lower", result);
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 8), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 10), "lower", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_warns_nil_branches")
@@ -249,7 +266,13 @@ if cond() then
 end
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 8), "abs", result);
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_no_else_err_in_cond")
@@ -267,12 +290,29 @@ end
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_expr_should_warn")
 {
     CheckResult result = checkNonStrict(R"(
+local x = 42
+local y = if cond() then abs(x) else lower(x)
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 43), "lower", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_expr_should_not_warn_for_never")
+{
+    CheckResult result = checkNonStrict(R"(
 local x : never
 local y = if cond() then abs(x) else lower(x)
 )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 29), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 43), "lower", result);
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 29), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 43), "lower", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "if_then_else_expr_doesnt_warn_else_branch")
@@ -353,10 +393,43 @@ function f(x)
     lower(x)
 end
 )");
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
-    NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
+
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
+        NONSTRICT_REQUIRE_FUNC_DEFINITION_ERR(Position(1, 11), "x", result);
+    }
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_sequencing_errors_2")
+{
+    CheckResult result = checkNonStrict(R"(
+local t = {function(x)
+    abs(x)
+    lower(x)
+end}
+)");
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(toString(result.errors[0]) == "Argument x with type 'unknown' is used in a way that will run time error");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 8), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 10), "lower", result);
+        CHECK(toString(result.errors[2]) == "Argument x with type 'unknown' is used in a way that will run time error");
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "local_fn_produces_error")
@@ -385,7 +458,7 @@ local y = function() lower(x) end
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_if_warns_never")
 {
     CheckResult result = checkNonStrict(R"(
-function f(x)
+function f(x: never)
     if cond() then
         abs(x)
     else
@@ -393,9 +466,15 @@ function f(x)
     end
 end
 )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 12), "abs", result);
-    NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 14), "lower", result);
+
+    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 12), "abs", result);
+        NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 14), "lower", result);
+    }
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_if_no_else")
@@ -493,8 +572,6 @@ foo.bar("hi")
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "exprgroup_is_checked")
 {
-    ScopedFastFlag sff{FFlag::LuauNonStrictVisitorImprovements, true};
-
     CheckResult result = checkNonStrict(R"(
         local foo = (abs("foo"))
     )");
@@ -510,8 +587,6 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "exprgroup_is_checked")
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "binop_is_checked")
 {
-    ScopedFastFlag sff{FFlag::LuauNonStrictVisitorImprovements, true};
-
     CheckResult result = checkNonStrict(R"(
         local foo = 4 + abs("foo")
     )");
@@ -547,6 +622,18 @@ optionalArgsAtTheEnd1("a")
 optionalArgsAtTheEnd1("a", 3)
 optionalArgsAtTheEnd1("a", nil, 3)
 )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_packs_in_non_strict")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictFixGenericTypePacks, true};
+
+    CheckResult result = checkNonStrict(R"(
+        --!nonstrict
+        local test: <T...>(T...) -> () -- TypeError: Unknown type 'T'
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -617,14 +704,14 @@ buffer.readi8(b, 0)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
 {
-    Luau::unfreeze(frontend.globals.globalTypes);
-    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::unfreeze(getFrontend().globals.globalTypes);
+    Luau::unfreeze(getFrontend().globalsForAutocomplete.globalTypes);
 
-    registerBuiltinGlobals(frontend, frontend.globals);
+    registerBuiltinGlobals(getFrontend(), getFrontend().globals);
     registerTestTypes();
 
-    Luau::freeze(frontend.globals.globalTypes);
-    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::freeze(getFrontend().globals.globalTypes);
+    Luau::freeze(getFrontend().globalsForAutocomplete.globalTypes);
 
     CheckResult result = checkNonStrict(R"(
         local test = "test"
@@ -634,10 +721,8 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_method_calls")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict_1")
 {
-    ScopedFastFlag flags[] = {{FFlag::LuauNonStrictVisitorImprovements, true}, {FFlag::LuauNewNonStrictWarnOnUnknownGlobals, true}};
-
     CheckResult result = check(Mode::Nonstrict, R"(
         foo = 5
         local wrong1 = foob
@@ -648,5 +733,86 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_non_strict")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+        --!nonstrict
+        local foo: Foo = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownSymbol* err = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ(err->name, "Foo");
+    CHECK_EQ(err->context, UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unknown_types_in_non_strict_2")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+        --!nonstrict
+        local foo = 1 :: Foo
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownSymbol* err = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ(err->name, "Foo");
+    CHECK_EQ(err->context, UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_not_unknown")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+local function wrap(b: buffer, i: number, v: number)
+    buffer.writeu32(b, i * 4, v)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "incomplete_function_annotation")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local x: () ->
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_function_calls")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictMoreUnknownSymbols, true};
+
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local function foo() : ()
+            bar()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownSymbol* err = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ(err->name, "bar");
+    CHECK_EQ(err->context, UnknownSymbol::Context::Binding);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_one_sided_conditionals")
+{
+    ScopedFastFlag sff{FFlag::LuauNewNonStrictMoreUnknownSymbols, true};
+
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local function foo(cond) : ()
+            if cond then
+                bar()
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownSymbol* err = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ(err->name, "bar");
+    CHECK_EQ(err->context, UnknownSymbol::Context::Binding);
+}
+
 
 TEST_SUITE_END();

@@ -85,7 +85,7 @@ struct LintOptions
 };
 
 // clang-format off
-static const char* kWarningNames[] = {
+inline constexpr const char* kWarningNames[] = {
     "Unknown",
 
     "UnknownGlobal",

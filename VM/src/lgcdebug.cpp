@@ -727,9 +727,9 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
         char buf[LUA_IDSIZE];
 
         if (p->source)
-            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined, getstr(p->source));
         else
-            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined);
 
         enumnode(ctx, obj2gco(cl), sizeLclosure(cl->nupvalues), buf);
     }
@@ -798,9 +798,9 @@ static void enumthread(EnumContext* ctx, lua_State* th)
         char buf[LUA_IDSIZE];
 
         if (p->source)
-            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+            snprintf(buf, sizeof(buf), "thread at %s:%d %s", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined, getstr(p->source));
         else
-            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+            snprintf(buf, sizeof(buf), "thread at %s:%d", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined);
 
         enumnode(ctx, obj2gco(th), size, buf);
     }
@@ -833,7 +833,14 @@ static void enumproto(EnumContext* ctx, Proto* p)
         ctx->edge(ctx->context, enumtopointer(obj2gco(p)), p->execdata, "[native]");
     }
 
-    enumnode(ctx, obj2gco(p), size, p->source ? getstr(p->source) : NULL);
+    char buf[LUA_IDSIZE];
+
+    if (p->source)
+        snprintf(buf, sizeof(buf), "proto %s:%d %s", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined, getstr(p->source));
+    else
+        snprintf(buf, sizeof(buf), "proto %s:%d", p->debugname ? getstr(p->debugname) : "unnamed", p->linedefined);
+
+    enumnode(ctx, obj2gco(p), size, buf);
 
     if (p->sizek)
         enumedges(ctx, obj2gco(p), p->k, p->sizek, "constants");

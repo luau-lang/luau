@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Luau/Constraint.h"
+#include "Luau/ConstraintSet.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
 #include "Luau/EqSatSimplification.h"
@@ -10,6 +11,7 @@
 #include "Luau/Location.h"
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
+#include "Luau/OrderedSet.h"
 #include "Luau/Substitution.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
@@ -87,6 +89,7 @@ struct ConstraintSolver
     NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // The entire set of constraints that the solver is trying to resolve.
+    ConstraintSet constraintSet;
     std::vector<NotNull<Constraint>> constraints;
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
@@ -119,8 +122,12 @@ struct ConstraintSolver
     // A mapping from free types to the number of unresolved constraints that mention them.
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
 
-    std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes;
-    std::unordered_map<TypeId, DenseHashSet<const Constraint*>> mutatedFreeTypeToConstraint;
+    // Clip with LuauUseOrderedTypeSetsInConstraints
+    std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes_DEPRECATED;
+    std::unordered_map<TypeId, DenseHashSet<const Constraint*>> mutatedFreeTypeToConstraint_DEPRECATED;
+
+    std::unordered_map<NotNull<const Constraint>, TypeIds> maybeMutatedFreeTypes;
+    std::unordered_map<TypeId, OrderedSet<const Constraint*>> mutatedFreeTypeToConstraint;
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
@@ -142,6 +149,19 @@ struct ConstraintSolver
     TypeCheckLimits limits;
 
     DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize{nullptr};
+
+    explicit ConstraintSolver(
+        NotNull<Normalizer> normalizer,
+        NotNull<Simplifier> simplifier,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
+        ModuleName moduleName,
+        NotNull<ModuleResolver> moduleResolver,
+        std::vector<RequireCycle> requireCycles,
+        DcrLogger* logger,
+        NotNull<const DataFlowGraph> dfg,
+        TypeCheckLimits limits,
+        ConstraintSet constraintSet
+    );
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
@@ -177,6 +197,9 @@ struct ConstraintSolver
     bool isDone() const;
 
 private:
+    /// A helper that does most of the setup work that is shared between the two constructors.
+    void initFreeTypeTracking();
+
     void generalizeOneType(TypeId ty);
 
     /**
@@ -210,7 +233,7 @@ public:
     bool tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const TableCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
@@ -233,6 +256,10 @@ public:
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint);
+
+    bool tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint, bool force);
+
+    bool tryDispatch(const PushFunctionTypeConstraint& c, NotNull<const Constraint> constraint);
 
     // for a, ... in some_table do
     // also handles __iter metamethod
@@ -368,7 +395,7 @@ public:
      * @returns a non-free type that generalizes the argument, or `std::nullopt` if one
      * does not exist
      */
-    std::optional<TypeId> generalizeFreeType(NotNull<Scope> scope, TypeId type, bool avoidSealingTables = false);
+    std::optional<TypeId> generalizeFreeType(NotNull<Scope> scope, TypeId type);
 
     /**
      * Checks the existing set of constraints to see if there exist any that contain
@@ -422,9 +449,6 @@ public:
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
-    TypeId errorRecoveryType() const;
-    TypePackId errorRecoveryTypePack() const;
-
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 
     void throwTimeLimitError() const;
@@ -434,6 +458,18 @@ public:
 
     void fillInDiscriminantTypes(NotNull<const Constraint> constraint, const std::vector<std::optional<TypeId>>& discriminantTypes);
 };
+
+/** Borrow a vector of pointers from a vector of owning pointers to constraints.
+ */
+std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints);
+
+std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments(
+    TypeArena* arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    const TypeFun& fn,
+    const std::vector<TypeId>& rawTypeArguments,
+    const std::vector<TypePackId>& rawPackArguments
+);
 
 void dump(NotNull<Scope> rootScope, struct ToStringOptions& opts);
 

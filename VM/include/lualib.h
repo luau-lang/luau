@@ -58,6 +58,9 @@ LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, 
 
 LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 
+// wrapper for making calls from yieldable C functions
+LUALIB_API int luaL_callyieldable(lua_State* L, int nargs, int nresults);
+
 /*
 ** ===============================================================
 ** some useful macros

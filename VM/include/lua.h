@@ -72,13 +72,11 @@ enum lua_Type
     LUA_TNIL = 0,     // must be 0 due to lua_isnoneornil
     LUA_TBOOLEAN = 1, // must be 1 due to l_isfalse
 
-
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
     LUA_TVECTOR,
 
     LUA_TSTRING, // all types above this must be value types, all types below this must be GC types - see iscollectable
-
 
     LUA_TTABLE,
     LUA_TFUNCTION,
@@ -327,7 +325,8 @@ LUA_API void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor);
 LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 
 // alternative access for metatables already registered with luaL_newmetatable
-LUA_API void lua_setuserdatametatable(lua_State* L, int tag, int idx);
+// used by lua_newuserdatataggedwithmetatable to create tagged userdata with the associated metatable assigned
+LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
 
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);

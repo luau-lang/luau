@@ -11,14 +11,15 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(DebugLuauEqSatSimplification);
-LUAU_FASTFLAG(LuauStoreCSTData);
-LUAU_FASTINT(LuauNormalizeCacheLimit);
-LUAU_FASTINT(LuauTarjanChildLimit);
-LUAU_FASTINT(LuauTypeInferIterationLimit);
-LUAU_FASTINT(LuauTypeInferRecursionLimit);
-LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauEqSatSimplification)
+LUAU_FASTINT(LuauNormalizeCacheLimit)
+LUAU_FASTINT(LuauTarjanChildLimit)
+LUAU_FASTINT(LuauTypeInferIterationLimit)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -48,7 +49,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expected = FFlag::LuauStoreCSTData ? R"(
+    const std::string expected = R"(
         function f(a:{fn:()->(a,b...)}): ()
             if type(a) == 'boolean' then
                 local a1:boolean=a
@@ -56,18 +57,9 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
                 local a2:{fn:()->(a,b...)}=a
             end
         end
-    )"
-                                                         : R"(
-        function f(a:{fn:()->(a,b...)}): ()
-            if type(a) == 'boolean'then
-                local a1:boolean=a
-            elseif a.fn()then
-                local a2:{fn:()->(a,b...)}=a
-            end
-        end
     )";
 
-    const std::string expectedWithNewSolver = FFlag::LuauStoreCSTData ? R"(
+    const std::string expectedWithNewSolver = R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
@@ -75,31 +67,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
                 local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
             end
         end
-    )"
-                                                                      : R"(
-        function f(a:{fn:()->(unknown,...unknown)}): ()
-            if type(a) == 'boolean'then
-                local a1:{fn:()->(unknown,...unknown)}&boolean=a
-            elseif a.fn()then
-                local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
-            end
-        end
     )";
 
-    const std::string expectedWithEqSat = FFlag::LuauStoreCSTData ? R"(
+    const std::string expectedWithEqSat = R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
-            end
-        end
-    )"
-                                                                  : R"(
-        function f(a:{fn:()->(unknown,...unknown)}): ()
-            if type(a) == 'boolean'then
-                local a1:{fn:()->(unknown,...unknown)}&boolean=a
-            elseif a.fn()then
                 local a2:{fn:()->(unknown,...unknown)}&negate<boolean>=a
             end
         end
@@ -335,9 +309,13 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
+    // We have to force this test case up here before the flags kick in.
+    // The reason for this is that while loading the builtins, the below flags will cause that
+    // to fail while cloning the public interface. This means that the builtin loading will assert.
+    // This didn't use to happen because we would initialize the fixture before the test case ran
+    getFrontend();
     ScopedFastInt sffi{FInt::LuauTarjanChildLimit, 1};
     ScopedFastInt sffi2{FInt::LuauTypeInferIterationLimit, 1};
-
     CheckResult result = check(R"LUA(
         local Result
         Result = setmetatable({}, {})
@@ -557,22 +535,23 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
+    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
-    TypeId nilType = builtinTypes->nilType;
+    TypeId nilType = getBuiltins()->nilType;
 
-    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
+    std::unique_ptr scope = std::make_unique<Scope>(getBuiltins()->anyTypePack);
 
-    TypeId free1 = arena.freshType(builtinTypes, scope.get());
+    TypeId free1 = arena.freshType(getBuiltins(), scope.get());
     TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
-    TypeId free2 = arena.freshType(builtinTypes, scope.get());
+    TypeId free2 = arena.freshType(getBuiltins(), scope.get());
     TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::Old};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
     u.tryUnify(option1, option2);
@@ -582,10 +561,10 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
     u.log.commit();
 
     ToStringOptions opts;
-    CHECK("a?" == toString(option1, opts));
+    CHECK("'a?" == toString(option1, opts));
 
     // CHECK("a?" == toString(option2, opts)); // This should hold, but does not.
-    CHECK("b?" == toString(option2, opts)); // This should not hold.
+    CHECK("'b?" == toString(option2, opts)); // This should not hold.
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
@@ -620,7 +599,7 @@ local metatable = {
 return wrapStrictTable
     )";
 
-    frontend.check("game/A");
+    getFrontend().check("game/A");
 
     fileResolver.source["game/B"] = R"(
 local wrapStrictTable = require(game.A)
@@ -630,9 +609,9 @@ local Constants = {}
 return wrapStrictTable(Constants, "Constants")
     )";
 
-    frontend.check("game/B");
+    getFrontend().check("game/B");
 
-    ModulePtr m = frontend.moduleResolver.getModule("game/B");
+    ModulePtr m = getFrontend().moduleResolver.getModule("game/B");
     REQUIRE(m);
 
     std::optional<TypeId> result = first(m->returnType);
@@ -662,7 +641,7 @@ local metatable = {
 return wrapStrictTable
     )";
 
-    frontend.check("game/A");
+    getFrontend().check("game/A");
 
     fileResolver.source["game/B"] = R"(
 local wrapStrictTable = require(game.A)
@@ -672,9 +651,9 @@ local Constants = {}
 return wrapStrictTable(Constants, "Constants")
     )";
 
-    frontend.check("game/B");
+    getFrontend().check("game/B");
 
-    ModulePtr m = frontend.moduleResolver.getModule("game/B");
+    ModulePtr m = getFrontend().moduleResolver.getModule("game/B");
     REQUIRE(m);
 
     std::optional<TypeId> result = first(m->returnType);
@@ -692,7 +671,7 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
-        SimplifierPtr simplifier = newSimplifier(NotNull{&getMainModule()->internalTypes}, builtinTypes);
+        SimplifierPtr simplifier = newSimplifier(NotNull{&getMainModule()->internalTypes}, getBuiltins());
 
         ModulePtr module = getMainModule();
         REQUIRE(module);
@@ -700,7 +679,7 @@ struct IsSubtypeFixture : Fixture
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, NotNull{simplifier.get()}, ice);
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), NotNull{simplifier.get()}, ice, SolverMode::New);
     }
 };
 } // namespace
@@ -873,10 +852,11 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        const std::string expected = R"(Type
-    '{| x: number? |}'
+        const std::string expected =
+            R"(Type
+	'{| x: number? |}'
 could not be converted into
-    '{| x: number |}'
+	'{| x: number |}'
 caused by:
   Property 'x' is not compatible.
 Type 'number?' could not be converted into 'number' in an invariant context)";
@@ -984,22 +964,23 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
+    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
-    TypeId nilType = builtinTypes->nilType;
+    TypeId nilType = getBuiltins()->nilType;
 
-    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
+    std::unique_ptr scope = std::make_unique<Scope>(getBuiltins()->anyTypePack);
 
-    TypeId free1 = arena.freshType(builtinTypes, scope.get());
+    TypeId free1 = arena.freshType(getBuiltins(), scope.get());
     TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
-    TypeId free2 = arena.freshType(builtinTypes, scope.get());
+    TypeId free2 = arena.freshType(getBuiltins(), scope.get());
     TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::Old};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
     u.tryUnify(option1, option2);
@@ -1009,8 +990,8 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
     u.log.commit();
 
     ToStringOptions opts;
-    CHECK("a?" == toString(option1, opts));
-    CHECK("b?" == toString(option2, opts)); // should be `a?`.
+    CHECK("'a?" == toString(option1, opts));
+    CHECK("'b?" == toString(option2, opts)); // should be `a?`.
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_more_complex_unions_that_include_nil")
@@ -1030,7 +1011,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant_old_solver")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
-    createSomeClasses(&frontend);
+    createSomeExternTypes(getFrontend());
 
     CheckResult result = check(R"(
         function foo(ref: {current: Parent?})
@@ -1048,7 +1029,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant_new_solver")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    createSomeClasses(&frontend);
+    createSomeExternTypes(getFrontend());
 
     CheckResult result = check(R"(
         function foo(ref: {read current: Parent?})
@@ -1103,7 +1084,7 @@ end
 
     )";
 
-    CheckResult result = frontend.check("Module/Map");
+    CheckResult result = getFrontend().check("Module/Map");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1141,7 +1122,7 @@ local tbl = require(game.A)
 tbl:f3()
     )";
 
-    CheckResult result = frontend.check("game/B");
+    CheckResult result = getFrontend().check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
@@ -1299,15 +1280,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "update_phonemes_minimized")
 TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cached")
 {
     TypeArena arena;
-    Scope globalScope(builtinTypes->anyTypePack);
+    Scope globalScope(getBuiltins()->anyTypePack);
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::New};
 
     TypeId tableTy = arena.addType(TableType{});
     TableType* table = getMutable<TableType>(tableTy);
     REQUIRE(table);
 
-    TypeId freeTy = arena.freshType(builtinTypes, &globalScope);
+    TypeId freeTy = arena.freshType(getBuiltins(), &globalScope);
 
     table->props["foo"] = Property::rw(freeTy);
 
@@ -1355,6 +1336,23 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
         CHECK("<T, b>({T}, b) -> number" == toString(requireType("find_first")));
     }
 #endif
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
+    // This is a tactical unsoundness we're introducing to resolve issues around
+    // cyclic types. You can see that if this loop were to run more than once,
+    // we'd error as we'd try to call a number.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local f = function () return 42 end
+        while true do
+            f = f()
+        end
+    )"));
 }
 
 TEST_SUITE_END();

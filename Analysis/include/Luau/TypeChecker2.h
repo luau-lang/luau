@@ -38,18 +38,18 @@ struct Reasonings
 
     std::string toString()
     {
+        if (reasons.empty())
+            return "";
+
         // DenseHashSet ordering is entirely undefined, so we want to
         // sort the reasons here to achieve a stable error
         // stringification.
         std::sort(reasons.begin(), reasons.end());
-        std::string allReasons;
-        bool first = true;
+        std::string allReasons = "\nthis is because ";
         for (const std::string& reason : reasons)
         {
-            if (first)
-                first = false;
-            else
-                allReasons += "\n\t";
+            if (reasons.size() > 1)
+                allReasons += "\n\t * ";
 
             allReasons += reason;
         }
@@ -147,7 +147,7 @@ private:
     void visit(AstTypeList types);
     void visit(AstStatDeclareFunction* stat);
     void visit(AstStatDeclareGlobal* stat);
-    void visit(AstStatDeclareClass* stat);
+    void visit(AstStatDeclareExternType* stat);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);
@@ -193,6 +193,11 @@ private:
 
     void explainError(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& result);
     void explainError(TypePackId subTy, TypePackId superTy, Location location, const SubtypingResult& result);
+
+    bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
+
+    bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
+
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location);
     bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location);
     void reportError(TypeError e);
@@ -220,11 +225,21 @@ private:
     // Avoid duplicate warnings being emitted for the same global variable.
     DenseHashSet<std::string> warnedGlobals{""};
 
+    void suggestAnnotations(AstExprFunction* expr, TypeId ty);
+
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const;
     bool isErrorSuppressing(Location loc, TypeId ty);
     bool isErrorSuppressing(Location loc1, TypeId ty1, Location loc2, TypeId ty2);
     bool isErrorSuppressing(Location loc, TypePackId tp);
     bool isErrorSuppressing(Location loc1, TypePackId tp1, Location loc2, TypePackId tp2);
+
+    // Returns whether we reported any errors
+    bool reportNonviableOverloadErrors(
+        std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads,
+        Location callFuncLocation,
+        size_t argHeadSize,
+        Location callLocation
+    );
 };
 
 } // namespace Luau

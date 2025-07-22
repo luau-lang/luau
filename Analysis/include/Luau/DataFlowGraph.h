@@ -38,8 +38,6 @@ struct DataFlowGraph
     DefId getDef(const AstExpr* expr) const;
     // Look up the definition optionally, knowing it may not be present.
     std::optional<DefId> getDefOptional(const AstExpr* expr) const;
-    // Look up for the rvalue def for a compound assignment.
-    std::optional<DefId> getRValueDefForCompoundAssign(const AstExpr* expr) const;
 
     DefId getDef(const AstLocal* local) const;
 
@@ -47,6 +45,8 @@ struct DataFlowGraph
     DefId getDef(const AstStatDeclareFunction* func) const;
 
     const RefinementKey* getRefinementKey(const AstExpr* expr) const;
+
+    std::optional<Symbol> getSymbolFromDef(const Def* def) const;
 
 private:
     DataFlowGraph(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena);
@@ -65,10 +65,7 @@ private:
     // There's no AstStatDeclaration, and it feels useless to introduce it just to enforce an invariant in one place.
     // All keys in this maps are really only statements that ambiently declares a symbol.
     DenseHashMap<const AstStat*, const Def*> declaredDefs{nullptr};
-
-    // Compound assignments are in a weird situation where the local being assigned to is also being used at its
-    // previous type implicitly in an rvalue position. This map provides the previous binding.
-    DenseHashMap<const AstExpr*, const Def*> compoundAssignDefs{nullptr};
+    DenseHashMap<const Def*, Symbol> defToSymbol{nullptr};
 
     DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys{nullptr};
     friend struct DataFlowGraphBuilder;
@@ -135,8 +132,8 @@ private:
 
     /// A stack of scopes used by the visitor to see where we are.
     ScopeStack scopeStack;
-
-    DfgScope* currentScope();
+    NotNull<DfgScope> currentScope();
+    DfgScope* currentScope_DEPRECATED();
 
     struct FunctionCapture
     {
@@ -154,8 +151,8 @@ private:
     void joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b);
     void joinProps(DfgScope* p, const DfgScope& a, const DfgScope& b);
 
-    DefId lookup(Symbol symbol);
-    DefId lookup(DefId def, const std::string& key);
+    DefId lookup(Symbol symbol, Location location);
+    DefId lookup(DefId def, const std::string& key, Location location);
 
     ControlFlow visit(AstStatBlock* b);
     ControlFlow visitBlockWithoutChildScope(AstStatBlock* b);
@@ -179,7 +176,7 @@ private:
     ControlFlow visit(AstStatTypeFunction* f);
     ControlFlow visit(AstStatDeclareGlobal* d);
     ControlFlow visit(AstStatDeclareFunction* d);
-    ControlFlow visit(AstStatDeclareClass* d);
+    ControlFlow visit(AstStatDeclareExternType* d);
     ControlFlow visit(AstStatError* error);
 
     DataFlowResult visitExpr(AstExpr* e);

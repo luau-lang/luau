@@ -39,8 +39,24 @@ message Local {
 	required int32 name = 1;
 }
 
-message Typename {
+message RegularTypeName {
 	required int32 index = 1;
+}
+
+message GenericTypeName {
+	required int32 index = 1;
+}
+
+message BuiltinTypeName {
+	required int32 index = 1;
+}
+
+message TypeName {
+	oneof expr_oneof {
+		RegularTypeName regular = 1;
+		GenericTypeName generic = 2;
+		BuiltinTypeName builtin = 3;
+	}
 }
 
 message Name {
@@ -97,8 +113,8 @@ message ExprIndexExpr {
 }
 
 message ExprFunction {
-	repeated Typename generics = 1;
-	repeated Typename genericpacks = 2;
+	repeated GenericTypeName generics = 1;
+	repeated GenericTypeName genericpacks = 2;
 	repeated Local args = 3;
 	required bool vararg = 4;
 	required StatBlock body = 5;
@@ -195,6 +211,7 @@ message Stat {
 		StatLocalFunction local_function = 15;
 		StatTypeAlias type_alias = 16;
 		StatRequireIntoLocalHelper require_into_local = 17;
+		StatTypeFunction type_function = 18;
 	}
 }
 
@@ -289,10 +306,16 @@ message StatLocalFunction {
 
 message StatTypeAlias {
 	required bool export = 1;
-	required Typename name = 2;
+	required RegularTypeName name = 2;
 	required Type type = 3;
-	repeated Typename generics = 4;
-	repeated Typename genericpacks = 5;
+	repeated GenericTypeName generics = 4;
+	repeated GenericTypeName genericpacks = 5;
+}
+
+message StatTypeFunction {
+	required bool export = 1;
+	required RegularTypeName name = 2;
+	required ExprFunction func = 3;
 }
 
 message StatRequireIntoLocalHelper {
@@ -309,7 +332,7 @@ message Type {
 		TypeTypeof typeof = 5;
 		TypeUnion union = 6;
 		TypeIntersection intersection = 7;
-		TypeClass class = 8;
+		TypeExtern extern = 8;
 		TypeRef ref = 9;
 		TypeBoolean boolean = 10;
 		TypeString string = 11;
@@ -321,19 +344,26 @@ message TypePrimitive {
 }
 
 message TypeLiteral {
-	required Typename name = 1;
+	required TypeName name = 1;
 	repeated Type generics = 2;
-	repeated Typename genericpacks = 3;
+	repeated GenericTypeName genericpacks = 3;
+}
+
+enum TableFieldAccess {
+	Read = 1;
+	Write = 2;
 }
 
 message TypeTableItem {
-	required Name key = 1;
-	required Type type = 2;
+	optional TableFieldAccess access = 1;
+	required Name key = 2;
+	required Type type = 3;
 }
 
 message TypeTableIndexer {
-	required Type key = 1;
-	required Type value = 2;
+	optional TableFieldAccess access = 1;
+	required Type key = 2;
+	required Type value = 3;
 }
 
 message TypeTable {
@@ -342,8 +372,8 @@ message TypeTable {
 }
 
 message TypeFunction {
-	repeated Typename generics = 1;
-	repeated Typename genericpacks = 2;
+	repeated GenericTypeName generics = 1;
+	repeated GenericTypeName genericpacks = 2;
 	repeated Type args = 3;
 	repeated Type rets = 4;
 	// TODO: vararg?
@@ -363,13 +393,13 @@ message TypeIntersection {
 	required Type right = 2;
 }
 
-message TypeClass {
+message TypeExtern {
 	required int32 kind = 1;
 }
 
 message TypeRef {
 	required Local prefix = 1;
-	required Typename index = 2;
+	required TypeName index = 2;
 }
 
 message TypeBoolean {

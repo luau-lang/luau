@@ -15,6 +15,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -112,12 +115,13 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_traverse_into_class_types_when_ge
 {
     auto [propTy, _] = freshType();
 
-    TypeId cursedClass = arena.addType(ClassType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
+    TypeId cursedExternType =
+        arena.addType(ExternType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
 
-    auto genClass = generalize(cursedClass);
-    REQUIRE(genClass);
+    auto genExternType = generalize(cursedExternType);
+    REQUIRE(genExternType);
 
-    auto genPropTy = get<ClassType>(*genClass)->props.at("oh_no").readTy;
+    auto genPropTy = get<ExternType>(*genExternType)->props.at("oh_no").readTy;
     CHECK(is<FreeType>(*genPropTy));
 }
 
@@ -211,6 +215,92 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "intersection_type_traversal_doesnt_cra
     generalize(intersectionType);
 }
 
+TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
+{
+    TypeId freeTy = freshType().first;
+    TypeId fnTy = arena.addType(FunctionType{arena.addTypePack({freeTy}), arena.addTypePack({freeTy})});
+
+    generalize(fnTy);
+
+    CHECK("<a>(a) -> a" == toString(fnTy));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
+{
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+
+    TableType tt;
+    tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
+    TypeId numberArray = arena.addType(TableType{tt});
+
+    auto [aTy, aFree] = freshType();
+    auto [bTy, bFree] = freshType();
+
+    aFree->upperBound = arena.addType(IntersectionType{{bTy, numberArray, numberArray}});
+    bFree->lowerBound = aTy;
+
+    TypeId functionTy = arena.addType(FunctionType{arena.addTypePack({aTy, bTy}), builtinTypes.emptyTypePack});
+
+    generalize(functionTy);
+
+    CHECK("(unknown & {number}, unknown) -> ()" == toString(functionTy));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
+{
+    auto [aTy, aFree] = freshType();
+
+    aFree->upperBound = arena.addType(UnionType{{builtinTypes.numberType, builtinTypes.stringType}});
+
+    TypeId fnType = arena.addType(FunctionType{arena.addTypePack({aTy}), arena.addTypePack({builtinTypes.optionalStringType})});
+
+    generalize(fnType);
+
+    CHECK("(number | string) -> string?" == toString(fnType));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
+{
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+
+    auto [aTy, aFree] = freshType();
+    auto [bTy, bFree] = freshType();
+
+    TableType tt;
+    tt.indexer = TableIndexer{builtinTypes.numberType, bTy};
+
+    aFree->upperBound = arena.addType(tt);
+
+    TypeId functionTy = arena.addType(FunctionType{arena.addTypePack({aTy}), builtinTypes.emptyTypePack});
+
+    generalize(functionTy);
+
+    // The free type 'b is not replace with unknown because it appears in an
+    // invariant context.
+    CHECK("<a>({a}) -> ()" == toString(functionTy));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where t1 = (('a <: t1) <: 'c)")
+{
+    auto [aTy, aFree] = freshType();
+    auto [bTy, bFree] = freshType();
+    auto [cTy, cFree] = freshType();
+
+    aFree->upperBound = cTy;
+    cFree->lowerBound = aTy;
+
+    TableType tt;
+    tt.indexer = TableIndexer{builtinTypes.numberType, cTy};
+
+    bFree->upperBound = arena.addType(tt);
+
+    TypeId functionTy = arena.addType(FunctionType{arena.addTypePack({bTy, aTy}), arena.addTypePack({cTy})});
+
+    generalize(functionTy);
+
+    CHECK("<a>({a}, a) -> a" == toString(functionTy));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_traversal_should_re_traverse_unions_if_they_change_type")
 {
     // This test case should just not assert
@@ -230,7 +320,7 @@ function foo()
    button.LayoutOrder = func(product) * dir
   end
  end
- 
+
   function(mode)
    if mode == 'Name'then
    else
@@ -248,6 +338,129 @@ function foo()
   end
 end
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForbidInternalTypes, true};
+
+    // This test case should just not assert
+    CheckResult result = check(R"(
+        function foo()
+
+            local productButtonPairs = {}
+            local func
+            local dir = -1
+
+            local function updateSearch()
+                for product, button in pairs(productButtonPairs) do
+                    -- This line may have a floating free type pack.
+                    button.LayoutOrder = func(product) * dir
+                end
+            end
+
+            function(mode)
+                if mode == 'New'then
+                    func = function(p)
+                        return p.id
+                    end
+                elseif mode == 'Price'then
+                    func = function(p)
+                        return p.price
+                    end
+                end
+            end
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local func: <T>(T, (T) -> ()) -> () = nil :: any
+        func({}, function(obj)
+            local _ = obj
+        end)
+    )"));
+
+    // `unknown` is correct here
+    // - The lambda given can be generalized to `(unknown) -> ()`
+    // - We can substitute the `T` in `func` for either `{}` or `unknown` and
+    //   still have a well typed program.
+    // We *probably* can do a better job bidirectionally inferring the types.
+    CHECK_EQ("unknown", toString(requireTypeAtPosition(Position{3, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+    };
+
+    // FIXME: CLI-156389: this is clearly wrong, but also predates this PR.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local func: <T>(T, (T) -> ()) -> () = nil :: any
+        local foobar: (number) -> () = nil :: any
+        func({}, function(obj)
+            foobar(obj)
+        end)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
+{
+    ScopedFastFlag _{FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true};
+    // All we care about here is that this has no errors, and we correctly
+    // infer that the `false` literal should be typed as `false`.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function test<T>(value: false | (T) -> T)
+            return value
+        end
+        test(false)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional_inference")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+        {FFlag::LuauEagerGeneralization4, true},
+    };
+
+    fileResolver.source["Module/ListFns"] = R"(
+        local mod = {}
+        function mod.findWhere(list, predicate): number?
+            for i = 1, #list do
+                if predicate(list[i], i) then
+                    return i
+                end
+            end
+            return nil
+        end
+        return mod
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        local funs = require(script.Parent.ListFns)
+        local accessories = funs.findWhere(getList(), function(accessory)
+            return accessory.AccessoryType ~= accessoryTypeEnum
+        end)
+        return {}
+    )";
+
+    CheckResult result = getFrontend().check("Module/ListFns");
+    auto modListFns = getFrontend().moduleResolver.getModule("Module/ListFns");
+    freeze(modListFns->interfaceTypes);
+    freeze(modListFns->internalTypes);
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result2 = getFrontend().check("Module/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

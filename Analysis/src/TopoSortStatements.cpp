@@ -297,6 +297,11 @@ struct ArcCollector : public AstVisitor
             add(*name);
         return true;
     }
+
+    bool visit(AstTypePack* node) override
+    {
+        return true;
+    }
 };
 
 struct ContainsFunctionCall : public AstVisitor

@@ -15,12 +15,11 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauIncrementalAutocompleteCommentDetection)
 
 namespace Luau
 {
 
-static void defaultLogLuau(std::string_view input)
+static void defaultLogLuau(std::string_view context, std::string_view input)
 {
     // The default is to do nothing because we don't want to mess with
     // the xml parsing done by the dcr script.
@@ -36,21 +35,6 @@ void setLogLuau(LogLuauProc ll)
 void resetLogLuauProc()
 {
     logLuau = &defaultLogLuau;
-}
-
-
-
-static bool contains_DEPRECATED(Position pos, Comment comment)
-{
-    if (comment.location.contains(pos))
-        return true;
-    else if (comment.type == Lexeme::BrokenComment && comment.location.begin <= pos) // Broken comments are broken specifically because they don't
-                                                                                     // have an end
-        return true;
-    else if (comment.type == Lexeme::Comment && comment.location.end == pos)
-        return true;
-    else
-        return false;
 }
 
 static bool contains(Position pos, Comment comment)
@@ -76,11 +60,8 @@ bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
         Comment{Lexeme::Comment, Location{pos, pos}},
         [](const Comment& a, const Comment& b)
         {
-            if (FFlag::LuauIncrementalAutocompleteCommentDetection)
-            {
-                if (a.type == Lexeme::Comment)
-                    return a.location.end.line < b.location.end.line;
-            }
+            if (a.type == Lexeme::Comment)
+                return a.location.end.line < b.location.end.line;
             return a.location.end < b.location.end;
         }
     );
@@ -88,7 +69,7 @@ bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos)
     if (iter == commentLocations.end())
         return false;
 
-    if (FFlag::LuauIncrementalAutocompleteCommentDetection ? contains(pos, *iter) : contains_DEPRECATED(pos, *iter))
+    if (contains(pos, *iter))
         return true;
 
     // Due to the nature of std::lower_bound, it is possible that iter points at a comment that ends
@@ -172,8 +153,6 @@ struct ClonePublicInterface : Substitution
             }
 
             ftv->level = TypeLevel{0, 0};
-            if (FFlag::LuauSolverV2)
-                ftv->scope = nullptr;
         }
         else if (TableType* ttv = getMutable<TableType>(result))
         {
@@ -192,7 +171,7 @@ struct ClonePublicInterface : Substitution
                     InternalError{"Free type is escaping its module; please report this bug at "
                                   "https://github.com/luau-lang/luau/issues"}
                 );
-                result = builtinTypes->errorRecoveryType();
+                result = builtinTypes->errorType;
             }
             else if (auto genericty = getMutable<GenericType>(result))
             {
@@ -216,7 +195,7 @@ struct ClonePublicInterface : Substitution
                     InternalError{"Free type pack is escaping its module; please report this bug at "
                                   "https://github.com/luau-lang/luau/issues"}
                 );
-                clonedTp = builtinTypes->errorRecoveryTypePack();
+                clonedTp = builtinTypes->errorTypePack;
             }
             else if (auto gtp = getMutable<GenericTypePack>(clonedTp))
                 gtp->scope = nullptr;
@@ -238,7 +217,7 @@ struct ClonePublicInterface : Substitution
         else
         {
             module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
-            return builtinTypes->errorRecoveryType();
+            return builtinTypes->errorType;
         }
     }
 
@@ -252,7 +231,7 @@ struct ClonePublicInterface : Substitution
         else
         {
             module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
-            return builtinTypes->errorRecoveryTypePack();
+            return builtinTypes->errorTypePack;
         }
     }
 
@@ -285,7 +264,7 @@ struct ClonePublicInterface : Substitution
 
         TypeId type = cloneType(tf.type);
 
-        return TypeFun{typeParams, typePackParams, type};
+        return TypeFun{std::move(typeParams), std::move(typePackParams), type, tf.definitionLocation};
     }
 };
 
@@ -295,7 +274,7 @@ Module::~Module()
     unfreeze(internalTypes);
 }
 
-void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
     CloneState cloneState{builtinTypes};
 
@@ -324,6 +303,52 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     for (auto& [name, ty] : declaredGlobals)
     {
         ty = clonePublicInterface.cloneType(ty);
+    }
+
+    for (auto& tf : typeFunctionAliases)
+    {
+        *tf = clonePublicInterface.cloneTypeFun(*tf);
+    }
+
+    // Copy external stuff over to Module itself
+    this->returnType = moduleScope->returnType;
+    this->exportedTypeBindings = moduleScope->exportedTypeBindings;
+}
+
+void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode)
+{
+    CloneState cloneState{builtinTypes};
+
+    ScopePtr moduleScope = getModuleScope();
+
+    TypePackId returnType = moduleScope->returnType;
+    std::optional<TypePackId> varargPack = mode == SolverMode::New ? std::nullopt : moduleScope->varargPack;
+
+    TxnLog log;
+    ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
+
+    returnType = clonePublicInterface.cloneTypePack(returnType);
+
+    moduleScope->returnType = returnType;
+    if (varargPack)
+    {
+        varargPack = clonePublicInterface.cloneTypePack(*varargPack);
+        moduleScope->varargPack = varargPack;
+    }
+
+    for (auto& [name, tf] : moduleScope->exportedTypeBindings)
+    {
+        tf = clonePublicInterface.cloneTypeFun(tf);
+    }
+
+    for (auto& [name, ty] : declaredGlobals)
+    {
+        ty = clonePublicInterface.cloneType(ty);
+    }
+
+    for (auto& tf : typeFunctionAliases)
+    {
+        *tf = clonePublicInterface.cloneTypeFun(*tf);
     }
 
     // Copy external stuff over to Module itself

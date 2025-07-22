@@ -289,7 +289,7 @@ union GCObject
     struct Proto p;
     struct UpVal uv;
     struct lua_State th; // thread
-    struct Buffer buf;
+    struct LuauBuffer buf;
 };
 
 // macros to convert a GCObject into a specific value

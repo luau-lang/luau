@@ -53,6 +53,7 @@ struct Proposition
 {
     const RefinementKey* key;
     TypeId discriminantTy;
+    bool implicitFromCall;
 };
 
 template<typename T>
@@ -69,6 +70,7 @@ struct RefinementArena
     RefinementId disjunction(RefinementId lhs, RefinementId rhs);
     RefinementId equivalence(RefinementId lhs, RefinementId rhs);
     RefinementId proposition(const RefinementKey* key, TypeId discriminantTy);
+    RefinementId implicitProposition(const RefinementKey* key, TypeId discriminantTy);
 
 private:
     TypedAllocator<Refinement> allocator;

@@ -58,6 +58,8 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauSolverV2)
 
+const double kTypecheckTimeoutSec = 4.0;
+
 std::chrono::milliseconds kInterruptTimeout(10);
 std::chrono::time_point<std::chrono::system_clock> interruptDeadline;
 
@@ -124,8 +126,8 @@ int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool for
     // Vector3 stub
     TypeId vector3MetaType = arena.addType(TableType{});
 
-    TypeId vector3InstanceType = arena.addType(ClassType{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test", {}});
-    getMutable<ClassType>(vector3InstanceType)->props = {
+    TypeId vector3InstanceType = arena.addType(ExternType{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test", {}});
+    getMutable<ExternType>(vector3InstanceType)->props = {
         {"X", {builtinTypes.numberType}},
         {"Y", {builtinTypes.numberType}},
         {"Z", {builtinTypes.numberType}},
@@ -134,20 +136,21 @@ int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool for
     getMutable<TableType>(vector3MetaType)->props = {
         {"__add", {makeFunction(arena, nullopt, {vector3InstanceType, vector3InstanceType}, {vector3InstanceType})}},
     };
+    getMutable<TableType>(vector3MetaType)->state = TableState::Sealed;
 
     globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
 
     // Instance stub
-    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(instanceType)->props = {
+    TypeId instanceType = arena.addType(ExternType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(instanceType)->props = {
         {"Name", {builtinTypes.stringType}},
     };
 
     globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     // Part stub
-    TypeId partType = arena.addType(ClassType{"Part", {}, instanceType, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(partType)->props = {
+    TypeId partType = arena.addType(ExternType{"Part", {}, instanceType, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(partType)->props = {
         {"Position", {vector3InstanceType}},
     };
 
@@ -172,6 +175,19 @@ static void setupFrontend(Luau::Frontend& frontend)
         printf("ICE: %s\n", error);
         LUAU_ASSERT(!"ICE");
     };
+}
+
+static Luau::FrontendOptions getFrontendOptions()
+{
+    Luau::FrontendOptions options;
+
+    options.retainFullTypeGraphs = true;
+    options.forAutocomplete = false;
+    options.runLintChecks = kFuzzLinter;
+
+    options.moduleTimeLimitSec = kTypecheckTimeoutSec;
+
+    return options;
 }
 
 struct FuzzFileResolver : Luau::FileResolver
@@ -285,7 +301,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     {
         static FuzzFileResolver fileResolver;
         static FuzzConfigResolver configResolver;
-        static Luau::FrontendOptions defaultOptions{/*retainFullTypeGraphs*/ true, /*forAutocomplete*/ false, /*runLintChecks*/ kFuzzLinter};
+        static Luau::FrontendOptions defaultOptions = getFrontendOptions();
         static Luau::Frontend frontend(&fileResolver, &configResolver, defaultOptions);
 
         static int once = (setupFrontend(frontend), 0);

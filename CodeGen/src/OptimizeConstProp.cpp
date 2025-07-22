@@ -21,7 +21,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauVectorLibNativeDot)
 
 namespace Luau
 {
@@ -1475,9 +1474,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
     case IrCmd::DOT_VEC:
-        if (inst.cmd == IrCmd::DOT_VEC)
-            LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
-
         if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
             replace(function, inst.a, a->a);
 
@@ -1542,6 +1538,15 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_IMPORT:
         state.invalidate(inst.a);
         state.invalidateUserCall();
+        break;
+    case IrCmd::GET_CACHED_IMPORT:
+        state.invalidate(inst.a);
+
+        // Outside of safe environment, environment traversal for an import can execute custom code
+        if (!state.inSafeEnv)
+            state.invalidateUserCall();
+
+        state.invalidateValuePropagation();
         break;
     case IrCmd::CONCAT:
         state.invalidateRegisterRange(vmRegOp(inst.a), function.uintOp(inst.b));

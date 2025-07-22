@@ -29,7 +29,7 @@ struct SingletonType;
 struct FunctionType;
 struct TableType;
 struct MetatableType;
-struct ClassType;
+struct ExternType;
 struct AnyType;
 struct UnionType;
 struct IntersectionType;
@@ -55,5 +55,11 @@ using ModuleName = std::string;
 struct BuiltinTypes;
 
 using TypeOrPack = Variant<TypeId, TypePackId>;
+
+struct TypeFunctionType;
+using TypeFunctionTypeId = const TypeFunctionType*;
+
+struct TypeFunctionTypePackVar;
+using TypeFunctionTypePackId = const TypeFunctionTypePackVar*;
 
 } // namespace Luau

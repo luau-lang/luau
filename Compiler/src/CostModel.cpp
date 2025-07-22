@@ -4,7 +4,11 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 
+#include "ConstantFolding.h"
+
 #include <limits.h>
+
+LUAU_FASTFLAGVARIABLE(LuauCompileCostModelConstants)
 
 namespace Luau
 {
@@ -39,7 +43,7 @@ static uint64_t parallelMulSat(uint64_t a, int b)
     return r | (s - (s >> 7));
 }
 
-inline bool getNumber(AstExpr* node, double& result)
+inline bool getNumber_DEPRECATED(AstExpr* node, double& result)
 {
     // since constant model doesn't use constant folding atm, we perform the basic extraction that's sufficient to handle positive/negative literals
     if (AstExprConstantNumber* ne = node->as<AstExprConstantNumber>())
@@ -114,18 +118,23 @@ struct Cost
 struct CostVisitor : AstVisitor
 {
     const DenseHashMap<AstExprCall*, int>& builtins;
+    const DenseHashMap<AstExpr*, Constant>& constants;
 
     DenseHashMap<AstLocal*, uint64_t> vars;
     Cost result;
 
-    CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins)
+    CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins, const DenseHashMap<AstExpr*, Constant>& constants)
         : builtins(builtins)
+        , constants(constants)
         , vars(nullptr)
     {
     }
 
     Cost model(AstExpr* node)
     {
+        if (FFlag::LuauCompileCostModelConstants && constants.contains(node))
+            return Cost(0, Cost::kLiteral);
+
         if (AstExprGroup* expr = node->as<AstExprGroup>())
         {
             return model(expr->expr);
@@ -270,8 +279,18 @@ struct CostVisitor : AstVisitor
 
         int tripCount = -1;
         double from, to, step = 1;
-        if (getNumber(node->from, from) && getNumber(node->to, to) && (!node->step || getNumber(node->step, step)))
-            tripCount = getTripCount(from, to, step);
+
+        if (FFlag::LuauCompileCostModelConstants)
+        {
+            if (getNumber(node->from, from) && getNumber(node->to, to) && (!node->step || getNumber(node->step, step)))
+                tripCount = getTripCount(from, to, step);
+        }
+        else
+        {
+            if (getNumber_DEPRECATED(node->from, from) && getNumber_DEPRECATED(node->to, to) &&
+                (!node->step || getNumber_DEPRECATED(node->step, step)))
+                tripCount = getTripCount(from, to, step);
+        }
 
         loop(node->body, 1, tripCount < 0 ? 3 : tripCount);
         return false;
@@ -369,17 +388,45 @@ struct CostVisitor : AstVisitor
 
         return false;
     }
+
+    bool getNumber(AstExpr* node, double& result)
+    {
+        if (const Constant* constant = constants.find(node))
+        {
+            if (constant->type == Constant::Type_Number)
+            {
+                result = constant->valueNumber;
+                return true;
+            }
+        }
+
+        return false;
+    }
 };
 
-uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount, const DenseHashMap<AstExprCall*, int>& builtins)
+uint64_t modelCost(
+    AstNode* root,
+    AstLocal* const* vars,
+    size_t varCount,
+    const DenseHashMap<AstExprCall*, int>& builtins,
+    const DenseHashMap<AstExpr*, Constant>& constants
+)
 {
-    CostVisitor visitor{builtins};
+    CostVisitor visitor{builtins, constants};
     for (size_t i = 0; i < varCount && i < 7; ++i)
         visitor.vars[vars[i]] = 0xffull << (i * 8 + 8);
 
     root->visit(&visitor);
 
     return visitor.result.model;
+}
+
+uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount)
+{
+    DenseHashMap<AstExprCall*, int> builtins{nullptr};
+    DenseHashMap<AstExpr*, Constant> constants{nullptr};
+
+    return modelCost(root, vars, varCount, builtins, constants);
 }
 
 int computeCost(uint64_t model, const bool* varsConst, size_t varCount)

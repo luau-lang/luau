@@ -8,6 +8,7 @@
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
+#include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunction.h"
 
 #include <optional>
@@ -17,6 +18,11 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -68,7 +74,7 @@ namespace Luau
 {
 
 // this list of binary operator type functions is used for better stringification of type functions errors
-static const std::unordered_map<std::string, const char*> kBinaryOps{
+static const std::unordered_map<std::string, const char*> DEPRECATED_kBinaryOps{
     {"add", "+"},
     {"sub", "-"},
     {"mul", "*"},
@@ -84,12 +90,27 @@ static const std::unordered_map<std::string, const char*> kBinaryOps{
     {"eq", "== or ~="}
 };
 
+static const std::unordered_map<std::string, const char*> kBinaryOps{
+    {"add", "+"},
+    {"sub", "-"},
+    {"mul", "*"},
+    {"div", "/"},
+    {"idiv", "//"},
+    {"pow", "^"},
+    {"mod", "%"},
+    {"concat", ".."},
+    {"lt", "< or >="},
+    {"le", "<= or >"},
+    {"eq", "== or ~="}
+};
+
 // this list of unary operator type functions is used for better stringification of type functions errors
 static const std::unordered_map<std::string, const char*> kUnaryOps{{"unm", "-"}, {"len", "#"}, {"not", "not"}};
 
 // this list of type functions will receive a special error indicating that the user should file a bug on the GitHub repository
 // putting a type function in this list indicates that it is expected to _always_ reduce
-static const std::unordered_set<std::string> kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect"};
+static const std::unordered_set<std::string> DEPRECATED_kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect"};
+static const std::unordered_set<std::string> kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect", "and", "or"};
 
 struct ErrorConverter
 {
@@ -116,7 +137,7 @@ struct ErrorConverter
             size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
             if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
                 return "Type " + given + " could not be converted into " + wanted;
-            return "Type\n    " + given + "\ncould not be converted into\n    " + wanted;
+            return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
         };
 
         if (givenTypeName == wantedTypeName)
@@ -140,7 +161,7 @@ struct ErrorConverter
         }
 
         if (result.empty())
-            result = constructErrorMessage(givenTypeName, wantedTypeName, std::nullopt, std::nullopt);
+            result = constructErrorMessage(std::move(givenTypeName), std::move(wantedTypeName), std::nullopt, std::nullopt);
 
 
         if (tm.error)
@@ -183,7 +204,7 @@ struct ErrorConverter
         TypeId t = follow(e.table);
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
-        else if (get<ClassType>(t))
+        else if (get<ExternType>(t))
             return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
@@ -351,7 +372,7 @@ struct ErrorConverter
         std::string s = "Key '" + e.key + "' not found in ";
 
         TypeId t = follow(e.table);
-        if (get<ClassType>(t))
+        if (get<ExternType>(t))
             s += "class";
         else
             s += "table";
@@ -382,8 +403,8 @@ struct ErrorConverter
         std::optional<TypeId> metatable;
         if (const MetatableType* mtType = get<MetatableType>(type))
             metatable = mtType->metatable;
-        else if (const ClassType* classType = get<ClassType>(type))
-            metatable = classType->metatable;
+        else if (const ExternType* externType = get<ExternType>(type))
+            metatable = externType->metatable;
 
         if (!metatable)
             return std::nullopt;
@@ -399,7 +420,19 @@ struct ErrorConverter
 
         auto it = mtt->props.find("__call");
         if (it != mtt->props.end())
-            return it->second.type();
+        {
+            if (FFlag::LuauSolverAgnosticStringification)
+            {
+                return it->second.readTy;
+            }
+            else
+            {
+                if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                    return it->second.readTy;
+                else
+                    return it->second.type_DEPRECATED();
+            }
+        }
         else
             return std::nullopt;
     }
@@ -427,6 +460,12 @@ struct ErrorConverter
             err += "\nWe are unable to determine the appropriate result type for such a call.";
 
             return err;
+        }
+
+        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
+        {
+            if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
+                return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
         }
 
         return "Cannot call a value of type " + toString(e.ty);
@@ -591,7 +630,7 @@ struct ErrorConverter
         return ss;
     }
 
-    std::string operator()(const DynamicPropertyLookupOnClassesUnsafe& e) const
+    std::string operator()(const DynamicPropertyLookupOnExternTypesUnsafe& e) const
     {
         return "Attempting a dynamic property access on type '" + Luau::toString(e.ty) + "' is unsafe and may cause exceptions at runtime";
     }
@@ -601,7 +640,7 @@ struct ErrorConverter
         auto tfit = get<TypeFunctionInstanceType>(e.ty);
         LUAU_ASSERT(tfit); // Luau analysis has actually done something wrong if this type is not a type function.
         if (!tfit)
-            return "Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type function.";
+            return "Internal error: Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type function.";
 
         // unary operators
         if (auto unaryString = kUnaryOps.find(tfit->function->name); unaryString != kUnaryOps.end())
@@ -638,7 +677,8 @@ struct ErrorConverter
         }
 
         // binary operators
-        if (auto binaryString = kBinaryOps.find(tfit->function->name); binaryString != kBinaryOps.end())
+        const auto binaryOps = FFlag::LuauEagerGeneralization4 ? kBinaryOps : DEPRECATED_kBinaryOps;
+        if (auto binaryString = binaryOps.find(tfit->function->name); binaryString != binaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
 
@@ -692,7 +732,7 @@ struct ErrorConverter
                        "'";
         }
 
-        if (kUnreachableTypeFunctions.count(tfit->function->name))
+        if ((FFlag::LuauEagerGeneralization4 ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
                    "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
@@ -751,8 +791,15 @@ struct ErrorConverter
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
     {
-        return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
-               "' is used in a way that will run time error";
+        if (e.functionName.empty())
+        {
+            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
+        }
+        else
+        {
+            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
+                   "' is used in a way that will run time error";
+        }
     }
 
     std::string operator()(const PropertyAccessViolation& e) const
@@ -791,6 +838,11 @@ struct ErrorConverter
         return e.message;
     }
 
+    std::string operator()(const ReservedIdentifier& e) const
+    {
+        return e.name + " cannot be used as an identifier for a type function or alias";
+    }
+
     std::string operator()(const CannotAssignToNever& e) const
     {
         std::string result = "Cannot assign a value of type " + toString(e.rhsType) + " to a field of type never";
@@ -808,6 +860,35 @@ struct ErrorConverter
         }
 
         return result;
+    }
+
+    std::string operator()(const UnexpectedArrayLikeTableItem&) const
+    {
+        return "Unexpected array-like table item: the indexer key type of this table is not `number`.";
+    }
+
+    std::string operator()(const CannotCheckDynamicStringFormatCalls& e) const
+    {
+        return "We cannot statically check the type of `string.format` when called with a format string that is not statically known.\n"
+            "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.";
+    }
+
+
+    std::string operator()(const GenericTypeCountMismatch& e) const
+    {
+        return "Different number of generic type parameters: subtype had " + std::to_string(e.subTyGenericCount) + ", supertype had " +
+               std::to_string(e.superTyGenericCount) + ".";
+    }
+
+    std::string operator()(const GenericTypePackCountMismatch& e) const
+    {
+        return "Different number of generic type pack parameters: subtype had " + std::to_string(e.subTyGenericPackCount) + ", supertype had " +
+               std::to_string(e.superTyGenericPackCount) + ".";
+    }
+
+    std::string operator()(const MultipleNonviableOverloads& e) const
+    {
+        return "None of the overloads for function that accept " + std::to_string(e.attemptedArgCount) + " arguments are compatible.";
     }
 };
 
@@ -844,14 +925,14 @@ TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType)
 TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason)
     : wantedType(wantedType)
     , givenType(givenType)
-    , reason(reason)
+    , reason(std::move(reason))
 {
 }
 
 TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error)
     : wantedType(wantedType)
     , givenType(givenType)
-    , reason(reason)
+    , reason(std::move(reason))
     , error(error ? std::make_shared<TypeError>(std::move(*error)) : nullptr)
 {
 }
@@ -867,7 +948,7 @@ TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reas
     : wantedType(wantedType)
     , givenType(givenType)
     , context(context)
-    , reason(reason)
+    , reason(std::move(reason))
 {
 }
 
@@ -875,7 +956,7 @@ TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reas
     : wantedType(wantedType)
     , givenType(givenType)
     , context(context)
-    , reason(reason)
+    , reason(std::move(reason))
     , error(error ? std::make_shared<TypeError>(std::move(*error)) : nullptr)
 {
 }
@@ -1116,7 +1197,7 @@ bool TypePackMismatch::operator==(const TypePackMismatch& rhs) const
     return *wantedTp == *rhs.wantedTp && *givenTp == *rhs.givenTp;
 }
 
-bool DynamicPropertyLookupOnClassesUnsafe::operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const
+bool DynamicPropertyLookupOnExternTypesUnsafe::operator==(const DynamicPropertyLookupOnExternTypesUnsafe& rhs) const
 {
     return ty == rhs.ty;
 }
@@ -1178,6 +1259,11 @@ bool UserDefinedTypeFunctionError::operator==(const UserDefinedTypeFunctionError
     return message == rhs.message;
 }
 
+bool ReservedIdentifier::operator==(const ReservedIdentifier& rhs) const
+{
+    return name == rhs.name;
+}
+
 bool CannotAssignToNever::operator==(const CannotAssignToNever& rhs) const
 {
     if (cause.size() != rhs.cause.size())
@@ -1190,6 +1276,21 @@ bool CannotAssignToNever::operator==(const CannotAssignToNever& rhs) const
     }
 
     return *rhsType == *rhs.rhsType && reason == rhs.reason;
+}
+
+bool GenericTypeCountMismatch::operator==(const GenericTypeCountMismatch& rhs) const
+{
+    return subTyGenericCount == rhs.subTyGenericCount && superTyGenericCount == rhs.superTyGenericCount;
+}
+
+bool GenericTypePackCountMismatch::operator==(const GenericTypePackCountMismatch& rhs) const
+{
+    return subTyGenericPackCount == rhs.subTyGenericPackCount && superTyGenericPackCount == rhs.superTyGenericPackCount;
+}
+
+bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rhs) const
+{
+    return attemptedArgCount == rhs.attemptedArgCount;
 }
 
 std::string toString(const TypeError& error)
@@ -1353,7 +1454,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.wantedTp = clone(e.wantedTp);
         e.givenTp = clone(e.givenTp);
     }
-    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
+    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnExternTypesUnsafe>)
         e.ty = clone(e.ty);
     else if constexpr (std::is_same_v<T, UninhabitedTypeFunction>)
         e.ty = clone(e.ty);
@@ -1396,6 +1497,24 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
 
         for (auto& ty : e.cause)
             ty = clone(ty);
+    }
+    else if constexpr (std::is_same_v<T, UnexpectedArrayLikeTableItem>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, ReservedIdentifier>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CannotCheckDynamicStringFormatCalls>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, GenericTypeCountMismatch>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, GenericTypePackCountMismatch>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, MultipleNonviableOverloads>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

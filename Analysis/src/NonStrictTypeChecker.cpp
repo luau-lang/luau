@@ -2,6 +2,7 @@
 #include "Luau/NonStrictTypeChecker.h"
 
 #include "Luau/Ast.h"
+#include "Luau/AstQuery.h"
 #include "Luau/Common.h"
 #include "Luau/Simplify.h"
 #include "Luau/Type.h"
@@ -19,9 +20,11 @@
 #include <iostream>
 #include <iterator>
 
-LUAU_FASTFLAG(LuauFreeTypesMustHaveBounds)
-LUAU_FASTFLAGVARIABLE(LuauNonStrictVisitorImprovements)
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictWarnOnUnknownGlobals)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
 
 namespace Luau
 {
@@ -190,7 +193,7 @@ struct NonStrictTypeChecker
         , ice(ice)
         , arena(arena)
         , module(module)
-        , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
+        , normalizer{arena, builtinTypes, unifierState, SolverMode::New, /* cache inhabitance */ true}
         , subtyping{builtinTypes, arena, simplifier, NotNull(&normalizer), typeFunctionRuntime, ice}
         , dfg(dfg)
         , limits(limits)
@@ -213,7 +216,7 @@ struct NonStrictTypeChecker
             return *fst;
         else if (auto ftp = get<FreeTypePack>(pack))
         {
-            TypeId result = FFlag::LuauFreeTypesMustHaveBounds ? arena->freshType(builtinTypes, ftp->scope) : arena->addType(FreeType{ftp->scope});
+            TypeId result = arena->freshType(builtinTypes, ftp->scope);
             TypePackId freeTail = arena->addTypePack(FreeTypePack{ftp->scope});
 
             TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
@@ -223,7 +226,7 @@ struct NonStrictTypeChecker
             return result;
         }
         else if (get<ErrorTypePack>(pack))
-            return builtinTypes->errorRecoveryType();
+            return builtinTypes->errorType;
         else if (finite(pack) && size(pack) == 0)
             return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`
         else
@@ -236,14 +239,8 @@ struct NonStrictTypeChecker
         if (noTypeFunctionErrors.find(instance))
             return instance;
 
-        ErrorVec errors =
-            reduceTypeFunctions(
-                instance,
-                location,
-                TypeFunctionContext{arena, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits},
-                true
-            )
-                .errors;
+        TypeFunctionContext context{arena, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits};
+        ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -307,7 +304,7 @@ struct NonStrictTypeChecker
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareGlobal>())
             return visit(s);
-        else if (auto s = stat->as<AstStatDeclareClass>())
+        else if (auto s = stat->as<AstStatDeclareExternType>())
             return visit(s);
         else if (auto s = stat->as<AstStatError>())
             return visit(s);
@@ -333,7 +330,11 @@ struct NonStrictTypeChecker
                 // local x ; B generates the context of B without x
                 visit(local);
                 for (auto local : local->vars)
+                {
                     ctx.remove(dfg->getDef(local));
+
+                    visit(local->annotation);
+                }
             }
             else
                 ctx = NonStrictContext::disjunction(builtinTypes, arena, visit(stat), ctx);
@@ -346,12 +347,24 @@ struct NonStrictTypeChecker
         NonStrictContext condB = visit(ifStatement->condition, ValueContext::RValue);
         NonStrictContext branchContext;
 
-        // If there is no else branch, don't bother generating warnings for the then branch - we can't prove there is an error
-        if (ifStatement->elsebody)
+        if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
         {
             NonStrictContext thenBody = visit(ifStatement->thenbody);
-            NonStrictContext elseBody = visit(ifStatement->elsebody);
-            branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
+            if (ifStatement->elsebody)
+            {
+                NonStrictContext elseBody = visit(ifStatement->elsebody);
+                branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
+            }
+        }
+        else
+        {
+            // If there is no else branch, don't bother generating warnings for the then branch - we can't prove there is an error
+            if (ifStatement->elsebody)
+            {
+                NonStrictContext thenBody = visit(ifStatement->thenbody);
+                NonStrictContext elseBody = visit(ifStatement->elsebody);
+                branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
+            }
         }
 
         return NonStrictContext::disjunction(builtinTypes, arena, condB, branchContext);
@@ -359,26 +372,16 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatWhile* whileStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext condition = visit(whileStatement->condition, ValueContext::RValue);
-            NonStrictContext body = visit(whileStatement->body);
-            return NonStrictContext::disjunction(builtinTypes, arena, condition, body);
-        }
-        else
-            return {};
+        NonStrictContext condition = visit(whileStatement->condition, ValueContext::RValue);
+        NonStrictContext body = visit(whileStatement->body);
+        return NonStrictContext::disjunction(builtinTypes, arena, condition, body);
     }
 
     NonStrictContext visit(AstStatRepeat* repeatStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext body = visit(repeatStatement->body);
-            NonStrictContext condition = visit(repeatStatement->condition, ValueContext::RValue);
-            return NonStrictContext::disjunction(builtinTypes, arena, body, condition);
-        }
-        else
-            return {};
+        NonStrictContext body = visit(repeatStatement->body);
+        NonStrictContext condition = visit(repeatStatement->condition, ValueContext::RValue);
+        return NonStrictContext::disjunction(builtinTypes, arena, body, condition);
     }
 
     NonStrictContext visit(AstStatBreak* breakStatement)
@@ -393,13 +396,10 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatReturn* returnStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            // TODO: this is believing existing code, but i'm not sure if this makes sense
-            // for how the contexts are handled
-            for (AstExpr* expr : returnStatement->list)
-                visit(expr, ValueContext::RValue);
-        }
+        // TODO: this is believing existing code, but i'm not sure if this makes sense
+        // for how the contexts are handled
+        for (AstExpr* expr : returnStatement->list)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }
@@ -418,57 +418,42 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatFor* forStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            // TODO: throwing out context based on same principle as existing code?
-            if (forStatement->from)
-                visit(forStatement->from, ValueContext::RValue);
-            if (forStatement->to)
-                visit(forStatement->to, ValueContext::RValue);
-            if (forStatement->step)
-                visit(forStatement->step, ValueContext::RValue);
-            return visit(forStatement->body);
-        }
-        else
-        {
-            return {};
-        }
+        visit(forStatement->var->annotation);
+
+        // TODO: throwing out context based on same principle as existing code?
+        if (forStatement->from)
+            visit(forStatement->from, ValueContext::RValue);
+        if (forStatement->to)
+            visit(forStatement->to, ValueContext::RValue);
+        if (forStatement->step)
+            visit(forStatement->step, ValueContext::RValue);
+        return visit(forStatement->body);
     }
 
     NonStrictContext visit(AstStatForIn* forInStatement)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* rhs : forInStatement->values)
-                visit(rhs, ValueContext::RValue);
-            return visit(forInStatement->body);
-        }
-        else
-        {
-            return {};
-        }
+        for (auto var : forInStatement->vars)
+            visit(var->annotation);
+
+        for (AstExpr* rhs : forInStatement->values)
+            visit(rhs, ValueContext::RValue);
+        return visit(forInStatement->body);
     }
 
     NonStrictContext visit(AstStatAssign* assign)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* lhs : assign->vars)
-                visit(lhs, ValueContext::LValue);
-            for (AstExpr* rhs : assign->values)
-                visit(rhs, ValueContext::RValue);
-        }
+        for (AstExpr* lhs : assign->vars)
+            visit(lhs, ValueContext::LValue);
+        for (AstExpr* rhs : assign->values)
+            visit(rhs, ValueContext::RValue);
 
         return {};
     }
 
     NonStrictContext visit(AstStatCompoundAssign* compoundAssign)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            visit(compoundAssign->var, ValueContext::LValue);
-            visit(compoundAssign->value, ValueContext::RValue);
-        }
+        visit(compoundAssign->var, ValueContext::LValue);
+        visit(compoundAssign->value, ValueContext::RValue);
 
         return {};
     }
@@ -485,6 +470,9 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatTypeAlias* typeAlias)
     {
+        visitGenerics(typeAlias->generics, typeAlias->genericPacks);
+        visit(typeAlias->type);
+
         return {};
     }
 
@@ -495,28 +483,40 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatDeclareFunction* declFn)
     {
+        visitGenerics(declFn->generics, declFn->genericPacks);
+        visit(declFn->params);
+        visit(declFn->retTypes);
+
         return {};
     }
 
     NonStrictContext visit(AstStatDeclareGlobal* declGlobal)
     {
+        visit(declGlobal->type);
+
         return {};
     }
 
-    NonStrictContext visit(AstStatDeclareClass* declClass)
+    NonStrictContext visit(AstStatDeclareExternType* declClass)
     {
+        if (declClass->indexer)
+        {
+            visit(declClass->indexer->indexType);
+            visit(declClass->indexer->resultType);
+        }
+
+        for (auto prop : declClass->props)
+            visit(prop.ty);
+
         return {};
     }
 
     NonStrictContext visit(AstStatError* error)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstStat* stat : error->statements)
-                visit(stat);
-            for (AstExpr* expr : error->expressions)
-                visit(expr, ValueContext::RValue);
-        }
+        for (AstStat* stat : error->statements)
+            visit(stat);
+        for (AstExpr* expr : error->expressions)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }
@@ -571,10 +571,7 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprGroup* group, ValueContext context)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(group->expr, context);
-        else
-            return {};
+        return visit(group->expr, context);
     }
 
     NonStrictContext visit(AstExprConstantNil* expr)
@@ -604,17 +601,14 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprGlobal* global, ValueContext context)
     {
-        if (FFlag::LuauNewNonStrictWarnOnUnknownGlobals)
-        {
-            // We don't file unknown symbols for LValues.
-            if (context == ValueContext::LValue)
-                return {};
+        // We don't file unknown symbols for LValues.
+        if (context == ValueContext::LValue)
+            return {};
 
-            NotNull<Scope> scope = stack.back();
-            if (!scope->lookup(global->name))
-            {
-                reportError(UnknownSymbol{global->name.value, UnknownSymbol::Binding}, global->location);
-            }
+        NotNull<Scope> scope = stack.back();
+        if (!scope->lookup(global->name))
+        {
+            reportError(UnknownSymbol{global->name.value, UnknownSymbol::Binding}, global->location);
         }
 
         return {};
@@ -627,6 +621,13 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprCall* call)
     {
+        if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
+        {
+            visit(call->func, ValueContext::RValue);
+            for (auto arg : call->args)
+                visit(arg, ValueContext::RValue);
+        }
+
         NonStrictContext fresh{};
         TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
         if (!originalCallTy)
@@ -679,7 +680,7 @@ struct NonStrictTypeChecker
             if (arguments.size() > argTypes.size())
             {
                 // We are passing more arguments than we expect, so we should error
-                reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), arguments.size()}, call->location);
+                reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), arguments.size()}, call->location);
                 return fresh;
             }
 
@@ -713,7 +714,15 @@ struct NonStrictTypeChecker
             {
                 AstExpr* arg = arguments[i];
                 if (auto runTimeFailureType = willRunTimeError(arg, fresh))
-                    reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
+                {
+                    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+                    {
+                        if (!get<NeverType>(follow(*runTimeFailureType)))
+                            reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
+                    }
+                    else
+                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
+                }
             }
 
             if (arguments.size() < argTypes.size())
@@ -726,7 +735,7 @@ struct NonStrictTypeChecker
 
                 if (!remainingArgsOptional)
                 {
-                    reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), arguments.size()}, call->location);
+                    reportError(CheckedFunctionIncorrectArgs{std::move(functionName), argTypes.size(), arguments.size()}, call->location);
                     return fresh;
                 }
             }
@@ -737,23 +746,16 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprIndexName* indexName, ValueContext context)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(indexName->expr, context);
-        else
-            return {};
+        return visit(indexName->expr, context);
     }
 
     NonStrictContext visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext expr = visit(indexExpr->expr, context);
-            NonStrictContext index = visit(indexExpr->index, ValueContext::RValue);
-            return NonStrictContext::disjunction(builtinTypes, arena, expr, index);
-        }
-        else
-            return {};
+        NonStrictContext expr = visit(indexExpr->expr, context);
+        NonStrictContext index = visit(indexExpr->index, ValueContext::RValue);
+        return NonStrictContext::disjunction(builtinTypes, arena, expr, index);
     }
+
 
     NonStrictContext visit(AstExprFunction* exprFn)
     {
@@ -763,22 +765,32 @@ struct NonStrictTypeChecker
         for (AstLocal* local : exprFn->args)
         {
             if (std::optional<TypeId> ty = willRunTimeErrorFunctionDefinition(local, remainder))
-                reportError(NonStrictFunctionDefinitionError{exprFn->debugname.value, local->name.value, *ty}, local->location);
+            {
+                const char* debugname = exprFn->debugname.value;
+                reportError(NonStrictFunctionDefinitionError{debugname ? debugname : "", local->name.value, *ty}, local->location);
+            }
             remainder.remove(dfg->getDef(local));
+
+            visit(local->annotation);
         }
+
+        visitGenerics(exprFn->generics, exprFn->genericPacks);
+
+        visit(exprFn->returnAnnotation);
+
+        if (exprFn->varargAnnotation)
+            visit(exprFn->varargAnnotation);
+
         return remainder;
     }
 
     NonStrictContext visit(AstExprTable* table)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
+        for (auto [_, key, value] : table->items)
         {
-            for (auto [_, key, value] : table->items)
-            {
-                if (key)
-                    visit(key, ValueContext::RValue);
-                visit(value, ValueContext::RValue);
-            }
+            if (key)
+                visit(key, ValueContext::RValue);
+            visit(value, ValueContext::RValue);
         }
 
         return {};
@@ -786,30 +798,21 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprUnary* unary)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(unary->expr, ValueContext::RValue);
-        else
-            return {};
+        return visit(unary->expr, ValueContext::RValue);
     }
 
     NonStrictContext visit(AstExprBinary* binary)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            NonStrictContext lhs = visit(binary->left, ValueContext::RValue);
-            NonStrictContext rhs = visit(binary->right, ValueContext::RValue);
-            return NonStrictContext::disjunction(builtinTypes, arena, lhs, rhs);
-        }
-        else
-            return {};
+        NonStrictContext lhs = visit(binary->left, ValueContext::RValue);
+        NonStrictContext rhs = visit(binary->right, ValueContext::RValue);
+        return NonStrictContext::disjunction(builtinTypes, arena, lhs, rhs);
     }
 
     NonStrictContext visit(AstExprTypeAssertion* typeAssertion)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-            return visit(typeAssertion->expr, ValueContext::RValue);
-        else
-            return {};
+        visit(typeAssertion->annotation);
+
+        return visit(typeAssertion->expr, ValueContext::RValue);
     }
 
     NonStrictContext visit(AstExprIfElse* ifElse)
@@ -822,23 +825,368 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprInterpString* interpString)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
-        {
-            for (AstExpr* expr : interpString->expressions)
-                visit(expr, ValueContext::RValue);
-        }
+        for (AstExpr* expr : interpString->expressions)
+            visit(expr, ValueContext::RValue);
 
         return {};
     }
 
     NonStrictContext visit(AstExprError* error)
     {
-        if (FFlag::LuauNonStrictVisitorImprovements)
+        for (AstExpr* expr : error->expressions)
+            visit(expr, ValueContext::RValue);
+
+        return {};
+    }
+
+    void visit(AstType* ty)
+    {
+        // If this node is `nullptr`, early exit.
+        if (!ty)
+            return;
+
+        if (auto t = ty->as<AstTypeReference>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeTable>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeFunction>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeTypeof>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeUnion>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeIntersection>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeGroup>())
+            return visit(t->type);
+    }
+
+    void visit(AstTypeReference* ty)
+    {
+        if (FFlag::DebugLuauMagicTypes)
         {
-            for (AstExpr* expr : error->expressions)
-                visit(expr, ValueContext::RValue);
+            // No further validation is necessary in this case.
+            if (ty->name == kLuauPrint)
+                return;
+
+            if (ty->name == kLuauForceConstraintSolvingIncomplete)
+            {
+                reportError(ConstraintSolvingIncompleteError{}, ty->location);
+                return;
+            }
         }
 
+        if (FFlag::DebugLuauMagicTypes && (ty->name == kLuauPrint || ty->name == kLuauForceConstraintSolvingIncomplete))
+            return;
+
+        for (const AstTypeOrPack& param : ty->parameters)
+        {
+            if (param.type)
+                visit(param.type);
+            else
+                visit(param.typePack);
+        }
+
+        Scope* scope = findInnermostScope(ty->location);
+        LUAU_ASSERT(scope);
+
+        std::optional<TypeFun> alias = ty->prefix ? scope->lookupImportedType(ty->prefix->value, ty->name.value) : scope->lookupType(ty->name.value);
+
+        if (alias.has_value())
+        {
+            size_t typesRequired = alias->typeParams.size();
+            size_t packsRequired = alias->typePackParams.size();
+
+            bool hasDefaultTypes = std::any_of(
+                alias->typeParams.begin(),
+                alias->typeParams.end(),
+                [](auto&& el)
+                {
+                    return el.defaultValue.has_value();
+                }
+            );
+
+            bool hasDefaultPacks = std::any_of(
+                alias->typePackParams.begin(),
+                alias->typePackParams.end(),
+                [](auto&& el)
+                {
+                    return el.defaultValue.has_value();
+                }
+            );
+
+            if (!ty->hasParameterList)
+            {
+                if ((!alias->typeParams.empty() && !hasDefaultTypes) || (!alias->typePackParams.empty() && !hasDefaultPacks))
+                    reportError(GenericError{"Type parameter list is required"}, ty->location);
+            }
+
+            size_t typesProvided = 0;
+            size_t extraTypes = 0;
+            size_t packsProvided = 0;
+
+            for (const AstTypeOrPack& p : ty->parameters)
+            {
+                if (p.type)
+                {
+                    if (packsProvided != 0)
+                    {
+                        reportError(GenericError{"Type parameters must come before type pack parameters"}, ty->location);
+                        continue;
+                    }
+
+                    if (typesProvided < typesRequired)
+                        typesProvided += 1;
+                    else
+                        extraTypes += 1;
+                }
+                else if (p.typePack)
+                {
+                    std::optional<TypePackId> tp = lookupPackAnnotation(p.typePack);
+                    if (!tp.has_value())
+                        continue;
+
+                    if (typesProvided < typesRequired && size(*tp) == 1 && finite(*tp) && first(*tp))
+                        typesProvided += 1;
+                    else
+                        packsProvided += 1;
+                }
+            }
+
+            if (extraTypes != 0 && packsProvided == 0)
+            {
+                // Extra types are only collected into a pack if a pack is expected
+                if (packsRequired != 0)
+                    packsProvided += 1;
+                else
+                    typesProvided += extraTypes;
+            }
+
+            for (size_t i = typesProvided; i < typesRequired; ++i)
+            {
+                if (alias->typeParams[i].defaultValue)
+                    typesProvided += 1;
+            }
+
+            for (size_t i = packsProvided; i < packsRequired; ++i)
+            {
+                if (alias->typePackParams[i].defaultValue)
+                    packsProvided += 1;
+            }
+
+            if (extraTypes == 0 && packsProvided + 1 == packsRequired)
+                packsProvided += 1;
+
+
+            if (typesProvided != typesRequired || packsProvided != packsRequired)
+            {
+                reportError(
+                    IncorrectGenericParameterCount{
+                        /* name */ ty->name.value,
+                        /* typeFun */ *alias,
+                        /* actualParameters */ typesProvided,
+                        /* actualPackParameters */ packsProvided,
+                    },
+                    ty->location
+                );
+            }
+        }
+        else
+        {
+            if (scope->lookupPack(ty->name.value))
+            {
+                reportError(
+                    SwappedGenericTypeParameter{
+                        ty->name.value,
+                        SwappedGenericTypeParameter::Kind::Type,
+                    },
+                    ty->location
+                );
+            }
+            else
+            {
+                std::string symbol = "";
+                if (ty->prefix)
+                {
+                    symbol += (*(ty->prefix)).value;
+                    symbol += ".";
+                }
+                symbol += ty->name.value;
+
+                reportError(UnknownSymbol{std::move(symbol), UnknownSymbol::Context::Type}, ty->location);
+            }
+        }
+    }
+
+    void visit(AstTypeTable* table)
+    {
+        if (table->indexer)
+        {
+            visit(table->indexer->indexType);
+            visit(table->indexer->resultType);
+        }
+
+        for (auto prop : table->props)
+            visit(prop.type);
+    }
+
+    void visit(AstTypeFunction* function)
+    {
+        visit(function->argTypes);
+        visit(function->returnTypes);
+    }
+
+    void visit(AstTypeTypeof* typeOf)
+    {
+        visit(typeOf->expr, ValueContext::RValue);
+    }
+
+    void visit(AstTypeUnion* unionType)
+    {
+        for (auto typ : unionType->types)
+            visit(typ);
+    }
+
+    void visit(AstTypeIntersection* intersectionType)
+    {
+        for (auto typ : intersectionType->types)
+            visit(typ);
+    }
+
+    void visit(AstTypeList& list)
+    {
+        for (auto typ : list.types)
+            visit(typ);
+        if (list.tailType)
+            visit(list.tailType);
+    }
+
+    void visit(AstTypePack* pack)
+    {
+        // If there is no pack node, early exit.
+        if (!pack)
+            return;
+
+        if (auto p = pack->as<AstTypePackExplicit>())
+            return visit(p);
+        else if (auto p = pack->as<AstTypePackVariadic>())
+            return visit(p);
+        else if (auto p = pack->as<AstTypePackGeneric>())
+            return visit(p);
+    }
+
+    void visit(AstTypePackExplicit* tp)
+    {
+        for (AstType* type : tp->typeList.types)
+            visit(type);
+
+        if (tp->typeList.tailType)
+            visit(tp->typeList.tailType);
+    }
+
+    void visit(AstTypePackVariadic* tp)
+    {
+        visit(tp->variadicType);
+    }
+
+    void visit(AstTypePackGeneric* tp)
+    {
+        Scope* scope = findInnermostScope(tp->location);
+        LUAU_ASSERT(scope);
+
+        if (FFlag::LuauNewNonStrictFixGenericTypePacks)
+        {
+            if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+                return;
+
+            if (scope->lookupType(tp->genericName.value))
+                return reportError(
+                    SwappedGenericTypeParameter{
+                        tp->genericName.value,
+                        SwappedGenericTypeParameter::Kind::Pack,
+                    },
+                    tp->location
+                );
+
+            reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+        }
+        else
+        {
+            std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
+            if (!alias.has_value())
+            {
+                if (scope->lookupType(tp->genericName.value))
+                {
+                    reportError(
+                        SwappedGenericTypeParameter{
+                            tp->genericName.value,
+                            SwappedGenericTypeParameter::Kind::Pack,
+                        },
+                        tp->location
+                    );
+                }
+            }
+            else
+            {
+                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            }
+        }
+    }
+
+    void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
+    {
+        DenseHashSet<AstName> seen{AstName{}};
+
+        for (const auto* g : generics)
+        {
+            if (seen.contains(g->name))
+                reportError(DuplicateGenericParameter{g->name.value}, g->location);
+            else
+                seen.insert(g->name);
+
+            if (g->defaultValue)
+                visit(g->defaultValue);
+        }
+
+        for (const auto* g : genericPacks)
+        {
+            if (seen.contains(g->name))
+                reportError(DuplicateGenericParameter{g->name.value}, g->location);
+            else
+                seen.insert(g->name);
+
+            if (g->defaultValue)
+                visit(g->defaultValue);
+        }
+    }
+
+    Scope* findInnermostScope(Location location) const
+    {
+        Scope* bestScope = module->getModuleScope().get();
+
+        bool didNarrow;
+        do
+        {
+            didNarrow = false;
+            for (auto scope : bestScope->children)
+            {
+                if (scope->location.encloses(location))
+                {
+                    bestScope = scope.get();
+                    didNarrow = true;
+                    break;
+                }
+            }
+        } while (didNarrow && bestScope->children.size() > 0);
+
+        return bestScope;
+    }
+
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation) const
+    {
+        TypePackId* tp = module->astResolvedTypePacks.find(annotation);
+        if (tp != nullptr)
+            return {follow(*tp)};
         return {};
     }
 

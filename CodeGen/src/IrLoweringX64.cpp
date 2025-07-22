@@ -16,8 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauVectorLibNativeDot)
-
 namespace Luau
 {
 namespace CodeGen
@@ -706,8 +704,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::DOT_VEC:
     {
-        LUAU_ASSERT(FFlag::LuauVectorLibNativeDot);
-
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
 
         ScopedRegX64 tmp1{regs};
@@ -1221,6 +1217,40 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_getimport)]);
 
         emitUpdateBase(build);
+        break;
+    }
+    case IrCmd::GET_CACHED_IMPORT:
+    {
+        regs.assertAllFree();
+        regs.assertNoSpills();
+
+        Label skip, exit;
+
+        // If the constant for the import is set, we will use it directly, otherwise we have to call an import path lookup function
+        build.cmp(luauConstantTag(vmConstOp(inst.b)), LUA_TNIL);
+        build.jcc(ConditionX64::NotEqual, skip);
+
+        {
+            ScopedSpills spillGuard(regs);
+
+            IrCallWrapperX64 callWrap(regs, build, index);
+            callWrap.addArgument(SizeX64::qword, rState);
+            callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(inst.a)));
+            callWrap.addArgument(SizeX64::dword, importOp(inst.c));
+            callWrap.addArgument(SizeX64::dword, uintOp(inst.d));
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, getImport)]);
+        }
+
+        emitUpdateBase(build);
+        build.jmp(exit);
+
+        build.setLabel(skip);
+
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+
+        build.vmovups(tmp1.reg, luauConstant(vmConstOp(inst.b)));
+        build.vmovups(luauReg(vmRegOp(inst.a)), tmp1.reg);
+        build.setLabel(exit);
         break;
     }
     case IrCmd::CONCAT:
@@ -2352,6 +2382,11 @@ int IrLoweringX64::intOp(IrOp op) const
 unsigned IrLoweringX64::uintOp(IrOp op) const
 {
     return function.uintOp(op);
+}
+
+unsigned IrLoweringX64::importOp(IrOp op) const
+{
+    return function.importOp(op);
 }
 
 double IrLoweringX64::doubleOp(IrOp op) const

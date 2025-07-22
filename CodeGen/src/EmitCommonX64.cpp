@@ -14,6 +14,9 @@
 
 #include <utility>
 
+
+LUAU_DYNAMIC_FASTFLAGVARIABLE(AddReturnExectargetCheck, false);
+
 namespace Luau
 {
 namespace CodeGen
@@ -458,6 +461,7 @@ void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
     // Registers alive: r9 (cip)
     RegisterX64 proto = rcx;
     RegisterX64 execdata = rbx;
+    RegisterX64 exectarget = r10;
 
     // Change closure
     build.mov(rax, qword[cip + offsetof(CallInfo, func)]);
@@ -470,6 +474,13 @@ void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
 
     build.test(byte[cip + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
     build.jcc(ConditionX64::Zero, helpers.exitContinueVm); // Continue in interpreter if function has no native data
+
+    if (DFFlag::AddReturnExectargetCheck)
+    {
+        build.mov(exectarget, qword[proto + offsetof(Proto, exectarget)]);
+        build.test(exectarget, exectarget);
+        build.jcc(ConditionX64::Zero, helpers.exitContinueVmClearNativeFlag);
+    }
 
     // Change constants
     build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
@@ -486,7 +497,15 @@ void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
 
     // Get new instruction location and jump to it
     build.mov(edx, dword[execdata + rax]);
-    build.add(rdx, qword[proto + offsetof(Proto, exectarget)]);
+
+    if (DFFlag::AddReturnExectargetCheck)
+    {
+        build.add(rdx, exectarget);
+    }
+    else
+    {
+        build.add(rdx, qword[proto + offsetof(Proto, exectarget)]);
+    }
     build.jmp(rdx);
 }
 

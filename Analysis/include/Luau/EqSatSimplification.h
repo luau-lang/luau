@@ -4,7 +4,6 @@
 
 #include "Luau/TypeFwd.h"
 #include "Luau/NotNull.h"
-#include "Luau/DenseHash.h"
 
 #include <memory>
 #include <optional>

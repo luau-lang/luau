@@ -11,6 +11,7 @@
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSolverAgnosticVisitType)
 
 namespace Luau
 {
@@ -126,7 +127,7 @@ struct GenericTypeVisitor
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const ClassType& ctv)
+    virtual bool visit(TypeId ty, const ExternType& etv)
     {
         return visit(ty);
     }
@@ -231,7 +232,20 @@ struct GenericTypeVisitor
         }
         else if (auto ftv = get<FreeType>(ty))
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverAgnosticVisitType)
+            {
+                if (visit(ty, *ftv))
+                {
+                    // Regardless of the choice of solver, all free types are guaranteed to have
+                    // lower and upper bounds
+                    LUAU_ASSERT(ftv->lowerBound);
+                    LUAU_ASSERT(ftv->upperBound);
+
+                    traverse(ftv->lowerBound);
+                    traverse(ftv->upperBound);
+                }
+            }
+            else if (FFlag::LuauSolverV2)
             {
                 if (visit(ty, *ftv))
                 {
@@ -281,7 +295,7 @@ struct GenericTypeVisitor
                 {
                     for (auto& [_name, prop] : ttv->props)
                     {
-                        if (FFlag::LuauSolverV2)
+                        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
                         {
                             if (auto ty = prop.readTy)
                                 traverse(*ty);
@@ -294,7 +308,7 @@ struct GenericTypeVisitor
                                 traverse(*ty);
                         }
                         else
-                            traverse(prop.type());
+                            traverse(prop.type_DEPRECATED());
                     }
 
                     if (ttv->indexer)
@@ -313,13 +327,13 @@ struct GenericTypeVisitor
                 traverse(mtv->metatable);
             }
         }
-        else if (auto ctv = get<ClassType>(ty))
+        else if (auto etv = get<ExternType>(ty))
         {
-            if (visit(ty, *ctv))
+            if (visit(ty, *etv))
             {
-                for (const auto& [name, prop] : ctv->props)
+                for (const auto& [name, prop] : etv->props)
                 {
-                    if (FFlag::LuauSolverV2)
+                    if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
                     {
                         if (auto ty = prop.readTy)
                             traverse(*ty);
@@ -332,19 +346,19 @@ struct GenericTypeVisitor
                             traverse(*ty);
                     }
                     else
-                        traverse(prop.type());
+                        traverse(prop.type_DEPRECATED());
                 }
 
-                if (ctv->parent)
-                    traverse(*ctv->parent);
+                if (etv->parent)
+                    traverse(*etv->parent);
 
-                if (ctv->metatable)
-                    traverse(*ctv->metatable);
+                if (etv->metatable)
+                    traverse(*etv->metatable);
 
-                if (ctv->indexer)
+                if (etv->indexer)
                 {
-                    traverse(ctv->indexer->indexType);
-                    traverse(ctv->indexer->indexResultType);
+                    traverse(etv->indexer->indexType);
+                    traverse(etv->indexer->indexResultType);
                 }
             }
         }
@@ -396,7 +410,7 @@ struct GenericTypeVisitor
                 traverse(unwrapped);
 
             // Visiting into LazyType that hasn't been unwrapped may necessarily cause infinite expansion, so we don't do that on purpose.
-            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassType
+            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ExternType
             // that doesn't need to be expanded.
         }
         else if (auto stv = get<SingletonType>(ty))

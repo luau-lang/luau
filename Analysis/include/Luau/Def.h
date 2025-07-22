@@ -4,7 +4,8 @@
 #include "Luau/NotNull.h"
 #include "Luau/TypedAllocator.h"
 #include "Luau/Variant.h"
-
+#include "Luau/Location.h"
+#include "Luau/Symbol.h"
 #include <string>
 #include <optional>
 
@@ -13,6 +14,7 @@ namespace Luau
 
 struct Def;
 using DefId = NotNull<const Def>;
+struct AstLocal;
 
 /**
  * A cell is a "single-object" value.
@@ -64,6 +66,8 @@ struct Def
     using V = Variant<struct Cell, struct Phi>;
 
     V v;
+    Symbol name;
+    Location location;
 };
 
 template<typename T>
@@ -79,7 +83,7 @@ struct DefArena
 {
     TypedAllocator<Def> allocator;
 
-    DefId freshCell(bool subscripted = false);
+    DefId freshCell(Symbol sym, Location location, bool subscripted = false);
     DefId phi(DefId a, DefId b);
     DefId phi(const std::vector<DefId>& defs);
 };

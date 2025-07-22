@@ -6,7 +6,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -151,6 +152,24 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters")
+{
+    CheckResult result = check(R"(
+        type A = ("A") -> string
+        type B = ("B") -> number
+
+        local function foo(f: A & B)
+            return f("A"), f("B")
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId t = requireType("foo");
+    const FunctionType* fooType = get<FunctionType>(requireType("foo"));
+    REQUIRE(fooType != nullptr);
+
+    CHECK(toString(t) == "(((\"A\") -> string) & ((\"B\") -> number)) -> (string, number)");
+}
+
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
@@ -261,7 +280,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
         CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
         REQUIRE(tm);
 
-        CHECK(builtinTypes->stringType == tm->rhsType);
+        CHECK(getBuiltins()->stringType == tm->rhsType);
         CHECK(CannotAssignToNever::Reason::PropertyNarrowed == tm->reason);
         REQUIRE(tm->cause.size() == 2);
         CHECK("\"Dog\"" == toString(tm->cause[0]));
@@ -357,6 +376,11 @@ TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+    };
+
     CheckResult result = check(R"(
         --!strict
         local x: { ["<>"] : number }
@@ -364,22 +388,16 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
-        CHECK(
-            "Type\n"
-            "    '{ [\"\\n\"]: number }'\n"
-            "could not be converted into\n"
-            "    '{ [\"<>\"]: number }'" == toString(result.errors[0])
-        );
-    else
-        CHECK_EQ(
-            R"(Table type '{ ["\n"]: number }' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
-            toString(result.errors[0])
-        );
+
+    const std::string expected =
+        R"(Table type '{ ["\n"]: number }' not compatible with type '{ ["<>"]: number }' because the former is missing field '<>')";
+    CHECK(expected == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }
@@ -390,7 +408,9 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        CHECK("Type '{ cafood: string, tag: \"cat\" }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
+        // NOTE: This error is not great, it might be more helpful to indicate
+        // that tag _could_ have type 'cat'.
+        CHECK("Type '{ cafood: string, tag: string }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
     else
     {
         const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
@@ -440,11 +460,10 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expectedError = R"(Type
-    '{ result: string, success: boolean }'
-could not be converted into
-    'Err<number> | Ok<string>')";
-
+    const std::string expectedError = "Type\n\t"
+                                      "'{ result: string, success: boolean }'"
+                                      "\ncould not be converted into\n\t"
+                                      "'Err<number> | Ok<string>'";
     CHECK(toString(result.errors[0]) == expectedError);
 }
 

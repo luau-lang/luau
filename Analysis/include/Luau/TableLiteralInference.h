@@ -14,6 +14,7 @@ namespace Luau
 struct TypeArena;
 struct BuiltinTypes;
 struct Unifier2;
+struct Subtyping;
 class AstExpr;
 
 TypeId matchLiteralType(
@@ -22,6 +23,7 @@ TypeId matchLiteralType(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena,
     NotNull<Unifier2> unifier,
+    NotNull<Subtyping> subtyping,
     TypeId expectedType,
     TypeId exprType,
     const AstExpr* expr,

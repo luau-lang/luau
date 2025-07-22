@@ -465,26 +465,26 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw("}");
     }
 
-    void write(const AstGenericType& genericType)
+    void write(class AstGenericType* genericType)
     {
         writeRaw("{");
         bool c = pushComma();
         writeType("AstGenericType");
-        write("name", genericType.name);
-        if (genericType.defaultValue)
-            write("luauType", genericType.defaultValue);
+        write("name", genericType->name);
+        if (genericType->defaultValue)
+            write("luauType", genericType->defaultValue);
         popComma(c);
         writeRaw("}");
     }
 
-    void write(const AstGenericTypePack& genericTypePack)
+    void write(class AstGenericTypePack* genericTypePack)
     {
         writeRaw("{");
         bool c = pushComma();
         writeType("AstGenericTypePack");
-        write("name", genericTypePack.name);
-        if (genericTypePack.defaultValue)
-            write("luauType", genericTypePack.defaultValue);
+        write("name", genericTypePack->name);
+        if (genericTypePack->defaultValue)
+            write("luauType", genericTypePack->defaultValue);
         popComma(c);
         writeRaw("}");
     }
@@ -923,7 +923,7 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
-    void write(const AstDeclaredClassProp& prop)
+    void write(const AstDeclaredExternTypeProperty& prop)
     {
         writeRaw("{");
         bool c = pushComma();
@@ -936,7 +936,7 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw("}");
     }
 
-    void write(class AstStatDeclareClass* node)
+    void write(class AstStatDeclareExternType* node)
     {
         writeNode(
             node,
@@ -1065,6 +1065,11 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
+    void write(class AstTypeOptional* node)
+    {
+        writeNode(node, "AstTypeOptional", [&]() {});
+    }
+
     void write(class AstTypeUnion* node)
     {
         writeNode(
@@ -1146,6 +1151,8 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("checked");
         case AstAttr::Type::Native:
             return writeString("native");
+        case AstAttr::Type::Deprecated:
+            return writeString("deprecated");
         }
     }
 
@@ -1422,7 +1429,7 @@ struct AstJsonEncoder : public AstVisitor
         return false;
     }
 
-    bool visit(class AstStatDeclareClass* node) override
+    bool visit(class AstStatDeclareExternType* node) override
     {
         write(node);
         return false;

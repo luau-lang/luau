@@ -6,9 +6,11 @@
 namespace Luau
 {
 
-struct ClassFixture : BuiltinsFixture
+struct ExternTypeFixture : BuiltinsFixture
 {
-    ClassFixture();
+    explicit ExternTypeFixture(bool prepareAutocomplete = false);
+
+    Frontend& getFrontend() override;
 
     TypeId vector2Type;
     TypeId vector2InstanceType;

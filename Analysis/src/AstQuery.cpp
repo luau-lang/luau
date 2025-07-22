@@ -12,8 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-
-LUAU_FASTFLAG(LuauExtendStatEndPosWithSemicolon)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -43,24 +42,13 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstStat* stat) override
     {
-        if (FFlag::LuauExtendStatEndPosWithSemicolon)
+        // Consider 'local myLocal = 4;|' and 'local myLocal = 4', where '|' is the cursor position. In both cases, the cursor position is equal
+        // to `AstStatLocal.location.end`. However, in the first case (semicolon), we are starting a new statement, whilst in the second case
+        // (no semicolon) we are still part of the AstStatLocal, hence the different comparison check.
+        if (stat->location.begin < pos && (stat->hasSemicolon ? pos < stat->location.end : pos <= stat->location.end))
         {
-            // Consider 'local myLocal = 4;|' and 'local myLocal = 4', where '|' is the cursor position. In both cases, the cursor position is equal
-            // to `AstStatLocal.location.end`. However, in the first case (semicolon), we are starting a new statement, whilst in the second case
-            // (no semicolon) we are still part of the AstStatLocal, hence the different comparison check.
-            if (stat->location.begin < pos && (stat->hasSemicolon ? pos < stat->location.end : pos <= stat->location.end))
-            {
-                ancestry.push_back(stat);
-                return true;
-            }
-        }
-        else
-        {
-            if (stat->location.begin < pos && pos <= stat->location.end)
-            {
-                ancestry.push_back(stat);
-                return true;
-            }
+            ancestry.push_back(stat);
+            return true;
         }
 
         return false;
@@ -496,7 +484,7 @@ static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
     const Module& module,
     const TypeId ty,
     const AstExpr* parentExpr,
-    const std::optional<DocumentationSymbol> documentationSymbol
+    std::optional<DocumentationSymbol> documentationSymbol
 )
 {
     if (!documentationSymbol)
@@ -537,7 +525,18 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
     if (indexIt == mtable->props.end())
         return std::nullopt;
 
-    TypeId followed = follow(indexIt->second.type());
+    TypeId followed;
+    if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        if (indexIt->second.readTy)
+            followed = follow(*indexIt->second.readTy);
+        else if (indexIt->second.writeTy)
+            followed = follow(*indexIt->second.writeTy);
+        else
+            return std::nullopt;
+    }
+    else
+        followed = follow(indexIt->second.type_DEPRECATED());
     const TableType* ttv = get<TableType>(followed);
     if (!ttv)
         return std::nullopt;
@@ -552,7 +551,7 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
             return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
     }
     else
-        return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
+        return checkOverloadedDocumentationSymbol(module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol);
 
     return std::nullopt;
 }
@@ -584,14 +583,14 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                         }
                         else
-                            return checkOverloadedDocumentationSymbol(module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol);
+                            return checkOverloadedDocumentationSymbol(module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol);
                     }
                 }
-                else if (const ClassType* ctv = get<ClassType>(parentTy))
+                else if (const ExternType* etv = get<ExternType>(parentTy))
                 {
-                    while (ctv)
+                    while (etv)
                     {
-                        if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
+                        if (auto propIt = etv->props.find(indexName->index.value); propIt != etv->props.end())
                         {
                             if (FFlag::LuauSolverV2)
                             {
@@ -600,10 +599,10 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                             }
                             else
                                 return checkOverloadedDocumentationSymbol(
-                                    module, propIt->second.type(), parentExpr, propIt->second.documentationSymbol
+                                    module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol
                                 );
                         }
-                        ctv = ctv->parent ? Luau::get<Luau::ClassType>(*ctv->parent) : nullptr;
+                        etv = etv->parent ? Luau::get<Luau::ExternType>(*etv->parent) : nullptr;
                     }
                 }
                 else if (const PrimitiveType* ptv = get<PrimitiveType>(parentTy); ptv && ptv->metatable)

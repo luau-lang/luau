@@ -18,9 +18,20 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 
 namespace Luau
 {
+
+static bool isOptionalOrFree(TypeId ty)
+{
+    ty = follow(ty);
+    return isOptional(ty) || (get<FreeType>(ty) != nullptr);
+}
 
 static bool areCompatible(TypeId left, TypeId right)
 {
@@ -41,14 +52,32 @@ static bool areCompatible(TypeId left, TypeId right)
         // the right table is free (and therefore potentially has an indexer or
         // a compatible property)
 
-        LUAU_ASSERT(leftProp.isReadOnly() || leftProp.isShared());
+        if (FFlag::LuauRemoveTypeCallsForReadWriteProps || FFlag::LuauRefineTablesWithReadType)
+        {
+            if (rightTable->state == TableState::Free || rightTable->indexer.has_value())
+                return true;
 
-        const TypeId leftType = follow(leftProp.isReadOnly() ? *leftProp.readTy : leftProp.type());
+            if (leftProp.isReadOnly() || leftProp.isShared())
+            {
+                if (isOptionalOrFree(*leftProp.readTy))
+                    return true;
+            }
 
-        if (isOptional(leftType) || get<FreeType>(leftType) || rightTable->state == TableState::Free || rightTable->indexer.has_value())
-            return true;
+            // FIXME: Could this create an issue for write only / divergent properties?
+            return false;
+        }
+        else
+        {
+            LUAU_ASSERT(leftProp.isReadOnly() || leftProp.isShared());
 
-        return false;
+            const TypeId leftType = follow(leftProp.isReadOnly() ? *leftProp.readTy : leftProp.type_DEPRECATED());
+
+            if (isOptional(leftType) || get<FreeType>(leftType) || rightTable->state == TableState::Free || rightTable->indexer.has_value())
+                return true;
+
+            return false;
+        }
+
     };
 
     for (const auto& [name, leftProp] : leftTable->props)
@@ -77,6 +106,12 @@ static bool areCompatible(TypeId left, TypeId right)
 // returns `true` if `ty` is irressolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypeId ty)
 {
+    if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+    {
+        if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state != TypeFunctionInstanceState::Unsolved)
+            return false;
+    }
+
     return get<BlockedType>(ty) || get<TypeFunctionInstanceType>(ty);
 }
 
@@ -235,6 +270,10 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     auto superMetatable = get<MetatableType>(superTy);
     if (subMetatable && superMetatable)
         return unify(subMetatable, superMetatable);
+    else if (subMetatable && superAny)
+        return unify(subMetatable, superAny);
+    else if (subAny && superMetatable)
+        return unify(subAny, superMetatable);
     else if (subMetatable) // if we only have one metatable, unify with the inner table
         return unify(subMetatable->table, superTy);
     else if (superMetatable) // if we only have one metatable, unify with the inner table
@@ -277,7 +316,7 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     if (superArgTail)
         return doDefault();
 
-    const IntersectionType* upperBoundIntersection = get<IntersectionType>(subFree->upperBound);
+    const IntersectionType* upperBoundIntersection = get<IntersectionType>(upperBound);
     if (!upperBoundIntersection)
         return doDefault();
 
@@ -314,11 +353,28 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
 
     if (shouldInstantiate)
     {
-        for (auto generic : subFn->generics)
-            genericSubstitutions[generic] = freshType(arena, builtinTypes, scope);
+        for (TypeId generic : subFn->generics)
+        {
+            const GenericType* gen = get<GenericType>(follow(generic));
+            if (gen)
+                genericSubstitutions[generic] = freshType(scope, gen->polarity);
+        }
 
-        for (auto genericPack : subFn->genericPacks)
-            genericPackSubstitutions[genericPack] = arena->freshTypePack(scope);
+        for (TypePackId genericPack : subFn->genericPacks)
+        {
+            if (FFlag::LuauEagerGeneralization4)
+            {
+                if (FFlag::LuauEagerGeneralization4)
+                    genericPack = follow(genericPack);
+
+                // TODO: Clip this follow() with LuauEagerGeneralization4
+                const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
+                if (gen)
+                    genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
+            }
+            else
+                genericPackSubstitutions[genericPack] = arena->freshTypePack(scope);
+        }
     }
 
     bool argResult = unify(superFn->argTypes, subFn->argTypes);
@@ -390,16 +446,27 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
         {
             const Property& superProp = superPropOpt->second;
 
-            if (subProp.isReadOnly() && superProp.isReadOnly())
-                result &= unify(*subProp.readTy, *superPropOpt->second.readTy);
-            else if (subProp.isReadOnly())
-                result &= unify(*subProp.readTy, superProp.type());
-            else if (superProp.isReadOnly())
-                result &= unify(subProp.type(), *superProp.readTy);
+            if (FFlag::LuauEnableWriteOnlyProperties)
+            {
+                if (subProp.readTy && superProp.readTy)
+                    result &= unify(*subProp.readTy, *superProp.readTy);
+
+                if (subProp.writeTy && superProp.writeTy)
+                    result &= unify(*superProp.writeTy, *subProp.writeTy);
+            }
             else
             {
-                result &= unify(subProp.type(), superProp.type());
-                result &= unify(superProp.type(), subProp.type());
+                if (subProp.isReadOnly() && superProp.isReadOnly())
+                    result &= unify(*subProp.readTy, *superPropOpt->second.readTy);
+                else if (subProp.isReadOnly())
+                    result &= unify(*subProp.readTy, superProp.type_DEPRECATED());
+                else if (superProp.isReadOnly())
+                    result &= unify(subProp.type_DEPRECATED(), *superProp.readTy);
+                else
+                {
+                    result &= unify(subProp.type_DEPRECATED(), superProp.type_DEPRECATED());
+                    result &= unify(superProp.type_DEPRECATED(), subProp.type_DEPRECATED());
+                }
             }
         }
     }
@@ -427,13 +494,16 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
         superTypePackParamsIter++;
     }
 
-    if (subTable->selfTy && superTable->selfTy)
-        result &= unify(*subTable->selfTy, *superTable->selfTy);
-
     if (subTable->indexer && superTable->indexer)
     {
         result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+        if (FFlag::LuauEagerGeneralization4)
+        {
+            // FIXME: We can probably do something more efficient here.
+            result &= unify(superTable->indexer->indexType, subTable->indexer->indexType);
+            result &= unify(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+        }
     }
 
     if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)
@@ -522,6 +592,16 @@ bool Unifier2::unify(const TableType* subTable, const AnyType* superAny)
     }
 
     return true;
+}
+
+bool Unifier2::unify(const MetatableType* subMetatable, const AnyType*)
+{
+    return unify(subMetatable->metatable, builtinTypes->anyType) && unify(subMetatable->table, builtinTypes->anyType);
+}
+
+bool Unifier2::unify(const AnyType*, const MetatableType* superMetatable)
+{
+    return unify(builtinTypes->anyType, superMetatable->metatable) && unify(builtinTypes->anyType, superMetatable->table);
 }
 
 // FIXME?  This should probably return an ErrorVec or an optional<TypeError>
@@ -624,208 +704,6 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
     return true;
 }
 
-struct FreeTypeSearcher : TypeVisitor
-{
-    NotNull<Scope> scope;
-
-    explicit FreeTypeSearcher(NotNull<Scope> scope)
-        : TypeVisitor(/*skipBoundTypes*/ true)
-        , scope(scope)
-    {
-    }
-
-    enum Polarity
-    {
-        Positive,
-        Negative,
-        Both,
-    };
-
-    Polarity polarity = Positive;
-
-    void flip()
-    {
-        switch (polarity)
-        {
-        case Positive:
-            polarity = Negative;
-            break;
-        case Negative:
-            polarity = Positive;
-            break;
-        case Both:
-            break;
-        }
-    }
-
-    DenseHashSet<const void*> seenPositive{nullptr};
-    DenseHashSet<const void*> seenNegative{nullptr};
-
-    bool seenWithPolarity(const void* ty)
-    {
-        switch (polarity)
-        {
-        case Positive:
-        {
-            if (seenPositive.contains(ty))
-                return true;
-
-            seenPositive.insert(ty);
-            return false;
-        }
-        case Negative:
-        {
-            if (seenNegative.contains(ty))
-                return true;
-
-            seenNegative.insert(ty);
-            return false;
-        }
-        case Both:
-        {
-            if (seenPositive.contains(ty) && seenNegative.contains(ty))
-                return true;
-
-            seenPositive.insert(ty);
-            seenNegative.insert(ty);
-            return false;
-        }
-        }
-
-        return false;
-    }
-
-    // The keys in these maps are either TypeIds or TypePackIds. It's safe to
-    // mix them because we only use these pointers as unique keys.  We never
-    // indirect them.
-    DenseHashMap<const void*, size_t> negativeTypes{0};
-    DenseHashMap<const void*, size_t> positiveTypes{0};
-
-    bool visit(TypeId ty) override
-    {
-        if (seenWithPolarity(ty))
-            return false;
-
-        LUAU_ASSERT(ty);
-        return true;
-    }
-
-    bool visit(TypeId ty, const FreeType& ft) override
-    {
-        if (seenWithPolarity(ty))
-            return false;
-
-        if (!subsumes(scope, ft.scope))
-            return true;
-
-        switch (polarity)
-        {
-        case Positive:
-            positiveTypes[ty]++;
-            break;
-        case Negative:
-            negativeTypes[ty]++;
-            break;
-        case Both:
-            positiveTypes[ty]++;
-            negativeTypes[ty]++;
-            break;
-        }
-
-        return true;
-    }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        if (seenWithPolarity(ty))
-            return false;
-
-        if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
-        {
-            switch (polarity)
-            {
-            case Positive:
-                positiveTypes[ty]++;
-                break;
-            case Negative:
-                negativeTypes[ty]++;
-                break;
-            case Both:
-                positiveTypes[ty]++;
-                negativeTypes[ty]++;
-                break;
-            }
-        }
-
-        for (const auto& [_name, prop] : tt.props)
-        {
-            if (prop.isReadOnly())
-                traverse(*prop.readTy);
-            else
-            {
-                LUAU_ASSERT(prop.isShared());
-
-                Polarity p = polarity;
-                polarity = Both;
-                traverse(prop.type());
-                polarity = p;
-            }
-        }
-
-        if (tt.indexer)
-        {
-            traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
-        }
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        if (seenWithPolarity(ty))
-            return false;
-
-        flip();
-        traverse(ft.argTypes);
-        flip();
-
-        traverse(ft.retTypes);
-
-        return false;
-    }
-
-    bool visit(TypeId, const ClassType&) override
-    {
-        return false;
-    }
-
-    bool visit(TypePackId tp, const FreeTypePack& ftp) override
-    {
-        if (seenWithPolarity(tp))
-            return false;
-
-        if (!subsumes(scope, ftp.scope))
-            return true;
-
-        switch (polarity)
-        {
-        case Positive:
-            positiveTypes[tp]++;
-            break;
-        case Negative:
-            negativeTypes[tp]++;
-            break;
-        case Both:
-            positiveTypes[tp]++;
-            negativeTypes[tp]++;
-            break;
-        }
-
-        return true;
-    }
-};
-
 TypeId Unifier2::mkUnion(TypeId left, TypeId right)
 {
     left = follow(left);
@@ -923,6 +801,25 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePack
     }
 
     return OccursCheckResult::Pass;
+}
+
+TypeId Unifier2::freshType(NotNull<Scope> scope, Polarity polarity)
+{
+    TypeId result = ::Luau::freshType(arena, builtinTypes, scope.get(), polarity);
+    newFreshTypes.emplace_back(result);
+    return result;
+}
+
+TypePackId Unifier2::freshTypePack(NotNull<Scope> scope, Polarity polarity)
+{
+    TypePackId result = arena->freshTypePack(scope.get());
+
+    auto ftp = getMutable<FreeTypePack>(result);
+    LUAU_ASSERT(ftp);
+    ftp->polarity = polarity;
+
+    newFreshTypePacks.emplace_back(result);
+    return result;
 }
 
 } // namespace Luau

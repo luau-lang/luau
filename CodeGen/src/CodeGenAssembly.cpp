@@ -1,8 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeAnalysis.h"
-#include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeSummary.h"
 #include "Luau/IrDump.h"
+#include "Luau/IrUtils.h"
 
 #include "CodeGenLower.h"
 
@@ -135,7 +135,7 @@ unsigned getInstructionCount(const Instruction* insns, const unsigned size)
     for (unsigned i = 0; i < size;)
     {
         ++count;
-        i += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(insns[i])));
+        i += getOpLength(LuauOpcode(LUAU_INSN_OP(insns[i])));
     }
     return count;
 }

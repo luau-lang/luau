@@ -5,10 +5,11 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
-#include "Luau/Refinement.h"
 #include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
+#include "Luau/Polarity.h"
 #include "Luau/Predicate.h"
+#include "Luau/Refinement.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
 #include "Luau/VecDeque.h"
@@ -19,7 +20,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
@@ -34,9 +34,16 @@ using ScopePtr = std::shared_ptr<Scope>;
 struct Module;
 
 struct TypeFunction;
+struct TypeFun;
 struct Constraint;
 struct Subtyping;
 struct TypeChecker2;
+
+enum struct SolverMode
+{
+    Old,
+    New
+};
 
 /**
  * There are three kinds of type variables:
@@ -72,12 +79,8 @@ struct FreeType
     // New constructors
     explicit FreeType(TypeLevel level, TypeId lowerBound, TypeId upperBound);
     // This one got promoted to explicit
-    explicit FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound);
+    explicit FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound, Polarity polarity = Polarity::Unknown);
     explicit FreeType(Scope* scope, TypeLevel level, TypeId lowerBound, TypeId upperBound);
-    // Old constructors
-    explicit FreeType(TypeLevel level);
-    explicit FreeType(Scope* scope);
-    FreeType(Scope* scope, TypeLevel level);
 
     int index;
     TypeLevel level;
@@ -91,6 +94,8 @@ struct FreeType
     // Only used under local type inference
     TypeId lowerBound = nullptr;
     TypeId upperBound = nullptr;
+
+    Polarity polarity = Polarity::Unknown;
 };
 
 struct GenericType
@@ -99,8 +104,8 @@ struct GenericType
     GenericType();
 
     explicit GenericType(TypeLevel level);
-    explicit GenericType(const Name& name);
-    explicit GenericType(Scope* scope);
+    explicit GenericType(const Name& name, Polarity polarity = Polarity::Unknown);
+    explicit GenericType(Scope* scope, Polarity polarity = Polarity::Unknown);
 
     GenericType(TypeLevel level, const Name& name);
     GenericType(Scope* scope, const Name& name);
@@ -110,6 +115,8 @@ struct GenericType
     Scope* scope = nullptr;
     Name name;
     bool explicitName = false;
+
+    Polarity polarity = Polarity::Unknown;
 };
 
 // When an equality constraint is found, it is then "bound" to that type,
@@ -287,7 +294,7 @@ struct MagicFunctionCallContext
 {
     NotNull<struct ConstraintSolver> solver;
     NotNull<const Constraint> constraint;
-    const class AstExprCall* callSite;
+    NotNull<const AstExprCall> callSite;
     TypePackId arguments;
     TypePackId result;
 };
@@ -348,10 +355,8 @@ struct FunctionType
     );
 
     // Local monomorphic function
-    FunctionType(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
     FunctionType(
         TypeLevel level,
-        Scope* scope,
         TypePackId argTypes,
         TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {},
@@ -368,16 +373,6 @@ struct FunctionType
         std::optional<FunctionDefinition> defn = {},
         bool hasSelf = false
     );
-    FunctionType(
-        TypeLevel level,
-        Scope* scope,
-        std::vector<TypeId> generics,
-        std::vector<TypePackId> genericPacks,
-        TypePackId argTypes,
-        TypePackId retTypes,
-        std::optional<FunctionDefinition> defn = {},
-        bool hasSelf = false
-    );
 
     std::optional<FunctionDefinition> definition;
     /// These should all be generic
@@ -386,7 +381,6 @@ struct FunctionType
     std::vector<std::optional<FunctionArgument>> argNames;
     Tags tags;
     TypeLevel level;
-    Scope* scope = nullptr;
     TypePackId argTypes;
     TypePackId retTypes;
     std::shared_ptr<MagicFunction> magic = nullptr;
@@ -396,6 +390,7 @@ struct FunctionType
     // this flag is used as an optimization to exit early from procedures that manipulate free or generic types.
     bool hasNoFreeOrGenericTypes = false;
     bool isCheckedFunction = false;
+    bool isDeprecatedFunction = false;
 };
 
 enum class TableState
@@ -467,12 +462,13 @@ struct Property
         std::optional<Location> typeLocation = std::nullopt
     );
 
-    // DEPRECATED: Should only be called in non-RWP! We assert that the `readTy` is not nullopt.
-    // TODO: Kill once we don't have non-RWP.
-    TypeId type() const;
+    // DEPRECATED: This should be removed with `LuauTypeSolverV2` clean up
+    TypeId type_DEPRECATED() const;
     void setType(TypeId ty);
 
-    // Sets the write type of this property to the read type.
+    // If this property has a present `writeTy`, set it equal to the `readTy`.
+    // This is to ensure that if we normalize a property that has divergent
+    // read and write types, we make them converge (for now).
     void makeShared();
 
     bool isShared() const;
@@ -517,9 +513,6 @@ struct TableType
     std::optional<TypeId> boundTo;
     Tags tags;
 
-    // Methods of this table that have an untyped self will use the same shared self type.
-    std::optional<TypeId> selfTy;
-
     // We track the number of as-yet-unadded properties to unsealed tables.
     // Some constraints will use this information to decide whether or not they
     // are able to dispatch.
@@ -545,15 +538,15 @@ struct ClassUserData
     virtual ~ClassUserData() {}
 };
 
-/** The type of a class.
+/** The type of an external userdata exposed to Luau.
  *
- * Classes behave like tables in many ways, but there are some important differences:
+ * Extern types behave like tables in many ways, but there are some important differences:
  *
  * The properties of a class are always exactly known.
- * Classes optionally have a parent class.
- * Two different classes that share the same properties are nevertheless distinct and mutually incompatible.
+ * Extern types optionally have a parent type.
+ * Two different extern types that share the same properties are nevertheless distinct and mutually incompatible.
  */
-struct ClassType
+struct ExternType
 {
     using Props = TableType::Props;
 
@@ -567,7 +560,7 @@ struct ClassType
     std::optional<Location> definitionLocation;
     std::optional<TableIndexer> indexer;
 
-    ClassType(
+    ExternType(
         Name name,
         Props props,
         std::optional<TypeId> parent,
@@ -577,18 +570,18 @@ struct ClassType
         ModuleName definitionModuleName,
         std::optional<Location> definitionLocation
     )
-        : name(name)
-        , props(props)
+        : name(std::move(name))
+        , props(std::move(props))
         , parent(parent)
         , metatable(metatable)
-        , tags(tags)
-        , userData(userData)
-        , definitionModuleName(definitionModuleName)
+        , tags(std::move(tags))
+        , userData(std::move(userData))
+        , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
     {
     }
 
-    ClassType(
+    ExternType(
         Name name,
         Props props,
         std::optional<TypeId> parent,
@@ -599,13 +592,13 @@ struct ClassType
         std::optional<Location> definitionLocation,
         std::optional<TableIndexer> indexer
     )
-        : name(name)
-        , props(props)
+        : name(std::move(name))
+        , props(std::move(props))
         , parent(parent)
         , metatable(metatable)
-        , tags(tags)
-        , userData(userData)
-        , definitionModuleName(definitionModuleName)
+        , tags(std::move(tags))
+        , userData(std::move(userData))
+        , definitionModuleName(std::move(definitionModuleName))
         , definitionLocation(definitionLocation)
         , indexer(indexer)
     {
@@ -621,8 +614,23 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environment{""};
-    DenseHashMap<Name, AstStatTypeFunction*> environment_DEPRECATED{""};
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction{""};
+    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias{""};
+};
+
+enum struct TypeFunctionInstanceState
+{
+    // Indicates that further reduction might be possible.
+    Unsolved,
+
+    // Further reduction is not possible because one of the parameters is generic.
+    Solved,
+
+    // Further reduction is not possible because the application is undefined.
+    // This always indicates an error in the code.
+    //
+    // eg add<nil, nil>
+    Stuck,
 };
 
 /**
@@ -642,6 +650,8 @@ struct TypeFunctionInstanceType
     std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
     UserDefinedFunctionData userFuncData;
 
+    TypeFunctionInstanceState state = TypeFunctionInstanceState::Unsolved;
+
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
         std::vector<TypeId> typeArguments,
@@ -650,31 +660,31 @@ struct TypeFunctionInstanceType
         UserDefinedFunctionData userFuncData
     )
         : function(function)
-        , typeArguments(typeArguments)
-        , packArguments(packArguments)
+        , typeArguments(std::move(typeArguments))
+        , packArguments(std::move(packArguments))
         , userFuncName(userFuncName)
-        , userFuncData(userFuncData)
+        , userFuncData(std::move(userFuncData))
     {
     }
 
     TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments)
         : function{&function}
-        , typeArguments(typeArguments)
+        , typeArguments(std::move(typeArguments))
         , packArguments{}
     {
     }
 
     TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : function{&function}
-        , typeArguments(typeArguments)
-        , packArguments(packArguments)
+        , typeArguments(std::move(typeArguments))
+        , packArguments(std::move(packArguments))
     {
     }
 
     TypeFunctionInstanceType(NotNull<const TypeFunction> function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : function{function}
-        , typeArguments(typeArguments)
-        , packArguments(packArguments)
+        , typeArguments(std::move(typeArguments))
+        , packArguments(std::move(packArguments))
     {
     }
 };
@@ -725,7 +735,7 @@ struct LazyType
 {
     LazyType() = default;
     LazyType(std::function<void(LazyType&)> unwrap)
-        : unwrap(unwrap)
+        : unwrap(std::move(unwrap))
     {
     }
 
@@ -789,7 +799,7 @@ using TypeVariant = Unifiable::Variant<
     FunctionType,
     TableType,
     MetatableType,
-    ClassType,
+    ExternType,
     AnyType,
     UnionType,
     IntersectionType,
@@ -812,8 +822,8 @@ struct Type final
     {
     }
 
-    Type(const TypeVariant& ty, bool persistent)
-        : ty(ty)
+    Type(TypeVariant ty, bool persistent)
+        : ty(std::move(ty))
         , persistent(persistent)
     {
     }
@@ -882,6 +892,9 @@ struct TypeFun
      */
     TypeId type;
 
+    // The location of where this TypeFun was defined, if available
+    std::optional<Location> definitionLocation;
+
     TypeFun() = default;
 
     explicit TypeFun(TypeId ty)
@@ -889,16 +902,23 @@ struct TypeFun
     {
     }
 
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type, std::optional<Location> definitionLocation = std::nullopt)
         : typeParams(std::move(typeParams))
         , type(type)
+        , definitionLocation(definitionLocation)
     {
     }
 
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
+    TypeFun(
+        std::vector<GenericTypeDefinition> typeParams,
+        std::vector<GenericTypePackDefinition> typePackParams,
+        TypeId type,
+        std::optional<Location> definitionLocation = std::nullopt
+    )
         : typeParams(std::move(typeParams))
         , typePackParams(std::move(typePackParams))
         , type(type)
+        , definitionLocation(definitionLocation)
     {
     }
 
@@ -972,10 +992,8 @@ struct BuiltinTypes
 
     TypeId errorRecoveryType(TypeId guess) const;
     TypePackId errorRecoveryTypePack(TypePackId guess) const;
-    TypeId errorRecoveryType() const;
-    TypePackId errorRecoveryTypePack() const;
 
-    friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes);
+    friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode);
     friend struct GlobalTypes;
 
 private:
@@ -990,7 +1008,7 @@ public:
     const TypeId threadType;
     const TypeId bufferType;
     const TypeId functionType;
-    const TypeId classType;
+    const TypeId externType;
     const TypeId tableType;
     const TypeId emptyTableType;
     const TypeId trueType;
@@ -1002,6 +1020,7 @@ public:
     const TypeId noRefineType;
     const TypeId falsyType;
     const TypeId truthyType;
+    const TypeId notNilType;
 
     const TypeId optionalNumberType;
     const TypeId optionalStringType;
@@ -1022,10 +1041,10 @@ TypeLevel* getMutableLevel(TypeId ty);
 
 std::optional<TypeLevel> getLevel(TypePackId tp);
 
-const Property* lookupClassProp(const ClassType* cls, const Name& name);
+const Property* lookupExternTypeProp(const ExternType* cls, const Name& name);
 
 // Whether `cls` is a subclass of `parent`
-bool isSubclass(const ClassType* cls, const ClassType* parent);
+bool isSubclass(const ExternType* cls, const ExternType* parent);
 
 Type* asMutable(TypeId ty);
 
@@ -1202,14 +1221,14 @@ private:
     }
 };
 
-TypeId freshType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Scope* scope);
+TypeId freshType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Scope* scope, Polarity polarity = Polarity::Unknown);
 
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 
 // A tag to mark a type which doesn't derive directly from the root type as overriding the return of `typeof`.
 // Any classes which derive from this type will have typeof return this type.
-static constexpr char kTypeofRootTag[] = "typeofRoot";
+inline constexpr char kTypeofRootTag[] = "typeofRoot";
 
 void attachTag(TypeId ty, const std::string& tagName);
 void attachTag(Property& prop, const std::string& tagName);

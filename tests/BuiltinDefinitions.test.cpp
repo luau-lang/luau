@@ -12,9 +12,9 @@ TEST_SUITE_BEGIN("BuiltinDefinitionsTest");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
 {
-    CHECK(!frontend.globals.globalScope->bindings.empty());
+    CHECK(!getFrontend().globals.globalScope->bindings.empty());
 
-    for (const auto& [name, binding] : frontend.globals.globalScope->bindings)
+    for (const auto& [name, binding] : getFrontend().globals.globalScope->bindings)
     {
         std::string nameString(name.c_str());
         std::string expectedRootSymbol = "@luau/global/" + nameString;
@@ -28,9 +28,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
         {
             props = &ttv->props;
         }
-        else if (const ClassType* ctv = get<ClassType>(binding.typeId))
+        else if (const ExternType* etv = get<ExternType>(binding.typeId))
         {
-            props = &ctv->props;
+            props = &etv->props;
         }
 
         if (props)

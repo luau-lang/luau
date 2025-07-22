@@ -73,7 +73,7 @@ struct CompileOptions
 class CompileError : public std::exception
 {
 public:
-    CompileError(const Location& location, const std::string& message);
+    CompileError(const Location& location, std::string message);
 
     virtual ~CompileError() throw();
 

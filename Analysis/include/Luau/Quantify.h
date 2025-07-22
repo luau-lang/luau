@@ -16,7 +16,7 @@ struct Scope;
 
 void quantify(TypeId ty, TypeLevel level);
 
-// TODO: This is eerily similar to the pattern that NormalizedClassType
+// TODO: This is eerily similar to the pattern that NormalizedExternType
 // implements. We could, and perhaps should, merge them together.
 template<typename K, typename V>
 struct OrderedMap
@@ -30,14 +30,5 @@ struct OrderedMap
         pairings[k] = v;
     }
 };
-
-struct QuantifierResult
-{
-    TypeId result;
-    OrderedMap<TypeId, TypeId> insertedGenerics;
-    OrderedMap<TypePackId, TypePackId> insertedGenericPacks;
-};
-
-std::optional<QuantifierResult> quantify(TypeArena* arena, TypeId ty, Scope* scope);
 
 } // namespace Luau

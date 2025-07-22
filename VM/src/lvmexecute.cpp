@@ -16,8 +16,6 @@
 
 #include <string.h>
 
-LUAU_DYNAMIC_FASTFLAG(LuauPopIncompleteCi)
-
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -149,17 +147,19 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
         L->base = L->ci->base;
     }
 
+    Closure* cl = clvalue(L->ci->func);
+
     // note: the pc expectations of the hook are matching the general "pc points to next instruction"
     // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
     // this needs to be called before luaD_checkstack in case it fails to reallocate stack
-    if (L->ci->savedpc)
+    const Instruction* oldsavedpc = L->ci->savedpc;
+
+    if (L->ci->savedpc && L->ci->savedpc != cl->l.p->code + cl->l.p->sizecode)
         L->ci->savedpc++;
 
     luaD_checkstack(L, LUA_MINSTACK); // ensure minimum stack size
     L->ci->top = L->top + LUA_MINSTACK;
     LUAU_ASSERT(L->ci->top <= L->stack_last);
-
-    Closure* cl = clvalue(L->ci->func);
 
     lua_Debug ar;
     ar.currentline = cl->isC ? -1 : luaG_getline(cl->l.p, pcRel(L->ci->savedpc, cl->l.p));
@@ -167,8 +167,7 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 
     hook(L, &ar);
 
-    if (L->ci->savedpc)
-        L->ci->savedpc--;
+    L->ci->savedpc = oldsavedpc;
 
     L->ci->top = restorestack(L, ci_top);
     L->top = restorestack(L, top);
@@ -648,7 +647,7 @@ reentry:
                     int index = int(indexd);
 
                     // index has to be an exact integer and in-bounds for the array portion
-                    if (LUAU_LIKELY(unsigned(index - 1) < unsigned(h->sizearray) && !h->metatable && double(index) == indexd))
+                    if (LUAU_LIKELY(unsigned(index) - 1 < unsigned(h->sizearray) && !h->metatable && double(index) == indexd))
                     {
                         setobj2s(L, ra, &h->array[unsigned(index - 1)]);
                         VM_NEXT();
@@ -678,7 +677,7 @@ reentry:
                     int index = int(indexd);
 
                     // index has to be an exact integer and in-bounds for the array portion
-                    if (LUAU_LIKELY(unsigned(index - 1) < unsigned(h->sizearray) && !h->metatable && !h->readonly && double(index) == indexd))
+                    if (LUAU_LIKELY(unsigned(index) - 1 < unsigned(h->sizearray) && !h->metatable && !h->readonly && double(index) == indexd))
                     {
                         setobj2t(L, &h->array[unsigned(index - 1)], ra);
                         luaC_barriert(L, h, ra);
@@ -937,14 +936,7 @@ reentry:
                 // note: this reallocs stack, but we don't need to VM_PROTECT this
                 // this is because we're going to modify base/savedpc manually anyhow
                 // crucially, we can't use ra/argtop after this line
-                if (DFFlag::LuauPopIncompleteCi)
-                {
-                    luaD_checkstackfornewci(L, ccl->stacksize);
-                }
-                else
-                {
-                    luaD_checkstack(L, ccl->stacksize);
-                }
+                luaD_checkstackfornewci(L, ccl->stacksize);
 
                 LUAU_ASSERT(ci->top <= L->stack_last);
 
@@ -3080,14 +3072,7 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     L->base = ci->base;
     // Note: L->top is assigned externally
 
-    if (DFFlag::LuauPopIncompleteCi)
-    {
-        luaD_checkstackfornewci(L, ccl->stacksize);
-    }
-    else
-    {
-        luaD_checkstack(L, ccl->stacksize);
-    }
+    luaD_checkstackfornewci(L, ccl->stacksize);
     LUAU_ASSERT(ci->top <= L->stack_last);
 
     if (!ccl->isC)

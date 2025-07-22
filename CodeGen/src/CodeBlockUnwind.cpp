@@ -18,7 +18,7 @@
 #endif
 #include <windows.h>
 
-#elif defined(__linux__) || defined(__APPLE__)
+#elif (defined(__linux__) || defined(__APPLE__)) && (defined(CODEGEN_TARGET_X64) || defined(CODEGEN_TARGET_A64))
 
 // __register_frame and __deregister_frame are defined in libgcc or libc++
 // (depending on how it's built). We want to declare them as weak symbols
@@ -81,7 +81,7 @@ static int findDynamicUnwindSections(uintptr_t addr, unw_dynamic_unwind_sections
 }
 #endif
 
-#if defined(__linux__) || defined(__APPLE__)
+#if (defined(__linux__) || defined(__APPLE__)) && (defined(CODEGEN_TARGET_X64) || defined(CODEGEN_TARGET_A64))
 static void visitFdeEntries(char* pos, void (*cb)(const void*))
 {
     // When using glibc++ unwinder, we need to call __register_frame/__deregister_frame on the entire .eh_frame data
@@ -132,7 +132,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     }
 #endif
 
-#elif defined(__linux__) || defined(__APPLE__)
+#elif (defined(__linux__) || defined(__APPLE__)) && (defined(CODEGEN_TARGET_X64) || defined(CODEGEN_TARGET_A64))
     if (!&__register_frame)
         return nullptr;
 
@@ -161,7 +161,7 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
         CODEGEN_ASSERT(!"Failed to deallocate function table");
 #endif
 
-#elif defined(__linux__) || defined(__APPLE__)
+#elif (defined(__linux__) || defined(__APPLE__)) && (defined(CODEGEN_TARGET_X64) || defined(CODEGEN_TARGET_A64))
     if (!&__deregister_frame)
     {
         CODEGEN_ASSERT(!"Cannot deregister unwind information");
@@ -184,7 +184,7 @@ bool isUnwindSupported()
     size_t verLength = sizeof(ver);
     // libunwind on macOS 12 and earlier (which maps to osrelease 21) assumes JIT frames use pointer authentication without a way to override that
     return sysctlbyname("kern.osrelease", ver, &verLength, NULL, 0) == 0 && atoi(ver) >= 22;
-#elif defined(__linux__) || defined(__APPLE__)
+#elif (defined(__linux__) || defined(__APPLE__)) && (defined(CODEGEN_TARGET_X64) || defined(CODEGEN_TARGET_A64))
     return true;
 #else
     return false;

@@ -3,23 +3,23 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Constraint.h"
+#include "Luau/ConstraintSet.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/EqSatSimplification.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
+#include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
+#include "Luau/TypeIds.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/Variant.h"
 
 #include <memory>
 #include <vector>
-#include <unordered_map>
 
 namespace Luau
 {
@@ -92,9 +92,8 @@ struct ConstraintGenerator
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
 
-    // Constraints that do not go to the solver right away.  Other constraints
-    // will enqueue them during solving.
-    std::vector<ConstraintPtr> unqueuedConstraints;
+    // The set of all free types introduced during constraint generation.
+    TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
     DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
@@ -117,17 +116,22 @@ struct ConstraintGenerator
 
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
+    DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes{nullptr};
+
     // Needed to resolve modules to make 'require' import types properly.
     NotNull<ModuleResolver> moduleResolver;
     // Occasionally constraint generation needs to produce an ICE.
     const NotNull<InternalErrorReporter> ice;
 
     ScopePtr globalScope;
+    ScopePtr typeFunctionScope;
 
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     std::vector<RequireCycle> requireCycles;
 
     DenseHashMap<TypeId, TypeIds> localTypes{nullptr};
+
+    DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
 
     DcrLogger* logger;
 
@@ -139,12 +143,16 @@ struct ConstraintGenerator
         NotNull<ModuleResolver> moduleResolver,
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<InternalErrorReporter> ice,
-        const ScopePtr& globalScope,
+        ScopePtr globalScope,
+        ScopePtr typeFunctionScope,
         std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
         DcrLogger* logger,
         NotNull<DataFlowGraph> dfg,
         std::vector<RequireCycle> requireCycles
     );
+
+    ConstraintSet run(AstStatBlock* block);
+    ConstraintSet runOnFragment(const ScopePtr& resumeScope, AstStatBlock* block);
 
     /**
      * The entry point to the ConstraintGenerator. This will construct a set
@@ -156,19 +164,32 @@ struct ConstraintGenerator
     void visitFragmentRoot(const ScopePtr& resumeScope, AstStatBlock* block);
 
 private:
-    std::vector<std::vector<TypeId>> interiorTypes;
+    struct InteriorFreeTypes
+    {
+        std::vector<TypeId> types;
+        std::vector<TypePackId> typePacks;
+    };
+
+    std::vector<std::vector<TypeId>> DEPRECATED_interiorTypes;
+    std::vector<InteriorFreeTypes> interiorFreeTypes;
+
+    std::vector<TypeId> unionsToSimplify;
+
+    // Used to keep track of when we are inside a large table and should
+    // opt *not* to do type inference for singletons.
+    size_t largeTableDepth = 0;
 
     /**
      * Fabricates a new free type belonging to a given scope.
      * @param scope the scope the free type belongs to.
      */
-    TypeId freshType(const ScopePtr& scope);
+    TypeId freshType(const ScopePtr& scope, Polarity polarity = Polarity::Unknown);
 
     /**
      * Fabricates a new free type pack belonging to a given scope.
      * @param scope the scope the free type pack belongs to.
      */
-    TypePackId freshTypePack(const ScopePtr& scope);
+    TypePackId freshTypePack(const ScopePtr& scope, Polarity polarity = Polarity::Unknown);
 
     /**
      * Allocate a new TypePack with the given head and tail.
@@ -257,7 +278,7 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatTypeAlias* alias);
     ControlFlow visit(const ScopePtr& scope, AstStatTypeFunction* function);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
-    ControlFlow visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
+    ControlFlow visit(const ScopePtr& scope, AstStatDeclareExternType* declareExternType);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
@@ -289,7 +310,7 @@ private:
     );
 
     Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
-    Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
+    Inference check(const ScopePtr& scope, AstExprConstantBool* boolExpr, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprLocal* local);
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference checkIndexName(const ScopePtr& scope, const RefinementKey* key, AstExpr* indexee, const std::string& index, Location indexLocation);
@@ -365,6 +386,11 @@ private:
      **/
     TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
+    // resolveType() is recursive, but we only want to invoke
+    // inferGenericPolarities() once at the very end.  We thus isolate the
+    // recursive part of the algorithm to this internal helper.
+    TypeId resolveType_(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
+
     /**
      * Resolves a type pack from its AST annotation.
      * @param scope the scope that the type annotation appears within.
@@ -373,6 +399,9 @@ private:
      * @return the type pack of the AST annotation.
      **/
     TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
+
+    // Inner hepler for resolveTypePack
+    TypePackId resolveTypePack_(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
      * Resolves a type pack from its AST annotation.
@@ -412,7 +441,7 @@ private:
      **/
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(
         const ScopePtr& scope,
-        AstArray<AstGenericTypePack*> packs,
+        AstArray<AstGenericTypePack*> generics,
         bool useCache = false,
         bool addTypes = true
     );
@@ -424,6 +453,12 @@ private:
 
     // make a union type function of these two types
     TypeId makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
+
+    // Make a union type and add it to `unionsToSimplify`, ensuring that
+    // later we will attempt to simplify this union in order to keep types
+    // small.
+    TypeId makeUnion(std::vector<TypeId> options);
+
     // make an intersect type function of these two types
     TypeId makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
     void prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program);
@@ -459,11 +494,9 @@ private:
     );
 
     TypeId simplifyUnion(const ScopePtr& scope, Location location, TypeId left, TypeId right);
+
+    void updateRValueRefinements(const ScopePtr& scope, DefId def, TypeId ty) const;
+    void updateRValueRefinements(Scope* scope, DefId def, TypeId ty) const;
 };
-
-/** Borrow a vector of pointers from a vector of owning pointers to constraints.
- */
-std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints);
-
 
 } // namespace Luau

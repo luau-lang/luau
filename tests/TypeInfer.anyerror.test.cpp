@@ -13,7 +13,9 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -33,9 +35,9 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+        CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
     else
-        CHECK(builtinTypes->anyType == requireType("a"));
+        CHECK(getBuiltins()->anyType == requireType("a"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
@@ -54,7 +56,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+        CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -73,7 +75,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+        CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -90,7 +92,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
     )");
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+        CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -109,7 +111,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any_pack")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("any?" == toString(requireType("a")));
+        CHECK("(*error-type* | ~nil)?" == toString(requireType("a")));
     else
         CHECK("any" == toString(requireType("a")));
 }
@@ -247,7 +249,13 @@ TEST_CASE_FIXTURE(Fixture, "assign_prop_to_table_by_calling_any_yields_any")
     REQUIRE(ttv);
     REQUIRE(ttv->props.count("prop"));
 
-    REQUIRE_EQ("any", toString(ttv->props["prop"].type()));
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(ttv->props["prop"].readTy);
+        CHECK_EQ("any", toString(*ttv->props["prop"].readTy));
+    }
+    else
+        REQUIRE_EQ("any", toString(ttv->props["prop"].type_DEPRECATED()));
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")
@@ -261,7 +269,7 @@ TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId aType = requireType("A");
-    CHECK_EQ(aType, builtinTypes->anyType);
+    CHECK_EQ(aType, getBuiltins()->anyType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
@@ -297,6 +305,8 @@ TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_complex_function_with_any")
 {
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     CheckResult result = check(R"(
         local a: any
         local b
@@ -306,11 +316,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_comp
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("any?", toString(requireType("b")));
-    else
-        CHECK_EQ("any", toString(requireType("b")));
+    CHECK_EQ("any", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_to_any_yields_any")

@@ -7,8 +7,9 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 using namespace Luau;
 
@@ -181,7 +182,7 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotations_are_checked")
 
     REQUIRE_EQ(1, tp->head.size());
 
-    REQUIRE_EQ(builtinTypes->anyType, follow(tp->head[0]));
+    REQUIRE_EQ(getBuiltins()->anyType, follow(tp->head[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_multret_annotations_are_checked")
@@ -271,18 +272,18 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK(
-            result.errors[0] == (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{builtinTypes->nilType, builtinTypes->numberType}})
+            result.errors[0] == (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{getBuiltins()->nilType, getBuiltins()->numberType}})
         );
     }
     else
     {
-        CHECK_EQ(*builtinTypes->numberType, *requireType("a"));
-        CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("a"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("b"));
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ(
             result.errors[0],
-            (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}})
+            (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{getBuiltins()->numberType, getBuiltins()->stringType}})
         );
     }
 }
@@ -443,7 +444,10 @@ TEST_CASE_FIXTURE(Fixture, "self_referential_type_alias")
     std::optional<Property> incr = get(oTable->props, "incr");
     REQUIRE(incr);
 
-    const FunctionType* incrFunc = get<FunctionType>(incr->type());
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        REQUIRE(incr->readTy);
+
+    const FunctionType* incrFunc = FFlag::LuauRemoveTypeCallsForReadWriteProps ? get<FunctionType>(*incr->readTy) : get<FunctionType>(incr->type_DEPRECATED());
     REQUIRE(incrFunc);
 
     std::optional<TypeId> firstArg = first(incrFunc->argTypes);
@@ -573,7 +577,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_always_resolve_to_a_real_type")
     )");
 
     TypeId fType = requireType("aa");
-    REQUIRE(follow(fType) == builtinTypes->numberType);
+    REQUIRE(follow(fType) == getBuiltins()->numberType);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -594,7 +598,7 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
     const TypeFun& a = mod.exportedTypeBindings["A"];
 
     CHECK(isInArena(a.type, mod.interfaceTypes));
-    CHECK(!isInArena(a.type, frontend.globals.globalTypes));
+    CHECK(!isInArena(a.type, getFrontend().globals.globalTypes));
 
     std::optional<TypeId> exportsType = first(mod.returnType);
     REQUIRE(exportsType);
@@ -602,7 +606,14 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
     TableType* exportsTable = getMutable<TableType>(*exportsType);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId n = exportsTable->props["n"].type();
+    TypeId n;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(exportsTable->props["n"].readTy);
+        n = *exportsTable->props["n"].readTy;
+    }
+    else
+        n = exportsTable->props["n"].type_DEPRECATED();
     REQUIRE(n != nullptr);
 
     CHECK(isInArena(n, mod.interfaceTypes));
@@ -657,10 +668,24 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
     TableType* exportsTable = getMutable<TableType>(*exportsType);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId aType = exportsTable->props["a"].type();
+    TypeId aType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(exportsTable->props["a"].readTy);
+        aType = *exportsTable->props["a"].readTy;
+    }
+    else
+        aType = exportsTable->props["a"].type_DEPRECATED();
     REQUIRE(aType);
 
-    TypeId bType = exportsTable->props["b"].type();
+    TypeId bType;
+    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    {
+        REQUIRE(exportsTable->props["b"].readTy);
+        bType = *exportsTable->props["b"].readTy;
+    }
+    else
+        bType = exportsTable->props["b"].type_DEPRECATED();
     REQUIRE(bType);
 
     CHECK(isInArena(recordType, mod.interfaceTypes));
@@ -673,7 +698,7 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
 {
-    addGlobalBinding(frontend.globals, "script", builtinTypes->anyType, "@test");
+    addGlobalBinding(getFrontend().globals, "script", getBuiltins()->anyType, "@test");
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -692,14 +717,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/Main");
+    CheckResult result = getFrontend().check("Modules/Main");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
 {
-    addGlobalBinding(frontend.globals, "script", builtinTypes->anyType, "@test");
+    addGlobalBinding(getFrontend().globals, "script", getBuiltins()->anyType, "@test");
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -718,14 +743,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/Main");
+    CheckResult result = getFrontend().check("Modules/Main");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
 {
-    addGlobalBinding(frontend.globals, "script", builtinTypes->anyType, "@test");
+    addGlobalBinding(getFrontend().globals, "script", getBuiltins()->anyType, "@test");
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -742,7 +767,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/Main");
+    CheckResult result = getFrontend().check("Modules/Main");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
@@ -796,7 +821,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
 
     bool caught = false;
 
-    frontend.iceHandler.onInternalError = [&](const char*)
+    getFrontend().iceHandler.onInternalError = [&](const char*)
     {
         caught = true;
     };
@@ -823,6 +848,10 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
 {
+    // Force the frontend on here
+    // The Fixture constructor (now lazy)
+    // initializes printline. If we do something after that, we'll override it with something empty
+    getFrontend();
     static std::vector<std::string> output;
     output.clear();
     Luau::setPrintLine(

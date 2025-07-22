@@ -294,10 +294,7 @@ static int luaB_pcally(lua_State* L)
     // any errors from this point on are handled by continuation
     L->ci->flags |= LUA_CALLINFO_HANDLE;
 
-    // maintain yieldable invariant (baseCcalls <= nCcalls)
-    L->baseCcalls++;
     int status = luaD_pcall(L, luaB_pcallrun, func, savestack(L, func), 0);
-    L->baseCcalls--;
 
     // necessary to accomodate functions that return lots of values
     expandstacklimit(L, L->top);
@@ -348,12 +345,9 @@ static int luaB_xpcally(lua_State* L)
     StkId errf = L->base;
     StkId func = L->base + 1;
 
-    // maintain yieldable invariant (baseCcalls <= nCcalls)
-    L->baseCcalls++;
     int status = luaD_pcall(L, luaB_pcallrun, func, savestack(L, func), savestack(L, errf));
-    L->baseCcalls--;
 
-    // necessary to accomodate functions that return lots of values
+    // necessary to accommodate functions that return lots of values
     expandstacklimit(L, L->top);
 
     // yielding means we need to propagate yield; resume will call continuation function later

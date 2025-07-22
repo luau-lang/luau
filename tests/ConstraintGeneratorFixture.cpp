@@ -10,9 +10,10 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
-    , simplifier(newSimplifier(NotNull{&arena}, builtinTypes))
+    , simplifier(newSimplifier(NotNull{&arena}, getBuiltins()))
     , forceTheFlag{FFlag::LuauSolverV2, true}
 {
+    getFrontend(); // Force the frontend to exist in the constructor.
     mainModule->name = "MainModule";
     mainModule->humanReadableName = "MainModule";
 
@@ -31,9 +32,10 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
         NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(&moduleResolver),
-        builtinTypes,
+        getBuiltins(),
         NotNull(&ice),
-        frontend.globals.globalScope,
+        getFrontend().globals.globalScope,
+        getFrontend().globals.globalTypeFunctionScope,
         /*prepareModuleScope*/ nullptr,
         &logger,
         NotNull{dfg.get()},
@@ -59,8 +61,7 @@ void ConstraintGeneratorFixture::solve(const std::string& code)
         {},
         &logger,
         NotNull{dfg.get()},
-        {}
-    };
+        {}};
 
     cs.run();
 }
