@@ -2504,7 +2504,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_extern_tag")
 
     CheckResult result = check(R"(
         --!strict
-        type function tyFunc(arg): any
+        type function tyFunc(arg: type)
             if (arg:is("extern")) then
                 return arg
             end
