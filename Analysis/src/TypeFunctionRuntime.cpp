@@ -39,11 +39,22 @@ LuauTempThreadPopper::~LuauTempThreadPopper()
 
 static void dummyStateClose(lua_State*) {}
 
+static std::string getTag_DEPRECATED(lua_State* L, TypeFunctionTypeId ty);
+static std::string getTag_NEW(lua_State* L, TypeFunctionTypeId ty);
+
+// Original function is named "getTag"
+using GetTagFunc = std::string (*)(lua_State*, TypeFunctionTypeId);
+static GetTagFunc getTag = getTag_DEPRECATED;
+
 TypeFunctionRuntime::TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits)
     : ice(ice)
     , limits(limits)
     , state(nullptr, dummyStateClose)
 {
+    if (FFlag::DebugLuauRenameClassToExtern)
+    {
+        getTag = getTag_NEW;
+    }
 }
 
 TypeFunctionRuntime::~TypeFunctionRuntime() {}
@@ -339,9 +350,6 @@ static std::string getTag_NEW(lua_State* L, TypeFunctionTypeId ty)
     LUAU_UNREACHABLE();
     luaL_error(L, "VM encountered unexpected type variant when determining tag");
 }
-// Original function is named "getTag"
-using GetTagFunc = std::string(*)(lua_State*, TypeFunctionTypeId);
-static GetTagFunc getTag = (FFlag::DebugLuauRenameClassToExtern ? getTag_DEPRECATED : getTag_NEW);
 
 // Luau: `type.unknown`
 // Returns the type instance representing unknown
