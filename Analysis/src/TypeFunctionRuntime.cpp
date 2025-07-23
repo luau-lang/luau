@@ -22,6 +22,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
+LUAU_FASTFLAGVARIABLE(DebugLuauRenameClassToExtern)
 
 namespace Luau
 {
@@ -256,7 +257,7 @@ std::optional<TypeFunctionTypeId> optionalTypeUserData(lua_State* L, int idx)
 }
 
 // returns a string tag of TypeFunctionTypeId
-static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
+static std::string getTag_DEPRECATED(lua_State* L, TypeFunctionTypeId ty)
 {
     if (auto n = get<TypeFunctionPrimitiveType>(ty); n && n->type == TypeFunctionPrimitiveType::Type::NilType)
         return "nil";
@@ -296,6 +297,51 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     LUAU_UNREACHABLE();
     luaL_error(L, "VM encountered unexpected type variant when determining tag");
 }
+
+// returns a string tag of TypeFunctionTypeId
+static std::string getTag_NEW(lua_State* L, TypeFunctionTypeId ty)
+{
+    if (auto n = get<TypeFunctionPrimitiveType>(ty); n && n->type == TypeFunctionPrimitiveType::Type::NilType)
+        return "nil";
+    else if (auto b = get<TypeFunctionPrimitiveType>(ty); b && b->type == TypeFunctionPrimitiveType::Type::Boolean)
+        return "boolean";
+    else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && n->type == TypeFunctionPrimitiveType::Type::Number)
+        return "number";
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
+        return "string";
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Thread)
+        return "thread";
+    else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Buffer)
+        return "buffer";
+    else if (get<TypeFunctionUnknownType>(ty))
+        return "unknown";
+    else if (get<TypeFunctionNeverType>(ty))
+        return "never";
+    else if (get<TypeFunctionAnyType>(ty))
+        return "any";
+    else if (auto s = get<TypeFunctionSingletonType>(ty))
+        return "singleton";
+    else if (get<TypeFunctionNegationType>(ty))
+        return "negation";
+    else if (get<TypeFunctionUnionType>(ty))
+        return "union";
+    else if (get<TypeFunctionIntersectionType>(ty))
+        return "intersection";
+    else if (get<TypeFunctionTableType>(ty))
+        return "table";
+    else if (get<TypeFunctionFunctionType>(ty))
+        return "function";
+    else if (get<TypeFunctionExternType>(ty))
+        return "extern";
+    else if (get<TypeFunctionGenericType>(ty))
+        return "generic";
+
+    LUAU_UNREACHABLE();
+    luaL_error(L, "VM encountered unexpected type variant when determining tag");
+}
+// Original function is named "getTag"
+using GetTagFunc = std::string(*)(lua_State*, TypeFunctionTypeId);
+static GetTagFunc getTag = (FFlag::DebugLuauRenameClassToExtern ? getTag_DEPRECATED : getTag_NEW);
 
 // Luau: `type.unknown`
 // Returns the type instance representing unknown
