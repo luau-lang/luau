@@ -13,6 +13,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeFollowMetatable)
+LUAU_FASTFLAG(LuauDeclareExternType)
 LUAU_FASTFLAG(DebugLuauRenameClassToExtern)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
