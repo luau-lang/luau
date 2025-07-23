@@ -2492,6 +2492,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_extern_tag")
 {
     ScopedFastFlag sff[]{
         {FFlag::LuauSolverV2, true},
+	{FFlag::LuauDeclareExternType, true},
         {FFlag::DebugLuauRenameClassToExtern, true}
     };
 
