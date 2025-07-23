@@ -13,6 +13,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeFollowMetatable)
+LUAU_FASTFLAG(DebugLuauRenameClassToExtern)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2484,6 +2485,39 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == R"(Redefinition of type 't0', previously defined at line 2)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_extern_tag")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauRenameClassToExtern, true}
+    };
+
+    loadDefinition(R"(
+        declare extern type CustomExternType with
+            function testFunc(self): number
+        end
+    )");
+
+    CheckResult result = check(R"(
+        --!strict
+        type function tyFunc(arg): any
+            if (arg:is("extern")) then
+                return arg
+            end
+            -- this should never be returned
+            return types.boolean
+        end
+        
+        type a = tyFunc<CustomExternType>
+    )");
+
+    auto test = requireTypeAlias("a");
+    // If it's not an ExternType it will fail.
+    LUAU_ASSERT( test->ty.get_if<ExternType>() );
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
