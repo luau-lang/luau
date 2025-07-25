@@ -206,7 +206,9 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 
     CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type_DEPRECATED());
     CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type_DEPRECATED());
-    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED());
+    CHECK_MESSAGE(
+        get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED()
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")

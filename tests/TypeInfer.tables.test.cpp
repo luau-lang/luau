@@ -40,6 +40,7 @@ LUAU_FASTFLAG(LuauDfgForwardNilFromAndOr)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType)
 LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauNormalizationLimitTyvarUnionSize)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6129,7 +6130,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_119126_regression")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, results);
-    for (const auto& err: results.errors)
+    for (const auto& err : results.errors)
     {
         auto e = get<TypeMismatch>(err);
         REQUIRE(e);
@@ -6171,6 +6172,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1914_access_after_assignment_with_assert
     )"));
 
     CHECK_EQ("number", toString(requireType("myAge")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_normalization" * doctest::timeout(1.0))
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSimplifyOutOfLine2, true},
+        {FFlag::LuauNormalizationLimitTyvarUnionSize, true},
+    };
+
+    const std::string source =
+        "local res = {\n" + rep("\"foo\",\n", 100) + "}\n"
+        + "local function check(index: number)\n"
+        + "  if res[index] == \"foo\" then\n"
+        + "    print(\"found a foo!\")\n"
+        + "  end\n"
+        + "end";
+
+    LUAU_REQUIRE_NO_ERRORS(check(source));
 }
 
 

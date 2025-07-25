@@ -46,7 +46,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
         DenseHashMap<const void*, size_t> positiveTypes,
         DenseHashMap<const void*, size_t> negativeTypes
     )
-        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        : TypeOnceVisitor("MutatingGeneralizer", /* skipBoundTypes */ true)
         , arena(arena)
         , builtinTypes(builtinTypes)
         , scope(scope)
@@ -338,7 +338,7 @@ struct FreeTypeSearcher : TypeVisitor
     NotNull<DenseHashSet<TypeId>> cachedTypes;
 
     explicit FreeTypeSearcher(NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeVisitor(/*skipBoundTypes*/ true)
+        : TypeVisitor("FreeTypeSearcher", /*skipBoundTypes*/ true)
         , scope(scope)
         , cachedTypes(cachedTypes)
     {
@@ -649,7 +649,7 @@ struct TypeCacher : TypeOnceVisitor
     DenseHashSet<TypePackId> uncacheablePacks{nullptr};
 
     explicit TypeCacher(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeOnceVisitor(/* skipBoundTypes */ false)
+        : TypeOnceVisitor("TypeCacher", /* skipBoundTypes */ false)
         , cachedTypes(cachedTypes)
     {
     }
@@ -1136,7 +1136,6 @@ struct TypeRemover
             }
         }
     }
-
 };
 
 void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId haystack, TypeId needle)
@@ -1145,7 +1144,7 @@ void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Ty
     tr.process(haystack);
 }
 
-}
+} // namespace
 
 GeneralizationResult<TypeId> generalizeType(
     NotNull<TypeArena> arena,
@@ -1410,7 +1409,8 @@ struct GenericCounter : TypeVisitor
     Polarity polarity = Polarity::Positive;
 
     explicit GenericCounter(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : cachedTypes(cachedTypes)
+        : TypeVisitor("GenericCounter")
+        , cachedTypes(cachedTypes)
     {
     }
 

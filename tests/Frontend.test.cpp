@@ -623,7 +623,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "produce_errors_for_unchanged_file_with_error
 
     getFrontend().check("Modules/A");
 
-    fileResolver.source["Modules/A"] = "local p = 4 -- We have fixed the problem, but we didn't tell the getFrontend(). so it will not recheck this file!";
+    fileResolver.source["Modules/A"] =
+        "local p = 4 -- We have fixed the problem, but we didn't tell the getFrontend(). so it will not recheck this file!";
     CheckResult secondResult = getFrontend().check("Modules/A");
 
     CHECK_EQ(1, secondResult.errors.size());

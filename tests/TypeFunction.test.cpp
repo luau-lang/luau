@@ -744,10 +744,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauStuckTypeFunctionsStillDispatch, true}
-    };
+    ScopedFastFlag sff[] = {{FFlag::LuauEagerGeneralization4, true}, {FFlag::LuauStuckTypeFunctionsStillDispatch, true}};
 
     CheckResult result = check(R"(
         local EnumVariants = {
@@ -1787,7 +1784,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_prop
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ(R"("" | "one")", toString(requireTypeAlias("FoobarKeys")));
     CHECK_EQ(R"("" | "two")", toString(requireTypeAlias("TableKeys")));
-
 }
 
 struct TFFixture
@@ -1796,7 +1792,10 @@ struct TFFixture
     NotNull<TypeArena> arena{&arena_};
 
     BuiltinTypes builtinTypes_;
-    NotNull<BuiltinTypes> getBuiltins(){ return NotNull{&builtinTypes_};}
+    NotNull<BuiltinTypes> getBuiltins()
+    {
+        return NotNull{&builtinTypes_};
+    }
 
     ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
 

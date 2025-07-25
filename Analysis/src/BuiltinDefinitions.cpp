@@ -771,7 +771,9 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
         if (iter == end(context.arguments))
         {
-            context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+            context.typechecker->reportError(
+                CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
+            );
             return true;
         }
 
@@ -823,7 +825,8 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
         {
             TypeId actualTy = params[i + paramOffset];
             TypeId expectedTy = expected[i];
-            Location location = context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
+            Location location =
+                context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
             // use subtyping instead here
             SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
 
@@ -845,7 +848,6 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
         }
 
         return true;
-
     }
     else
     {
@@ -863,7 +865,9 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
         if (!fmt)
         {
-            context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+            context.typechecker->reportError(
+                CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
+            );
             return true;
         }
 
@@ -887,7 +891,8 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
         {
             TypeId actualTy = params[i + paramOffset];
             TypeId expectedTy = expected[i];
-            Location location = context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
+            Location location =
+                context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
             // use subtyping instead here
             SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
 
@@ -895,15 +900,15 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
             {
                 switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
                 {
-                    case ErrorSuppression::Suppress:
-                        break;
-                    case ErrorSuppression::NormalizationFailed:
-                        break;
-                    case ErrorSuppression::DoNotSuppress:
-                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+                case ErrorSuppression::Suppress:
+                    break;
+                case ErrorSuppression::NormalizationFailed:
+                    break;
+                case ErrorSuppression::DoNotSuppress:
+                    Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
 
-                        if (!reasonings.suppressed)
-                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
+                    if (!reasonings.suppressed)
+                        context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
                 }
             }
         }

@@ -3,8 +3,6 @@
 
 #include "Luau/Lexer.h"
 
-LUAU_FASTFLAG(LuauCompileInlineNonConstInit)
-
 namespace Luau
 {
 namespace Compile
@@ -85,11 +83,8 @@ struct ValueVisitor : AstVisitor
 
     bool visit(AstExprFunction* node) override
     {
-        if (FFlag::LuauCompileInlineNonConstInit)
-        {
-            for (AstLocal* arg : node->args)
-                variables[arg].init = nullptr;
-        }
+        for (AstLocal* arg : node->args)
+            variables[arg].init = nullptr;
 
         return true;
     }

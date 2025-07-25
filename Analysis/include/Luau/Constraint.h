@@ -341,7 +341,6 @@ struct Constraint
     DenseHashSet<TypeId> getMaybeMutatedFreeTypes_DEPRECATED() const;
 
     TypeIds getMaybeMutatedFreeTypes() const;
-
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;

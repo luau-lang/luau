@@ -157,4 +157,4 @@ std::vector<TypeId> TypeIds::take()
     return std::move(order);
 }
 
-}
+} // namespace Luau

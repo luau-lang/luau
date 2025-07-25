@@ -47,7 +47,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
     }};
 
     Type functionTwo{TypeVariant{FunctionType(
-        arena.addTypePack({arena.freshType(getBuiltins(), globalScope->level)}), arena.addTypePack({arena.freshType(getBuiltins(), globalScope->level)})
+        arena.addTypePack({arena.freshType(getBuiltins(), globalScope->level)}),
+        arena.addTypePack({arena.freshType(getBuiltins(), globalScope->level)})
     )}};
 
     state.tryUnify(&functionTwo, &functionOne);
@@ -291,7 +292,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 {
     TypePackId threeNumbers =
         arena.addTypePack(TypePack{{getBuiltins()->numberType, getBuiltins()->numberType, getBuiltins()->numberType}, std::nullopt});
-    TypePackId numberAndFreeTail = arena.addTypePack(TypePack{{getBuiltins()->numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
+    TypePackId numberAndFreeTail =
+        arena.addTypePack(TypePack{{getBuiltins()->numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
 
     CHECK(state.canUnify(numberAndFreeTail, threeNumbers).empty());
 }

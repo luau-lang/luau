@@ -165,7 +165,7 @@ struct Fixture
     NullModuleResolver moduleResolver;
     std::unique_ptr<SourceModule> sourceModule;
     InternalErrorReporter ice;
-    
+
 
     std::string decorateWithTypes(const std::string& code);
 
@@ -185,8 +185,10 @@ struct Fixture
     // TODO: test theory about dynamic dispatch
     NotNull<BuiltinTypes> getBuiltins();
     virtual Frontend& getFrontend();
+
 private:
     bool hasDumpedErrors = false;
+
 protected:
     bool forAutocomplete = false;
     std::optional<Frontend> frontend;

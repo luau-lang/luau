@@ -619,11 +619,10 @@ struct UsageFinder : public AstVisitor
             {
                 auto def = dfg->getDef(local);
                 localBindingsReferenced.emplace_back(def, local->local);
-                symbolsToRefine.emplace_back(def, Symbol(local->local));                
+                symbolsToRefine.emplace_back(def, Symbol(local->local));
             }
             else
                 localBindingsReferenced.emplace_back(dfg->getDef(local), local->local);
-
         }
         return true;
     }
@@ -635,7 +634,7 @@ struct UsageFinder : public AstVisitor
         if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
         {
             auto def = dfg->getDef(global);
-            symbolsToRefine.emplace_back(def, Symbol(global->name));            
+            symbolsToRefine.emplace_back(def, Symbol(global->name));
         }
         return true;
     }

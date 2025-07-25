@@ -37,7 +37,7 @@ LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAGVARIABLE(LuauSuppressErrorsForMultipleNonviableOverloads)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 
@@ -161,6 +161,11 @@ struct TypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypeId> mentionedFunctions{nullptr};
     DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
+    TypeFunctionFinder()
+        : TypeOnceVisitor("TypeFunctionFinder")
+    {
+    }
+
     bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
         mentionedFunctions.insert(ty);
@@ -182,6 +187,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
     explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
+        : TypeOnceVisitor("InternalTypeFunctionFinder")
     {
         TypeFunctionFinder f;
         for (TypeId fn : declStack)
@@ -2052,7 +2058,8 @@ void TypeChecker2::visit(AstExprFunction* fn)
                     TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
                     if (result.shouldRecommendAnnotation && !get<UnknownType>(result.guessedReturnType))
                         reportError(
-                            ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, fn->location
+                            ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
+                            fn->location
                         );
                 }
             }
@@ -2207,7 +2214,9 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         auto name = getIdentifierOfBaseVar(expr->left);
         reportError(
             CannotInferBinaryOperation{
-                expr->op, std::move(name), isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation
+                expr->op,
+                std::move(name),
+                isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation
             },
             expr->location
         );
@@ -2920,11 +2929,11 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             continue;
 
         std::optional<TypeOrPack> optSubLeaf =
-            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                 ? traverse(subTy, reasoning.subPath, builtinTypes, NotNull{&r.mappedGenericPacks}, subtyping->arena)
                 : traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes);
         std::optional<TypeOrPack> optSuperLeaf =
-            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                 ? traverse(superTy, reasoning.superPath, builtinTypes, NotNull{&r.mappedGenericPacks}, subtyping->arena)
                 : traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes);
 
@@ -3071,7 +3080,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         else if (auto binExpr = expr->as<AstExprBinary>(); binExpr && binExpr->op == AstExprBinary::Or)
         {
             // In this case: `{ ... } or { ... }` is literal _enough_ that
-            // we should do this covariant check. 
+            // we should do this covariant check.
             auto relaxedExpectedLhs = module->internalTypes.addType(UnionType{{builtinTypes->falsyType, expectedType}});
             bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
             passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);

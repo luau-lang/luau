@@ -446,7 +446,7 @@ bool maybeSingleton(TypeId ty)
 
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 {
-    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _rl("Type::hasLength", recursionCount, FInt::LuauTypeInferRecursionLimit);
 
     ty = follow(ty);
 

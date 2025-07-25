@@ -1016,7 +1016,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         return;
     }
 
-    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, std::move(typeCheckLimits));
+    ModulePtr module =
+        check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, std::move(typeCheckLimits));
 
     double duration = getTimestamp() - timestamp;
 
@@ -1368,6 +1369,11 @@ ModulePtr check(
 
 struct InternalTypeFinder : TypeOnceVisitor
 {
+    InternalTypeFinder()
+        : TypeOnceVisitor("InternalTypeFinder")
+    {
+    }
+
     bool visit(TypeId, const ExternType&) override
     {
         return false;

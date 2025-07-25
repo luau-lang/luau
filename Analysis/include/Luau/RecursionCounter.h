@@ -12,8 +12,8 @@ namespace Luau
 
 struct RecursionLimitException : public InternalCompilerError
 {
-    RecursionLimitException()
-        : InternalCompilerError("Internal recursion counter limit exceeded")
+    RecursionLimitException(const std::string system)
+        : InternalCompilerError("Internal recursion counter limit exceeded in " + system)
     {
     }
 };
@@ -38,12 +38,12 @@ protected:
 
 struct RecursionLimiter : RecursionCounter
 {
-    RecursionLimiter(int* count, int limit)
+    RecursionLimiter(const std::string system, int* count, int limit)
         : RecursionCounter(count)
     {
         if (limit > 0 && *count > limit)
         {
-            throw RecursionLimitException();
+            throw RecursionLimitException(system);
         }
     }
 };

@@ -92,6 +92,11 @@ struct GenericTypeFinder : TypeOnceVisitor
 {
     bool found = false;
 
+    GenericTypeFinder()
+        : TypeOnceVisitor("GenericTypeFinder")
+    {
+    }
+
     bool visit(TypeId ty) override
     {
         return !found;

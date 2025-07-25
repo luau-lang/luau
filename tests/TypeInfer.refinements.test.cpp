@@ -127,7 +127,8 @@ struct RefinementExternTypeFixture : BuiltinsFixture
         };
 
         TypeId optionalPart = arena.addType(UnionType{{part, getBuiltins()->nilType}});
-        TypeId weldConstraint = getFrontend().globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        TypeId weldConstraint =
+            getFrontend().globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ExternType>(weldConstraint)->props = {
             {"Part0", Property{optionalPart}},
             {"Part1", Property{optionalPart}},

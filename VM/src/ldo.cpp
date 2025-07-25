@@ -17,6 +17,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauErrorYield, false)
+
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
 
@@ -249,6 +251,23 @@ void luaD_checkCstack(lua_State* L)
         luaD_throw(L, LUA_ERRERR); // error while handling stack error
 }
 
+static void performcall(lua_State* L, StkId func, int nresults)
+{
+    if (luau_precall(L, func, nresults) == PCRLUA)
+    {                                        // is a Lua function?
+        L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
+
+        bool oldactive = L->isactive;
+        L->isactive = true;
+        luaC_threadbarrier(L);
+
+        luau_execute(L); // call it
+
+        if (!oldactive)
+            L->isactive = false;
+    }
+}
+
 /*
 ** Call a function (C or Lua). The function to be called is at *func.
 ** The arguments are on the stack, right after the function.
@@ -277,18 +296,25 @@ void luaD_call(lua_State* L, StkId func, int nresults)
     ptrdiff_t funcoffset = savestack(L, func);
     ptrdiff_t cioffset = saveci(L, L->ci);
 
-    if (luau_precall(L, func, nresults) == PCRLUA)
-    {                                        // is a Lua function?
-        L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
+    if (DFFlag::LuauErrorYield)
+    {
+        performcall(L, func, nresults);
+    }
+    else
+    {
+        if (luau_precall(L, func, nresults) == PCRLUA)
+        {                                        // is a Lua function?
+            L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
 
-        bool oldactive = L->isactive;
-        L->isactive = true;
-        luaC_threadbarrier(L);
+            bool oldactive = L->isactive;
+            L->isactive = true;
+            luaC_threadbarrier(L);
 
-        luau_execute(L); // call it
+            luau_execute(L); // call it
 
-        if (!oldactive)
-            L->isactive = false;
+            if (!oldactive)
+                L->isactive = false;
+        }
     }
 
     bool yielded = L->status == LUA_YIELD || L->status == LUA_BREAK;
@@ -308,6 +334,27 @@ void luaD_call(lua_State* L, StkId func, int nresults)
     }
 
     if (nresults != LUA_MULTRET && !yielded)
+        L->top = restorestack(L, funcoffset) + nresults;
+
+    L->nCcalls--;
+    luaC_checkGC(L);
+}
+
+// Non-yieldable version of luaD_call, used primarily to call an error handler which cannot yield
+void luaD_callny(lua_State* L, StkId func, int nresults)
+{
+    if (++L->nCcalls >= LUAI_MAXCCALLS)
+        luaD_checkCstack(L);
+
+    LUAU_ASSERT(L->nCcalls > L->baseCcalls);
+
+    ptrdiff_t funcoffset = savestack(L, func);
+
+    performcall(L, func, nresults);
+
+    LUAU_ASSERT(L->status != LUA_YIELD && L->status != LUA_BREAK);
+
+    if (nresults != LUA_MULTRET)
         L->top = restorestack(L, funcoffset) + nresults;
 
     L->nCcalls--;
@@ -595,7 +642,11 @@ static void callerrfunc(lua_State* L, void* ud)
     setobj2s(L, L->top, L->top - 1);
     setobj2s(L, L->top - 1, errfunc);
     incr_top(L);
-    luaD_call(L, L->top - 2, 1);
+
+    if (DFFlag::LuauErrorYield)
+        luaD_callny(L, L->top - 2, 1);
+    else
+        luaD_call(L, L->top - 2, 1);
 }
 
 static void restore_stack_limit(lua_State* L)
