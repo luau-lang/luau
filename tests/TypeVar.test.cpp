@@ -365,6 +365,12 @@ struct VisitCountTracker final : TypeOnceVisitor
     std::unordered_map<TypeId, unsigned> tyVisits;
     std::unordered_map<TypePackId, unsigned> tpVisits;
 
+    VisitCountTracker()
+        : TypeOnceVisitor("VisitCountTracker")
+    {
+    }
+
+
     void cycle(TypeId) override {}
     void cycle(TypePackId) override {}
 

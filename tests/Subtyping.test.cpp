@@ -17,7 +17,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 
 using namespace Luau;
 
@@ -1240,11 +1240,19 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
 TEST_CASE_FIXTURE(SubtypeFixture, "bill")
 {
     TypeId a = arena.addType(TableType{
-        {{"a", getBuiltins()->stringType}}, TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType}, TypeLevel{}, nullptr, TableState::Sealed
+        {{"a", getBuiltins()->stringType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        nullptr,
+        TableState::Sealed
     });
 
     TypeId b = arena.addType(TableType{
-        {{"a", getBuiltins()->stringType}}, TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType}, TypeLevel{}, nullptr, TableState::Sealed
+        {{"a", getBuiltins()->stringType}},
+        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+        TypeLevel{},
+        nullptr,
+        TableState::Sealed
     });
 
     CHECK(isSubtype(a, b).isSubtype);
@@ -1387,7 +1395,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_function_instance")
 {
-    ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping, true};
+    ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true};
 
     TypeId longTy = arena.addType(UnionType{
         {getBuiltins()->booleanType,
@@ -1631,9 +1639,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
     TypeId bTy = arena.addType(GenericType{"B"});
     getMutable<GenericType>(bTy)->scope = moduleScope.get();
 
-    TypeId genericFunctionTy =
-        arena.addType(FunctionType{{aTy, bTy}, {}, arena.addTypePack({aTy, bTy}), arena.addTypePack({join(meet(aTy, getBuiltins()->truthyType), bTy)})}
-        );
+    TypeId genericFunctionTy = arena.addType(
+        FunctionType{{aTy, bTy}, {}, arena.addTypePack({aTy, bTy}), arena.addTypePack({join(meet(aTy, getBuiltins()->truthyType), bTy)})}
+    );
 
     const TypeId truthyTy = getBuiltins()->truthyType;
 

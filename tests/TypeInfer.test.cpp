@@ -1984,7 +1984,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_table_freeze_constraint_solving")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving")
 {
-    ScopedFastFlag _ {FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
     // This is the original fuzzer version of the above issue.
     CheckResult results = check(R"(
         local function l0()
@@ -2383,7 +2383,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_remover_heap_use_after_free")
         local l249 = require(module0)
         _,_ = {[`{_}`]=_,[_._G._]=(_)(),[_["" + _]._G]={_=_,_=_,[_._G[_]._]=_G,},},_,(_)()
     )"));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_assign_index_constraint")
@@ -2449,7 +2448,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1815_verbatim")
         {FFlag::LuauInferActualIfElseExprType, true},
         // This is needed so that we don't hide the string literal free types
         // behind a `union<_, _>`
-        {FFlag::LuauSimplifyOutOfLine2, true}, 
+        {FFlag::LuauSimplifyOutOfLine2, true},
         {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
     };
 
@@ -2476,7 +2475,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_1815_verbatim")
     REQUIRE(err3);
     CHECK_EQ("\"foo\"", toString(err3->wantedType));
     CHECK_EQ("\"doge2\"", toString(err3->givenType));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_bidirectional_inference")

@@ -23,7 +23,8 @@ struct InferPolarity : TypeVisitor
     Polarity polarity = Polarity::Positive;
 
     explicit InferPolarity(NotNull<TypeArena> arena, NotNull<Scope> scope)
-        : arena(arena)
+        : TypeVisitor("InferPolarity")
+        , arena(arena)
         , scope(scope)
     {
     }

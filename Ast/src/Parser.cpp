@@ -18,7 +18,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauDeclareExternType)
 LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
 LUAU_FASTFLAGVARIABLE(LuauParseAttributeFixUninit)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
@@ -1249,48 +1248,44 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             retTypes
         );
     }
-    else if (AstName(lexer.current().name) == "class" || (FFlag::LuauDeclareExternType && AstName(lexer.current().name) == "extern"))
+    else if (AstName(lexer.current().name) == "class" || AstName(lexer.current().name) == "extern")
     {
         bool foundExtern = false;
-        if (FFlag::LuauDeclareExternType)
+        if (AstName(lexer.current().name) == "extern")
         {
-            if (AstName(lexer.current().name) == "extern")
-            {
-                foundExtern = true;
-                nextLexeme();
-                if (AstName(lexer.current().name) != "type")
-                    return reportStatError(
-                        lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().name
+            foundExtern = true;
+            nextLexeme();
+            if (AstName(lexer.current().name) != "type")
+                return reportStatError(
+                    lexer.current().location, {}, {}, "Expected `type` keyword after `extern`, but got %s instead", lexer.current().name
                     );
             }
-        }
+
 
         nextLexeme();
 
         Location classStart = lexer.current().location;
-        Name className = parseName(FFlag::LuauDeclareExternType ? "type name" : "class name");
+        Name className = parseName("type name");
         std::optional<AstName> superName = std::nullopt;
 
         if (AstName(lexer.current().name) == "extends")
         {
             nextLexeme();
-            superName = parseName(FFlag::LuauDeclareExternType ? "supertype name" : "superclass name").name;
+            superName = parseName("supertype name").name;
         }
 
-        if (FFlag::LuauDeclareExternType)
+        if (foundExtern)
         {
-            if (foundExtern)
-            {
-                if (AstName(lexer.current().name) != "with")
-                    report(
-                        lexer.current().location,
-                        "Expected `with` keyword before listing properties of the external type, but got %s instead",
-                        lexer.current().name
-                    );
-                else
-                    nextLexeme();
-            }
+            if (AstName(lexer.current().name) != "with")
+                report(
+                    lexer.current().location,
+                    "Expected `with` keyword before listing properties of the external type, but got %s instead",
+                    lexer.current().name
+                );
+            else
+                nextLexeme();
         }
+
 
         TempVector<AstDeclaredExternTypeProperty> props(scratchDeclaredClassProps);
         AstTableIndexer* indexer = nullptr;
@@ -1357,10 +1352,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                         AstTableIndexer* badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
 
                         // we lose all additional indexer expressions from the AST after error recovery here
-                        if (FFlag::LuauDeclareExternType)
-                            report(badIndexer->location, "Cannot have more than one indexer on an extern type");
-                        else
-                            report(badIndexer->location, "Cannot have more than one class indexer");
+                        report(badIndexer->location, "Cannot have more than one indexer on an extern type");
                     }
                     else
                     {
@@ -1427,10 +1419,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                         AstTableIndexer* badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, lexer.current()).node;
 
                         // we lose all additional indexer expressions from the AST after error recovery here
-                        if (FFlag::LuauDeclareExternType)
-                            report(badIndexer->location, "Cannot have more than one indexer on an extern type");
-                        else
-                            report(badIndexer->location, "Cannot have more than one class indexer");
+                        report(badIndexer->location, "Cannot have more than one indexer on an extern type");
                     }
                     else
                     {
@@ -1466,13 +1455,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
         AstType* type = parseType(/* in declaration context */ true);
         return allocator.alloc<AstStatDeclareGlobal>(Location(start, type->location), globalName->name, globalName->location, type);
     }
-    else if (FFlag::LuauDeclareExternType)
-    {
-        return reportStatError(start, {}, {}, "declare must be followed by an identifier, 'function', or 'extern type'");
-    }
     else
     {
-        return reportStatError(start, {}, {}, "declare must be followed by an identifier, 'function', or 'class'");
+        return reportStatError(start, {}, {}, "declare must be followed by an identifier, 'function', or 'extern type'");
     }
 }
 

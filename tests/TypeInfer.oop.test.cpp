@@ -559,7 +559,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] ={
+    ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
     };
 
@@ -591,7 +591,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] ={
+    ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
     };
 

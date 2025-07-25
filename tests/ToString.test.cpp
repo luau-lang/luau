@@ -61,7 +61,8 @@ TEST_CASE_FIXTURE(Fixture, "free_types_stringify_the_same_regardless_of_solver")
 {
     ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TypeArena a;
-    TypeId t = a.addType(FreeType{getFrontend().globals.globalScope.get(), getFrontend().builtinTypes->neverType, getFrontend().builtinTypes->unknownType});
+    TypeId t =
+        a.addType(FreeType{getFrontend().globals.globalScope.get(), getFrontend().builtinTypes->neverType, getFrontend().builtinTypes->unknownType});
 
     CHECK_EQ("'a", toString(t));
 }

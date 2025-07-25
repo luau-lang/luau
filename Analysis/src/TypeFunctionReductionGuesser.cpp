@@ -24,6 +24,11 @@ struct InstanceCollector2 : TypeOnceVisitor
     DenseHashSet<TypeId> cyclicInstance{nullptr};
     DenseHashSet<TypeId> instanceArguments{nullptr};
 
+    InstanceCollector2()
+        : TypeOnceVisitor("InstanceCollector2")
+    {
+    }
+
     bool visit(TypeId ty, const TypeFunctionInstanceType& it) override
     {
         // TypeOnceVisitor performs a depth-first traversal in the absence of

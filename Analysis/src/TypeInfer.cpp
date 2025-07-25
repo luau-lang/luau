@@ -442,7 +442,7 @@ struct InplaceDemoter : TypeOnceVisitor
     TypeArena* arena;
 
     InplaceDemoter(TypeLevel level, TypeArena* arena)
-        : TypeOnceVisitor(/* skipBoundTypes= */ true)
+        : TypeOnceVisitor("InplaceDemoter", /* skipBoundTypes= */ true)
         , newLevel(level)
         , arena(arena)
     {
@@ -2150,7 +2150,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
 
         for (TypeId t : utv)
         {
-            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
+            RecursionLimiter _rl("TypeInfer::UnionType", &recursionCount, FInt::LuauTypeInferRecursionLimit);
 
             // Not needed when we normalize types.
             if (get<AnyType>(follow(t)))
@@ -2189,7 +2189,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
 
         for (TypeId t : itv->parts)
         {
-            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
+            RecursionLimiter _rl("TypeInfer::IntersectionType", &recursionCount, FInt::LuauTypeInferRecursionLimit);
 
             if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, /* addErrors= */ false))
                 parts.push_back(*ty);
@@ -4129,7 +4129,9 @@ void TypeChecker::checkArgumentList(
         auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
         state.reportError(TypeError{
             location,
-            CountMismatch{minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, std::move(namePath)}
+            CountMismatch{
+                minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, std::move(namePath)
+            }
         });
     };
 
@@ -4248,7 +4250,8 @@ void TypeChecker::checkArgumentList(
                         namePath = *path;
 
                     state.reportError(TypeError{
-                        funName.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, std::move(namePath)}
+                        funName.location,
+                        CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, std::move(namePath)}
                     });
                     return;
                 }

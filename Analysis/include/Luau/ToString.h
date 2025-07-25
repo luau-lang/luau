@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/TypeFwd.h"
 
 #include <memory>
@@ -134,6 +135,10 @@ std::string dump(TypeId ty);
 std::string dump(const std::optional<TypeId>& ty);
 std::string dump(TypePackId ty);
 std::string dump(const std::optional<TypePackId>& ty);
+std::string dump(const std::vector<TypeId>& types);
+std::string dump(DenseHashMap<TypeId, TypeId>& types);
+std::string dump(DenseHashMap<TypePackId, TypePackId>& types);
+
 std::string dump(const Constraint& c);
 
 std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
@@ -153,4 +158,5 @@ inline std::string toString(const TypeOrPack& tyOrTp)
 
 std::string dump(const TypeOrPack& tyOrTp);
 
+std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& opts);
 } // namespace Luau

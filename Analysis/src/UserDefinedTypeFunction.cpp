@@ -39,7 +39,7 @@ private:
     T oldValue;
 };
 
-}
+} // namespace
 
 struct FindUserTypeFunctionBlockers : TypeOnceVisitor
 {
@@ -48,7 +48,7 @@ struct FindUserTypeFunctionBlockers : TypeOnceVisitor
     std::vector<TypeId> blockingTypes;
 
     explicit FindUserTypeFunctionBlockers(NotNull<TypeFunctionContext> ctx)
-        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        : TypeOnceVisitor("FindUserTypeFunctionBlockers", /* skipBoundTypes */ true)
         , ctx(ctx)
     {
     }

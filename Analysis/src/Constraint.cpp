@@ -24,7 +24,8 @@ struct ReferenceCountInitializer_DEPRECATED : TypeOnceVisitor
     bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer_DEPRECATED(DenseHashSet<TypeId>* result)
-        : result(result)
+        : TypeOnceVisitor("ReferenceCountInitializer_DEPRECATED")
+        , result(result)
     {
     }
 
@@ -78,7 +79,8 @@ struct ReferenceCountInitializer : TypeOnceVisitor
     bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer(NotNull<TypeIds> result)
-        : result(result)
+        : TypeOnceVisitor("ReferenceCountInitializer")
+        , result(result)
     {
     }
 

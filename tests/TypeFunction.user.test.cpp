@@ -2417,10 +2417,7 @@ local function ok(idx: get<>): number return idx end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    CHECK(
-        toString(result.errors[1]) ==
-        R"(Type function instance get<> is uninhabited)"
-    );
+    CHECK(toString(result.errors[1]) == R"(Type function instance get<> is uninhabited)");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unreferenced_do_not_block")

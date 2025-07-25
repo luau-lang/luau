@@ -52,7 +52,11 @@ namespace
 
 struct FindCyclicTypes final : TypeVisitor
 {
-    FindCyclicTypes() = default;
+    FindCyclicTypes()
+        : TypeVisitor("FindCyclicTypes")
+    {
+    }
+
     FindCyclicTypes(const FindCyclicTypes&) = delete;
     FindCyclicTypes& operator=(const FindCyclicTypes&) = delete;
 
@@ -589,7 +593,7 @@ struct TypeStringifier
         if (FFlag::LuauSolverAgnosticStringification && FInt::DebugLuauVerboseTypeNames >= 1)
             state.emit(ftv.polarity);
         else if (FFlag::LuauSolverV2 && FInt::DebugLuauVerboseTypeNames >= 1)
-            state.emit(ftv.polarity);            
+            state.emit(ftv.polarity);
 
 
         if (FInt::DebugLuauVerboseTypeNames >= 2)
@@ -827,7 +831,9 @@ struct TypeStringifier
 
         std::string openbrace = "@@@";
         std::string closedbrace = "@@@?!";
-        switch (state.opts.hideTableKind ? ((FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification) ? TableState::Sealed : TableState::Unsealed) : ttv.state)
+        switch (state.opts.hideTableKind
+                    ? ((FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification) ? TableState::Sealed : TableState::Unsealed)
+                    : ttv.state)
         {
         case TableState::Sealed:
             if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
@@ -1899,6 +1905,39 @@ std::string dump(const std::optional<TypePackId>& ty)
     return "nullopt";
 }
 
+std::string dump(const std::vector<TypeId>& types)
+{
+    return toStringVector(types, dumpOptions());
+}
+
+std::string dump(DenseHashMap<TypeId, TypeId>& types)
+{
+    std::string s = "{";
+    ToStringOptions& opts = dumpOptions();
+    for (const auto& [key, value] : types)
+    {
+        if (s.length() == 1)
+            s += ", ";
+        s += toString(key, opts) + " : " + toString(value, opts);
+    }
+    s += "}";
+    return s;
+}
+
+std::string dump(DenseHashMap<TypePackId, TypePackId>& types)
+{
+    std::string s = "{";
+    ToStringOptions& opts = dumpOptions();
+    for (const auto& [key, value] : types)
+    {
+        if (s.length() == 1)
+            s += ", ";
+        s += toString(key, opts) + " : " + toString(value, opts);
+    }
+    s += "}";
+    return s;
+}
+
 std::string dump(const ScopePtr& scope, const char* name)
 {
     auto binding = scope->linearSearchForBinding(name);
@@ -2005,7 +2044,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             return tos(c.resultType) + " ~ hasIndexer " + tos(c.subjectType) + " " + tos(c.indexType);
         }
         else if constexpr (std::is_same_v<T, AssignPropConstraint>)
-            return tos(c.propType) +  " ~ assignProp " + tos(c.lhsType) + " " + c.propName + " " + tos(c.rhsType);
+            return tos(c.propType) + " ~ assignProp " + tos(c.lhsType) + " " + c.propName + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, AssignIndexConstraint>)
             return "assignIndex " + tos(c.lhsType) + " " + tos(c.indexType) + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, UnpackConstraint>)

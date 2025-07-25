@@ -272,7 +272,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK(
-            result.errors[0] == (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{getBuiltins()->nilType, getBuiltins()->numberType}})
+            result.errors[0] ==
+            (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{getBuiltins()->nilType, getBuiltins()->numberType}})
         );
     }
     else
@@ -447,7 +448,8 @@ TEST_CASE_FIXTURE(Fixture, "self_referential_type_alias")
     if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
         REQUIRE(incr->readTy);
 
-    const FunctionType* incrFunc = FFlag::LuauRemoveTypeCallsForReadWriteProps ? get<FunctionType>(*incr->readTy) : get<FunctionType>(incr->type_DEPRECATED());
+    const FunctionType* incrFunc =
+        FFlag::LuauRemoveTypeCallsForReadWriteProps ? get<FunctionType>(*incr->readTy) : get<FunctionType>(incr->type_DEPRECATED());
     REQUIRE(incrFunc);
 
     std::optional<TypeId> firstArg = first(incrFunc->argTypes);

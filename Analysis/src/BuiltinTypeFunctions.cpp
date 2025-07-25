@@ -124,7 +124,7 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
     return std::nullopt;
 }
 
-}
+} // namespace
 
 TypeFunctionReductionResult<TypeId> notTypeFunction(
     TypeId instance,
@@ -1034,6 +1034,12 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
 struct FindRefinementBlockers : TypeOnceVisitor
 {
     DenseHashSet<TypeId> found{nullptr};
+
+    FindRefinementBlockers()
+        : TypeOnceVisitor("FindRefinementBlockers")
+    {
+    }
+
     bool visit(TypeId ty, const BlockedType&) override
     {
         found.insert(ty);
@@ -1056,7 +1062,7 @@ struct ContainsRefinableType : TypeOnceVisitor
 {
     bool found = false;
     ContainsRefinableType()
-        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        : TypeOnceVisitor("ContainsRefinableType", /* skipBoundTypes */ true)
     {
     }
 
@@ -1163,7 +1169,7 @@ struct RefineTypeScrubber : public Substitution
         return !is<UnionType, IntersectionType>(ty);
     }
 
-    TypeId clean(TypeId ty) override 
+    TypeId clean(TypeId ty) override
     {
         // NOTE: this feels pretty similar to other places where we try to
         // filter over a set type, may be worth combining those in the future.
@@ -1199,7 +1205,6 @@ struct RefineTypeScrubber : public Substitution
         }
         return ty;
     }
-
 };
 
 bool occurs(TypeId haystack, TypeId needle, DenseHashSet<TypeId>& seen)
@@ -1431,7 +1436,6 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
 
             return {resultTy, {}};
         }
-
     };
 
     // refine target with each discriminant type in sequence (reverse of insertion order)
@@ -1494,7 +1498,7 @@ struct CollectUnionTypeOptions : TypeOnceVisitor
     DenseHashSet<TypeId> blockingTypes{nullptr};
 
     explicit CollectUnionTypeOptions(NotNull<TypeFunctionContext> ctx)
-        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        : TypeOnceVisitor("CollectUnionTypeOptions", /* skipBoundTypes */ true)
         , ctx(ctx)
     {
     }
@@ -1764,7 +1768,8 @@ bool computeKeysOf_DEPRECATED(TypeId ty, Set<std::string>& result, DenseHashSet<
     return false;
 }
 
-namespace {
+namespace
+{
 
 /**
  * Computes the keys of `ty` into `result`
@@ -1847,7 +1852,7 @@ bool computeKeysOf(TypeId ty, Set<std::optional<std::string>>& result, DenseHash
     return false;
 }
 
-}
+} // namespace
 
 TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
     const std::vector<TypeId>& typeParams,
@@ -2824,4 +2829,4 @@ const BuiltinTypeFunctions& builtinTypeFunctions()
     return *result;
 }
 
-}
+} // namespace Luau

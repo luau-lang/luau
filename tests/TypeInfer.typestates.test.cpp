@@ -710,9 +710,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauDfgAllowUpdatesInLoops, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDfgAllowUpdatesInLoops, true}};
 
     CheckResult result = check(R"(
         --!strict

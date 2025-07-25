@@ -157,8 +157,10 @@ struct Subtyping
     Variance variance = Variance::Covariant;
 
     using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
+    using SeenTypePackSet = Set<std::pair<TypePackId, TypePackId>, TypePairHash>;
 
     SeenSet seenTypes{{}};
+    SeenTypePackSet seenPacks{{}};
 
     Subtyping(
         NotNull<BuiltinTypes> builtinTypes,

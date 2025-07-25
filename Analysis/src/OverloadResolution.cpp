@@ -11,7 +11,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauArityMismatchOnUndersaturatedUnknownArguments)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 
 namespace Luau
 {
@@ -247,9 +247,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 )
 {
     TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, ice, limits};
-    FunctionGraphReductionResult result = reduceTypeFunctions(
-        fnTy, callLoc, NotNull{&context}, /*force=*/true
-    );
+    FunctionGraphReductionResult result = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!result.errors.empty())
         return {OverloadIsNonviable, result.errors};
 
@@ -330,7 +328,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             return {Analysis::Ok, {}};
         }
 
-        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
         {
             // If we have an arity mismatch with generic type pack parameters, then subPath matches Args :: Tail :: ...
             // and superPath matches Args :: ...
@@ -405,15 +403,15 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                           : argExprs->size() != 0        ? argExprs->back()->location
                                                          : fnExpr->location;
 
-            std::optional<TypeId> failedSubTy = FFlag::LuauReturnMappedGenericPacksFromSubtyping
+            std::optional<TypeId> failedSubTy = FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                                                     ? traverseForType(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                                                     : traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes);
             std::optional<TypeId> failedSuperTy =
-                FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                     ? traverseForType(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                     : traverseForType_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
                 maybeEmplaceError(&errors, argLocation, &reason, failedSubTy, failedSuperTy);
             else if (failedSubTy && failedSuperTy)
             {
@@ -443,7 +441,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 }
             }
         }
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping && reason.superPath.components.size() > 1)
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2 && reason.superPath.components.size() > 1)
         {
             // traverseForIndex only has a value if path is of form [...PackSlice, Index]
             if (const auto index =
@@ -466,11 +464,11 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             }
         }
 
-        std::optional<TypePackId> failedSubPack = FFlag::LuauReturnMappedGenericPacksFromSubtyping
+        std::optional<TypePackId> failedSubPack = FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                                                       ? traverseForPack(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                                                       : traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes);
         std::optional<TypePackId> failedSuperPack =
-            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                 ? traverseForPack(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                 : traverseForPack_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 

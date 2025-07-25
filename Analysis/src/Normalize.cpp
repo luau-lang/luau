@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationLimitTyvarUnionSize)
 
 namespace Luau
 {
@@ -1528,6 +1529,12 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
         clearNormal(here);
         here.tops = tops;
         return NormalizationResult::True;
+    }
+
+    if (FFlag::LuauNormalizationLimitTyvarUnionSize)
+    {
+        if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+            return NormalizationResult::HitLimits;
     }
 
     for (auto it = there.tyvars.begin(); it != there.tyvars.end(); it++)

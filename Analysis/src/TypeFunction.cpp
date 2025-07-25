@@ -60,6 +60,12 @@ struct InstanceCollector : TypeOnceVisitor
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
 
+
+    InstanceCollector()
+        : TypeOnceVisitor("InstanceCollector")
+    {
+    }
+
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
     {
         // TypeVisitor performs a depth-first traversal in the absence of
@@ -145,6 +151,11 @@ struct UnscopedGenericFinder : TypeOnceVisitor
     std::vector<TypeId> scopeGenTys;
     std::vector<TypePackId> scopeGenTps;
     bool foundUnscoped = false;
+
+    UnscopedGenericFinder()
+        : TypeOnceVisitor("UnscopedGenericFinder")
+    {
+    }
 
     bool visit(TypeId ty) override
     {
@@ -660,8 +671,7 @@ struct TypeFunctionReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFunctionReductionResult<TypePackId> result =
-                tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
+            TypeFunctionReductionResult<TypePackId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
             handleTypeFunctionReduction(subject, std::move(result));
         }
     }

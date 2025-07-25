@@ -10,15 +10,16 @@
 // returns target stack for 'n' extra elements to reallocate
 // if possible, stack size growth factor is 2x
 #define getgrownstacksize(L, n) ((n) <= L->stacksize ? 2 * L->stacksize : L->stacksize + (n))
+#define stacklimitreached(L, n) ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue))
 
 #define luaD_checkstackfornewci(L, n) \
-    if ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue)) \
+    if (stacklimitreached(L, (n))) \
         luaD_reallocstack(L, getgrownstacksize(L, (n)), 1); \
     else \
         condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 1));
 
 #define luaD_checkstack(L, n) \
-    if ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue)) \
+    if (stacklimitreached(L, (n))) \
         luaD_growstack(L, n); \
     else \
         condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 0));
@@ -55,6 +56,7 @@ typedef void (*Pfunc)(lua_State* L, void* ud);
 LUAI_FUNC CallInfo* luaD_growCI(lua_State* L);
 
 LUAI_FUNC void luaD_call(lua_State* L, StkId func, int nresults);
+LUAI_FUNC void luaD_callny(lua_State* L, StkId func, int nresults);
 LUAI_FUNC int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t oldtop, ptrdiff_t ef);
 LUAI_FUNC void luaD_reallocCI(lua_State* L, int newsize);
 LUAI_FUNC void luaD_reallocstack(lua_State* L, int newsize, int fornewci);

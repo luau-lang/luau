@@ -21,7 +21,8 @@ struct Quantifier final : TypeOnceVisitor
     bool seenMutableType = false;
 
     explicit Quantifier(TypeLevel level)
-        : level(level)
+        : TypeOnceVisitor("Quantifier")
+        , level(level)
     {
     }
 
