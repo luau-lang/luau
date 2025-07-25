@@ -722,7 +722,7 @@ TypeId Unifier2::mkIntersection(TypeId left, TypeId right)
 
 OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
-    RecursionLimiter _ra(&recursionCount, recursionLimit);
+    RecursionLimiter _ra("Unifier2::occursCheck", &recursionCount, recursionLimit);
 
     OccursCheckResult occurrence = OccursCheckResult::Pass;
 
@@ -784,7 +784,7 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePack
     if (!getMutable<FreeTypePack>(needle))
         ice->ice("Expected needle pack to be free");
 
-    RecursionLimiter _ra(&recursionCount, recursionLimit);
+    RecursionLimiter _ra("Unifier2::occursCheck", &recursionCount, recursionLimit);
 
     while (!getMutable<ErrorTypePack>(haystack))
     {

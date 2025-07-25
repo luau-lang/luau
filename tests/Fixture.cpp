@@ -696,9 +696,10 @@ Frontend& Fixture::getFrontend()
         &fileResolver,
         &configResolver,
         FrontendOptions{
-            /* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* runLintChecks */ false, /* randomConstraintResolutionSeed */ randomSeed}
+            /* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* runLintChecks */ false, /* randomConstraintResolutionSeed */ randomSeed
+        }
     );
-    
+
     builtinTypes = f.builtinTypes;
     // Fixture::Fixture begins here
     configResolver.defaultConfig.mode = Mode::Strict;
@@ -732,7 +733,6 @@ Frontend& Fixture::getFrontend()
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)
 {
-   
 }
 
 Frontend& BuiltinsFixture::getFrontend()

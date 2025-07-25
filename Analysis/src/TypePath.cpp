@@ -16,7 +16,7 @@
 #include <sstream>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -285,7 +285,7 @@ struct TraversalState
 
     TypeOrPack current;
     NotNull<BuiltinTypes> builtinTypes;
-    // TODO: make these NotNull when LuauReturnMappedGenericPacksFromSubtyping is clipped
+    // TODO: make these NotNull when LuauReturnMappedGenericPacksFromSubtyping2 is clipped
     const DenseHashMap<TypePackId, TypePackId>* mappedGenericPacks;
     TypeArena* arena;
     int steps = 0;
@@ -417,7 +417,7 @@ struct TraversalState
         {
             auto currentPack = get<TypePackId>(current);
             LUAU_ASSERT(currentPack);
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
             {
                 if (const auto tp = get<TypePack>(*currentPack))
                 {
@@ -576,7 +576,7 @@ struct TraversalState
 
                 if (auto tail = it.tail())
                 {
-                    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping && mappedGenericPacks && mappedGenericPacks->contains(*tail))
+                    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2 && mappedGenericPacks && mappedGenericPacks->contains(*tail))
                         updateCurrent(*mappedGenericPacks->find(*tail));
                     else
                         updateCurrent(*tail);
@@ -595,9 +595,9 @@ struct TraversalState
         if (checkInvariants())
             return false;
 
-        // TODO: clip this check once LuauReturnMappedGenericPacksFromSubtyping is clipped
+        // TODO: clip this check once LuauReturnMappedGenericPacksFromSubtyping2 is clipped
         // arena and mappedGenericPacks should be NonNull once that happens
-        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
             LUAU_ASSERT(arena && mappedGenericPacks);
         else if (!arena || !mappedGenericPacks)
             return false;

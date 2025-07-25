@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -1244,8 +1243,6 @@ TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_mod
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2, true};
-
     // This used to crash under the new solver: we would like this to continue
     // to not crash.
     LUAU_REQUIRE_ERRORS(check(R"(
@@ -1282,8 +1279,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_duplicate_with_typeof")
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_more_cursed_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
 export type t138 = t0<t138>
 export type t0<t0,t10,t10,t109> = t0

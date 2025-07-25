@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauRelateTablesAreNeverDisjoint)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAGVARIABLE(LuauMissingSeenSetRelate)
+LUAU_FASTFLAGVARIABLE(LuauSimplifyAnyAndUnion)
 
 namespace Luau
 {
@@ -1426,7 +1427,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 
 TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
 {
-    RecursionLimiter rl(&recursionDepth, 15);
+    RecursionLimiter rl("TypeSimplifier::intersect", &recursionDepth, 15);
 
     left = simplify(left);
     right = simplify(right);
@@ -1442,6 +1443,10 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
         return right;
     if (get<UnknownType>(right) && !get<ErrorType>(left))
         return left;
+    if (FFlag::LuauSimplifyAnyAndUnion && get<AnyType>(left) && get<UnionType>(right))
+        return union_(builtinTypes->errorType, right);
+    if (FFlag::LuauSimplifyAnyAndUnion && get<UnionType>(left) && get<AnyType>(right))
+        return union_(builtinTypes->errorType, left);
     if (get<AnyType>(left))
         return arena->addType(UnionType{{right, builtinTypes->errorType}});
     if (get<AnyType>(right))
@@ -1514,7 +1519,7 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
 
 TypeId TypeSimplifier::union_(TypeId left, TypeId right)
 {
-    RecursionLimiter rl(&recursionDepth, 15);
+    RecursionLimiter rl("TypeSimplifier::union", &recursionDepth, 15);
 
     left = simplify(left);
     right = simplify(right);
@@ -1602,7 +1607,7 @@ TypeId TypeSimplifier::simplify(TypeId ty)
 
 TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
 {
-    RecursionLimiter limiter(&recursionDepth, 60);
+    RecursionLimiter limiter("TypeSimplifier::simplify", &recursionDepth, 60);
 
     ty = follow(ty);
 
@@ -1843,7 +1848,7 @@ std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId tar
                     return builtinTypes->neverType;
                 if (property->writeTy && is<NeverType>(follow(property->writeTy)))
                     return builtinTypes->neverType;
-                
+
                 // If the property we get back is pointer identical to the
                 // original property, return the underlying property as an
                 // optimization.

@@ -33,7 +33,8 @@ struct PromoteTypeLevels final : TypeOnceVisitor
     TypeLevel minLevel;
 
     PromoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel)
-        : log(log)
+        : TypeOnceVisitor("PromoteTypeLevels")
+        , log(log)
         , typeArena(typeArena)
         , minLevel(minLevel)
     {
@@ -145,7 +146,8 @@ void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLev
 struct SkipCacheForType final : TypeOnceVisitor
 {
     SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType, const TypeArena* typeArena)
-        : skipCacheForType(skipCacheForType)
+        : TypeOnceVisitor("SkipCacheForType")
+        , skipCacheForType(skipCacheForType)
         , typeArena(typeArena)
     {
     }
@@ -404,7 +406,7 @@ static bool isBlocked(const TxnLog& log, TypePackId tp)
 
 void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection, const LiteralProperties* literalProperties)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::tryUnify_", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     ++sharedState.counters.iterationCount;
 
@@ -1448,7 +1450,7 @@ void Unifier::tryUnify(TypePackId subTp, TypePackId superTp, bool isFunctionCall
  */
 void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCall)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::tryUnify_", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     ++sharedState.counters.iterationCount;
 
@@ -2030,7 +2032,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (FFlag::LuauUnifierRecursionOnRestart)
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnify(subTy, superTy, false, isIntersection);
                 return;
             }
@@ -2048,7 +2050,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (errors.empty())
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnifyTables(subTy, superTy, isIntersection);
             }
 
@@ -2120,7 +2122,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (FFlag::LuauUnifierRecursionOnRestart)
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnify(subTy, superTy, false, isIntersection);
                 return;
             }
@@ -2140,7 +2142,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (errors.empty())
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnifyTables(subTy, superTy, isIntersection);
             }
 
@@ -2732,7 +2734,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack, bool reversed)
 
 bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::occursCheck", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     bool occurrence = false;
 
@@ -2806,7 +2808,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
     if (!log.getMutable<FreeTypePack>(needle) && !(hideousFixMeGenericsAreActuallyFree && log.is<GenericTypePack>(needle)))
         ice("Expected needle pack to be free");
 
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::occursCheck", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     while (!log.getMutable<ErrorTypePack>(haystack))
     {

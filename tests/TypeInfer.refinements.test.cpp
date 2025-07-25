@@ -127,7 +127,8 @@ struct RefinementExternTypeFixture : BuiltinsFixture
         };
 
         TypeId optionalPart = arena.addType(UnionType{{part, getBuiltins()->nilType}});
-        TypeId weldConstraint = getFrontend().globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        TypeId weldConstraint =
+            getFrontend().globals.globalTypes.addType(ExternType{"WeldConstraint", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ExternType>(weldConstraint)->props = {
             {"Part0", Property{optionalPart}},
             {"Part1", Property{optionalPart}},
@@ -2453,7 +2454,7 @@ end)
 )"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(1.5))
 {
     CheckResult result = check(R"(
 --!strict

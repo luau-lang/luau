@@ -73,6 +73,8 @@ struct GenericTypeVisitor
 {
     using Set = S;
 
+    const std::string visitorName;
+
     Set seen;
     bool skipBoundTypes = false;
     int recursionCounter = 0;
@@ -80,8 +82,9 @@ struct GenericTypeVisitor
 
     GenericTypeVisitor() = default;
 
-    explicit GenericTypeVisitor(Set seen, bool skipBoundTypes = false)
-        : seen(std::move(seen))
+    explicit GenericTypeVisitor(const std::string visitorName, Set seen, bool skipBoundTypes = false)
+        : visitorName(visitorName)
+        , seen(std::move(seen))
         , skipBoundTypes(skipBoundTypes)
     {
     }
@@ -215,7 +218,7 @@ struct GenericTypeVisitor
 
     void traverse(TypeId ty)
     {
-        RecursionLimiter limiter{&recursionCounter, FInt::LuauVisitRecursionLimit};
+        RecursionLimiter limiter{visitorName, &recursionCounter, FInt::LuauVisitRecursionLimit};
 
         if (visit_detail::hasSeen(seen, ty))
         {
@@ -527,8 +530,8 @@ struct GenericTypeVisitor
  */
 struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 {
-    explicit TypeVisitor(bool skipBoundTypes = false)
-        : GenericTypeVisitor{{}, skipBoundTypes}
+    explicit TypeVisitor(const std::string visitorName, bool skipBoundTypes = false)
+        : GenericTypeVisitor{visitorName, {}, skipBoundTypes}
     {
     }
 };
@@ -536,8 +539,8 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
 struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
-    explicit TypeOnceVisitor(bool skipBoundTypes = false)
-        : GenericTypeVisitor{DenseHashSet<void*>{nullptr}, skipBoundTypes}
+    explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes = false)
+        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{nullptr}, skipBoundTypes}
     {
     }
 };

@@ -382,4 +382,13 @@ do
   assert(st and msg == nil)
 end
 
+do
+  local co = coroutine.wrap(xpcall)
+
+  co(0, coroutine.yield, 0)
+  local status, err = pcall(co, 0, 0, 0)
+  assert(status == false)
+  assert(err == "cannot resume dead coroutine")
+end
+
 return 'OK'

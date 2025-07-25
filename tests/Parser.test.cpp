@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauParseStringIndexer)
-LUAU_FASTFLAG(LuauDeclareExternType)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -1999,8 +1998,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 
 TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
 {
-    ScopedFastFlag sff{FFlag::LuauDeclareExternType, true};
-
     AstStatBlock* stat = parseEx(R"(
         declare extern type Foo with
             prop: number
@@ -2051,8 +2048,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
 
 TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
 {
-    ScopedFastFlag sff{FFlag::LuauDeclareExternType, true};
-
     ParseResult result = tryParse(R"(
         declare extern type Foo
             prop: number
@@ -2108,8 +2103,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
 
 TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
 {
-    ScopedFastFlag sff{FFlag::LuauDeclareExternType, true};
-
     AstStatBlock* stat = parseEx(R"(
         declare extern type Foo with
             prop: number
@@ -2160,8 +2153,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
 
 TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
 {
-    ScopedFastFlag sff{FFlag::LuauDeclareExternType, true};
-
     ParseResult result = tryParse(R"(
         declare extern type Foo
             prop: number
@@ -2281,7 +2272,7 @@ TEST_CASE_FIXTURE(Fixture, "class_indexer")
             [number]: number
         end
         )",
-        (FFlag::LuauDeclareExternType) ? "Cannot have more than one indexer on an extern type" : "Cannot have more than one class indexer"
+        "Cannot have more than one indexer on an extern type"
     );
 
     REQUIRE_EQ(1, p1.root->body.size);

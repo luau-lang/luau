@@ -34,7 +34,6 @@ LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAGVARIABLE(LuauGuardAgainstMalformedTypeAliasExpansion2)
 LUAU_FASTFLAGVARIABLE(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 LUAU_FASTFLAGVARIABLE(LuauMissingFollowInAssignIndexConstraint)
 LUAU_FASTFLAGVARIABLE(LuauRemoveTypeCallsForReadWriteProps)
@@ -43,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseOrderedTypeSetsInConstraints)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauAvoidExcessiveTypeCopying)
 LUAU_FASTFLAGVARIABLE(LuauForceSimplifyConstraint)
+LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericFollowBeforeChecking)
 
 namespace Luau
 {
@@ -285,7 +285,8 @@ struct InstantiationQueuer : TypeOnceVisitor
     Location location;
 
     explicit InstantiationQueuer(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
-        : solver(solver)
+        : TypeOnceVisitor("InstantiationQueuer")
+        , solver(solver)
         , scope(scope)
         , location(location)
     {
@@ -432,7 +433,8 @@ void ConstraintSolver::run()
         {
             for (TypeId ty : constraintSet.freeTypes)
             {
-                if (auto it = mutatedFreeTypeToConstraint_DEPRECATED.find(ty); it == mutatedFreeTypeToConstraint_DEPRECATED.end() || it->second.empty())
+                if (auto it = mutatedFreeTypeToConstraint_DEPRECATED.find(ty);
+                    it == mutatedFreeTypeToConstraint_DEPRECATED.end() || it->second.empty())
                     generalizeOneType(ty);
             }
         }
@@ -633,8 +635,7 @@ void ConstraintSolver::finalizeTypeFunctions()
         if (get<TypeFunctionInstanceType>(ty))
         {
             TypeFunctionContext context{NotNull{this}, constraint->scope, NotNull{constraint}};
-            FunctionGraphReductionResult result =
-                reduceTypeFunctions(t, constraint->location, NotNull{&context}, true);
+            FunctionGraphReductionResult result = reduceTypeFunctions(t, constraint->location, NotNull{&context}, true);
 
             for (TypeId r : result.reducedTypes)
                 unblock(r, constraint->location);
@@ -663,7 +664,8 @@ struct TypeSearcher : TypeVisitor
     }
 
     explicit TypeSearcher(TypeId needle, Polarity initialPolarity)
-        : needle(needle)
+        : TypeVisitor("TypeSearcher")
+        , needle(needle)
         , current(initialPolarity)
     {
     }
@@ -1195,7 +1197,8 @@ struct InfiniteTypeFinder : TypeOnceVisitor
     bool foundInfiniteType = false;
 
     explicit InfiniteTypeFinder(ConstraintSolver* solver, const InstantiationSignature& signature, NotNull<Scope> scope)
-        : solver(solver)
+        : TypeOnceVisitor("InfiniteTypeFinder")
+        , solver(solver)
         , signature(signature)
         , scope(scope)
     {
@@ -1235,7 +1238,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         auto cTarget = follow(c.target);
         LUAU_ASSERT(get<PendingExpansionType>(cTarget));
         // We do this check here to ensure that we don't bind an alias to itself
-        if (FFlag::LuauGuardAgainstMalformedTypeAliasExpansion2 && occursCheck(cTarget, result))
+        if (occursCheck(cTarget, result))
         {
             reportError(OccursCheckFailed{}, constraint->location);
             bind(constraint, cTarget, builtinTypes->errorType);
@@ -1656,6 +1659,11 @@ struct ContainsGenerics_DEPRECATED : public TypeOnceVisitor
 
     bool found = false;
 
+    ContainsGenerics_DEPRECATED()
+        : TypeOnceVisitor("ContainsGenerics_DEPRECATED")
+    {
+    }
+
     bool visit(TypeId ty) override
     {
         return !found;
@@ -1736,7 +1744,8 @@ struct ContainsGenerics : public TypeOnceVisitor
     NotNull<DenseHashSet<const void*>> generics;
 
     explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
-        : generics{generics}
+        : TypeOnceVisitor("ContainsGenerics")
+        , generics{generics}
     {
     }
 
@@ -2139,7 +2148,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     Set<TypeId>& seen
 )
 {
-    RecursionLimiter _rl{&recursionDepth, FInt::LuauSolverRecursionLimit};
+    RecursionLimiter _rl{"ConstraintSolver::tryDispatchHasIndexer", &recursionDepth, FInt::LuauSolverRecursionLimit};
 
     subjectType = follow(subjectType);
     indexType = follow(indexType);
@@ -2314,6 +2323,11 @@ namespace
 struct BlockedTypeFinder : TypeOnceVisitor
 {
     std::optional<TypeId> blocked;
+
+    BlockedTypeFinder()
+        : TypeOnceVisitor("ContainsGenerics_DEPRECATED")
+    {
+    }
 
     bool visit(TypeId ty) override
     {
@@ -2873,7 +2887,7 @@ struct FindAllUnionMembers : TypeOnceVisitor
     TypeIds blockedTys;
 
     FindAllUnionMembers()
-        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        : TypeOnceVisitor("FindAllUnionMembers", /* skipBoundTypes */ true)
     {
     }
 
@@ -2959,7 +2973,7 @@ struct ContainsAnyGeneric final : public TypeOnceVisitor
     bool found = false;
 
     explicit ContainsAnyGeneric()
-        : TypeOnceVisitor(true)
+        : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
     {
     }
 
@@ -2971,7 +2985,10 @@ struct ContainsAnyGeneric final : public TypeOnceVisitor
 
     bool visit(TypePackId ty) override
     {
-        found = found || is<GenericTypePack>(ty);
+        if (FFlag::LuauContainsAnyGenericFollowBeforeChecking)
+            found = found || is<GenericTypePack>(follow(ty));
+        else
+            found = found || is<GenericTypePack>(ty);
         return !found;
     }
 
@@ -3367,7 +3384,8 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
                     return {{}, builtinTypes->errorType};
             }
 
-            TypeId indexType = FFlag::LuauRemoveTypeCallsForReadWriteProps ? follow(*indexProp->second.readTy) : follow(indexProp->second.type_DEPRECATED());
+            TypeId indexType =
+                FFlag::LuauRemoveTypeCallsForReadWriteProps ? follow(*indexProp->second.readTy) : follow(indexProp->second.type_DEPRECATED());
 
             if (auto ft = get<FunctionType>(indexType))
             {
@@ -3654,7 +3672,8 @@ struct Blocker : TypeOnceVisitor
     bool blocked = false;
 
     explicit Blocker(NotNull<ConstraintSolver> solver, NotNull<const Constraint> constraint)
-        : solver(solver)
+        : TypeOnceVisitor("Blocker")
+        , solver(solver)
         , constraint(constraint)
     {
     }

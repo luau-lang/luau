@@ -34,9 +34,13 @@ void luaC_validate(lua_State* L);
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
+LUAU_FASTFLAG(LuauHeapDumpStringSizeOverhead)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_DYNAMIC_FASTFLAG(LuauErrorYield)
+LUAU_DYNAMIC_FASTFLAG(LuauSafeStackCheck)
+
 
 static lua_CompileOptions defaultOptions()
 {
@@ -754,6 +758,8 @@ TEST_CASE("Closure")
 
 TEST_CASE("Calls")
 {
+    ScopedFastFlag luauSafeStackCheck{DFFlag::LuauSafeStackCheck, true};
+
     runConformance("calls.luau");
 }
 
@@ -816,6 +822,8 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
+    ScopedFastFlag luauErrorYield{DFFlag::LuauErrorYield, true};
+
     runConformance("coroutine.luau");
 }
 
@@ -2094,13 +2102,33 @@ int slowlyOverflowStack(lua_State* L)
 
 TEST_CASE("ApiStack")
 {
-    StateRef globalState(luaL_newstate(), lua_close);
-    lua_State* L = globalState.get();
+    ScopedFastFlag luauSafeStackCheck{DFFlag::LuauSafeStackCheck, true};
 
-    lua_pushcfunction(L, slowlyOverflowStack, "foo");
-    int result = lua_pcall(L, 0, 0, 0);
-    REQUIRE(result == LUA_ERRRUN);
-    CHECK(strcmp(luaL_checkstring(L, -1), "stack overflow (test)") == 0);
+    StateRef globalState(lua_newstate(blockableRealloc, nullptr), lua_close);
+    lua_State* GL = globalState.get();
+
+    {
+        lua_State* L = lua_newthread(GL);
+
+        lua_pushcfunction(L, slowlyOverflowStack, "foo");
+        int result = lua_pcall(L, 0, 0, 0);
+        REQUIRE(result == LUA_ERRRUN);
+        CHECK(strcmp(luaL_checkstring(L, -1), "stack overflow (test)") == 0);
+    }
+
+    {
+        lua_State* L = lua_newthread(GL);
+
+        REQUIRE(lua_checkstack(L, 100) == 1);
+
+        blockableReallocAllowed = false;
+        REQUIRE(lua_checkstack(L, 1000) == 0);
+        blockableReallocAllowed = true;
+
+        REQUIRE(lua_checkstack(L, 1000) == 1);
+
+        REQUIRE(lua_checkstack(L, LUAI_MAXCSTACK * 2) == 0);
+    }
 }
 
 TEST_CASE("ApiAlloc")
@@ -2315,6 +2343,8 @@ TEST_CASE("StringConversion")
 
 TEST_CASE("GCDump")
 {
+    ScopedFastFlag luauHeapDumpStringSizeOverhead{FFlag::LuauHeapDumpStringSizeOverhead, true};
+
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
     extern void luaC_enumheap(
@@ -2362,14 +2392,15 @@ local function f()
     x[1] = math.abs(42)
 end
 function foo()
-    coroutine.yield()
+    x[2] = ''
+    for i = 1, 10000 do x[2] ..= '1234567890' end
 end
 foo()
 return f
 )");
     lua_pushstring(CL, "=GCDump");
-    lua_loadstring(CL);
-    lua_resume(CL, nullptr, 0);
+    REQUIRE(lua_loadstring(CL) == 1);
+    REQUIRE(lua_resume(CL, nullptr, 0) == LUA_OK);
 
 #ifdef _WIN32
     const char* path = "NUL";
@@ -2380,6 +2411,7 @@ return f
     FILE* f = fopen(path, "w");
     REQUIRE(f);
 
+    luaC_fullgc(L);
     luaC_dump(L, f, nullptr);
 
     fclose(f);
@@ -2395,14 +2427,10 @@ return f
 
     struct EnumContext
     {
-        EnumContext()
-            : nodes{nullptr}
-            , edges{nullptr}
-        {
-        }
+        Luau::DenseHashMap<void*, Node> nodes{nullptr};
+        Luau::DenseHashMap<void*, void*> edges{nullptr};
 
-        Luau::DenseHashMap<void*, Node> nodes;
-        Luau::DenseHashMap<void*, void*> edges;
+        bool seenTargetString = false;
     } ctx;
 
     luaC_enumheap(
@@ -2425,6 +2453,14 @@ return f
                 else if (tt == LUA_TTHREAD)
                     CHECK(sv == "thread at unnamed:1 =GCDump");
             }
+            else if (tt == LUA_TSTRING && size >= 100000)
+            {
+                CHECK(!context.seenTargetString);
+                context.seenTargetString = true;
+
+                // The only string we have in this test that is 100000 characters long should include string data overhead
+                CHECK(size > 100000);
+            }
 
             context.nodes[gco] = {gco, tt, memcat, size, name ? name : ""};
         },
@@ -2437,6 +2473,7 @@ return f
 
     CHECK(!ctx.nodes.empty());
     CHECK(!ctx.edges.empty());
+    CHECK(ctx.seenTargetString);
 }
 
 TEST_CASE("Interrupt")
@@ -3295,6 +3332,7 @@ TEST_CASE("HugeFunctionLoadFailure")
 
     REQUIRE_EQ(largeAllocationToFail, expectedTotalLargeAllocations);
 }
+
 
 TEST_CASE("IrInstructionLimit")
 {

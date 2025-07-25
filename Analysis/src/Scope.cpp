@@ -229,9 +229,9 @@ void Scope::inheritAssignments(const ScopePtr& childScope)
     {
         if (!FFlag::LuauSolverV2)
             return;
-        
+
         for (const auto& [k, a] : childScope->lvalueTypes)
-            lvalueTypes[k] = a;   
+            lvalueTypes[k] = a;
     }
 }
 

@@ -53,4 +53,4 @@ struct BuiltinTypeFunctions
 
 const BuiltinTypeFunctions& builtinTypeFunctions();
 
-}
+} // namespace Luau

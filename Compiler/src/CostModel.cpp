@@ -8,8 +8,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileCostModelConstants)
-
 namespace Luau
 {
 namespace Compile
@@ -41,25 +39,6 @@ static uint64_t parallelMulSat(uint64_t a, int b)
 
     // the low bits are now correct for values that didn't saturate, and we simply need to mask them if high bit is 1
     return r | (s - (s >> 7));
-}
-
-inline bool getNumber_DEPRECATED(AstExpr* node, double& result)
-{
-    // since constant model doesn't use constant folding atm, we perform the basic extraction that's sufficient to handle positive/negative literals
-    if (AstExprConstantNumber* ne = node->as<AstExprConstantNumber>())
-    {
-        result = ne->value;
-        return true;
-    }
-
-    if (AstExprUnary* ue = node->as<AstExprUnary>(); ue && ue->op == AstExprUnary::Minus)
-        if (AstExprConstantNumber* ne = ue->expr->as<AstExprConstantNumber>())
-        {
-            result = -ne->value;
-            return true;
-        }
-
-    return false;
 }
 
 struct Cost
@@ -132,7 +111,7 @@ struct CostVisitor : AstVisitor
 
     Cost model(AstExpr* node)
     {
-        if (FFlag::LuauCompileCostModelConstants && constants.contains(node))
+        if (constants.contains(node))
             return Cost(0, Cost::kLiteral);
 
         if (AstExprGroup* expr = node->as<AstExprGroup>())
@@ -280,17 +259,8 @@ struct CostVisitor : AstVisitor
         int tripCount = -1;
         double from, to, step = 1;
 
-        if (FFlag::LuauCompileCostModelConstants)
-        {
-            if (getNumber(node->from, from) && getNumber(node->to, to) && (!node->step || getNumber(node->step, step)))
-                tripCount = getTripCount(from, to, step);
-        }
-        else
-        {
-            if (getNumber_DEPRECATED(node->from, from) && getNumber_DEPRECATED(node->to, to) &&
-                (!node->step || getNumber_DEPRECATED(node->step, step)))
-                tripCount = getTripCount(from, to, step);
-        }
+        if (getNumber(node->from, from) && getNumber(node->to, to) && (!node->step || getNumber(node->step, step)))
+            tripCount = getTripCount(from, to, step);
 
         loop(node->body, 1, tripCount < 0 ? 3 : tripCount);
         return false;

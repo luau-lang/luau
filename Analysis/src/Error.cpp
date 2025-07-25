@@ -870,7 +870,7 @@ struct ErrorConverter
     std::string operator()(const CannotCheckDynamicStringFormatCalls& e) const
     {
         return "We cannot statically check the type of `string.format` when called with a format string that is not statically known.\n"
-            "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.";
+               "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.";
     }
 
 

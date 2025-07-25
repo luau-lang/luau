@@ -583,7 +583,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                         }
                         else
-                            return checkOverloadedDocumentationSymbol(module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol);
+                            return checkOverloadedDocumentationSymbol(
+                                module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol
+                            );
                     }
                 }
                 else if (const ExternType* etv = get<ExternType>(parentTy))

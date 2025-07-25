@@ -201,7 +201,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     TableType* exportsTable = getMutable<TableType>(*exports);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId signType = FFlag::LuauRemoveTypeCallsForReadWriteProps ? *exportsTable->props["sign"].readTy : exportsTable->props["sign"].type_DEPRECATED();
+    TypeId signType =
+        FFlag::LuauRemoveTypeCallsForReadWriteProps ? *exportsTable->props["sign"].readTy : exportsTable->props["sign"].type_DEPRECATED();
     REQUIRE(signType != nullptr);
 
     CHECK(!isInArena(signType, module->interfaceTypes));

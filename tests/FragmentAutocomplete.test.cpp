@@ -162,7 +162,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         Position cursorPos,
         std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
         std::optional<Position> fragmentEndPosition = std::nullopt
-        )
+    )
     {
         ScopedFastFlag sff{FFlag::LuauSolverV2, true};
         this->getFrontend().setLuauSolverSelectionFromWorkspace(SolverMode::New);
@@ -179,7 +179,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         Position cursorPos,
         std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
         std::optional<Position> fragmentEndPosition = std::nullopt
-        )
+    )
     {
         ScopedFastFlag sff{FFlag::LuauSolverV2, false};
         this->getFrontend().setLuauSolverSelectionFromWorkspace(SolverMode::Old);
@@ -238,7 +238,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         ParseResult parseResult = parseHelper(document);
         FrontendOptions options;
         FragmentContext context{document, parseResult, options, fragmentEndPosition};
-        return Luau::tryFragmentAutocomplete(this->getFrontend(). module, cursorPos, context, nullCallback);
+        return Luau::tryFragmentAutocomplete(this->getFrontend().module, cursorPos, context, nullCallback);
     }
 
     SourceModule& getSource()
@@ -3792,11 +3792,17 @@ if result.type == "ok" then
     result.
 end
 )";
-    autocompleteFragmentInOldSolver(source, dest, Position{8, 11}, [](auto& result){
-        REQUIRE(result.result);
-        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
-        CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
-    });
+    autocompleteFragmentInOldSolver(
+        source,
+        dest,
+        Position{8, 11},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+            CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_second_branch_of_union_old_solver")
@@ -3825,11 +3831,17 @@ if result.type == "err" then
 end
 )";
 
-    autocompleteFragmentInOldSolver(source, dest, Position{8, 11}, [](auto& result){
-        REQUIRE(result.result);
-        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
-        CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
-    });
+    autocompleteFragmentInOldSolver(
+        source,
+        dest,
+        Position{8, 11},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+            CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_first_branch_of_union_new_solver")
@@ -3858,11 +3870,17 @@ if result.type == "ok" then
     result.
 end
 )";
-    autocompleteFragmentInNewSolver(source, dest, Position{8, 11}, [](auto& result){
-        REQUIRE(result.result);
-        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
-        CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
-    });
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        Position{8, 11},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+            CHECK_EQ(result.result->acResults.entryMap.count("value"), 1);
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tagged_union_completion_second_branch_of_union_new_solver")
@@ -3891,11 +3909,17 @@ if result.type == "err" then
 end
 )";
 
-    autocompleteFragmentInNewSolver(source, dest, Position{8, 11}, [](auto& result){
-        REQUIRE(result.result);
-        CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
-        CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
-    });
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        Position{8, 11},
+        [](auto& result)
+        {
+            REQUIRE(result.result);
+            CHECK_EQ(result.result->acResults.entryMap.count("type"), 1);
+            CHECK_EQ(result.result->acResults.entryMap.count("error"), 1);
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "inline_prop_read_on_requires_provides_results")
