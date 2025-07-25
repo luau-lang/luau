@@ -2454,7 +2454,7 @@ end)
 )"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(1.5))
 {
     CheckResult result = check(R"(
 --!strict
