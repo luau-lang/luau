@@ -22,6 +22,7 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
+LUAU_FASTFLAGVARIABLE(DebugLuauRenameClassToExtern)
 
 namespace Luau
 {
@@ -289,7 +290,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     else if (get<TypeFunctionFunctionType>(ty))
         return "function";
     else if (get<TypeFunctionExternType>(ty))
-        return "class";
+        return (FFlag::DebugLuauRenameClassToExtern ? "extern" : "class");
     else if (get<TypeFunctionGenericType>(ty))
         return "generic";
 
