@@ -1240,7 +1240,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             newStart = attributes.data[0]->location;
 
         return allocator.alloc<AstStatDeclareFunction>(
-            Location(start, end),
+            Location(newStart, end),
             attributes,
             globalName.name,
             globalName.location,
