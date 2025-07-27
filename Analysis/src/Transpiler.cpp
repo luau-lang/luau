@@ -1261,6 +1261,79 @@ struct Printer
             writer.symbol(":");
             visualizeTypeAnnotation(*a->type);
         }
+        else if (const auto& a = program.as<AstStatDeclareFunction>())
+        {
+            for (const auto& attribute : a->attributes)
+                visualizeAttribute(*attribute);
+
+            writer.keyword("declare");
+            writer.keyword("function");
+
+            writer.advance(a->nameLocation.begin);
+            writer.identifier(a->name.value);
+
+            if (a->generics.size > 0 || a->genericPacks.size > 0)
+            {
+                CommaSeparatorInserter comma(writer, nullptr);
+                writer.symbol("<");
+
+                for (const auto& o : a->generics)
+                {
+                    comma();
+
+                    writer.advance(o->location.begin);
+                    writer.identifier(o->name.value);
+                }
+                for (const auto& o : a->genericPacks)
+                {
+                    comma();
+
+                    writer.advance(o->location.begin);
+                    writer.identifier(o->name.value);
+                    if (const auto* genericTypePackCstNode = lookupCstNode<CstGenericTypePack>(o))
+                        advance(genericTypePackCstNode->ellipsisPosition);
+                    writer.symbol("...");
+                }
+                writer.symbol(">");
+            }
+
+            CommaSeparatorInserter comma(writer, nullptr);
+            writer.symbol("(");
+            for (size_t i = 0; i < a->params.types.size; ++i)
+            {
+                AstType* type = a->params.types.data[i];
+                AstArgumentName* argName = &a->paramNames.data[i];
+                comma();
+
+                if (argName)
+                {
+                    writer.advance(argName->second.begin);
+                    writer.identifier(argName->first.value);
+                }
+                writer.symbol(":");
+                writer.advance(type->location.begin);
+
+                visualizeTypeAnnotation(*type);
+            }
+
+            if (a->vararg && a->params.tailType)
+            {
+                comma();
+                writer.advance(a->varargLocation.begin);
+                writer.write("...");
+                writer.symbol(":");
+
+                visualizeTypePackAnnotation(*a->params.tailType, true);
+            }
+            writer.symbol(")");
+
+            if (a->retTypes)
+            {
+                writer.symbol(":");
+                writer.advance(a->retTypes->location.begin);
+                visualizeTypePackAnnotation(*a->retTypes, false, false);
+            }
+        }
         else
         {
             LUAU_ASSERT(!"Unknown AstStat");
