@@ -1234,6 +1234,11 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
         if (vararg && !varargAnnotation)
             return reportStatError(Location(start, end), {}, {}, "All declaration parameters must be annotated");
 
+        // If there are attributes, set the location start to the first attribute's location.
+        Location newStart = start;
+        if (attributes.size > 0)
+            newStart = attributes.data[0]->location;
+
         return allocator.alloc<AstStatDeclareFunction>(
             Location(start, end),
             attributes,
