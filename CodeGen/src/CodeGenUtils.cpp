@@ -61,7 +61,7 @@ namespace Luau
 namespace CodeGen
 {
 
-bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
+bool forgLoopTableIter(lua_State* L, LuaTable* h, int index, TValue* ra)
 {
     int sizearray = h->sizearray;
 
@@ -104,7 +104,7 @@ bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
     return false;
 }
 
-bool forgLoopNodeIter(lua_State* L, Table* h, int index, TValue* ra)
+bool forgLoopNodeIter(lua_State* L, LuaTable* h, int index, TValue* ra)
 {
     int sizearray = h->sizearray;
     int sizenode = 1 << h->lsizenode;
@@ -191,7 +191,7 @@ Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults)
     // note: this reallocs stack, but we don't need to VM_PROTECT this
     // this is because we're going to modify base/savedpc manually anyhow
     // crucially, we can't use ra/argtop after this line
-    luaD_checkstack(L, ccl->stacksize);
+    luaD_checkstackfornewci(L, ccl->stacksize);
 
     return ccl;
 }
@@ -224,14 +224,23 @@ Udata* newUserdata(lua_State* L, size_t s, int tag)
 {
     Udata* u = luaU_newudata(L, s, tag);
 
-    if (Table* h = L->global->udatamt[tag])
+    if (LuaTable* h = L->global->udatamt[tag])
     {
-        u->metatable = h;
+        // currently, we always allocate unmarked objects, so forward barrier can be skipped
+        LUAU_ASSERT(!isblack(obj2gco(u)));
 
-        luaC_objbarrier(L, u, h);
+        u->metatable = h;
     }
 
     return u;
+}
+
+void getImport(lua_State* L, StkId res, unsigned id, unsigned pc)
+{
+    Closure* cl = clvalue(L->ci->func);
+    L->ci->savedpc = cl->l.p->code + pc;
+
+    luaV_getimport(L, cl->env, cl->l.p->k, res, id, /*propagatenil*/ false);
 }
 
 // Extracted as-is from lvmexecute.cpp with the exception of control flow (reentry) and removed interrupts/savedpc
@@ -260,7 +269,7 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
     // note: this reallocs stack, but we don't need to VM_PROTECT this
     // this is because we're going to modify base/savedpc manually anyhow
     // crucially, we can't use ra/argtop after this line
-    luaD_checkstack(L, ccl->stacksize);
+    luaD_checkstackfornewci(L, ccl->stacksize);
 
     LUAU_ASSERT(ci->top <= L->stack_last);
 
@@ -328,7 +337,7 @@ const Instruction* executeGETGLOBAL(lua_State* L, const Instruction* pc, StkId b
     LUAU_ASSERT(ttisstring(kv));
 
     // fast-path should already have been checked, so we skip checking for it here
-    Table* h = cl->env;
+    LuaTable* h = cl->env;
     int slot = LUAU_INSN_C(insn) & h->nodemask8;
 
     // slow-path, may invoke Lua calls via __index metamethod
@@ -351,7 +360,7 @@ const Instruction* executeSETGLOBAL(lua_State* L, const Instruction* pc, StkId b
     LUAU_ASSERT(ttisstring(kv));
 
     // fast-path should already have been checked, so we skip checking for it here
-    Table* h = cl->env;
+    LuaTable* h = cl->env;
     int slot = LUAU_INSN_C(insn) & h->nodemask8;
 
     // slow-path, may invoke Lua calls via __newindex metamethod
@@ -377,7 +386,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     // fast-path: built-in table
     if (ttistable(rb))
     {
-        Table* h = hvalue(rb);
+        LuaTable* h = hvalue(rb);
 
         // we ignore the fast path that checks for the cached slot since IrTranslation already checks for it.
 
@@ -489,7 +498,7 @@ const Instruction* executeSETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     // fast-path: built-in table
     if (ttistable(rb))
     {
-        Table* h = hvalue(rb);
+        LuaTable* h = hvalue(rb);
 
         // we ignore the fast path that checks for the cached slot since IrTranslation already checks for it.
 
@@ -574,7 +583,7 @@ const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId ba
     }
     else
     {
-        Table* mt = ttisuserdata(rb) ? uvalue(rb)->metatable : L->global->mt[ttype(rb)];
+        LuaTable* mt = ttisuserdata(rb) ? uvalue(rb)->metatable : L->global->mt[ttype(rb)];
         const TValue* tmi = 0;
 
         // fast-path: metatable with __namecall
@@ -588,7 +597,7 @@ const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId ba
         }
         else if ((tmi = fasttm(L, mt, TM_INDEX)) && ttistable(tmi))
         {
-            Table* h = hvalue(tmi);
+            LuaTable* h = hvalue(tmi);
             int slot = LUAU_INSN_C(insn) & h->nodemask8;
             LuaNode* n = &h->node[slot];
 
@@ -645,7 +654,7 @@ const Instruction* executeSETLIST(lua_State* L, const Instruction* pc, StkId bas
         L->top = L->ci->top;
     }
 
-    Table* h = hvalue(ra);
+    LuaTable* h = hvalue(ra);
 
     // TODO: we really don't need this anymore
     if (!ttistable(ra))
@@ -680,7 +689,7 @@ const Instruction* executeFORGPREP(lua_State* L, const Instruction* pc, StkId ba
     }
     else
     {
-        Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
+        LuaTable* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(LuaTable*, NULL);
 
         if (const TValue* fn = fasttm(L, mt, TM_ITER))
         {

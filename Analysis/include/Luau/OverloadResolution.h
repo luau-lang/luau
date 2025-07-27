@@ -2,12 +2,13 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/InsertionOrderedMap.h"
-#include "Luau/NotNull.h"
-#include "Luau/TypeFwd.h"
-#include "Luau/Location.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
+#include "Luau/InsertionOrderedMap.h"
+#include "Luau/Location.h"
+#include "Luau/NotNull.h"
 #include "Luau/Subtyping.h"
+#include "Luau/TypeFwd.h"
 
 namespace Luau
 {
@@ -34,7 +35,9 @@ struct OverloadResolver
     OverloadResolver(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> arena,
+        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> scope,
         NotNull<InternalErrorReporter> reporter,
         NotNull<TypeCheckLimits> limits,
@@ -43,7 +46,9 @@ struct OverloadResolver
 
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
+    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<Scope> scope;
     NotNull<InternalErrorReporter> ice;
     NotNull<TypeCheckLimits> limits;
@@ -58,7 +63,7 @@ struct OverloadResolver
     InsertionOrderedMap<TypeId, std::pair<OverloadResolver::Analysis, size_t>> resolution;
 
 
-    std::pair<OverloadResolver::Analysis, TypeId> selectOverload(TypeId ty, TypePackId args);
+    std::pair<OverloadResolver::Analysis, TypeId> selectOverload(TypeId ty, TypePackId args, bool useFreeTypeBounds);
     void resolve(TypeId fnTy, const TypePack* args, AstExpr* selfExpr, const std::vector<AstExpr*>* argExprs);
 
 private:
@@ -82,6 +87,13 @@ private:
     );
     size_t indexof(Analysis analysis);
     void add(Analysis analysis, TypeId ty, ErrorVec&& errors);
+    void maybeEmplaceError(
+        ErrorVec* errors,
+        Location argLocation,
+        const SubtypingReasoning* reason,
+        std::optional<TypeId> failedSubTy,
+        std::optional<TypeId> failedSuperTy
+    ) const;
 };
 
 struct SolveResult
@@ -108,7 +120,9 @@ struct SolveResult
 SolveResult solveFunctionCall(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter,
     NotNull<TypeCheckLimits> limits,
     NotNull<Scope> scope,

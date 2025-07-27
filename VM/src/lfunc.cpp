@@ -55,7 +55,7 @@ Proto* luaF_newproto(lua_State* L)
     return f;
 }
 
-Closure* luaF_newLclosure(lua_State* L, int nelems, Table* e, Proto* p)
+Closure* luaF_newLclosure(lua_State* L, int nelems, LuaTable* e, Proto* p)
 {
     Closure* c = luaM_newgco(L, Closure, sizeLclosure(nelems), L->activememcat);
     luaC_init(L, c, LUA_TFUNCTION);
@@ -70,7 +70,7 @@ Closure* luaF_newLclosure(lua_State* L, int nelems, Table* e, Proto* p)
     return c;
 }
 
-Closure* luaF_newCclosure(lua_State* L, int nelems, Table* e)
+Closure* luaF_newCclosure(lua_State* L, int nelems, LuaTable* e)
 {
     Closure* c = luaM_newgco(L, Closure, sizeCclosure(nelems), L->activememcat);
     luaC_init(L, c, LUA_TFUNCTION);

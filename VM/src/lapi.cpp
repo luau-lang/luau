@@ -15,6 +15,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauSafeStackCheck, false)
+
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
  *
@@ -39,8 +41,8 @@ const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Ri
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
 
-const char* luau_ident = "$Luau: Copyright (C) 2019-2023 Roblox Corporation $\n"
-                         "$URL: luau-lang.org $\n";
+const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
+                         "$URL: luau.org $\n";
 
 #define api_checknelems(L, n) api_check(L, (n) <= (L->top - L->base))
 
@@ -64,7 +66,7 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2023 Roblox Corporation $\n"
             ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1; \
     }
 
-static Table* getcurrenv(lua_State* L)
+static LuaTable* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci) // no enclosing function?
         return L->gt;        // use global table as environment
@@ -139,7 +141,36 @@ int lua_checkstack(lua_State* L, int size)
         res = 0; // stack overflow
     else if (size > 0)
     {
-        luaD_checkstack(L, size);
+        if (DFFlag::LuauSafeStackCheck)
+        {
+            if (stacklimitreached(L, size))
+            {
+                struct CallContext
+                {
+                    int size;
+
+                    static void run(lua_State* L, void* ud)
+                    {
+                        CallContext* ctx = (CallContext*)ud;
+
+                        luaD_growstack(L, ctx->size);
+                    }
+                } ctx = {size};
+
+                // there could be no memory to extend the stack
+                if (luaD_rawrunprotected(L, &CallContext::run, &ctx) != LUA_OK)
+                    return 0;
+            }
+            else
+            {
+                condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 0));
+            }
+        }
+        else
+        {
+            luaD_checkstack(L, size);
+        }
+
         expandstacklimit(L, L->top + size);
     }
     return res;
@@ -454,6 +485,29 @@ const char* lua_tostringatom(lua_State* L, int idx, int* atom)
     return getstr(s);
 }
 
+const char* lua_tolstringatom(lua_State* L, int idx, size_t* len, int* atom)
+{
+    StkId o = index2addr(L, idx);
+
+    if (!ttisstring(o))
+    {
+        if (len)
+            *len = 0;
+        return NULL;
+    }
+
+    TString* s = tsvalue(o);
+    if (len)
+        *len = s->len;
+    if (atom)
+    {
+        updateatom(L, s);
+        *atom = s->atom;
+    }
+
+    return getstr(s);
+}
+
 const char* lua_namecallatom(lua_State* L, int* atom)
 {
     TString* s = L->namecall;
@@ -762,7 +816,7 @@ void lua_setreadonly(lua_State* L, int objindex, int enabled)
 {
     const TValue* o = index2addr(L, objindex);
     api_check(L, ttistable(o));
-    Table* t = hvalue(o);
+    LuaTable* t = hvalue(o);
     api_check(L, t != hvalue(registry(L)));
     t->readonly = bool(enabled);
 }
@@ -771,7 +825,7 @@ int lua_getreadonly(lua_State* L, int objindex)
 {
     const TValue* o = index2addr(L, objindex);
     api_check(L, ttistable(o));
-    Table* t = hvalue(o);
+    LuaTable* t = hvalue(o);
     int res = t->readonly;
     return res;
 }
@@ -780,14 +834,14 @@ void lua_setsafeenv(lua_State* L, int objindex, int enabled)
 {
     const TValue* o = index2addr(L, objindex);
     api_check(L, ttistable(o));
-    Table* t = hvalue(o);
+    LuaTable* t = hvalue(o);
     t->safeenv = bool(enabled);
 }
 
 int lua_getmetatable(lua_State* L, int objindex)
 {
     luaC_threadbarrier(L);
-    Table* mt = NULL;
+    LuaTable* mt = NULL;
     const TValue* obj = index2addr(L, objindex);
     switch (ttype(obj))
     {
@@ -894,7 +948,7 @@ int lua_setmetatable(lua_State* L, int objindex)
     api_checknelems(L, 1);
     TValue* obj = index2addr(L, objindex);
     api_checkvalidindex(L, obj);
-    Table* mt = NULL;
+    LuaTable* mt = NULL;
     if (!ttisnil(L->top - 1))
     {
         api_check(L, ttistable(L->top - 1));
@@ -1214,7 +1268,7 @@ int lua_rawiter(lua_State* L, int idx, int iter)
     api_check(L, ttistable(t));
     api_check(L, iter >= 0);
 
-    Table* h = hvalue(t);
+    LuaTable* h = hvalue(t);
     int sizearray = h->sizearray;
 
     // first we advance iter through the array portion
@@ -1278,6 +1332,26 @@ void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag)
     luaC_checkGC(L);
     luaC_threadbarrier(L);
     Udata* u = luaU_newudata(L, sz, tag);
+    setuvalue(L, L->top, u);
+    api_incr_top(L);
+    return u->data;
+}
+
+void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    luaC_checkGC(L);
+    luaC_threadbarrier(L);
+    Udata* u = luaU_newudata(L, sz, tag);
+
+    // currently, we always allocate unmarked objects, so forward barrier can be skipped
+    LUAU_ASSERT(!isblack(obj2gco(u)));
+
+    LuaTable* h = L->global->udatamt[tag];
+    api_check(L, h != nullptr);
+
+    u->metatable = h;
+
     setuvalue(L, L->top, u);
     api_incr_top(L);
     return u->data;
@@ -1374,7 +1448,7 @@ int lua_ref(lua_State* L, int idx)
     StkId p = index2addr(L, idx);
     if (!ttisnil(p))
     {
-        Table* reg = hvalue(registry(L));
+        LuaTable* reg = hvalue(registry(L));
 
         if (g->registryfree != 0)
         { // reuse existing slot
@@ -1401,9 +1475,17 @@ void lua_unref(lua_State* L, int ref)
         return;
 
     global_State* g = L->global;
-    Table* reg = hvalue(registry(L));
-    TValue* slot = luaH_setnum(L, reg, ref);
-    setnvalue(slot, g->registryfree); // NB: no barrier needed because value isn't collectable
+    LuaTable* reg = hvalue(registry(L));
+
+    const TValue* slot = luaH_getnum(reg, ref);
+    api_check(L, slot != luaO_nilobject);
+
+    // similar to how 'luaH_setnum' makes non-nil slot value mutable
+    TValue* mutableSlot = (TValue*)slot;
+
+    // NB: no barrier needed because value isn't collectable
+    setnvalue(mutableSlot, g->registryfree);
+
     g->registryfree = ref;
 }
 
@@ -1427,13 +1509,12 @@ lua_Destructor lua_getuserdatadtor(lua_State* L, int tag)
     return L->global->udatagc[tag];
 }
 
-void lua_setuserdatametatable(lua_State* L, int tag, int idx)
+void lua_setuserdatametatable(lua_State* L, int tag)
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     api_check(L, !L->global->udatamt[tag]); // reassignment not supported
-    StkId o = index2addr(L, idx);
-    api_check(L, ttistable(o));
-    L->global->udatamt[tag] = hvalue(o);
+    api_check(L, ttistable(L->top - 1));
+    L->global->udatamt[tag] = hvalue(L->top - 1);
     L->top--;
 }
 
@@ -1442,7 +1523,7 @@ void lua_getuserdatametatable(lua_State* L, int tag)
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     luaC_threadbarrier(L);
 
-    if (Table* h = L->global->udatamt[tag])
+    if (LuaTable* h = L->global->udatamt[tag])
     {
         sethvalue(L, L->top, h);
     }
@@ -1490,10 +1571,20 @@ void lua_cleartable(lua_State* L, int idx)
 {
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
-    Table* tt = hvalue(t);
+    LuaTable* tt = hvalue(t);
     if (tt->readonly)
         luaG_readonlyerror(L);
     luaH_clear(tt);
+}
+
+void lua_clonetable(lua_State* L, int idx)
+{
+    StkId t = index2addr(L, idx);
+    api_check(L, ttistable(t));
+
+    LuaTable* tt = luaH_clone(L, hvalue(t));
+    sethvalue(L, L->top, tt);
+    api_incr_top(L);
 }
 
 lua_Callbacks* lua_callbacks(lua_State* L)

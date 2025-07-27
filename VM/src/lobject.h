@@ -263,26 +263,20 @@ typedef struct Udata
 
     int len;
 
-    struct Table* metatable;
+    struct LuaTable* metatable;
 
-    union
-    {
-        char data[1];      // userdata is allocated right after the header
-        L_Umaxalign dummy; // ensures maximum alignment for data
-    };
+    // userdata is allocated right after the header
+    // while the alignment is only 8 here, for sizes starting at 16 bytes, 16 byte alignment is provided
+    alignas(8) char data[1];
 } Udata;
 
-typedef struct Buffer
+typedef struct LuauBuffer
 {
     CommonHeader;
 
     unsigned int len;
 
-    union
-    {
-        char data[1];      // buffer is allocated right after the header
-        L_Umaxalign dummy; // ensures maximum alignment for data
-    };
+    alignas(8) char data[1];
 } Buffer;
 
 /*
@@ -390,7 +384,7 @@ typedef struct Closure
     uint8_t preload;
 
     GCObject* gclist;
-    struct Table* env;
+    struct LuaTable* env;
 
     union
     {
@@ -454,7 +448,7 @@ typedef struct LuaNode
     }
 
 // clang-format off
-typedef struct Table
+typedef struct LuaTable
 {
     CommonHeader;
 
@@ -473,11 +467,11 @@ typedef struct Table
     };
 
 
-    struct Table* metatable;
+    struct LuaTable* metatable;
     TValue* array;  // array part
     LuaNode* node;
     GCObject* gclist;
-} Table;
+} LuaTable;
 // clang-format on
 
 /*

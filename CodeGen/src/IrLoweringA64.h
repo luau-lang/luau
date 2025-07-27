@@ -54,6 +54,7 @@ struct IrLoweringA64
     uint8_t tagOp(IrOp op) const;
     int intOp(IrOp op) const;
     unsigned uintOp(IrOp op) const;
+    unsigned importOp(IrOp op) const;
     double doubleOp(IrOp op) const;
 
     IrBlock& blockOp(IrOp op) const;

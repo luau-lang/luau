@@ -80,6 +80,14 @@ struct ValueVisitor : AstVisitor
 
         return false;
     }
+
+    bool visit(AstExprFunction* node) override
+    {
+        for (AstLocal* arg : node->args)
+            variables[arg].init = nullptr;
+
+        return true;
+    }
 };
 
 void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals)

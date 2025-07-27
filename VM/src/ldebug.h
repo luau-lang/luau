@@ -4,7 +4,7 @@
 
 #include "lstate.h"
 
-#define pcRel(pc, p) ((pc) ? cast_to(int, (pc) - (p)->code) - 1 : 0)
+#define pcRel(pc, p) ((pc) && (pc) != (p)->code ? cast_to(int, (pc) - (p)->code) - 1 : 0)
 
 #define luaG_typeerror(L, o, opname) luaG_typeerrorL(L, o, opname)
 #define luaG_forerror(L, o, what) luaG_forerrorL(L, o, what)
@@ -31,3 +31,4 @@ LUAI_FUNC bool luaG_onbreak(lua_State* L);
 LUAI_FUNC int luaG_getline(Proto* p, int pc);
 
 LUAI_FUNC int luaG_isnative(lua_State* L, int level);
+LUAI_FUNC int luaG_hasnative(lua_State* L, int level);

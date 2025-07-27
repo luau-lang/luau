@@ -15,35 +15,20 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/Unifier.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
-LUAU_FASTFLAGVARIABLE(LuauNormalizeAwayUninhabitableTables, false)
-LUAU_FASTFLAGVARIABLE(LuauNormalizeNotUnknownIntersection, false);
-LUAU_FASTFLAGVARIABLE(LuauFixReduceStackPressure, false);
-LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
-// This could theoretically be 2000 on amd64, but x86 requires this.
-LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
-LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAG(LuauSolverV2);
-
-static bool fixReduceStackPressure()
-{
-    return FFlag::LuauFixReduceStackPressure || FFlag::LuauSolverV2;
-}
-
-static bool fixCyclicTablesBlowingStack()
-{
-    return FFlag::LuauFixCyclicTablesBlowingStack || FFlag::LuauSolverV2;
-}
+LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
+LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
+LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
+LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationLimitTyvarUnionSize)
 
 namespace Luau
 {
-
-// helper to make `FFlag::LuauNormalizeAwayUninhabitableTables` not explicitly required when DCR is enabled.
-static bool normalizeAwayUninhabitableTables()
-{
-    return FFlag::LuauNormalizeAwayUninhabitableTables || FFlag::LuauSolverV2;
-}
 
 static bool shouldEarlyExit(NormalizationResult res)
 {
@@ -51,150 +36,6 @@ static bool shouldEarlyExit(NormalizationResult res)
     if (res == NormalizationResult::HitLimits || res == NormalizationResult::False)
         return true;
     return false;
-}
-
-TypeIds::TypeIds(std::initializer_list<TypeId> tys)
-{
-    for (TypeId ty : tys)
-        insert(ty);
-}
-
-void TypeIds::insert(TypeId ty)
-{
-    ty = follow(ty);
-
-    // get a reference to the slot for `ty` in `types`
-    bool& entry = types[ty];
-
-    // if `ty` is fresh, we can set it to `true`, add it to the order and hash and be done.
-    if (!entry)
-    {
-        entry = true;
-        order.push_back(ty);
-        hash ^= std::hash<TypeId>{}(ty);
-    }
-}
-
-void TypeIds::clear()
-{
-    order.clear();
-    types.clear();
-    hash = 0;
-}
-
-TypeId TypeIds::front() const
-{
-    return order.at(0);
-}
-
-TypeIds::iterator TypeIds::begin()
-{
-    return order.begin();
-}
-
-TypeIds::iterator TypeIds::end()
-{
-    return order.end();
-}
-
-TypeIds::const_iterator TypeIds::begin() const
-{
-    return order.begin();
-}
-
-TypeIds::const_iterator TypeIds::end() const
-{
-    return order.end();
-}
-
-TypeIds::iterator TypeIds::erase(TypeIds::const_iterator it)
-{
-    TypeId ty = *it;
-    types[ty] = false;
-    hash ^= std::hash<TypeId>{}(ty);
-    return order.erase(it);
-}
-
-void TypeIds::erase(TypeId ty)
-{
-    const_iterator it = std::find(order.begin(), order.end(), ty);
-    if (it == order.end())
-        return;
-
-    erase(it);
-}
-
-size_t TypeIds::size() const
-{
-    return order.size();
-}
-
-bool TypeIds::empty() const
-{
-    return order.empty();
-}
-
-size_t TypeIds::count(TypeId ty) const
-{
-    ty = follow(ty);
-    const bool* val = types.find(ty);
-    return (val && *val) ? 1 : 0;
-}
-
-void TypeIds::retain(const TypeIds& there)
-{
-    for (auto it = begin(); it != end();)
-    {
-        if (there.count(*it))
-            it++;
-        else
-            it = erase(it);
-    }
-}
-
-size_t TypeIds::getHash() const
-{
-    return hash;
-}
-
-bool TypeIds::isNever() const
-{
-    return std::all_of(
-        begin(),
-        end(),
-        [&](TypeId i)
-        {
-            // If each typeid is never, then I guess typeid's is also never?
-            return get<NeverType>(i) != nullptr;
-        }
-    );
-}
-
-bool TypeIds::operator==(const TypeIds& there) const
-{
-    // we can early return if the hashes don't match.
-    if (hash != there.hash)
-        return false;
-
-    // we have to check equality of the sets themselves if not.
-
-    // if the sets are unequal sizes, then they cannot possibly be equal.
-    // it is important to use `order` here and not `types` since the mappings
-    // may have different sizes since removal is not possible, and so erase
-    // simply writes `false` into the map.
-    if (order.size() != there.order.size())
-        return false;
-
-    // otherwise, we'll need to check that every element we have here is in `there`.
-    for (auto ty : order)
-    {
-        // if it's not, we'll return `false`
-        if (there.count(ty) == 0)
-            return false;
-    }
-
-    // otherwise, we've proven the two equal!
-    return true;
 }
 
 NormalizedStringType::NormalizedStringType() {}
@@ -267,23 +108,23 @@ bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& s
     return true;
 }
 
-void NormalizedClassType::pushPair(TypeId ty, TypeIds negations)
+void NormalizedExternType::pushPair(TypeId ty, TypeIds negations)
 {
-    auto result = classes.insert(std::make_pair(ty, std::move(negations)));
+    auto result = externTypes.insert(std::make_pair(ty, std::move(negations)));
     if (result.second)
         ordering.push_back(ty);
-    LUAU_ASSERT(ordering.size() == classes.size());
+    LUAU_ASSERT(ordering.size() == externTypes.size());
 }
 
-void NormalizedClassType::resetToNever()
+void NormalizedExternType::resetToNever()
 {
     ordering.clear();
-    classes.clear();
+    externTypes.clear();
 }
 
-bool NormalizedClassType::isNever() const
+bool NormalizedExternType::isNever() const
 {
-    return classes.empty();
+    return externTypes.empty();
 }
 
 void NormalizedFunctionType::resetToTop()
@@ -322,17 +163,17 @@ bool NormalizedType::isUnknown() const
 
     // Otherwise, we can still be unknown!
     bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
-                            strings.isString() && isPrim(threads, PrimitiveType::Thread) && isThread(threads);
+                            strings.isString() && isThread(threads) && isBuffer(buffers);
 
     // Check is class
-    bool isTopClass = false;
-    for (auto [t, disj] : classes.classes)
+    bool isTopExternType = false;
+    for (const auto& [t, disj] : externTypes.externTypes)
     {
-        if (auto ct = get<ClassType>(t))
+        if (auto ct = get<ExternType>(t))
         {
             if (ct->name == "class" && disj.empty())
             {
-                isTopClass = true;
+                isTopExternType = true;
                 break;
             }
         }
@@ -348,24 +189,24 @@ bool NormalizedType::isUnknown() const
         }
     }
     // any = unknown or error ==> we need to make sure we have all the unknown components, but not errors
-    return get<NeverType>(errors) && hasAllPrimitives && isTopClass && isTopTable && functions.isTop;
+    return get<NeverType>(errors) && hasAllPrimitives && isTopExternType && isTopTable && functions.isTop;
 }
 
 bool NormalizedType::isExactlyNumber() const
 {
-    return hasNumbers() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasStrings() && !hasThreads() &&
+    return hasNumbers() && !hasTops() && !hasBooleans() && !hasExternTypes() && !hasErrors() && !hasNils() && !hasStrings() && !hasThreads() &&
            !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
 bool NormalizedType::isSubtypeOfString() const
 {
-    return hasStrings() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasNumbers() && !hasThreads() &&
+    return hasStrings() && !hasTops() && !hasBooleans() && !hasExternTypes() && !hasErrors() && !hasNils() && !hasNumbers() && !hasThreads() &&
            !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
 bool NormalizedType::isSubtypeOfBooleans() const
 {
-    return hasBooleans() && !hasTops() && !hasClasses() && !hasErrors() && !hasNils() && !hasNumbers() && !hasStrings() && !hasThreads() &&
+    return hasBooleans() && !hasTops() && !hasExternTypes() && !hasErrors() && !hasNils() && !hasNumbers() && !hasStrings() && !hasThreads() &&
            !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
@@ -398,9 +239,9 @@ bool NormalizedType::hasBooleans() const
     return !get<NeverType>(booleans);
 }
 
-bool NormalizedType::hasClasses() const
+bool NormalizedType::hasExternTypes() const
 {
-    return !classes.isNever();
+    return !externTypes.isNever();
 }
 
 bool NormalizedType::hasErrors() const
@@ -458,7 +299,7 @@ bool NormalizedType::isFalsy() const
             hasAFalse = !bs->value;
     }
 
-    return (hasAFalse || hasNils()) && (!hasTops() && !hasClasses() && !hasErrors() && !hasNumbers() && !hasStrings() && !hasThreads() &&
+    return (hasAFalse || hasNils()) && (!hasTops() && !hasExternTypes() && !hasErrors() && !hasNumbers() && !hasStrings() && !hasThreads() &&
                                         !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars());
 }
 
@@ -470,7 +311,7 @@ bool NormalizedType::isTruthy() const
 static bool isShallowInhabited(const NormalizedType& norm)
 {
     // This test is just a shallow check, for example it returns `true` for `{ p : never }`
-    return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.classes.isNever() || !get<NeverType>(norm.errors) ||
+    return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.externTypes.isNever() || !get<NeverType>(norm.errors) ||
            !get<NeverType>(norm.nils) || !get<NeverType>(norm.numbers) || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
            !get<NeverType>(norm.buffers) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
@@ -489,7 +330,7 @@ NormalizationResult Normalizer::isInhabited(const NormalizedType* norm, Set<Type
         return NormalizationResult::HitLimits;
 
     if (!get<NeverType>(norm->tops) || !get<NeverType>(norm->booleans) || !get<NeverType>(norm->errors) || !get<NeverType>(norm->nils) ||
-        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || !get<NeverType>(norm->buffers) || !norm->classes.isNever() ||
+        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || !get<NeverType>(norm->buffers) || !norm->externTypes.isNever() ||
         !norm->strings.isNever() || !norm->functions.isNever())
         return NormalizationResult::True;
 
@@ -553,7 +394,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
     {
         for (const auto& [_, prop] : ttv->props)
         {
-            if (FFlag::LuauSolverV2)
+            if (useNewLuauSolver())
             {
                 // A table enclosing a read property whose type is uninhabitable is also itself uninhabitable,
                 // but not its write property. That just means the write property doesn't exist, and so is readonly.
@@ -566,7 +407,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
             }
             else
             {
-                NormalizationResult res = isInhabited(prop.type(), seen);
+                NormalizationResult res = isInhabited(prop.type_DEPRECATED(), seen);
                 if (res != NormalizationResult::True)
                     return res;
             }
@@ -589,14 +430,15 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
 NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
 {
     Set<TypeId> seen{nullptr};
-    return isIntersectionInhabited(left, right, seen);
+    SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+    return isIntersectionInhabited(left, right, seenTablePropPairs, seen);
 }
 
-NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right, Set<TypeId>& seenSet)
+NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet)
 {
     left = follow(left);
     right = follow(right);
-    // We're asking if intersection is inahbited between left and right but we've already seen them ....
+    // We're asking if intersection is inhabited between left and right but we've already seen them ....
 
     if (cacheInhabitance)
     {
@@ -605,7 +447,7 @@ NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId righ
     }
 
     NormalizedType norm{builtinTypes};
-    NormalizationResult res = normalizeIntersections({left, right}, norm, seenSet);
+    NormalizationResult res = normalizeIntersections({left, right}, norm, seenTablePropPairs, seenSet);
     if (res != NormalizationResult::True)
     {
         if (cacheInhabitance && res == NormalizationResult::False)
@@ -636,13 +478,13 @@ static int tyvarIndex(TypeId ty)
         return 0;
 }
 
-static bool isTop(NotNull<BuiltinTypes> builtinTypes, const NormalizedClassType& classes)
+static bool isTop(NotNull<BuiltinTypes> builtinTypes, const NormalizedExternType& externTypes)
 {
-    if (classes.classes.size() != 1)
+    if (externTypes.externTypes.size() != 1)
         return false;
 
-    auto first = classes.classes.begin();
-    if (first->first != builtinTypes->classType)
+    auto first = externTypes.externTypes.begin();
+    if (first->first != builtinTypes->externType)
         return false;
 
     if (!first->second.empty())
@@ -651,11 +493,11 @@ static bool isTop(NotNull<BuiltinTypes> builtinTypes, const NormalizedClassType&
     return true;
 }
 
-static void resetToTop(NotNull<BuiltinTypes> builtinTypes, NormalizedClassType& classes)
+static void resetToTop(NotNull<BuiltinTypes> builtinTypes, NormalizedExternType& externTypes)
 {
-    classes.ordering.clear();
-    classes.classes.clear();
-    classes.pushPair(builtinTypes->classType, TypeIds{});
+    externTypes.ordering.clear();
+    externTypes.externTypes.clear();
+    externTypes.pushPair(builtinTypes->externType, TypeIds{});
 }
 
 #ifdef LUAU_ASSERTENABLED
@@ -779,50 +621,50 @@ static bool areNormalizedTables(const TypeIds& tys)
     return true;
 }
 
-static bool areNormalizedClasses(const NormalizedClassType& tys)
+static bool areNormalizedExternTypes(const NormalizedExternType& tys)
 {
-    for (const auto& [ty, negations] : tys.classes)
+    for (const auto& [ty, negations] : tys.externTypes)
     {
-        const ClassType* ctv = get<ClassType>(ty);
-        if (!ctv)
+        const ExternType* etv = get<ExternType>(ty);
+        if (!etv)
         {
             return false;
         }
 
         for (TypeId negation : negations)
         {
-            const ClassType* nctv = get<ClassType>(negation);
+            const ExternType* nctv = get<ExternType>(negation);
             if (!nctv)
             {
                 return false;
             }
 
-            if (!isSubclass(nctv, ctv))
+            if (!isSubclass(nctv, etv))
             {
                 return false;
             }
         }
 
-        for (const auto& [otherTy, otherNegations] : tys.classes)
+        for (const auto& [otherTy, otherNegations] : tys.externTypes)
         {
             if (otherTy == ty)
                 continue;
 
-            const ClassType* octv = get<ClassType>(otherTy);
+            const ExternType* octv = get<ExternType>(otherTy);
             if (!octv)
             {
                 return false;
             }
 
-            if (isSubclass(ctv, octv))
+            if (isSubclass(etv, octv))
             {
-                auto iss = [ctv](TypeId t)
+                auto iss = [etv](TypeId t)
                 {
-                    const ClassType* c = get<ClassType>(t);
+                    const ExternType* c = get<ExternType>(t);
                     if (!c)
                         return false;
 
-                    return isSubclass(ctv, c);
+                    return isSubclass(etv, c);
                 };
 
                 if (!std::any_of(otherNegations.begin(), otherNegations.end(), iss))
@@ -864,7 +706,7 @@ static void assertInvariant(const NormalizedType& norm)
 
     LUAU_ASSERT(isNormalizedTop(norm.tops));
     LUAU_ASSERT(isNormalizedBoolean(norm.booleans));
-    LUAU_ASSERT(areNormalizedClasses(norm.classes));
+    LUAU_ASSERT(areNormalizedExternTypes(norm.externTypes));
     LUAU_ASSERT(isNormalizedError(norm.errors));
     LUAU_ASSERT(isNormalizedNil(norm.nils));
     LUAU_ASSERT(isNormalizedNumber(norm.numbers));
@@ -879,11 +721,18 @@ static void assertInvariant(const NormalizedType& norm)
 #endif
 }
 
-Normalizer::Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, bool cacheInhabitance)
+Normalizer::Normalizer(
+    TypeArena* arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<UnifierSharedState> sharedState,
+    SolverMode solverMode,
+    bool cacheInhabitance
+)
     : arena(arena)
     , builtinTypes(builtinTypes)
     , sharedState(sharedState)
     , cacheInhabitance(cacheInhabitance)
+    , solverMode(solverMode)
 {
 }
 
@@ -956,7 +805,8 @@ std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
 
     NormalizedType norm{builtinTypes};
     Set<TypeId> seenSetTypes{nullptr};
-    NormalizationResult res = unionNormalWithTy(norm, ty, seenSetTypes);
+    SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+    NormalizationResult res = unionNormalWithTy(norm, ty, seenTablePropPairs, seenSetTypes);
     if (res != NormalizationResult::True)
         return nullptr;
 
@@ -974,7 +824,12 @@ std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
     return shared;
 }
 
-NormalizationResult Normalizer::normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType, Set<TypeId>& seenSet)
+NormalizationResult Normalizer::normalizeIntersections(
+    const std::vector<TypeId>& intersections,
+    NormalizedType& outType,
+    SeenTablePropPairs& seenTablePropPairs,
+    Set<TypeId>& seenSet
+)
 {
     if (!arena)
         sharedState->iceHandler->ice("Normalizing types outside a module");
@@ -983,7 +838,7 @@ NormalizationResult Normalizer::normalizeIntersections(const std::vector<TypeId>
     // Now we need to intersect the two types
     for (auto ty : intersections)
     {
-        NormalizationResult res = intersectNormalWithTy(norm, ty, seenSet);
+        NormalizationResult res = intersectNormalWithTy(norm, ty, seenTablePropPairs, seenSet);
         if (res != NormalizationResult::True)
             return res;
     }
@@ -999,7 +854,7 @@ void Normalizer::clearNormal(NormalizedType& norm)
 {
     norm.tops = builtinTypes->neverType;
     norm.booleans = builtinTypes->neverType;
-    norm.classes.resetToNever();
+    norm.externTypes.resetToNever();
     norm.errors = builtinTypes->neverType;
     norm.nils = builtinTypes->neverType;
     norm.numbers = builtinTypes->neverType;
@@ -1149,17 +1004,17 @@ TypeId Normalizer::unionOfBools(TypeId here, TypeId there)
     return builtinTypes->booleanType;
 }
 
-void Normalizer::unionClassesWithClass(TypeIds& heres, TypeId there)
+void Normalizer::unionExternTypesWithExternType(TypeIds& heres, TypeId there)
 {
     if (heres.count(there))
         return;
 
-    const ClassType* tctv = get<ClassType>(there);
+    const ExternType* tctv = get<ExternType>(there);
 
     for (auto it = heres.begin(); it != heres.end();)
     {
         TypeId here = *it;
-        const ClassType* hctv = get<ClassType>(here);
+        const ExternType* hctv = get<ExternType>(here);
         if (isSubclass(tctv, hctv))
             return;
         else if (isSubclass(hctv, tctv))
@@ -1171,16 +1026,16 @@ void Normalizer::unionClassesWithClass(TypeIds& heres, TypeId there)
     heres.insert(there);
 }
 
-void Normalizer::unionClasses(TypeIds& heres, const TypeIds& theres)
+void Normalizer::unionExternTypes(TypeIds& heres, const TypeIds& theres)
 {
     for (TypeId there : theres)
-        unionClassesWithClass(heres, there);
+        unionExternTypesWithExternType(heres, there);
 }
 
 static bool isSubclass(TypeId test, TypeId parent)
 {
-    const ClassType* testCtv = get<ClassType>(test);
-    const ClassType* parentCtv = get<ClassType>(parent);
+    const ExternType* testCtv = get<ExternType>(test);
+    const ExternType* parentCtv = get<ExternType>(parent);
 
     LUAU_ASSERT(testCtv);
     LUAU_ASSERT(parentCtv);
@@ -1188,12 +1043,12 @@ static bool isSubclass(TypeId test, TypeId parent)
     return isSubclass(testCtv, parentCtv);
 }
 
-void Normalizer::unionClassesWithClass(NormalizedClassType& heres, TypeId there)
+void Normalizer::unionExternTypesWithExternType(NormalizedExternType& heres, TypeId there)
 {
     for (auto it = heres.ordering.begin(); it != heres.ordering.end();)
     {
         TypeId hereTy = *it;
-        TypeIds& hereNegations = heres.classes.at(hereTy);
+        TypeIds& hereNegations = heres.externTypes.at(hereTy);
 
         // If the incoming class is a subclass of another class in the map, we
         // must ensure that it is negated by one of the negations in the same
@@ -1215,7 +1070,7 @@ void Normalizer::unionClassesWithClass(NormalizedClassType& heres, TypeId there)
                 }
                 // If the incoming class is a superclass of one of the
                 // negations, then the negation no longer applies and must be
-                // removed. This is also true if they are equal. Since classes
+                // removed. This is also true if they are equal. Since extern types
                 // are, at this time, entirely persistent (we do not clone
                 // them), a pointer identity check is sufficient.
                 else if (isSubclass(hereNegation, there))
@@ -1242,7 +1097,7 @@ void Normalizer::unionClassesWithClass(NormalizedClassType& heres, TypeId there)
         {
             TypeIds negations = std::move(hereNegations);
             it = heres.ordering.erase(it);
-            heres.classes.erase(hereTy);
+            heres.externTypes.erase(hereTy);
 
             heres.pushPair(there, std::move(negations));
             return;
@@ -1259,10 +1114,10 @@ void Normalizer::unionClassesWithClass(NormalizedClassType& heres, TypeId there)
     heres.pushPair(there, TypeIds{});
 }
 
-void Normalizer::unionClasses(NormalizedClassType& heres, const NormalizedClassType& theres)
+void Normalizer::unionExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres)
 {
-    // This method bears much similarity with unionClassesWithClass, but is
-    // solving a more general problem. In unionClassesWithClass, we are dealing
+    // This method bears much similarity with unionExternTypesWithExternType, but is
+    // solving a more general problem. In unionExternTypesWithExternType, we are dealing
     // with a singular positive type. Since it's one type, we can use early
     // returns as control flow. Since it's guaranteed to be positive, we do not
     // have negations to worry about combining. The two aspects combine to make
@@ -1271,9 +1126,9 @@ void Normalizer::unionClasses(NormalizedClassType& heres, const NormalizedClassT
 
     for (const TypeId thereTy : theres.ordering)
     {
-        const TypeIds& thereNegations = theres.classes.at(thereTy);
+        const TypeIds& thereNegations = theres.externTypes.at(thereTy);
 
-        // If it happens that there are _no_ classes in the current map, or the
+        // If it happens that there are _no_ extern types in the current map, or the
         // incoming class is completely unrelated to any class in the current
         // map, we must insert the incoming pair as-is.
         bool insert = true;
@@ -1281,7 +1136,7 @@ void Normalizer::unionClasses(NormalizedClassType& heres, const NormalizedClassT
         for (auto it = heres.ordering.begin(); it != heres.ordering.end();)
         {
             TypeId hereTy = *it;
-            TypeIds& hereNegations = heres.classes.at(hereTy);
+            TypeIds& hereNegations = heres.externTypes.at(hereTy);
 
             if (isSubclass(thereTy, hereTy))
             {
@@ -1305,7 +1160,7 @@ void Normalizer::unionClasses(NormalizedClassType& heres, const NormalizedClassT
                     // If the incoming class is a superclass of one of the
                     // negations, then the negation no longer applies and must
                     // be removed. This is also true if they are equal. Since
-                    // classes are, at this time, entirely persistent (we do not
+                    // extern types are, at this time, entirely persistent (we do not
                     // clone them), a pointer identity check is sufficient.
                     else if (isSubclass(hereNegateTy, thereTy))
                     {
@@ -1330,17 +1185,17 @@ void Normalizer::unionClasses(NormalizedClassType& heres, const NormalizedClassT
             else if (isSubclass(hereTy, thereTy))
             {
                 TypeIds negations = std::move(hereNegations);
-                unionClasses(negations, thereNegations);
+                unionExternTypes(negations, thereNegations);
 
                 it = heres.ordering.erase(it);
-                heres.classes.erase(hereTy);
+                heres.externTypes.erase(hereTy);
                 heres.pushPair(thereTy, std::move(negations));
                 insert = false;
                 break;
             }
             else if (hereTy == thereTy)
             {
-                unionClasses(hereNegations, thereNegations);
+                unionExternTypes(hereNegations, thereNegations);
                 insert = false;
                 break;
             }
@@ -1518,7 +1373,7 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
     else if (thereSubHere)
         return here;
     if (!head.empty())
-        return arena->addTypePack(TypePack{head, tail});
+        return arena->addTypePack(TypePack{std::move(head), tail});
     else if (tail)
         return *tail;
     else
@@ -1620,7 +1475,7 @@ void Normalizer::unionTablesWithTable(TypeIds& heres, TypeId there)
     // TODO: remove unions of tables where possible
 
     // we can always skip `never`
-    if (normalizeAwayUninhabitableTables() && get<NeverType>(there))
+    if (get<NeverType>(there))
         return;
 
     heres.insert(there);
@@ -1676,6 +1531,12 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
         return NormalizationResult::True;
     }
 
+    if (FFlag::LuauNormalizationLimitTyvarUnionSize)
+    {
+        if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+            return NormalizationResult::HitLimits;
+    }
+
     for (auto it = there.tyvars.begin(); it != there.tyvars.end(); it++)
     {
         TypeId tyvar = it->first;
@@ -1696,8 +1557,12 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
             return res;
     }
 
+    // Limit based on worst-case expansion of the function unions
+    if (here.functions.parts.size() * there.functions.parts.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+        return NormalizationResult::HitLimits;
+
     here.booleans = unionOfBools(here.booleans, there.booleans);
-    unionClasses(here.classes, there.classes);
+    unionExternTypes(here.externTypes, there.externTypes);
 
     here.errors = (get<NeverType>(there.errors) ? here.errors : there.errors);
     here.nils = (get<NeverType>(there.nils) ? here.nils : there.nils);
@@ -1707,6 +1572,7 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
     here.buffers = (get<NeverType>(there.buffers) ? here.buffers : there.buffers);
     unionFunctions(here.functions, there.functions);
     unionTables(here.tables, there.tables);
+
     return NormalizationResult::True;
 }
 
@@ -1732,6 +1598,11 @@ bool Normalizer::withinResourceLimits()
     return true;
 }
 
+bool Normalizer::useNewLuauSolver() const
+{
+    return FFlag::LuauUseWorkspacePropToChooseSolver ? (solverMode == SolverMode::New) : FFlag::LuauSolverV2;
+}
+
 NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect)
 {
 
@@ -1746,8 +1617,14 @@ NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, N
     return NormalizationResult::True;
 }
 
-// See above for an explaination of `ignoreSmallerTyvars`.
-NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes, int ignoreSmallerTyvars)
+// See above for an explanation of `ignoreSmallerTyvars`.
+NormalizationResult Normalizer::unionNormalWithTy(
+    NormalizedType& here,
+    TypeId there,
+    SeenTablePropPairs& seenTablePropPairs,
+    Set<TypeId>& seenSetTypes,
+    int ignoreSmallerTyvars
+)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
     if (!withinResourceLimits())
@@ -1779,7 +1656,7 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
 
         for (UnionTypeIterator it = begin(utv); it != end(utv); ++it)
         {
-            NormalizationResult res = unionNormalWithTy(here, *it, seenSetTypes);
+            NormalizationResult res = unionNormalWithTy(here, *it, seenTablePropPairs, seenSetTypes);
             if (res != NormalizationResult::True)
             {
                 seenSetTypes.erase(there);
@@ -1800,7 +1677,7 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
         norm.tops = builtinTypes->anyType;
         for (IntersectionTypeIterator it = begin(itv); it != end(itv); ++it)
         {
-            NormalizationResult res = intersectNormalWithTy(norm, *it, seenSetTypes);
+            NormalizationResult res = intersectNormalWithTy(norm, *it, seenTablePropPairs, seenSetTypes);
             if (res != NormalizationResult::True)
             {
                 seenSetTypes.erase(there);
@@ -1814,7 +1691,8 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
     }
     else if (get<UnknownType>(here.tops))
         return NormalizationResult::True;
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFunctionInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return NormalizationResult::True;
@@ -1829,8 +1707,8 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
         unionFunctionsWithFunction(here.functions, there);
     else if (get<TableType>(there) || get<MetatableType>(there))
         unionTablesWithTable(here.tables, there);
-    else if (get<ClassType>(there))
-        unionClassesWithClass(here.classes, there);
+    else if (get<ExternType>(there))
+        unionExternTypesWithExternType(here.externTypes, there);
     else if (get<ErrorType>(there))
         here.errors = there;
     else if (const PrimitiveType* ptv = get<PrimitiveType>(there))
@@ -1891,7 +1769,7 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
         if (res != NormalizationResult::True)
             return res;
     }
-    else if (get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there) || get<NoRefineType>(there))
     {
         // nothing
     }
@@ -1900,7 +1778,7 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
 
     for (auto& [tyvar, intersect] : here.tyvars)
     {
-        NormalizationResult res = unionNormalWithTy(*intersect, there, seenSetTypes, tyvarIndex(tyvar));
+        NormalizationResult res = unionNormalWithTy(*intersect, there, seenTablePropPairs, seenSetTypes, tyvarIndex(tyvar));
         if (res != NormalizationResult::True)
             return res;
     }
@@ -1943,29 +1821,29 @@ std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& her
             result.booleans = builtinTypes->trueType;
     }
 
-    if (here.classes.isNever())
+    if (here.externTypes.isNever())
     {
-        resetToTop(builtinTypes, result.classes);
+        resetToTop(builtinTypes, result.externTypes);
     }
-    else if (isTop(builtinTypes, result.classes))
+    else if (isTop(builtinTypes, result.externTypes))
     {
-        result.classes.resetToNever();
+        result.externTypes.resetToNever();
     }
     else
     {
         TypeIds rootNegations{};
 
-        for (const auto& [hereParent, hereNegations] : here.classes.classes)
+        for (const auto& [hereParent, hereNegations] : here.externTypes.externTypes)
         {
-            if (hereParent != builtinTypes->classType)
+            if (hereParent != builtinTypes->externType)
                 rootNegations.insert(hereParent);
 
             for (TypeId hereNegation : hereNegations)
-                unionClassesWithClass(result.classes, hereNegation);
+                unionExternTypesWithExternType(result.externTypes, hereNegation);
         }
 
         if (!rootNegations.empty())
-            result.classes.pushPair(builtinTypes->classType, rootNegations);
+            result.externTypes.pushPair(builtinTypes->externType, std::move(rootNegations));
     }
 
     result.nils = get<NeverType>(here.nils) ? builtinTypes->nilType : builtinTypes->neverType;
@@ -2143,7 +2021,7 @@ TypeId Normalizer::intersectionOfBools(TypeId here, TypeId there)
         return there;
 }
 
-void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedClassType& theres)
+void Normalizer::intersectExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres)
 {
     if (theres.isNever())
     {
@@ -2177,12 +2055,12 @@ void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedCl
     //   declare the result of the intersection operation to be never.
     for (const TypeId thereTy : theres.ordering)
     {
-        const TypeIds& thereNegations = theres.classes.at(thereTy);
+        const TypeIds& thereNegations = theres.externTypes.at(thereTy);
 
         for (auto it = heres.ordering.begin(); it != heres.ordering.end();)
         {
             TypeId hereTy = *it;
-            TypeIds& hereNegations = heres.classes.at(hereTy);
+            TypeIds& hereNegations = heres.externTypes.at(hereTy);
 
             if (isSubclass(thereTy, hereTy))
             {
@@ -2205,10 +2083,10 @@ void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedCl
                     }
                 }
 
-                unionClasses(negations, thereNegations);
+                unionExternTypes(negations, thereNegations);
 
                 it = heres.ordering.erase(it);
-                heres.classes.erase(hereTy);
+                heres.externTypes.erase(hereTy);
                 heres.pushPair(thereTy, std::move(negations));
                 break;
             }
@@ -2233,15 +2111,15 @@ void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedCl
                 {
                     if (isSubclass(hereTy, *nIt))
                     {
-                        // eg SomeClass & (class & ~SomeClass)
-                        // or SomeClass & (class & ~ParentClass)
-                        heres.classes.erase(hereTy);
+                        // eg SomeExternType & (class & ~SomeExternType)
+                        // or SomeExternType & (class & ~ParentExternType)
+                        heres.externTypes.erase(hereTy);
                         it = heres.ordering.erase(it);
                         erasedHere = true;
                         break;
                     }
 
-                    // eg SomeClass & (class & ~Unrelated)
+                    // eg SomeExternType & (class & ~Unrelated)
                     if (!isSubclass(*nIt, hereTy))
                         nIt = negations.erase(nIt);
                     else
@@ -2250,30 +2128,30 @@ void Normalizer::intersectClasses(NormalizedClassType& heres, const NormalizedCl
 
                 if (!erasedHere)
                 {
-                    unionClasses(hereNegations, negations);
+                    unionExternTypes(hereNegations, negations);
                     ++it;
                 }
             }
             else if (hereTy == thereTy)
             {
-                unionClasses(hereNegations, thereNegations);
+                unionExternTypes(hereNegations, thereNegations);
                 break;
             }
             else
             {
                 it = heres.ordering.erase(it);
-                heres.classes.erase(hereTy);
+                heres.externTypes.erase(hereTy);
             }
         }
     }
 }
 
-void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId there)
+void Normalizer::intersectExternTypesWithExternType(NormalizedExternType& heres, TypeId there)
 {
     for (auto it = heres.ordering.begin(); it != heres.ordering.end();)
     {
         TypeId hereTy = *it;
-        const TypeIds& hereNegations = heres.classes.at(hereTy);
+        const TypeIds& hereNegations = heres.externTypes.at(hereTy);
 
         // If the incoming class _is_ the current class, we skip it. Maybe
         // another entry will have a different story. We check for this first
@@ -2289,9 +2167,24 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
         else if (isSubclass(there, hereTy))
         {
             TypeIds negations = std::move(hereNegations);
+            bool emptyIntersectWithNegation = false;
 
             for (auto nIt = negations.begin(); nIt != negations.end();)
             {
+                if (isSubclass(there, *nIt))
+                {
+                    // Hitting this block means that the incoming class is a
+                    // subclass of this type, _and_ one of its negations is a
+                    // superclass of this type, e.g.:
+                    //
+                    //  Dog & ~Animal
+                    //
+                    // Clearly this intersects to never, so we mark this class as
+                    // being removed from the normalized class type.
+                    emptyIntersectWithNegation = true;
+                    break;
+                }
+
                 if (!isSubclass(*nIt, there))
                 {
                     nIt = negations.erase(nIt);
@@ -2303,8 +2196,9 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
             }
 
             it = heres.ordering.erase(it);
-            heres.classes.erase(hereTy);
-            heres.pushPair(there, std::move(negations));
+            heres.externTypes.erase(hereTy);
+            if (!emptyIntersectWithNegation)
+                heres.pushPair(there, std::move(negations));
             break;
         }
         // If the incoming class is a superclass of the current class, we don't
@@ -2318,7 +2212,7 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
         else
         {
             it = heres.ordering.erase(it);
-            heres.classes.erase(hereTy);
+            heres.externTypes.erase(hereTy);
         }
     }
 }
@@ -2502,7 +2396,7 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
     else if (thereSubHere)
         return there;
     if (!head.empty())
-        return arena->addTypePack(TypePack{head, tail});
+        return arena->addTypePack(TypePack{std::move(head), tail});
     else if (tail)
         return *tail;
     else
@@ -2510,7 +2404,7 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
         return arena->addTypePack({});
 }
 
-std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there, Set<TypeId>& seenSet)
+std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet)
 {
     if (here == there)
         return here;
@@ -2583,52 +2477,25 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         {
             const auto& [_name, tprop] = *tfound;
             // TODO: variance issues here, which can't be fixed until we have read/write property types
-            if (FFlag::LuauSolverV2)
+            if (useNewLuauSolver())
             {
                 if (hprop.readTy.has_value())
                 {
                     if (tprop.readTy.has_value())
                     {
-                        // if the intersection of the read types of a property is uninhabited, the whole table is `never`.
-                        if (fixReduceStackPressure())
-                        {
-                            // We've seen these table prop elements before and we're about to ask if their intersection
-                            // is inhabited
-                            if (fixCyclicTablesBlowingStack())
-                            {
-                                if (seenSet.contains(*hprop.readTy) && seenSet.contains(*tprop.readTy))
-                                {
-                                    seenSet.erase(*hprop.readTy);
-                                    seenSet.erase(*tprop.readTy);
-                                    return {builtinTypes->neverType};
-                                }
-                                else
-                                {
-                                    seenSet.insert(*hprop.readTy);
-                                    seenSet.insert(*tprop.readTy);
-                                }
-                            }
-
-                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy);
-
-                            // Cleanup
-                            if (fixCyclicTablesBlowingStack())
-                            {
-                                seenSet.erase(*hprop.readTy);
-                                seenSet.erase(*tprop.readTy);
-                            }
-
-                            if (normalizeAwayUninhabitableTables() && NormalizationResult::True != res)
-                                return {builtinTypes->neverType};
-                        }
-                        else
-                        {
-                            if (normalizeAwayUninhabitableTables() &&
-                                NormalizationResult::False == isIntersectionInhabited(*hprop.readTy, *tprop.readTy))
-                                return {builtinTypes->neverType};
-                        }
-
                         TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
+
+                        // If any property is going to get mapped to `never`, we can just call the entire table `never`.
+                        // Since this check is syntactic, we may sometimes miss simplifying tables with complex uninhabited properties.
+                        // Prior versions of this code attempted to do this semantically using the normalization machinery, but this
+                        // mistakenly causes infinite loops when giving more complex recursive table types. As it stands, this approach
+                        // will continue to scale as simplification is improved, but we may wish to reintroduce the semantic approach
+                        // once we have revisited the usage of seen sets systematically (and possibly with some additional guarding to recognize
+                        // when types are infinitely-recursive with non-pointer identical instances of them, or some guard to prevent that
+                        // construction altogether). See also: `gh1632_no_infinite_recursion_in_normalization`
+                        if (get<NeverType>(ty))
+                            return {builtinTypes->neverType};
+
                         prop.readTy = ty;
                         hereSubThere &= (ty == hprop.readTy);
                         thereSubHere &= (ty == tprop.readTy);
@@ -2667,9 +2534,9 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
             }
             else
             {
-                prop.setType(intersectionType(hprop.type(), tprop.type()));
-                hereSubThere &= (prop.type() == hprop.type());
-                thereSubHere &= (prop.type() == tprop.type());
+                prop.setType(intersectionType(hprop.type_DEPRECATED(), tprop.type_DEPRECATED()));
+                hereSubThere &= (prop.type_DEPRECATED() == hprop.type_DEPRECATED());
+                thereSubHere &= (prop.type_DEPRECATED() == tprop.type_DEPRECATED());
             }
         }
 
@@ -2737,7 +2604,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     if (tmtable && hmtable)
     {
         // NOTE: this assumes metatables are ivariant
-        if (std::optional<TypeId> mtable = intersectionOfTables(hmtable, tmtable, seenSet))
+        if (std::optional<TypeId> mtable = intersectionOfTables(hmtable, tmtable, seenTablePropPairs, seenSet))
         {
             if (table == htable && *mtable == hmtable)
                 return here;
@@ -2767,12 +2634,12 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         return table;
 }
 
-void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there, Set<TypeId>& seenSetTypes)
+void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSetTypes)
 {
     TypeIds tmp;
     for (TypeId here : heres)
     {
-        if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenSetTypes))
+        if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
             tmp.insert(*inter);
     }
     heres.retain(tmp);
@@ -2787,7 +2654,8 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
         for (TypeId there : theres)
         {
             Set<TypeId> seenSetTypes{nullptr};
-            if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenSetTypes))
+            SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+            if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
                 tmp.insert(*inter);
         }
     }
@@ -3005,12 +2873,17 @@ void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const Normali
     }
 }
 
-NormalizationResult Normalizer::intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there, Set<TypeId>& seenSetTypes)
+NormalizationResult Normalizer::intersectTyvarsWithTy(
+    NormalizedTyvars& here,
+    TypeId there,
+    SeenTablePropPairs& seenTablePropPairs,
+    Set<TypeId>& seenSetTypes
+)
 {
     for (auto it = here.begin(); it != here.end();)
     {
         NormalizedType& inter = *it->second;
-        NormalizationResult res = intersectNormalWithTy(inter, there, seenSetTypes);
+        NormalizationResult res = intersectNormalWithTy(inter, there, seenTablePropPairs, seenSetTypes);
         if (res != NormalizationResult::True)
             return res;
         if (isShallowInhabited(inter))
@@ -3021,9 +2894,13 @@ NormalizationResult Normalizer::intersectTyvarsWithTy(NormalizedTyvars& here, Ty
     return NormalizationResult::True;
 }
 
-// See above for an explaination of `ignoreSmallerTyvars`.
+// See above for an explanation of `ignoreSmallerTyvars`.
 NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars)
 {
+    RecursionCounter _rc(&sharedState->counters.recursionCount);
+    if (!withinResourceLimits())
+        return NormalizationResult::HitLimits;
+
     if (!get<NeverType>(there.tops))
     {
         here.tops = intersectionOfTops(here.tops, there.tops);
@@ -3035,9 +2912,35 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
         return unionNormals(here, there, ignoreSmallerTyvars);
     }
 
+    // Limit based on worst-case expansion of the table/function intersections
+    // This restriction can be relaxed when table intersection simplification is improved
+    if (here.tables.size() * there.tables.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
+        return NormalizationResult::HitLimits;
+
+    if (here.functions.parts.size() * there.functions.parts.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
+        return NormalizationResult::HitLimits;
+
+    if (FFlag::LuauNormalizationReorderFreeTypeIntersect)
+    {
+        for (auto& [tyvar, inter] : there.tyvars)
+        {
+            int index = tyvarIndex(tyvar);
+            if (ignoreSmallerTyvars < index)
+            {
+                auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
+                if (fresh)
+                {
+                    NormalizationResult res = unionNormals(*found->second, here, index);
+                    if (res != NormalizationResult::True)
+                        return res;
+                }
+            }
+        }
+    }
+
     here.booleans = intersectionOfBools(here.booleans, there.booleans);
 
-    intersectClasses(here.classes, there.classes);
+    intersectExternTypes(here.externTypes, there.externTypes);
     here.errors = (get<NeverType>(there.errors) ? there.errors : here.errors);
     here.nils = (get<NeverType>(there.nils) ? there.nils : here.nils);
     here.numbers = (get<NeverType>(there.numbers) ? there.numbers : here.numbers);
@@ -3047,20 +2950,24 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     intersectFunctions(here.functions, there.functions);
     intersectTables(here.tables, there.tables);
 
-    for (auto& [tyvar, inter] : there.tyvars)
+    if (!FFlag::LuauNormalizationReorderFreeTypeIntersect)
     {
-        int index = tyvarIndex(tyvar);
-        if (ignoreSmallerTyvars < index)
+        for (auto& [tyvar, inter] : there.tyvars)
         {
-            auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
-            if (fresh)
+            int index = tyvarIndex(tyvar);
+            if (ignoreSmallerTyvars < index)
             {
-                NormalizationResult res = unionNormals(*found->second, here, index);
-                if (res != NormalizationResult::True)
-                    return res;
+                auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
+                if (fresh)
+                {
+                    NormalizationResult res = unionNormals(*found->second, here, index);
+                    if (res != NormalizationResult::True)
+                        return res;
+                }
             }
         }
     }
+
     for (auto it = here.tyvars.begin(); it != here.tyvars.end();)
     {
         TypeId tyvar = it->first;
@@ -3088,7 +2995,12 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     return NormalizationResult::True;
 }
 
-NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes)
+NormalizationResult Normalizer::intersectNormalWithTy(
+    NormalizedType& here,
+    TypeId there,
+    SeenTablePropPairs& seenTablePropPairs,
+    Set<TypeId>& seenSetTypes
+)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
     if (!withinResourceLimits())
@@ -3104,14 +3016,14 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     else if (!get<NeverType>(here.tops))
     {
         clearNormal(here);
-        return unionNormalWithTy(here, there, seenSetTypes);
+        return unionNormalWithTy(here, there, seenTablePropPairs, seenSetTypes);
     }
     else if (const UnionType* utv = get<UnionType>(there))
     {
         NormalizedType norm{builtinTypes};
         for (UnionTypeIterator it = begin(utv); it != end(utv); ++it)
         {
-            NormalizationResult res = unionNormalWithTy(norm, *it, seenSetTypes);
+            NormalizationResult res = unionNormalWithTy(norm, *it, seenTablePropPairs, seenSetTypes);
             if (res != NormalizationResult::True)
                 return res;
         }
@@ -3121,13 +3033,14 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     {
         for (IntersectionTypeIterator it = begin(itv); it != end(itv); ++it)
         {
-            NormalizationResult res = intersectNormalWithTy(here, *it, seenSetTypes);
+            NormalizationResult res = intersectNormalWithTy(here, *it, seenTablePropPairs, seenSetTypes);
             if (res != NormalizationResult::True)
                 return res;
         }
         return NormalizationResult::True;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) || get<TypeFunctionInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFunctionInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -3148,23 +3061,35 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     }
     else if (get<TableType>(there) || get<MetatableType>(there))
     {
-        TypeIds tables = std::move(here.tables);
-        clearNormal(here);
-        intersectTablesWithTable(tables, there, seenSetTypes);
-        here.tables = std::move(tables);
+        if (useNewLuauSolver() && FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
+        {
+            NormalizedExternType externTypes = std::move(here.externTypes);
+            TypeIds tables = std::move(here.tables);
+            clearNormal(here);
+            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            here.tables = std::move(tables);
+            here.externTypes = std::move(externTypes);
+        }
+        else
+        {
+            TypeIds tables = std::move(here.tables);
+            clearNormal(here);
+            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            here.tables = std::move(tables);
+        }
     }
-    else if (get<ClassType>(there))
+    else if (get<ExternType>(there))
     {
-        NormalizedClassType nct = std::move(here.classes);
+        NormalizedExternType nct = std::move(here.externTypes);
         clearNormal(here);
-        intersectClassesWithClass(nct, there);
-        here.classes = std::move(nct);
+        intersectExternTypesWithExternType(nct, there);
+        here.externTypes = std::move(nct);
     }
     else if (get<ErrorType>(there))
     {
         TypeId errors = here.errors;
         clearNormal(here);
-        here.errors = errors;
+        here.errors = get<ErrorType>(errors) ? errors : there;
     }
     else if (const PrimitiveType* ptv = get<PrimitiveType>(there))
     {
@@ -3222,7 +3147,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
             subtractPrimitive(here, ntv->ty);
         else if (const SingletonType* stv = get<SingletonType>(t))
             subtractSingleton(here, follow(ntv->ty));
-        else if (get<ClassType>(t))
+        else if (get<ExternType>(t))
         {
             NormalizationResult res = intersectNormalWithNegationTy(t, here);
             if (shouldEarlyExit(res))
@@ -3243,21 +3168,36 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
             // assumption that it is the same as any.
             return NormalizationResult::True;
         }
+        else if (get<NoRefineType>(t))
+        {
+            // `*no-refine*` means we will never do anything to affect the intersection.
+            return NormalizationResult::True;
+        }
         else if (get<NeverType>(t))
         {
             // if we're intersecting with `~never`, this is equivalent to intersecting with `unknown`
             // this is a noop since an intersection with `unknown` is trivial.
             return NormalizationResult::True;
         }
-        else if ((FFlag::LuauNormalizeNotUnknownIntersection || FFlag::LuauSolverV2) && get<UnknownType>(t))
+        else if (get<UnknownType>(t))
         {
             // if we're intersecting with `~unknown`, this is equivalent to intersecting with `never`
             // this means we should clear the type entirely.
             clearNormal(here);
             return NormalizationResult::True;
         }
+        else if (get<ErrorType>(t))
+        {
+            // ~error is still an error, so intersecting with the negation is the same as intersecting with a type
+            TypeId errors = here.errors;
+            clearNormal(here);
+            here.errors = get<ErrorType>(errors) ? errors : t;
+        }
         else if (auto nt = get<NegationType>(t))
-            return intersectNormalWithTy(here, nt->ty, seenSetTypes);
+        {
+            here.tyvars = std::move(tyvars);
+            return intersectNormalWithTy(here, nt->ty, seenTablePropPairs, seenSetTypes);
+        }
         else
         {
             // TODO negated unions, intersections, table, and function.
@@ -3267,12 +3207,17 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     }
     else if (get<NeverType>(there))
     {
-        here.classes.resetToNever();
+        here.externTypes.resetToNever();
+    }
+    else if (get<NoRefineType>(there))
+    {
+        // `*no-refine*` means we will never do anything to affect the intersection.
+        return NormalizationResult::True;
     }
     else
         LUAU_ASSERT(!"Unreachable");
 
-    NormalizationResult res = intersectTyvarsWithTy(tyvars, there, seenSetTypes);
+    NormalizationResult res = intersectTyvarsWithTy(tyvars, there, seenTablePropPairs, seenSetTypes);
     if (res != NormalizationResult::True)
         return res;
     here.tyvars = std::move(tyvars);
@@ -3280,9 +3225,12 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     return NormalizationResult::True;
 }
 
-void makeTableShared(TypeId ty)
+void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     ty = follow(ty);
+    if (seen.contains(ty))
+        return;
+    seen.insert(ty);
     if (auto tableTy = getMutable<TableType>(ty))
     {
         for (auto& [_, prop] : tableTy->props)
@@ -3290,9 +3238,15 @@ void makeTableShared(TypeId ty)
     }
     else if (auto metatableTy = get<MetatableType>(ty))
     {
-        makeTableShared(metatableTy->metatable);
-        makeTableShared(metatableTy->table);
+        makeTableShared(metatableTy->metatable, seen);
+        makeTableShared(metatableTy->table, seen);
     }
+}
+
+void makeTableShared(TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    makeTableShared(ty, seen);
 }
 
 // -------- Convert back from a normalized type to a type
@@ -3307,18 +3261,18 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     if (!get<NeverType>(norm.booleans))
         result.push_back(norm.booleans);
 
-    if (isTop(builtinTypes, norm.classes))
+    if (isTop(builtinTypes, norm.externTypes))
     {
-        result.push_back(builtinTypes->classType);
+        result.push_back(builtinTypes->externType);
     }
-    else if (!norm.classes.isNever())
+    else if (!norm.externTypes.isNever())
     {
         std::vector<TypeId> parts;
-        parts.reserve(norm.classes.classes.size());
+        parts.reserve(norm.externTypes.externTypes.size());
 
-        for (const TypeId normTy : norm.classes.ordering)
+        for (const TypeId normTy : norm.externTypes.ordering)
         {
-            const TypeIds& normNegations = norm.classes.classes.at(normTy);
+            const TypeIds& normNegations = norm.externTypes.externTypes.at(normTy);
 
             if (normNegations.empty())
             {
@@ -3389,12 +3343,13 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     if (!get<NeverType>(norm.buffers))
         result.push_back(builtinTypes->bufferType);
 
-    if (FFlag::LuauSolverV2)
+    if (useNewLuauSolver())
     {
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
         {
-            makeTableShared(table);
+            if (!FFlag::LuauRefineTablesWithReadType)
+                makeTableShared(table);
             result.push_back(table);
         }
     }
@@ -3420,82 +3375,110 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         return arena->addType(UnionType{std::move(result)});
 }
 
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+bool isSubtype(
+    TypeId subTy,
+    TypeId superTy,
+    NotNull<Scope> scope,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Simplifier> simplifier,
+    InternalErrorReporter& ice,
+    SolverMode solverMode
+)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    TypeCheckLimits limits;
+    TypeFunctionRuntime typeFunctionRuntime{
+        NotNull{&ice}, NotNull{&limits}
+    }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    // Subtyping under DCR is not implemented using unification!
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
     {
-        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}};
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
+        if (solverMode == SolverMode::New)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-        return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subTy, superTy);
+            return !u.failure;
+        }
     }
     else
     {
-        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+        if (FFlag::LuauSolverV2)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-        u.tryUnify(subTy, superTy);
-        return !u.failure;
+            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subTy, superTy);
+            return !u.failure;
+        }
     }
 }
 
-bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
-{
-    UnifierSharedState sharedState{&ice};
-    TypeArena arena;
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-
-    // Subtyping under DCR is not implemented using unification!
-    if (FFlag::LuauSolverV2)
-    {
-        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}};
-
-        return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
-    }
-    else
-    {
-        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
-
-        u.tryUnify(subPack, superPack);
-        return !u.failure;
-    }
-}
-
-bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
-{
-    LUAU_ASSERT(!FFlag::LuauSolverV2);
-
-    UnifierSharedState sharedState{&ice};
-    TypeArena arena;
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
-
-    u.tryUnify(subTy, superTy);
-    const bool ok = u.errors.empty() && u.log.empty();
-    return ok;
-}
-
-bool isConsistentSubtype(
+bool isSubtype(
     TypePackId subPack,
     TypePackId superPack,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    InternalErrorReporter& ice
+    NotNull<Simplifier> simplifier,
+    InternalErrorReporter& ice,
+    SolverMode solverMode
 )
 {
-    LUAU_ASSERT(!FFlag::LuauSolverV2);
-
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+    TypeCheckLimits limits;
+    TypeFunctionRuntime typeFunctionRuntime{
+        NotNull{&ice}, NotNull{&limits}
+    }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    u.tryUnify(subPack, superPack);
-    const bool ok = u.errors.empty() && u.log.empty();
-    return ok;
+    if (FFlag::LuauUseWorkspacePropToChooseSolver)
+    {
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
+        if (solverMode == SolverMode::New)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+
+            return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subPack, superPack);
+            return !u.failure;
+        }
+    }
+    else
+    {
+        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+        if (FFlag::LuauSolverV2)
+        {
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+
+            return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+        }
+        else
+        {
+            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+            u.tryUnify(subPack, superPack);
+            return !u.failure;
+        }
+    }
 }
 
 } // namespace Luau

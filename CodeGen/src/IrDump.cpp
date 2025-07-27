@@ -4,6 +4,8 @@
 #include "Luau/IrUtils.h"
 
 #include "lua.h"
+#include "lobject.h"
+#include "lstate.h"
 
 #include <stdarg.h>
 
@@ -17,6 +19,7 @@ static const char* textForCondition[] =
 static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(IrCondition::Count), "all conditions have to be covered");
 
 const int kDetailsAlignColumn = 60;
+const unsigned kMaxStringConstantPrintLength = 16;
 
 LUAU_PRINTF_ATTR(2, 3)
 static void append(std::string& result, const char* fmt, ...)
@@ -35,6 +38,17 @@ static void padToDetailColumn(std::string& result, size_t lineStart)
 
     if (pad > 0)
         result.append(pad, ' ');
+}
+
+static bool isPrintableStringConstant(const char* str, size_t len)
+{
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (unsigned(str[i]) < ' ')
+            return false;
+    }
+
+    return true;
 }
 
 static const char* getTagName(uint8_t tag)
@@ -153,6 +167,8 @@ const char* getCmdName(IrCmd cmd)
         return "ABS_NUM";
     case IrCmd::SIGN_NUM:
         return "SIGN_NUM";
+    case IrCmd::SELECT_NUM:
+        return "SELECT_NUM";
     case IrCmd::ADD_VEC:
         return "ADD_VEC";
     case IrCmd::SUB_VEC:
@@ -163,6 +179,8 @@ const char* getCmdName(IrCmd cmd)
         return "DIV_VEC";
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
+    case IrCmd::DOT_VEC:
+        return "DOT_VEC";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::CMP_ANY:
@@ -233,6 +251,8 @@ const char* getCmdName(IrCmd cmd)
         return "SET_TABLE";
     case IrCmd::GET_IMPORT:
         return "GET_IMPORT";
+    case IrCmd::GET_CACHED_IMPORT:
+        return "GET_CACHED_IMPORT";
     case IrCmd::CONCAT:
         return "CONCAT";
     case IrCmd::GET_UPVALUE:
@@ -426,6 +446,53 @@ void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
     append(ctx.result, "%s_%u", getBlockKindName(block.kind), index);
 }
 
+static void appendVmConstant(std::string& result, Proto* proto, int index)
+{
+    TValue constant = proto->k[index];
+
+    if (constant.tt == LUA_TNIL)
+    {
+        append(result, "nil");
+    }
+    else if (constant.tt == LUA_TBOOLEAN)
+    {
+        append(result, constant.value.b != 0 ? "true" : "false");
+    }
+    else if (constant.tt == LUA_TNUMBER)
+    {
+        if (constant.value.n != constant.value.n)
+            append(result, "nan");
+        else
+            append(result, "%.17g", constant.value.n);
+    }
+    else if (constant.tt == LUA_TSTRING)
+    {
+        TString* str = gco2ts(constant.value.gc);
+        const char* data = getstr(str);
+
+        if (isPrintableStringConstant(data, str->len))
+        {
+            if (str->len < kMaxStringConstantPrintLength)
+                append(result, "'%.*s'", int(str->len), data);
+            else
+                append(result, "'%.*s'...", int(kMaxStringConstantPrintLength), data);
+        }
+    }
+    else if (constant.tt == LUA_TVECTOR)
+    {
+        const float* v = constant.value.v;
+
+#if LUA_VECTOR_SIZE == 4
+        if (v[3] != 0)
+            append(result, "%.9g, %.9g, %.9g, %.9g", v[0], v[1], v[2], v[3]);
+        else
+            append(result, "%.9g, %.9g, %.9g", v[0], v[1], v[2]);
+#else
+        append(result, "%.9g, %.9g, %.9g", v[0], v[1], v[2]);
+#endif
+    }
+}
+
 void toString(IrToStringContext& ctx, IrOp op)
 {
     switch (op.kind)
@@ -436,7 +503,7 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "undef");
         break;
     case IrOpKind::Constant:
-        toString(ctx.result, ctx.constants[op.index]);
+        toString(ctx.result, ctx.proto, ctx.constants[op.index]);
         break;
     case IrOpKind::Condition:
         CODEGEN_ASSERT(op.index < uint32_t(IrCondition::Count));
@@ -453,6 +520,14 @@ void toString(IrToStringContext& ctx, IrOp op)
         break;
     case IrOpKind::VmConst:
         append(ctx.result, "K%d", vmConstOp(op));
+
+        if (ctx.proto)
+        {
+            append(ctx.result, " (");
+            appendVmConstant(ctx.result, ctx.proto, vmConstOp(op));
+            append(ctx.result, ")");
+        }
+
         break;
     case IrOpKind::VmUpvalue:
         append(ctx.result, "U%d", vmUpvalueOp(op));
@@ -466,7 +541,7 @@ void toString(IrToStringContext& ctx, IrOp op)
     }
 }
 
-void toString(std::string& result, IrConst constant)
+void toString(std::string& result, Proto* proto, IrConst constant)
 {
     switch (constant.kind)
     {
@@ -484,6 +559,36 @@ void toString(std::string& result, IrConst constant)
         break;
     case IrConstKind::Tag:
         result.append(getTagName(constant.valueTag));
+        break;
+    case IrConstKind::Import:
+        append(result, "%uu", constant.valueUint);
+
+        if (proto)
+        {
+            append(result, " (");
+
+            int count = constant.valueUint >> 30;
+            int id0 = count > 0 ? int(constant.valueUint >> 20) & 1023 : -1;
+            int id1 = count > 1 ? int(constant.valueUint >> 10) & 1023 : -1;
+            int id2 = count > 2 ? int(constant.valueUint) & 1023 : -1;
+
+            if (id0 != -1)
+                appendVmConstant(result, proto, id0);
+
+            if (id1 != -1)
+            {
+                append(result, ".");
+                appendVmConstant(result, proto, id1);
+            }
+
+            if (id2 != -1)
+            {
+                append(result, ".");
+                appendVmConstant(result, proto, id2);
+            }
+
+            append(result, ")");
+        }
         break;
     }
 }
@@ -765,7 +870,7 @@ void toStringDetailed(
 std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -872,7 +977,7 @@ static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, boo
 std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -919,7 +1024,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
 std::string toDotCfg(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -942,7 +1047,7 @@ std::string toDotCfg(const IrFunction& function)
 std::string toDotDjGraph(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
 

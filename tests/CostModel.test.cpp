@@ -12,7 +12,7 @@ namespace Luau
 namespace Compile
 {
 
-uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount, const DenseHashMap<AstExprCall*, int>& builtins);
+uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount);
 int computeCost(uint64_t model, const bool* varsConst, size_t varCount);
 
 } // namespace Compile
@@ -31,7 +31,7 @@ static uint64_t modelFunction(const char* source)
     AstStatFunction* func = result.root->body.data[0]->as<AstStatFunction>();
     REQUIRE(func);
 
-    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size, DenseHashMap<AstExprCall*, int>{nullptr});
+    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size);
 }
 
 TEST_CASE("Expression")
@@ -129,35 +129,6 @@ end
     // note: we currently don't treat fast calls differently from cost model perspective
     CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
     CHECK_EQ(5, Luau::Compile::computeCost(model, args2, 1));
-}
-
-TEST_CASE("ControlFlow")
-{
-    uint64_t model = modelFunction(R"(
-function test(a)
-    while a < 0 do
-        a += 1
-    end
-    for i=10,1,-1 do
-        a += 1
-    end
-    for i in pairs({}) do
-        a += 1
-        if a % 2 == 0 then continue end
-    end
-    repeat
-        a += 1
-        if a % 2 == 0 then break end
-    until a > 10
-    return a
-end
-)");
-
-    const bool args1[] = {false};
-    const bool args2[] = {true};
-
-    CHECK_EQ(76, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(73, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("Conditional")

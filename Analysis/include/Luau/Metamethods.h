@@ -8,7 +8,7 @@
 namespace Luau
 {
 
-static const std::unordered_map<AstExprBinary::Op, const char*> kBinaryOpMetamethods{
+inline const std::unordered_map<AstExprBinary::Op, const char*> kBinaryOpMetamethods{
     {AstExprBinary::Op::CompareEq, "__eq"},
     {AstExprBinary::Op::CompareNe, "__eq"},
     {AstExprBinary::Op::CompareGe, "__lt"},
@@ -25,7 +25,7 @@ static const std::unordered_map<AstExprBinary::Op, const char*> kBinaryOpMetamet
     {AstExprBinary::Op::Concat, "__concat"},
 };
 
-static const std::unordered_map<AstExprUnary::Op, const char*> kUnaryOpMetamethods{
+inline const std::unordered_map<AstExprUnary::Op, const char*> kUnaryOpMetamethods{
     {AstExprUnary::Op::Minus, "__unm"},
     {AstExprUnary::Op::Len, "__len"},
 };

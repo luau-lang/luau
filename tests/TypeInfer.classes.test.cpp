@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
+#include "Luau/Error.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
 
@@ -13,11 +14,13 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
+LUAU_FASTFLAG(LuauScopeMethodsAreSolverAgnostic)
 
-TEST_SUITE_BEGIN("TypeInferClasses");
+TEST_SUITE_BEGIN("TypeInferExternTypes");
 
-TEST_CASE_FIXTURE(ClassFixture, "Luau.Analyze.CLI_crashes_on_this_test")
+TEST_CASE_FIXTURE(ExternTypeFixture, "Luau.Analyze.CLI_crashes_on_this_test")
 {
     CheckResult result = check(R"(
         local CircularQueue = {}
@@ -50,7 +53,7 @@ return CircularQueue
     )");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "call_method_of_a_class")
 {
     CheckResult result = check(R"(
         local m = BaseClass.StaticMethod()
@@ -61,7 +64,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
     REQUIRE_EQ("number", toString(requireType("m")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_child_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "call_method_of_a_child_class")
 {
     CheckResult result = check(R"(
         local m = ChildClass.StaticMethod()
@@ -72,7 +75,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_child_class")
     REQUIRE_EQ("number", toString(requireType("m")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "call_instance_method")
+TEST_CASE_FIXTURE(ExternTypeFixture, "call_instance_method")
 {
     CheckResult result = check(R"(
         local i = ChildClass.New()
@@ -84,7 +87,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_instance_method")
     CHECK_EQ("string", toString(requireType("result")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "call_base_method")
+TEST_CASE_FIXTURE(ExternTypeFixture, "call_base_method")
 {
     CheckResult result = check(R"(
         local i = ChildClass.New()
@@ -94,7 +97,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_base_method")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "cannot_call_unknown_method_of_a_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_call_unknown_method_of_a_class")
 {
     CheckResult result = check(R"(
         local m = BaseClass.Nope()
@@ -103,7 +106,7 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_call_unknown_method_of_a_class")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "cannot_call_method_of_child_on_base_instance")
+TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_call_method_of_child_on_base_instance")
 {
     CheckResult result = check(R"(
         local i = BaseClass.New()
@@ -113,7 +116,7 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_call_method_of_child_on_base_instance")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "we_can_infer_that_a_parameter_must_be_a_particular_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_infer_that_a_parameter_must_be_a_particular_class")
 {
     CheckResult result = check(R"(
         function makeClone(o)
@@ -126,10 +129,8 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_infer_that_a_parameter_must_be_a_particu
     CHECK_EQ("BaseClass", toString(requireType("a")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-
     CheckResult result = check(R"(
         function makeClone(o)
             return BaseClass.Clone(o)
@@ -154,7 +155,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_t
     CHECK_EQ("BaseClass", toString(tm->wantedType));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class_using_new_solver")
+TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class_using_new_solver")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
@@ -182,7 +183,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_t
     CHECK_EQ("BaseClass", toString(tm->wantedType));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "assign_to_prop_of_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "assign_to_prop_of_class")
 {
     CheckResult result = check(R"(
         local v = Vector2.New(0, 5)
@@ -192,7 +193,7 @@ TEST_CASE_FIXTURE(ClassFixture, "assign_to_prop_of_class")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "can_read_prop_of_base_class")
 {
     CheckResult result = check(R"(
         local c = ChildClass.New()
@@ -202,7 +203,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class")
+TEST_CASE_FIXTURE(ExternTypeFixture, "can_assign_to_prop_of_base_class")
 {
     CheckResult result = check(R"(
         local c = ChildClass.New()
@@ -212,7 +213,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class_using_string")
+TEST_CASE_FIXTURE(ExternTypeFixture, "can_read_prop_of_base_class_using_string")
 {
     CheckResult result = check(R"(
         local c = ChildClass.New()
@@ -222,7 +223,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class_using_string")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
+TEST_CASE_FIXTURE(ExternTypeFixture, "can_assign_to_prop_of_base_class_using_string")
 {
     CheckResult result = check(R"(
         local c = ChildClass.New()
@@ -232,10 +233,10 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "cannot_unify_class_instance_with_primitive")
+TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_unify_class_instance_with_primitive")
 {
     // This is allowed in the new solver
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local v = Vector2.New(0, 5)
@@ -245,7 +246,7 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_unify_class_instance_with_primitive")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "warn_when_prop_almost_matches")
+TEST_CASE_FIXTURE(ExternTypeFixture, "warn_when_prop_almost_matches")
 {
     CheckResult result = check(R"(
         Vector2.new(0, 0)
@@ -260,7 +261,7 @@ TEST_CASE_FIXTURE(ClassFixture, "warn_when_prop_almost_matches")
     CHECK_EQ("New", *err->candidates.begin());
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "classes_can_have_overloaded_operators")
+TEST_CASE_FIXTURE(ExternTypeFixture, "extern_types_can_have_overloaded_operators")
 {
     CheckResult result = check(R"(
         local a = Vector2.New(1, 2)
@@ -273,7 +274,7 @@ TEST_CASE_FIXTURE(ClassFixture, "classes_can_have_overloaded_operators")
     CHECK_EQ("Vector2", toString(requireType("c")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "classes_without_overloaded_operators_cannot_be_added")
+TEST_CASE_FIXTURE(ExternTypeFixture, "extern_types_without_overloaded_operators_cannot_be_added")
 {
     CheckResult result = check(R"(
         local a = BaseClass.New()
@@ -284,7 +285,7 @@ TEST_CASE_FIXTURE(ClassFixture, "classes_without_overloaded_operators_cannot_be_
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "function_arguments_are_covariant")
+TEST_CASE_FIXTURE(ExternTypeFixture, "function_arguments_are_covariant")
 {
     CheckResult result = check(R"(
         function f(b: BaseClass) end
@@ -295,7 +296,7 @@ TEST_CASE_FIXTURE(ClassFixture, "function_arguments_are_covariant")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_arguments_are_contravariant")
+TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_arguments_are_contravariant")
 {
     CheckResult result = check(R"(
         function apply(f: (BaseClass) -> ())
@@ -308,7 +309,7 @@ TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_arguments_are_contravaria
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_values_are_covariant")
+TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_values_are_covariant")
 {
     CheckResult result = check(R"(
         function apply(f: () -> BaseClass)
@@ -323,7 +324,7 @@ TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_values_are_covaria
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_type_is_not_contravariant")
+TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_type_is_not_contravariant")
 {
     CheckResult result = check(R"(
         function apply(f: () -> BaseClass)
@@ -338,7 +339,7 @@ TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_type_is_not_contra
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "table_properties_are_invariant")
+TEST_CASE_FIXTURE(ExternTypeFixture, "table_properties_are_invariant")
 {
     CheckResult result = check(R"(
         function f(a: {foo: BaseClass})
@@ -361,7 +362,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_properties_are_invariant")
     CHECK_EQ(13, result.errors[1].location.begin.line);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "table_indexers_are_invariant")
+TEST_CASE_FIXTURE(ExternTypeFixture, "table_indexers_are_invariant")
 {
     CheckResult result = check(R"(
         function f(a: {[number]: BaseClass})
@@ -384,7 +385,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_indexers_are_invariant")
     CHECK_EQ(13, result.errors[1].location.begin.line);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "table_class_unification_reports_sane_errors_for_missing_properties")
+TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_errors_for_missing_properties")
 {
     CheckResult result = check(R"(
         function foo(bar)
@@ -410,7 +411,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_class_unification_reports_sane_errors_for
     }
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "class_unification_type_mismatch_is_correct_order")
+TEST_CASE_FIXTURE(ExternTypeFixture, "class_unification_type_mismatch_is_correct_order")
 {
     CheckResult result = check(R"(
         local p: BaseClass
@@ -424,7 +425,7 @@ TEST_CASE_FIXTURE(ClassFixture, "class_unification_type_mismatch_is_correct_orde
     REQUIRE_EQ("Type 'number' could not be converted into 'BaseClass'", toString(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "optional_class_field_access_error")
+TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_field_access_error")
 {
     CheckResult result = check(R"(
 local b: Vector2? = nil
@@ -440,8 +441,10 @@ b.X = 2 -- real Vector2.X is also read-only
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
+TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
+
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -456,7 +459,10 @@ b(a)
 
     if (FFlag::LuauSolverV2)
     {
-        CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors.at(0)));
+        const std::string expected = "Type 'Vector2' could not be converted into '{ read X: unknown, read Y: string }'; \n"
+                                     "this is because accessing `Y` results in `number` in the former type and `string` in the latter type, "
+                                     "and `number` is not a subtype of `string`";
+        CHECK_EQ(expected, toString(result.errors.at(0)));
     }
     else
     {
@@ -469,11 +475,8 @@ Type 'number' could not be converted into 'string')";
     }
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")
+TEST_CASE_FIXTURE(ExternTypeFixture, "class_type_mismatch_with_name_conflict")
 {
-    // CLI-116433
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-
     CheckResult result = check(R"(
 local i = ChildClass.New()
 type ChildClass = { x: number }
@@ -484,7 +487,7 @@ local a: ChildClass = i
     CHECK_EQ("Type 'ChildClass' from 'Test' could not be converted into 'ChildClass' from 'MainModule'", toString(result.errors.at(0)));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "intersections_of_unions_of_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "intersections_of_unions_of_extern_types")
 {
     CheckResult result = check(R"(
         local x : (BaseClass | Vector2) & (ChildClass | AnotherChild)
@@ -496,7 +499,7 @@ TEST_CASE_FIXTURE(ClassFixture, "intersections_of_unions_of_classes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "unions_of_intersections_of_extern_types")
 {
     CheckResult result = check(R"(
         local x : (BaseClass & ChildClass) | (BaseClass & AnotherChild) | (BaseClass & Vector2)
@@ -508,7 +511,7 @@ TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_instance_property")
+TEST_CASE_FIXTURE(ExternTypeFixture, "index_instance_property")
 {
     CheckResult result = check(R"(
         local function execute(object: BaseClass, name: string)
@@ -520,7 +523,7 @@ TEST_CASE_FIXTURE(ClassFixture, "index_instance_property")
     CHECK_EQ("Attempting a dynamic property access on type 'BaseClass' is unsafe and may cause exceptions at runtime", toString(result.errors.at(0)));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_instance_property_nonstrict")
+TEST_CASE_FIXTURE(ExternTypeFixture, "index_instance_property_nonstrict")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -533,7 +536,7 @@ TEST_CASE_FIXTURE(ClassFixture, "index_instance_property_nonstrict")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "type_mismatch_invariance_required_for_error")
+TEST_CASE_FIXTURE(ExternTypeFixture, "type_mismatch_invariance_required_for_error")
 {
     CheckResult result = check(R"(
 type A = { x: ChildClass }
@@ -546,7 +549,11 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK(toString(result.errors.at(0)) == "Type 'A' could not be converted into 'B'; at [read \"x\"], ChildClass is not exactly BaseClass");
+        CHECK(
+            "Type 'A' could not be converted into 'B'; \n"
+            "this is because accessing `x` results in `ChildClass` in the former type and `BaseClass` in the latter type, and `ChildClass` is not "
+            "exactly `BaseClass`" == toString(result.errors.at(0))
+        );
     else
     {
         const std::string expected = R"(Type 'A' could not be converted into 'B'
@@ -557,7 +564,7 @@ Type 'ChildClass' could not be converted into 'BaseClass' in an invariant contex
     }
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "optional_class_casts_work_in_new_solver")
+TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_casts_work_in_new_solver")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
@@ -582,7 +589,7 @@ TEST_CASE_FIXTURE(ClassFixture, "optional_class_casts_work_in_new_solver")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
 {
     CheckResult result = check(R"(
         local x : CallableClass
@@ -593,7 +600,7 @@ TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
     CHECK_EQ("number", toString(requireType("y")));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 {
     // Test reading from an index
     {
@@ -665,12 +672,11 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
         )");
 
         if (FFlag::LuauSolverV2)
-            CHECK(
-                "Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0))
-            );
+            CHECK("Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0)));
         else
             CHECK_EQ(
-                toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
+                toString(result.errors.at(0)),
+                "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
             );
     }
     {
@@ -680,12 +686,11 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
         )");
 
         if (FFlag::LuauSolverV2)
-            CHECK(
-                "Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0))
-            );
+            CHECK("Type 'boolean' could not be converted into 'number | string'" == toString(result.errors.at(0)));
         else
             CHECK_EQ(
-                toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
+                toString(result.errors.at(0)),
+                "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible"
             );
     }
 
@@ -768,23 +773,23 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    TypeArena& arena = frontend.globals.globalTypes;
+    TypeArena& arena = getFrontend().globals.globalTypes;
 
     unfreeze(arena);
 
-    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
-    getMutable<ClassType>(instanceType)->props = {{"Parent", Property::rw(instanceType)}};
+    TypeId instanceType = arena.addType(ExternType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    getMutable<ExternType>(instanceType)->props = {{"Parent", Property::rw(instanceType)}};
 
     //
 
-    TypeId workspaceType = arena.addType(ClassType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test", {}});
+    TypeId workspaceType = arena.addType(ExternType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test", {}});
 
     TypeId scriptType =
-        arena.addType(ClassType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test", {}});
+        arena.addType(ExternType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test", {}});
 
-    TypeId partType = arena.addType(ClassType{
+    TypeId partType = arena.addType(ExternType{
         "Part",
-        {{"BrickColor", Property::rw(builtinTypes->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
+        {{"BrickColor", Property::rw(getBuiltins()->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
         instanceType,
         nullopt,
         {},
@@ -793,9 +798,9 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
         {}
     });
 
-    getMutable<ClassType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
+    getMutable<ExternType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
 
-    frontend.globals.globalScope->bindings[frontend.globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
+    getFrontend().globals.globalScope->bindings[getFrontend().globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
 
     freeze(arena);
 
@@ -809,11 +814,11 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
     CHECK(Location{{1, 40}, {1, 48}} == result.errors[0].location);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK(builtinTypes->stringType == tm->wantedType);
-    CHECK(builtinTypes->numberType == tm->givenType);
+    CHECK(getBuiltins()->stringType == tm->wantedType);
+    CHECK(getBuiltins()->numberType == tm->givenType);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "cannot_index_a_class_with_no_indexer")
+TEST_CASE_FIXTURE(ExternTypeFixture, "cannot_index_a_class_with_no_indexer")
 {
     CheckResult result = check(R"(
         local a = BaseClass.New()
@@ -824,13 +829,14 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_index_a_class_with_no_indexer")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_MESSAGE(
-        get<DynamicPropertyLookupOnClassesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnClassesUnsafe but got " << result.errors[0]
+        get<DynamicPropertyLookupOnExternTypesUnsafe>(result.errors[0]),
+        "Expected DynamicPropertyLookupOnExternTypesUnsafe but got " << result.errors[0]
     );
 
-    CHECK(builtinTypes->errorType == requireType("c"));
+    CHECK(getBuiltins()->errorType == requireType("c"));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "cyclic_tables_are_assumed_to_be_compatible_with_classes")
+TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible_with_extern_types")
 {
     /*
      * This is technically documenting a case where we are intentionally
@@ -887,6 +893,30 @@ TEST_CASE_FIXTURE(ClassFixture, "cyclic_tables_are_assumed_to_be_compatible_with
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "ice_while_checking_script_due_to_scopes_not_being_solver_agnostic")
+{
+    // This is intentional - if LuauSolverV2 is false, but we elect the new solver, we should still follow
+    // new solver code paths.
+    // This is necessary to repro an ice that can occur in studio
+    ScopedFastFlag luauSolverOff{FFlag::LuauSolverV2, false};
+    getFrontend().setLuauSolverSelectionFromWorkspace(SolverMode::New);
+    ScopedFastFlag sff{FFlag::LuauScopeMethodsAreSolverAgnostic, true};
+
+    auto result = check(R"(
+local function ExitSeat(player, character, seat, weld)
+    --Find vehicle model
+    local model
+    local newParent = seat
+    repeat
+        model = newParent
+        newParent = model.Parent
+    until newParent.ClassName ~= "Model"
+    local part, _ = Raycast(seat.Position, dir, dist, {character, model})
+end
+)");
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

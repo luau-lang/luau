@@ -1,102 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
+LUAU_FASTFLAG(LuauTypeFunOptional)
+
 namespace Luau
 {
 
-static const std::string kBuiltinDefinitionLuaSrcChecked = R"BUILTIN_SRC(
-
-declare bit32: {
-    band: @checked (...number) -> number,
-    bor: @checked (...number) -> number,
-    bxor: @checked (...number) -> number,
-    btest: @checked (number, ...number) -> boolean,
-    rrotate: @checked (x: number, disp: number) -> number,
-    lrotate: @checked (x: number, disp: number) -> number,
-    lshift: @checked (x: number, disp: number) -> number,
-    arshift: @checked (x: number, disp: number) -> number,
-    rshift: @checked (x: number, disp: number) -> number,
-    bnot: @checked (x: number) -> number,
-    extract: @checked (n: number, field: number, width: number?) -> number,
-    replace: @checked (n: number, v: number, field: number, width: number?) -> number,
-    countlz: @checked (n: number) -> number,
-    countrz: @checked (n: number) -> number,
-    byteswap: @checked (n: number) -> number,
-}
-
-declare math: {
-    frexp: @checked (n: number) -> (number, number),
-    ldexp: @checked (s: number, e: number) -> number,
-    fmod: @checked (x: number, y: number) -> number,
-    modf: @checked (n: number) -> (number, number),
-    pow: @checked (x: number, y: number) -> number,
-    exp: @checked (n: number) -> number,
-
-    ceil: @checked (n: number) -> number,
-    floor: @checked (n: number) -> number,
-    abs: @checked (n: number) -> number,
-    sqrt: @checked (n: number) -> number,
-
-    log: @checked (n: number, base: number?) -> number,
-    log10: @checked (n: number) -> number,
-
-    rad: @checked (n: number) -> number,
-    deg: @checked (n: number) -> number,
-
-    sin: @checked (n: number) -> number,
-    cos: @checked (n: number) -> number,
-    tan: @checked (n: number) -> number,
-    sinh: @checked (n: number) -> number,
-    cosh: @checked (n: number) -> number,
-    tanh: @checked (n: number) -> number,
-    atan: @checked (n: number) -> number,
-    acos: @checked (n: number) -> number,
-    asin: @checked (n: number) -> number,
-    atan2: @checked (y: number, x: number) -> number,
-
-    min: @checked (number, ...number) -> number,
-    max: @checked (number, ...number) -> number,
-
-    pi: number,
-    huge: number,
-
-    randomseed: @checked (seed: number) -> (),
-    random: @checked (number?, number?) -> number,
-
-    sign: @checked (n: number) -> number,
-    clamp: @checked (n: number, min: number, max: number) -> number,
-    noise: @checked (x: number, y: number?, z: number?) -> number,
-    round: @checked (n: number) -> number,
-}
-
-type DateTypeArg = {
-    year: number,
-    month: number,
-    day: number,
-    hour: number?,
-    min: number?,
-    sec: number?,
-    isdst: boolean?,
-}
-
-type DateTypeResult = {
-    year: number,
-    month: number,
-    wday: number,
-    yday: number,
-    day: number,
-    hour: number,
-    min: number,
-    sec: number,
-    isdst: boolean,
-}
-
-declare os: {
-    time: (time: DateTypeArg?) -> number,
-    date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
-    difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
-    clock: () -> number,
-}
+static constexpr const char* kBuiltinDefinitionBaseSrc = R"BUILTIN_SRC(
 
 @checked declare function require(target: any): any
 
@@ -144,6 +54,119 @@ declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> 
 
 @checked declare function newproxy(mt: boolean?): any
 
+-- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
+declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionBit32Src = R"BUILTIN_SRC(
+
+declare bit32: {
+    band: @checked (...number) -> number,
+    bor: @checked (...number) -> number,
+    bxor: @checked (...number) -> number,
+    btest: @checked (number, ...number) -> boolean,
+    rrotate: @checked (x: number, disp: number) -> number,
+    lrotate: @checked (x: number, disp: number) -> number,
+    lshift: @checked (x: number, disp: number) -> number,
+    arshift: @checked (x: number, disp: number) -> number,
+    rshift: @checked (x: number, disp: number) -> number,
+    bnot: @checked (x: number) -> number,
+    extract: @checked (n: number, field: number, width: number?) -> number,
+    replace: @checked (n: number, v: number, field: number, width: number?) -> number,
+    countlz: @checked (n: number) -> number,
+    countrz: @checked (n: number) -> number,
+    byteswap: @checked (n: number) -> number,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionMathSrc = R"BUILTIN_SRC(
+
+declare math: {
+    frexp: @checked (n: number) -> (number, number),
+    ldexp: @checked (s: number, e: number) -> number,
+    fmod: @checked (x: number, y: number) -> number,
+    modf: @checked (n: number) -> (number, number),
+    pow: @checked (x: number, y: number) -> number,
+    exp: @checked (n: number) -> number,
+
+    ceil: @checked (n: number) -> number,
+    floor: @checked (n: number) -> number,
+    abs: @checked (n: number) -> number,
+    sqrt: @checked (n: number) -> number,
+
+    log: @checked (n: number, base: number?) -> number,
+    log10: @checked (n: number) -> number,
+
+    rad: @checked (n: number) -> number,
+    deg: @checked (n: number) -> number,
+
+    sin: @checked (n: number) -> number,
+    cos: @checked (n: number) -> number,
+    tan: @checked (n: number) -> number,
+    sinh: @checked (n: number) -> number,
+    cosh: @checked (n: number) -> number,
+    tanh: @checked (n: number) -> number,
+    atan: @checked (n: number) -> number,
+    acos: @checked (n: number) -> number,
+    asin: @checked (n: number) -> number,
+    atan2: @checked (y: number, x: number) -> number,
+
+    min: @checked (number, ...number) -> number,
+    max: @checked (number, ...number) -> number,
+
+    pi: number,
+    huge: number,
+
+    randomseed: @checked (seed: number) -> (),
+    random: @checked (number?, number?) -> number,
+
+    sign: @checked (n: number) -> number,
+    clamp: @checked (n: number, min: number, max: number) -> number,
+    noise: @checked (x: number, y: number?, z: number?) -> number,
+    round: @checked (n: number) -> number,
+    map: @checked (x: number, inmin: number, inmax: number, outmin: number, outmax: number) -> number,
+    lerp: @checked (a: number, b: number, t: number) -> number,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionOsSrc = R"BUILTIN_SRC(
+
+type DateTypeArg = {
+    year: number,
+    month: number,
+    day: number,
+    hour: number?,
+    min: number?,
+    sec: number?,
+    isdst: boolean?,
+}
+
+type DateTypeResult = {
+    year: number,
+    month: number,
+    wday: number,
+    yday: number,
+    day: number,
+    hour: number,
+    min: number,
+    sec: number,
+    isdst: boolean,
+}
+
+declare os: {
+    time: (time: DateTypeArg?) -> number,
+    date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
+    difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
+    clock: () -> number,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+
 declare coroutine: {
     create: <A..., R...>(f: (A...) -> R...) -> thread,
     resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
@@ -154,6 +177,10 @@ declare coroutine: {
     isyieldable: () -> boolean,
     close: @checked (co: thread) -> (boolean, any)
 }
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTableSrc = R"BUILTIN_SRC(
 
 declare table: {
     concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
@@ -177,10 +204,18 @@ declare table: {
     isfrozen: <K, V>(t: {[K]: V}) -> boolean,
 }
 
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionDebugSrc = R"BUILTIN_SRC(
+
 declare debug: {
-    info: (<R...>(thread: thread, level: number, options: string) -> R...) & (<R...>(level: number, options: string) -> R...) & (<A..., R1..., R2...>(func: (A...) -> R1..., options: string) -> R2...),
+    info: ((thread: thread, level: number, options: string) -> ...any) & ((level: number, options: string) -> ...any) & (<A..., R1...>(func: (A...) -> R1..., options: string) -> ...any),
     traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
 }
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionUtf8Src = R"BUILTIN_SRC(
 
 declare utf8: {
     char: @checked (...number) -> string,
@@ -191,10 +226,9 @@ declare utf8: {
     offset: @checked (s: string, n: number?, i: number?) -> number,
 }
 
--- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
-declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
+)BUILTIN_SRC";
 
-
+static constexpr const char* kBuiltinDefinitionBufferSrc = R"BUILTIN_SRC(
 --- Buffer API
 declare buffer: {
     create: @checked (size: number) -> buffer,
@@ -221,13 +255,171 @@ declare buffer: {
     writef64: @checked (b: buffer, offset: number, value: number) -> (),
     readstring: @checked (b: buffer, offset: number, count: number) -> string,
     writestring: @checked (b: buffer, offset: number, value: string, count: number?) -> (),
+    readbits: @checked (b: buffer, bitOffset: number, bitCount: number) -> number,
+    writebits: @checked (b: buffer, bitOffset: number, bitCount: number, value: number) -> (),
+}
+
+)BUILTIN_SRC";
+
+static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
+    x: number
+    y: number
+    z: number
+end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?) -> vector,
+    magnitude: @checked (vec: vector) -> number,
+    normalize: @checked (vec: vector) -> vector,
+    cross: @checked (vec1: vector, vec2: vector) -> vector,
+    dot: @checked (vec1: vector, vec2: vector) -> number,
+    angle: @checked (vec1: vector, vec2: vector, axis: vector?) -> number,
+    floor: @checked (vec: vector) -> vector,
+    ceil: @checked (vec: vector) -> vector,
+    abs: @checked (vec: vector) -> vector,
+    sign: @checked (vec: vector) -> vector,
+    clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
+    max: @checked (vector, ...vector) -> vector,
+    min: @checked (vector, ...vector) -> vector,
+
+    zero: vector,
+    one: vector,
 }
 
 )BUILTIN_SRC";
 
 std::string getBuiltinDefinitionSource()
 {
-    std::string result = kBuiltinDefinitionLuaSrcChecked;
+    std::string result = kBuiltinDefinitionBaseSrc;
+
+    result += kBuiltinDefinitionBit32Src;
+    result += kBuiltinDefinitionMathSrc;
+    result += kBuiltinDefinitionOsSrc;
+    result += kBuiltinDefinitionCoroutineSrc;
+    result += kBuiltinDefinitionTableSrc;
+    result += kBuiltinDefinitionDebugSrc;
+    result += kBuiltinDefinitionUtf8Src;
+    result += kBuiltinDefinitionBufferSrc;
+    result += kBuiltinDefinitionVectorSrc;
+
+    return result;
+}
+
+// TODO: split into separate tagged unions when the new solver can appropriately handle that.
+static constexpr const char* kBuiltinDefinitionTypeMethodSrc = R"BUILTIN_SRC(
+
+export type type = {
+    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
+         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
+
+    is: (self: type, arg: string) -> boolean,
+
+    -- for singleton type
+    value: (self: type) -> (string | boolean | nil),
+
+    -- for negation type
+    inner: (self: type) -> type,
+
+    -- for union and intersection types
+    components: (self: type) -> {type},
+
+    -- for table type
+    setproperty: (self: type, key: type, value: type?) -> (),
+    setreadproperty: (self: type, key: type, value: type?) -> (),
+    setwriteproperty: (self: type, key: type, value: type?) -> (),
+    readproperty: (self: type, key: type) -> type?,
+    writeproperty: (self: type, key: type) -> type?,
+    properties: (self: type) -> { [type]: { read: type?, write: type? } },
+    setindexer: (self: type, index: type, result: type) -> (),
+    setreadindexer: (self: type, index: type, result: type) -> (),
+    setwriteindexer: (self: type, index: type, result: type) -> (),
+    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
+    readindexer: (self: type) -> { index: type, result: type }?,
+    writeindexer: (self: type) -> { index: type, result: type }?,
+    setmetatable: (self: type, arg: type) -> (),
+    metatable: (self: type) -> type?,
+
+    -- for function type
+    setparameters: (self: type, head: {type}?, tail: type?) -> (),
+    parameters: (self: type) -> { head: {type}?, tail: type? },
+    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
+    returns: (self: type) -> { head: {type}?, tail: type? },
+    setgenerics: (self: type, {type}?) -> (),
+    generics: (self: type) -> {type},
+
+    -- for class type
+    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
+    readparent: (self: type) -> type?,
+    writeparent: (self: type) -> type?,
+
+    -- for generic type
+    name: (self: type) -> string?,
+    ispack: (self: type) -> boolean,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
+
+declare types: {
+    unknown: type,
+    never: type,
+    any: type,
+    boolean: type,
+    number: type,
+    string: type,
+    thread: type,
+    buffer: type,
+
+    singleton: @checked (arg: string | boolean | nil) -> type,
+    generic: @checked (name: string, ispack: boolean?) -> type,
+    negationof: @checked (arg: type) -> type,
+    unionof: @checked (...type) -> type,
+    intersectionof: @checked (...type) -> type,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTypesLibWithOptionalSrc = R"BUILTIN_SRC(
+
+declare types: {
+    unknown: type,
+    never: type,
+    any: type,
+    boolean: type,
+    number: type,
+    string: type,
+    thread: type,
+    buffer: type,
+
+    singleton: @checked (arg: string | boolean | nil) -> type,
+    optional: @checked (arg: type) -> type,
+    generic: @checked (name: string, ispack: boolean?) -> type,
+    negationof: @checked (arg: type) -> type,
+    unionof: @checked (...type) -> type,
+    intersectionof: @checked (...type) -> type,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
+
+std::string getTypeFunctionDefinitionSource()
+{
+
+    std::string result = kBuiltinDefinitionTypeMethodSrc;
+
+    if (FFlag::LuauTypeFunOptional)
+        result += kBuiltinDefinitionTypesLibWithOptionalSrc;
+    else
+        result += kBuiltinDefinitionTypesLibSrc;
+
     return result;
 }
 

@@ -29,8 +29,8 @@ jobs:
   build:
     needs: ["create-release"]
     strategy:
-      matrix: # using ubuntu-20.04 to build a Linux binary targeting older glibc to improve compatibility
-        os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
+      matrix: # not using ubuntu-latest to improve compatibility
+        os: [{name: ubuntu, version: ubuntu-22.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
     name: ${{matrix.os.name}}
     runs-on: ${{matrix.os.version}}
     steps:
@@ -38,7 +38,7 @@ jobs:
     - name: configure
       run: cmake . -DCMAKE_BUILD_TYPE=Release
     - name: build
-      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI --config Release -j 2
+      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI Luau.Ast.CLI --config Release -j 2
     - name: pack
       if: matrix.os.name != 'windows'
       run: zip luau-${{matrix.os.name}}.zip luau*

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeAttach.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Error.h"
 #include "Luau/Module.h"
 #include "Luau/RecursionCounter.h"
@@ -12,6 +13,8 @@
 #include "Luau/TypeFunction.h"
 
 #include <string>
+
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
@@ -145,6 +148,12 @@ public:
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("any"), std::nullopt, Location());
     }
+
+    AstType* operator()(const NoRefineType&)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*no-refine*"), std::nullopt, Location());
+    }
+
     AstType* operator()(const TableType& ttv)
     {
         RecursionCounter counter(&count);
@@ -188,10 +197,44 @@ public:
 
             char* name = allocateString(*allocator, propName);
 
-            props.data[idx].name = AstName(name);
-            props.data[idx].type = Luau::visit(*this, prop.type()->ty);
-            props.data[idx].location = Location();
-            idx++;
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            {
+                if (prop.isShared())
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                    props.data[idx].access = AstTableAccess::ReadWrite;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
+                else
+                {
+                    if (prop.readTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                        props.data[idx].access = AstTableAccess::Read;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+
+                    if (prop.writeTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
+                        props.data[idx].access = AstTableAccess::Write;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+                }
+            }
+            else
+            {
+                props.data[idx].name = AstName(name);
+                props.data[idx].type = Luau::visit(*this, prop.type_DEPRECATED()->ty);
+                props.data[idx].location = Location();
+                idx++;
+            }
         }
 
         AstTableIndexer* indexer = nullptr;
@@ -211,38 +254,72 @@ public:
         return Luau::visit(*this, mtv.table->ty);
     }
 
-    AstType* operator()(const ClassType& ctv)
+    AstType* operator()(const ExternType& etv)
     {
         RecursionCounter counter(&count);
 
-        char* name = allocateString(*allocator, ctv.name);
+        char* name = allocateString(*allocator, etv.name);
 
-        if (!options.expandClassProps || hasSeen(&ctv) || count > 1)
+        if (!options.expandExternTypeProps || hasSeen(&etv) || count > 1)
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{name}, std::nullopt, Location());
 
         AstArray<AstTableProp> props;
-        props.size = ctv.props.size();
+        props.size = etv.props.size();
         props.data = static_cast<AstTableProp*>(allocator->allocate(sizeof(AstTableProp) * props.size));
 
         int idx = 0;
-        for (const auto& [propName, prop] : ctv.props)
+        for (const auto& [propName, prop] : etv.props)
         {
             char* name = allocateString(*allocator, propName);
 
-            props.data[idx].name = AstName{name};
-            props.data[idx].type = Luau::visit(*this, prop.type()->ty);
-            props.data[idx].location = Location();
-            idx++;
+            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            {
+                if (prop.isShared())
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                    props.data[idx].access = AstTableAccess::ReadWrite;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
+                else
+                {
+                    if (prop.readTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                        props.data[idx].access = AstTableAccess::Read;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+
+                    if (prop.writeTy)
+                    {
+                        props.data[idx].name = AstName(name);
+                        props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
+                        props.data[idx].access = AstTableAccess::Write;
+                        props.data[idx].location = Location();
+                        idx++;
+                    }
+                }
+            }
+            else
+            {
+                props.data[idx].name = AstName{name};
+                props.data[idx].type = Luau::visit(*this, prop.type_DEPRECATED()->ty);
+                props.data[idx].location = Location();
+                idx++;
+            }
         }
 
         AstTableIndexer* indexer = nullptr;
-        if (ctv.indexer)
+        if (etv.indexer)
         {
             RecursionCounter counter(&count);
 
             indexer = allocator->alloc<AstTableIndexer>();
-            indexer->indexType = Luau::visit(*this, ctv.indexer->indexType->ty);
-            indexer->resultType = Luau::visit(*this, ctv.indexer->indexResultType->ty);
+            indexer->indexType = Luau::visit(*this, etv.indexer->indexType->ty);
+            indexer->resultType = Luau::visit(*this, etv.indexer->indexResultType->ty);
         }
 
         return allocator->alloc<AstTypeTable>(Location(), props, indexer);
@@ -255,24 +332,24 @@ public:
         if (hasSeen(&ftv))
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("<Cycle>"), std::nullopt, Location());
 
-        AstArray<AstGenericType> generics;
+        AstArray<AstGenericType*> generics;
         generics.size = ftv.generics.size();
-        generics.data = static_cast<AstGenericType*>(allocator->allocate(sizeof(AstGenericType) * generics.size));
+        generics.data = static_cast<AstGenericType**>(allocator->allocate(sizeof(AstGenericType) * generics.size));
         size_t numGenerics = 0;
         for (auto it = ftv.generics.begin(); it != ftv.generics.end(); ++it)
         {
             if (auto gtv = get<GenericType>(*it))
-                generics.data[numGenerics++] = {AstName(gtv->name.c_str()), Location(), nullptr};
+                generics.data[numGenerics++] = allocator->alloc<AstGenericType>(Location(), AstName(gtv->name.c_str()), nullptr);
         }
 
-        AstArray<AstGenericTypePack> genericPacks;
+        AstArray<AstGenericTypePack*> genericPacks;
         genericPacks.size = ftv.genericPacks.size();
-        genericPacks.data = static_cast<AstGenericTypePack*>(allocator->allocate(sizeof(AstGenericTypePack) * genericPacks.size));
+        genericPacks.data = static_cast<AstGenericTypePack**>(allocator->allocate(sizeof(AstGenericTypePack) * genericPacks.size));
         size_t numGenericPacks = 0;
         for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
         {
             if (auto gtv = get<GenericTypePack>(*it))
-                genericPacks.data[numGenericPacks++] = {AstName(gtv->name.c_str()), Location(), nullptr};
+                genericPacks.data[numGenericPacks++] = allocator->alloc<AstGenericTypePack>(Location(), AstName(gtv->name.c_str()), nullptr);
         }
 
         AstArray<AstType*> argTypes;
@@ -299,7 +376,7 @@ public:
             std::optional<AstArgumentName>* arg = &argNames.data[i++];
 
             if (el)
-                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), el->location));
+                new (arg) std::optional<AstArgumentName>(AstArgumentName(AstName(el->name.c_str()), Location()));
             else
                 new (arg) std::optional<AstArgumentName>();
         }
@@ -319,11 +396,12 @@ public:
         if (retTail)
             retTailAnnotation = rehydrate(*retTail);
 
+        auto returnAnnotation = allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{returnTypes, retTailAnnotation});
         return allocator->alloc<AstTypeFunction>(
-            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation}
+            Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, returnAnnotation
         );
     }
-    AstType* operator()(const Unifiable::Error&)
+    AstType* operator()(const ErrorType&)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("Unifiable<Error>"), std::nullopt, Location());
     }
@@ -380,8 +458,12 @@ public:
     }
     AstType* operator()(const NegationType& ntv)
     {
-        // FIXME: do the same thing we do with ErrorType
-        throw InternalCompilerError("Cannot convert NegationType into AstNode");
+        AstArray<AstTypeOrPack> params;
+        params.size = 1;
+        params.data = static_cast<AstTypeOrPack*>(allocator->allocate(sizeof(AstType*)));
+        params.data[0] = AstTypeOrPack{Luau::visit(*this, ntv.ty->ty), nullptr};
+
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("negate"), std::nullopt, Location(), true, params);
     }
     AstType* operator()(const TypeFunctionInstanceType& tfit)
     {
@@ -452,7 +534,7 @@ public:
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("free"));
     }
 
-    AstTypePack* operator()(const Unifiable::Error&) const
+    AstTypePack* operator()(const ErrorTypePack&) const
     {
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("Unifiable<Error>"));
     }
@@ -584,7 +666,7 @@ public:
                 if (tail)
                     variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
 
-                fn->returnAnnotation = AstTypeList{typeAstPack(ret), variadicAnnotation};
+                fn->returnAnnotation = allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{typeAstPack(ret), variadicAnnotation});
             }
         }
 

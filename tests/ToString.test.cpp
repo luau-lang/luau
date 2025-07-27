@@ -5,15 +5,18 @@
 
 #include "Fixture.h"
 
+#include "Luau/TypeChecker2.h"
+#include "Luau/TypePack.h"
 #include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauAttributeSyntax);
-LUAU_FASTFLAG(LuauUserDefinedTypeFunctions)
+LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -45,12 +48,23 @@ TEST_CASE_FIXTURE(Fixture, "bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "free_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check("local a");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("'a", toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "free_types_stringify_the_same_regardless_of_solver")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+    TypeArena a;
+    TypeId t =
+        a.addType(FreeType{getFrontend().globals.globalScope.get(), getFrontend().builtinTypes->neverType, getFrontend().builtinTypes->unknownType});
+
+    CHECK_EQ("'a", toString(t));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table")
@@ -166,7 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "named_metatable")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function createTbl(): NamedMetatable
@@ -212,8 +226,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
         CHECK(
             "t2 where "
             "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }" ==
-            a
+            "t2 = { @metatable t1, { x: number, y: number, z: number } }" == a
         );
     }
     else
@@ -230,27 +243,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_parenthesized_only_if_needed")
 {
-    auto utv = Type{UnionType{{builtinTypes->numberType, builtinTypes->stringType}}};
-    auto itv = Type{IntersectionType{{&utv, builtinTypes->booleanType}}};
+    auto utv = Type{UnionType{{getBuiltins()->numberType, getBuiltins()->stringType}}};
+    auto itv = Type{IntersectionType{{&utv, getBuiltins()->booleanType}}};
 
     CHECK_EQ(toString(&itv), "(number | string) & boolean");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_parenthesized_only_if_needed")
 {
-    auto itv = Type{IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}}};
-    auto utv = Type{UnionType{{&itv, builtinTypes->booleanType}}};
+    auto itv = Type{IntersectionType{{getBuiltins()->numberType, getBuiltins()->stringType}}};
+    auto utv = Type{UnionType{{&itv, getBuiltins()->booleanType}}};
 
     CHECK_EQ(toString(&utv), "(number & string) | boolean");
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_intersections")
 {
-    auto stringAndNumberPack = TypePackVar{TypePack{{builtinTypes->stringType, builtinTypes->numberType}}};
-    auto numberAndStringPack = TypePackVar{TypePack{{builtinTypes->numberType, builtinTypes->stringType}}};
+    auto stringAndNumberPack = TypePackVar{TypePack{{getBuiltins()->stringType, getBuiltins()->numberType}}};
+    auto numberAndStringPack = TypePackVar{TypePack{{getBuiltins()->numberType, getBuiltins()->stringType}}};
 
     auto sn2ns = Type{FunctionType{&stringAndNumberPack, &numberAndStringPack}};
-    auto ns2sn = Type{FunctionType(frontend.globals.globalScope->level, &numberAndStringPack, &stringAndNumberPack)};
+    auto ns2sn = Type{FunctionType(getFrontend().globals.globalScope->level, &numberAndStringPack, &stringAndNumberPack)};
 
     auto utv = Type{UnionType{{&ns2sn, &sn2ns}}};
     auto itv = Type{IntersectionType{{&ns2sn, &sn2ns}}};
@@ -339,7 +352,7 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded
 {
     TableType ttv{};
     for (char c : std::string("abcdefghijklmno"))
-        ttv.props[std::string(1, c)] = {builtinTypes->numberType};
+        ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
 
     Type tv{ttv};
 
@@ -356,7 +369,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaust
 {
     TableType ttv{};
     for (char c : std::string("abcdefg"))
-        ttv.props[std::string(1, c)] = {builtinTypes->numberType};
+        ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
 
     Type tv{ttv};
 
@@ -442,7 +455,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 {
     TableType ttv{TableState::Sealed, TypeLevel{}};
     for (char c : std::string("abcdefghij"))
-        ttv.props[std::string(1, c)] = {builtinTypes->numberType};
+        ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
 
     Type tv{ttv};
 
@@ -456,7 +469,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_union_type_bails_early")
 {
-    Type tv{UnionType{{builtinTypes->stringType, builtinTypes->numberType}}};
+    Type tv{UnionType{{getBuiltins()->stringType, getBuiltins()->numberType}}};
     UnionType* utv = getMutable<UnionType>(&tv);
     utv->options.push_back(&tv);
     utv->options.push_back(&tv);
@@ -477,11 +490,11 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_intersection_type_bails_early")
 TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
 {
     TableType ttv{TableState::Sealed, TypeLevel{}};
-    ttv.indexer = TableIndexer{builtinTypes->numberType, builtinTypes->stringType};
+    ttv.indexer = TableIndexer{getBuiltins()->numberType, getBuiltins()->stringType};
 
     CHECK_EQ("{string}", toString(Type{ttv}));
 
-    ttv.props["A"] = {builtinTypes->numberType};
+    ttv.props["A"] = {getBuiltins()->numberType};
     if (FFlag::LuauSolverV2)
         CHECK_EQ("{ [number]: string, A: number }", toString(Type{ttv}));
     else
@@ -490,6 +503,17 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
     ttv.props.clear();
     ttv.state = TableState::Unsealed;
     CHECK_EQ("{string}", toString(Type{ttv}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "the_empty_type_pack_should_be_parenthesized")
+{
+    ScopedFastFlag sff{FFlag::LuauFixEmptyTypePackStringification, true};
+
+    TypePackVar emptyTypePack{TypePack{}};
+    CHECK_EQ(toString(&emptyTypePack), "()");
+
+    auto unitToUnit = Type{FunctionType{&emptyTypePack, &emptyTypePack}};
+    CHECK_EQ(toString(&unitToUnit), "() -> ()");
 }
 
 
@@ -594,7 +618,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
 local function target(callback: nil) return callback(4, "hello") end
@@ -619,15 +643,15 @@ TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_T
     Type tv1{TableType{}};
     TableType* ttv = getMutable<TableType>(&tv1);
     ttv->state = TableState::Sealed;
-    ttv->props["hello"] = {builtinTypes->numberType};
-    ttv->props["world"] = {builtinTypes->numberType};
+    ttv->props["hello"] = {getBuiltins()->numberType};
+    ttv->props["world"] = {getBuiltins()->numberType};
 
     TypePackVar tpv1{TypePack{{&tv1}}};
 
     Type tv2{TableType{}};
     TableType* bttv = getMutable<TableType>(&tv2);
     bttv->state = TableState::Free;
-    bttv->props["hello"] = {builtinTypes->numberType};
+    bttv->props["hello"] = {getBuiltins()->numberType};
     bttv->boundTo = &tv1;
 
     TypePackVar tpv2{TypePack{{&tv2}}};
@@ -648,10 +672,10 @@ TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_T
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_return_type_if_pack_has_an_empty_head_link")
 {
     TypeArena arena;
-    TypePackId realTail = arena.addTypePack({builtinTypes->stringType});
+    TypePackId realTail = arena.addTypePack({getBuiltins()->stringType});
     TypePackId emptyTail = arena.addTypePack({}, realTail);
 
-    TypePackId argList = arena.addTypePack({builtinTypes->stringType});
+    TypePackId argList = arena.addTypePack({getBuiltins()->stringType});
 
     TypeId functionType = arena.addType(FunctionType{argList, emptyTail});
 
@@ -865,36 +889,40 @@ TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
 
 TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 {
+    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
+
     CheckResult result = check(R"(
         --!strict
-        function f1() : {a : number, b : string, c : { d : number}}
-            return { a = 1, b = "b", c = {d = "d"}}
+        function f1(t: {a : number, b: string, c: {d: string}}) : {a : number, b : string, c : { d : number}}
+            return t
         end
     )");
 
     std::string expected;
     if (FFlag::LuauSolverV2)
-        expected =
-            R"(Type pack '{ a: number, b: string, c: { d: string } }' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0][read "c"][read "d"], string is not exactly number)";
+        expected = "Type\n\t"
+                   "'{ a: number, b: string, c: { d: string } }'\n"
+                   "could not be converted into\n\t"
+                   "'{ a: number, b: string, c: { d: number } }'; \n"
+                   "this is because accessing `c.d` results in `string` in the former type and `number` in the latter "
+                   "type, and `string` is not exactly `number`";
     else
-        expected = R"(Type
-    '{ a: number, b: string, c: { d: string } }'
-could not be converted into
-    '{| a: number, b: string, c: {| d: number |} |}'
-caused by:
-  Property 'c' is not compatible.
-Type
-    '{ d: string }'
-could not be converted into
-    '{| d: number |}'
-caused by:
-  Property 'd' is not compatible.
-Type 'string' could not be converted into 'number' in an invariant context)";
+        expected = "Type\n\t"
+                   "'{| a: number, b: string, c: {| d: string |} |}'\n"
+                   "could not be converted into\n\t"
+                   "'{| a: number, b: string, c: {| d: number |} |}'\n"
+                   "caused by:\n  "
+                   "Property 'c' is not compatible.\n"
+                   "Type\n\t"
+                   "'{| d: string |}'\n"
+                   "could not be converted into\n\t"
+                   "'{| d: number |}'\n"
+                   "caused by:\n  "
+                   "Property 'd' is not compatible.\n"
+                   "Type 'string' could not be converted into 'number' in an invariant context";
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
     std::string actual = toString(result.errors[0]);
-
     CHECK(expected == actual);
 }
 
@@ -937,12 +965,12 @@ TEST_CASE_FIXTURE(Fixture, "cycle_rooted_in_a_pack")
 {
     TypeArena arena;
 
-    TypePackId thePack = arena.addTypePack({builtinTypes->numberType, builtinTypes->numberType});
+    TypePackId thePack = arena.addTypePack({getBuiltins()->numberType, getBuiltins()->numberType});
     TypePack* packPtr = getMutable<TypePack>(thePack);
     REQUIRE(packPtr);
 
     const TableType::Props theProps = {
-        {"BaseField", Property::readonly(builtinTypes->unknownType)},
+        {"BaseField", Property::readonly(getBuiltins()->unknownType)},
         {"BaseMethod", Property::readonly(arena.addType(FunctionType{thePack, arena.addTypePack({})}))}
     };
 
@@ -961,15 +989,15 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
     TypeFunction user{"user", nullptr};
     TypeFunctionInstanceType tftt{
         NotNull{&user},
-        std::vector<TypeId>{builtinTypes->numberType}, // Type Function Arguments
+        std::vector<TypeId>{getBuiltins()->numberType}, // Type Function Arguments
         {},
         {AstName{"woohoo"}}, // Type Function Name
-        std::nullopt
+        {},
     };
 
     Type tv{tftt};
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauUserDefinedTypeFunctions)
+    if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(&tv, {}), "woohoo<number>");
 }
 

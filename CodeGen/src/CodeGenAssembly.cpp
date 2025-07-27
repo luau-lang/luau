@@ -1,9 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/CodeGen.h"
 #include "Luau/BytecodeAnalysis.h"
-#include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeSummary.h"
 #include "Luau/IrDump.h"
+#include "Luau/IrUtils.h"
 
 #include "CodeGenLower.h"
 
@@ -11,8 +10,6 @@
 #include "CodeGenX64.h"
 
 #include "lapi.h"
-
-LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
@@ -138,7 +135,7 @@ unsigned getInstructionCount(const Instruction* insns, const unsigned size)
     for (unsigned i = 0; i < size;)
     {
         ++count;
-        i += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(insns[i])));
+        i += getOpLength(LuauOpcode(LUAU_INSN_OP(insns[i])));
     }
     return count;
 }
@@ -155,10 +152,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
     }
 
     std::vector<Proto*> protos;
-    if (FFlag::LuauNativeAttribute)
-        gatherFunctions(protos, root, options.compilationOptions.flags, root->flags & LPF_NATIVE_FUNCTION);
-    else
-        gatherFunctions_DEPRECATED(protos, root, options.compilationOptions.flags);
+    gatherFunctions(protos, root, options.compilationOptions.flags, root->flags & LPF_NATIVE_FUNCTION);
 
     protos.erase(
         std::remove_if(

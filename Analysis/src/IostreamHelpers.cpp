@@ -1,7 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IostreamHelpers.h"
+#include "Luau/Error.h"
 #include "Luau/ToString.h"
 #include "Luau/TypePath.h"
+
+#include <type_traits>
 
 namespace Luau
 {
@@ -193,8 +196,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "NormalizationTooComplex { }";
     else if constexpr (std::is_same_v<T, TypePackMismatch>)
         stream << "TypePackMismatch { wanted = '" + toString(err.wantedTp) + "', given = '" + toString(err.givenTp) + "' }";
-    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
-        stream << "DynamicPropertyLookupOnClassesUnsafe { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnExternTypesUnsafe>)
+        stream << "DynamicPropertyLookupOnExternTypesUnsafe { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, UninhabitedTypeFunction>)
         stream << "UninhabitedTypeFunction { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, ExplicitFunctionAnnotationRecommended>)
@@ -227,6 +230,10 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnexpectedTypeInSubtyping {  ty = '" + toString(err.ty) + "' }";
     else if constexpr (std::is_same_v<T, UnexpectedTypePackInSubtyping>)
         stream << "UnexpectedTypePackInSubtyping {  tp = '" + toString(err.tp) + "' }";
+    else if constexpr (std::is_same_v<T, UserDefinedTypeFunctionError>)
+        stream << "UserDefinedTypeFunctionError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, ReservedIdentifier>)
+        stream << "ReservedIdentifier { " << err.name << " }";
     else if constexpr (std::is_same_v<T, CannotAssignToNever>)
     {
         stream << "CannotAssignToNever { rvalueType = '" << toString(err.rhsType) << "', reason = '" << err.reason << "', cause = { ";
@@ -244,6 +251,22 @@ static void errorToString(std::ostream& stream, const T& err)
 
         stream << " } } ";
     }
+    else if constexpr (std::is_same_v<T, UnexpectedArrayLikeTableItem>)
+        stream << "UnexpectedArrayLikeTableItem {}";
+    else if constexpr (std::is_same_v<T, CannotCheckDynamicStringFormatCalls>)
+        stream << "CannotCheckDynamicStringFormatCalls {}";
+    else if constexpr (std::is_same_v<T, GenericTypeCountMismatch>)
+    {
+        stream << "GenericTypeCountMismatch { subTyGenericCount = " << err.subTyGenericCount << ", superTyGenericCount = " << err.superTyGenericCount
+               << " }";
+    }
+    else if constexpr (std::is_same_v<T, GenericTypePackCountMismatch>)
+    {
+        stream << "GenericTypePackCountMismatch { subTyGenericPackCount = " << err.subTyGenericPackCount
+               << ", superTyGenericPackCount = " << err.superTyGenericPackCount << " }";
+    }
+    else if constexpr (std::is_same_v<T, MultipleNonviableOverloads>)
+        stream << "MultipleNonviableOverloads { attemptedArgCount = " << err.attemptedArgCount << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

@@ -999,8 +999,9 @@ static int str_format(lua_State* L)
             {
             case 'c':
             {
-                snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
-                break;
+                int count = snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
+                luaL_addlstring(&b, buff, count);
+                continue; // skip the 'luaL_addlstring' at the end
             }
             case 'd':
             case 'i':

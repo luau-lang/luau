@@ -58,6 +58,9 @@ LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, 
 
 LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 
+// wrapper for making calls from yieldable C functions
+LUALIB_API int luaL_callyieldable(lua_State* L, int nargs, int nresults);
+
 /*
 ** ===============================================================
 ** some useful macros
@@ -135,6 +138,9 @@ LUALIB_API int luaopen_math(lua_State* L);
 
 #define LUA_DBLIBNAME "debug"
 LUALIB_API int luaopen_debug(lua_State* L);
+
+#define LUA_VECLIBNAME "vector"
+LUALIB_API int luaopen_vector(lua_State* L);
 
 // open all builtin libraries
 LUALIB_API void luaL_openlibs(lua_State* L);

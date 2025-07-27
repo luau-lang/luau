@@ -3,6 +3,7 @@
 
 #include "Luau/DenseHash.h"
 #include "Luau/Normalize.h"
+#include "Luau/ToString.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
@@ -22,6 +23,11 @@ struct InstanceCollector2 : TypeOnceVisitor
     VecDeque<TypePackId> tps;
     DenseHashSet<TypeId> cyclicInstance{nullptr};
     DenseHashSet<TypeId> instanceArguments{nullptr};
+
+    InstanceCollector2()
+        : TypeOnceVisitor("InstanceCollector2")
+    {
+    }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& it) override
     {
@@ -45,7 +51,7 @@ struct InstanceCollector2 : TypeOnceVisitor
             cyclicInstance.insert(t);
     }
 
-    bool visit(TypeId ty, const ClassType&) override
+    bool visit(TypeId ty, const ExternType&) override
     {
         return false;
     }
@@ -124,7 +130,7 @@ std::optional<TypePackId> TypeFunctionReductionGuesser::guess(TypePackId tp)
         guessedHead.push_back(*guessedType);
     }
 
-    return arena->addTypePack(TypePack{guessedHead, tail});
+    return arena->addTypePack(TypePack{std::move(guessedHead), tail});
 }
 
 TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunctionReductionForFunctionExpr(
@@ -181,7 +187,7 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
     functionReducesTo.clear();
     substitutable.clear();
 
-    return TypeFunctionReductionGuessResult{results, recommendedAnnotation};
+    return TypeFunctionReductionGuessResult{std::move(results), recommendedAnnotation};
 }
 
 std::optional<TypeId> TypeFunctionReductionGuesser::guessType(TypeId arg)

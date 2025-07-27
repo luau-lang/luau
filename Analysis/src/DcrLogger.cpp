@@ -253,10 +253,10 @@ static ScopeSnapshot snapshotScope(const Scope* scope, ToStringOptions& opts)
     }
 
     return ScopeSnapshot{
-        bindings,
-        typeBindings,
-        typePackBindings,
-        children,
+        std::move(bindings),
+        std::move(typeBindings),
+        std::move(typePackBindings),
+        std::move(children),
     };
 }
 
@@ -307,7 +307,7 @@ void DcrLogger::captureGenerationError(const TypeError& error)
 {
     std::string stringifiedError = toString(error);
     generationLog.errors.push_back(ErrorSnapshot{
-        /* message */ stringifiedError,
+        /* message */ std::move(stringifiedError),
         /* location */ error.location,
     });
 }
@@ -424,7 +424,7 @@ StepSnapshot DcrLogger::prepareStepSnapshot(
         current,
         force,
         std::move(constraints),
-        scopeSnapshot,
+        std::move(scopeSnapshot),
         std::move(typeStrings),
     };
 }
@@ -443,7 +443,7 @@ void DcrLogger::captureTypeCheckError(const TypeError& error)
 {
     std::string stringifiedError = toString(error);
     checkLog.errors.push_back(ErrorSnapshot{
-        /* message */ stringifiedError,
+        /* message */ std::move(stringifiedError),
         /* location */ error.location,
     });
 }

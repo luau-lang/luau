@@ -425,6 +425,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstExprFunction",
             [&]()
             {
+                PROP(attributes);
                 PROP(generics);
                 PROP(genericPacks);
                 if (node->self)
@@ -464,26 +465,26 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw("}");
     }
 
-    void write(const AstGenericType& genericType)
+    void write(class AstGenericType* genericType)
     {
         writeRaw("{");
         bool c = pushComma();
         writeType("AstGenericType");
-        write("name", genericType.name);
-        if (genericType.defaultValue)
-            write("luauType", genericType.defaultValue);
+        write("name", genericType->name);
+        if (genericType->defaultValue)
+            write("luauType", genericType->defaultValue);
         popComma(c);
         writeRaw("}");
     }
 
-    void write(const AstGenericTypePack& genericTypePack)
+    void write(class AstGenericTypePack* genericTypePack)
     {
         writeRaw("{");
         bool c = pushComma();
         writeType("AstGenericTypePack");
-        write("name", genericTypePack.name);
-        if (genericTypePack.defaultValue)
-            write("luauType", genericTypePack.defaultValue);
+        write("name", genericTypePack->name);
+        if (genericTypePack->defaultValue)
+            write("luauType", genericTypePack->defaultValue);
         popComma(c);
         writeRaw("}");
     }
@@ -881,7 +882,7 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(name);
                 PROP(generics);
                 PROP(genericPacks);
-                PROP(type);
+                write("value", node->type);
                 PROP(exported);
             }
         );
@@ -894,7 +895,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstStatDeclareFunction",
             [&]()
             {
-                // TODO: attributes
+                PROP(attributes);
                 PROP(name);
                 PROP(nameLocation);
                 PROP(params);
@@ -922,7 +923,7 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
-    void write(const AstDeclaredClassProp& prop)
+    void write(const AstDeclaredExternTypeProperty& prop)
     {
         writeRaw("{");
         bool c = pushComma();
@@ -935,7 +936,7 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw("}");
     }
 
-    void write(class AstStatDeclareClass* node)
+    void write(class AstStatDeclareExternType* node)
     {
         writeNode(
             node,
@@ -1042,6 +1043,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstTypeFunction",
             [&]()
             {
+                PROP(attributes);
                 PROP(generics);
                 PROP(genericPacks);
                 PROP(argTypes);
@@ -1061,6 +1063,11 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(expr);
             }
         );
+    }
+
+    void write(class AstTypeOptional* node)
+    {
+        writeNode(node, "AstTypeOptional", [&]() {});
     }
 
     void write(class AstTypeUnion* node)
@@ -1134,6 +1141,44 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(genericName);
             }
         );
+    }
+
+    void write(AstAttr::Type type)
+    {
+        switch (type)
+        {
+        case AstAttr::Type::Checked:
+            return writeString("checked");
+        case AstAttr::Type::Native:
+            return writeString("native");
+        case AstAttr::Type::Deprecated:
+            return writeString("deprecated");
+        }
+    }
+
+    void write(class AstAttr* node)
+    {
+        writeNode(
+            node,
+            "AstAttr",
+            [&]()
+            {
+                write("name", node->type);
+            }
+        );
+    }
+
+    bool visit(class AstTypeGroup* node) override
+    {
+        writeNode(
+            node,
+            "AstTypeGroup",
+            [&]()
+            {
+                write("inner", node->type);
+            }
+        );
+        return false;
     }
 
     bool visit(class AstTypeSingletonBool* node) override
@@ -1384,7 +1429,7 @@ struct AstJsonEncoder : public AstVisitor
         return false;
     }
 
-    bool visit(class AstStatDeclareClass* node) override
+    bool visit(class AstStatDeclareExternType* node) override
     {
         write(node);
         return false;

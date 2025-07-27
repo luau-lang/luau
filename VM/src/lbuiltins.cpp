@@ -998,7 +998,7 @@ static int luauF_rawset(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
         else if (ttisvector(key) && luai_vecisnan(vvalue(key)))
             return -1;
 
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         if (t->readonly)
             return -1;
 
@@ -1015,7 +1015,7 @@ static int luauF_tinsert(lua_State* L, StkId res, TValue* arg0, int nresults, St
 {
     if (nparams == 2 && nresults <= 0 && ttistable(arg0))
     {
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         if (t->readonly)
             return -1;
 
@@ -1032,7 +1032,7 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 {
     if (nparams >= 1 && nresults < 0 && ttistable(arg0))
     {
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         int n = -1;
 
         if (nparams == 1)
@@ -1055,23 +1055,30 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 
 static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        double x = nvalue(arg0);
-        double y = nvalue(args);
-        double z = nvalue(args + 1);
+        float x = (float)nvalue(arg0);
+        float y = (float)nvalue(args);
+        float z = 0.0f;
+
+        if (nparams >= 3)
+        {
+            if (!ttisnumber(args + 1))
+                return -1;
+            z = (float)nvalue(args + 1);
+        }
 
 #if LUA_VECTOR_SIZE == 4
-        double w = 0.0;
+        float w = 0.0f;
         if (nparams >= 4)
         {
             if (!ttisnumber(args + 2))
                 return -1;
-            w = nvalue(args + 2);
+            w = (float)nvalue(args + 2);
         }
-        setvvalue(res, float(x), float(y), float(z), float(w));
+        setvvalue(res, x, y, z, w);
 #else
-        setvvalue(res, float(x), float(y), float(z), 0.0f);
+        setvvalue(res, x, y, z, 0.0f);
 #endif
 
         return 1;
@@ -1160,7 +1167,7 @@ static int luauF_rawlen(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
     {
         if (ttistable(arg0))
         {
-            Table* h = hvalue(arg0);
+            LuaTable* h = hvalue(arg0);
             setnvalue(res, double(luaH_getn(h)));
             return 1;
         }
@@ -1204,7 +1211,7 @@ static int luauF_getmetatable(lua_State* L, StkId res, TValue* arg0, int nresult
 {
     if (nparams >= 1 && nresults <= 1)
     {
-        Table* mt = NULL;
+        LuaTable* mt = NULL;
         if (ttistable(arg0))
             mt = hvalue(arg0)->metatable;
         else if (ttisuserdata(arg0))
@@ -1239,11 +1246,11 @@ static int luauF_setmetatable(lua_State* L, StkId res, TValue* arg0, int nresult
     // note: setmetatable(_, nil) is rare so we use fallback for it to optimize the fast path
     if (nparams >= 2 && nresults <= 1 && ttistable(arg0) && ttistable(args))
     {
-        Table* t = hvalue(arg0);
+        LuaTable* t = hvalue(arg0);
         if (t->readonly || t->metatable != NULL)
             return -1; // note: overwriting non-null metatable is very rare but it requires __metatable check
 
-        Table* mt = hvalue(args);
+        LuaTable* mt = hvalue(args);
         t->metatable = mt;
         luaC_objbarrier(L, t, mt);
 
@@ -1437,6 +1444,280 @@ static int luauF_writefp(lua_State* L, StkId res, TValue* arg0, int nresults, St
     return -1;
 }
 
+static int luauF_vectormagnitude(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisvector(arg0))
+    {
+        const float* v = vvalue(arg0);
+
+#if LUA_VECTOR_SIZE == 4
+        setnvalue(res, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]));
+#else
+        setnvalue(res, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectornormalize(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisvector(arg0))
+    {
+        const float* v = vvalue(arg0);
+
+#if LUA_VECTOR_SIZE == 4
+        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+
+        setvvalue(res, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt, v[3] * invSqrt);
+#else
+        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+
+        setvvalue(res, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt, 0.0f);
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectorcross(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 2 && nresults <= 1 && ttisvector(arg0) && ttisvector(args))
+    {
+        const float* a = vvalue(arg0);
+        const float* b = vvalue(args);
+
+        // same for 3- and 4- wide vectors
+        setvvalue(res, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0], 0.0f);
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectordot(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 2 && nresults <= 1 && ttisvector(arg0) && ttisvector(args))
+    {
+        const float* a = vvalue(arg0);
+        const float* b = vvalue(args);
+
+#if LUA_VECTOR_SIZE == 4
+        setnvalue(res, a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
+#else
+        setnvalue(res, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectorfloor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisvector(arg0))
+    {
+        const float* v = vvalue(arg0);
+
+#if LUA_VECTOR_SIZE == 4
+        setvvalue(res, floorf(v[0]), floorf(v[1]), floorf(v[2]), floorf(v[3]));
+#else
+        setvvalue(res, floorf(v[0]), floorf(v[1]), floorf(v[2]), 0.0f);
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectorceil(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisvector(arg0))
+    {
+        const float* v = vvalue(arg0);
+
+#if LUA_VECTOR_SIZE == 4
+        setvvalue(res, ceilf(v[0]), ceilf(v[1]), ceilf(v[2]), ceilf(v[3]));
+#else
+        setvvalue(res, ceilf(v[0]), ceilf(v[1]), ceilf(v[2]), 0.0f);
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectorabs(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisvector(arg0))
+    {
+        const float* v = vvalue(arg0);
+
+#if LUA_VECTOR_SIZE == 4
+        setvvalue(res, fabsf(v[0]), fabsf(v[1]), fabsf(v[2]), fabsf(v[3]));
+#else
+        setvvalue(res, fabsf(v[0]), fabsf(v[1]), fabsf(v[2]), 0.0f);
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectorsign(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisvector(arg0))
+    {
+        const float* v = vvalue(arg0);
+
+#if LUA_VECTOR_SIZE == 4
+        setvvalue(res, luaui_signf(v[0]), luaui_signf(v[1]), luaui_signf(v[2]), luaui_signf(v[3]));
+#else
+        setvvalue(res, luaui_signf(v[0]), luaui_signf(v[1]), luaui_signf(v[2]), 0.0f);
+#endif
+
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectorclamp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 3 && nresults <= 1 && ttisvector(arg0) && ttisvector(args) && ttisvector(args + 1))
+    {
+        const float* v = vvalue(arg0);
+        const float* min = vvalue(args);
+        const float* max = vvalue(args + 1);
+
+        if (min[0] <= max[0] && min[1] <= max[1] && min[2] <= max[2])
+        {
+#if LUA_VECTOR_SIZE == 4
+            setvvalue(
+                res,
+                luaui_clampf(v[0], min[0], max[0]),
+                luaui_clampf(v[1], min[1], max[1]),
+                luaui_clampf(v[2], min[2], max[2]),
+                luaui_clampf(v[3], min[3], max[3])
+            );
+#else
+            setvvalue(res, luaui_clampf(v[0], min[0], max[0]), luaui_clampf(v[1], min[1], max[1]), luaui_clampf(v[2], min[2], max[2]), 0.0f);
+#endif
+
+            return 1;
+        }
+    }
+
+    return -1;
+}
+
+static int luauF_vectormin(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 2 && nresults <= 1 && ttisvector(arg0) && ttisvector(args))
+    {
+        const float* a = vvalue(arg0);
+        const float* b = vvalue(args);
+
+        float result[4];
+
+        result[0] = (b[0] < a[0]) ? b[0] : a[0];
+        result[1] = (b[1] < a[1]) ? b[1] : a[1];
+        result[2] = (b[2] < a[2]) ? b[2] : a[2];
+
+#if LUA_VECTOR_SIZE == 4
+        result[3] = (b[3] < a[3]) ? b[3] : a[3];
+#else
+        result[3] = 0.0f;
+#endif
+
+        for (int i = 3; i <= nparams; ++i)
+        {
+            if (!ttisvector(args + (i - 2)))
+                return -1;
+
+            const float* c = vvalue(args + (i - 2));
+
+            result[0] = (c[0] < result[0]) ? c[0] : result[0];
+            result[1] = (c[1] < result[1]) ? c[1] : result[1];
+            result[2] = (c[2] < result[2]) ? c[2] : result[2];
+#if LUA_VECTOR_SIZE == 4
+            result[3] = (c[3] < result[3]) ? c[3] : result[3];
+#endif
+        }
+
+        setvvalue(res, result[0], result[1], result[2], result[3]);
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_vectormax(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 2 && nresults <= 1 && ttisvector(arg0) && ttisvector(args))
+    {
+        const float* a = vvalue(arg0);
+        const float* b = vvalue(args);
+
+        float result[4];
+
+        result[0] = (b[0] > a[0]) ? b[0] : a[0];
+        result[1] = (b[1] > a[1]) ? b[1] : a[1];
+        result[2] = (b[2] > a[2]) ? b[2] : a[2];
+
+#if LUA_VECTOR_SIZE == 4
+        result[3] = (b[3] > a[3]) ? b[3] : a[3];
+#else
+        result[3] = 0.0f;
+#endif
+
+        for (int i = 3; i <= nparams; ++i)
+        {
+            if (!ttisvector(args + (i - 2)))
+                return -1;
+
+            const float* c = vvalue(args + (i - 2));
+
+            result[0] = (c[0] > result[0]) ? c[0] : result[0];
+            result[1] = (c[1] > result[1]) ? c[1] : result[1];
+            result[2] = (c[2] > result[2]) ? c[2] : result[2];
+#if LUA_VECTOR_SIZE == 4
+            result[3] = (c[3] > result[3]) ? c[3] : result[3];
+#endif
+        }
+
+        setvvalue(res, result[0], result[1], result[2], result[3]);
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_lerp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    {
+        double a = nvalue(arg0);
+        double b = nvalue(args);
+        double t = nvalue(args + 1);
+
+        double r = (t == 1.0) ? b : a + (b - a) * t;
+
+        setnvalue(res, r);
+        return 1;
+    }
+
+    return -1;
+}
+
 static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     return -1;
@@ -1619,6 +1900,20 @@ const luau_FastFunction luauF_table[256] = {
     luauF_writefp<float>,
     luauF_readfp<double>,
     luauF_writefp<double>,
+
+    luauF_vectormagnitude,
+    luauF_vectornormalize,
+    luauF_vectorcross,
+    luauF_vectordot,
+    luauF_vectorfloor,
+    luauF_vectorceil,
+    luauF_vectorabs,
+    luauF_vectorsign,
+    luauF_vectorclamp,
+    luauF_vectormin,
+    luauF_vectormax,
+
+    luauF_lerp,
 
 // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
 // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.

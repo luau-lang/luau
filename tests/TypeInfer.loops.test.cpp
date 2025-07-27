@@ -15,9 +15,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauOkWithIteratingOverTableProperties)
-
-LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
+LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -39,7 +38,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
         CHECK("number?" == toString(requireType("q")));
     }
     else
-        CHECK_EQ(*builtinTypes->numberType, *requireType("q"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("q"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
@@ -135,6 +134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
         for i, v in pairs({ "foo" }) do
             n = i
             s = v
+            print(i, v)
         end
     )");
 
@@ -144,18 +144,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
     {
         CHECK("number?" == toString(requireType("n")));
         CHECK("string?" == toString(requireType("s")));
+        CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 21})));
     }
     else
     {
-        CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
-        CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
     }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
-    // CLI-116494 The generics K and V are leaking out of the next() function somehow.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    CheckResult result = check(R"(
+        local n
+        local s
+        for i, v in next, { "foo" } do
+            n = i
+            s = v
+            print(i, v)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::LuauSolverV2)
+    {
+        CHECK("number?" == toString(requireType("n")));
+        CHECK("string?" == toString(requireType("s")));
+        CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 21})));
+    }
+    else
+    {
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
+    }
+}
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSimplifyOutOfLine2, true},
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
 
     CheckResult result = check(R"(
         local n
@@ -163,13 +194,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
         for i, v in next, { "foo", "bar" } do
             n = i
             s = v
+            print(i, v)
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
-    CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
+    if (FFlag::LuauSolverV2)
+    {
+        CHECK("number?" == toString(requireType("n")));
+        CHECK("string?" == toString(requireType("s")));
+        CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 21})));
+    }
+    else
+    {
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_with_an_iterator_of_type_any")
@@ -195,10 +237,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (DFFlag::LuauImproveNonFunctionCallError)
-        CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
-    else
-        CHECK_EQ("Cannot call non-function string", toString(result.errors[0]));
+    CHECK_EQ("Cannot call a value of type string", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
@@ -246,7 +285,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::LuauSolverV2)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -275,9 +317,6 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 {
-    // We report a spuriouus duplicate error here.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-
     CheckResult result = check(R"(
         local bad_iter = 5
 
@@ -293,7 +332,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")
 {
     // Spurious duplicate errors
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function hasDivisors(value: number, table)
@@ -338,14 +377,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-    CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
 {
     // CLI-116496
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         function prime_iter(state, index)
@@ -404,8 +443,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-    CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    CHECK_EQ(getBuiltins()->numberType, tm->wantedType);
+    CHECK_EQ(getBuiltins()->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "while_loop")
@@ -422,7 +461,7 @@ TEST_CASE_FIXTURE(Fixture, "while_loop")
     if (FFlag::LuauSolverV2)
         CHECK("number?" == toString(requireType("i")));
     else
-        CHECK_EQ(*builtinTypes->numberType, *requireType("i"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("i"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop")
@@ -439,7 +478,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop")
     if (FFlag::LuauSolverV2)
         CHECK("string?" == toString(requireType("i")));
     else
-        CHECK_EQ(*builtinTypes->stringType, *requireType("i"));
+        CHECK_EQ(*getBuiltins()->stringType, *requireType("i"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop_condition_binds_to_its_block")
@@ -699,8 +738,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
     if (FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         local t = {}
         for _ in t do
@@ -759,13 +796,13 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
         CHECK("number?" == toString(keyTy));
     }
     else
-        CHECK_EQ(*builtinTypes->numberType, *requireType("key"));
+        CHECK_EQ(*getBuiltins()->numberType, *requireType("key"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t: {string} = {}
@@ -776,16 +813,13 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ(*builtinTypes->nilType, *requireType("extra"));
+    CHECK_EQ(*getBuiltins()->nilType, *requireType("extra"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
     // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, false},
-        {FFlag::LuauOkWithIteratingOverTableProperties, true}
-    };
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local t = {}
@@ -937,8 +971,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
 
 TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
 {
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         function print(x) end
 
@@ -1074,6 +1106,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
     CheckResult result = check(R"(
         local iter: never
         local ans
@@ -1085,7 +1119,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK("never?" == toString(requireType("ans"))); // CLI-114134 egraph simplification.  Should just be nil.
+        CHECK("nil" == toString(requireType("ans")));
     else
         CHECK(toString(requireType("ans")) == "never");
 }
@@ -1093,9 +1127,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 {
     // CLI-116498 - Sometimes you can iterate over tables with no indexer.
-    ScopedFastFlag sff0{FFlag::LuauSolverV2, false};
-
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check(R"(
         local function f()
@@ -1118,8 +1150,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties_nonstrict")
 {
-    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local function f()
@@ -1248,6 +1278,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
 {
+    ScopedFastFlag v1{FFlag::LuauSolverV2, true};
+
     CheckResult result = check(R"(
         function first(x: any)
             for k, v in pairs(x) do
@@ -1258,7 +1290,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK("any" == toString(requireTypeAtPosition({3, 22})));
+    CHECK("*error-type* | ~nil" == toString(requireTypeAtPosition({3, 22})));
     CHECK("any" == toString(requireTypeAtPosition({3, 25})));
 }
 
@@ -1266,10 +1298,238 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tryDispatchIterableFunction_under_constraine
 {
     CheckResult result = check(R"(
 local function foo(Instance)
-	for _, Child in next, Instance:GetChildren() do
-	end
+    for _, Child in next, Instance:GetChildren() do
+    end
 end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_surprising_iterator")
+{
+    CheckResult result = check(R"(
+function broken(): (...() -> ())
+    return function() end, function() end
+end
+
+for p in broken() do print(p) end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_require")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        for _ in require do
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1480")
+{
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Part = { Parent: Part? }
+        type Instance = Part
+
+        local part = {} :: Part
+
+        local currentParent: Instance? = part.Parent
+        while currentParent ~= nil do
+            currentParent = currentParent.Parent
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1413")
+{
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function KahanSum(values: {number}): number
+            local sum: number = 0
+            local compensator: number = 0
+            for _, value in values do
+                local y = value - compensator
+                local t = sum + y
+                compensator = (t - sum) - y
+                sum = t
+            end
+            return sum
+        end
+    )"));
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function HistogramString(values: {number})
+            local histogram = {}
+            values = table.clone(values)
+            table.sort(values)
+
+            local count = #values
+            local range = (count - 1)
+
+            local digitIndex = range // 2 + 1
+            while digitIndex < count and values[digitIndex] == 0 do
+                digitIndex = count - ((count - digitIndex) // 2)
+            end
+        end
+    )"));
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function fun1()
+            local foo = 1
+            local bar = foo - foo + foo
+            while false do
+                foo = bar
+            end
+        end
+        local function fun2()
+            local foo = 1
+            while false do
+                local bar = foo - foo + foo
+                foo = bar
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_error_in_body")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo()
+            local x = ""
+            while math.random () > 0.5 do
+                x = nil
+                error("why did you make x nil tho")
+            end
+            return x
+        end
+    )"));
+
+    CHECK_EQ("() -> string", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_assign_different_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function takesString(_: string) end
+        local function takesNil(_: nil) end
+        local function foo()
+            local x = ""
+            takesString(x)
+            while math.random () > 0.5 do
+                x = nil
+                takesNil(x)
+            end
+            return x
+        end
+    )"));
+
+    CHECK_EQ("() -> string?", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_loop_assignment")
+{
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = nil
+        repeat
+            x = 42
+        until math.random() > 0.5
+        local y = x
+    )"));
+
+    CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_loop_assignment_with_break")
+{
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = nil
+        repeat
+            x = 42
+        until math.random() > 0.5
+        local y = x
+    )"));
+
+    CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_unconditionally_fires_error")
+{
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = nil
+        repeat
+            x = 42
+        until true
+        -- `x` should unconditionally be `number` here as the assignment
+        -- above will _always_ run.
+        local y = x
+    )"));
+
+    CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "repeat_is_linearish")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = nil
+        if math.random () > 0.5 then
+            x = ""
+            repeat
+                error("spooky scary error")
+            until true
+        end
+        -- The repeat in the above branch unconditionally fires the error, so
+        -- this should _always_ be `nil`
+        local y = x
+    )"));
+
+    CHECK_EQ("nil", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "ensure_local_in_loop_does_not_escape")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDfgAllowUpdatesInLoops, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = 42
+        repeat
+            local x = ""
+        until true
+        -- The local inside the loop should have no effect on the local
+        -- outside the loop.
+        local y = x
+    )"));
+
+    CHECK_EQ("number", toString(requireType("y")));
 }
 
 TEST_SUITE_END();

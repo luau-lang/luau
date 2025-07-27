@@ -40,11 +40,11 @@ struct InConditionalContext
     TypeContext* typeContext;
     TypeContext oldValue;
 
-    InConditionalContext(TypeContext* c)
+    explicit InConditionalContext(TypeContext* c, TypeContext newValue = TypeContext::Condition)
         : typeContext(c)
         , oldValue(*c)
     {
-        *typeContext = TypeContext::Condition;
+        *typeContext = newValue;
     }
 
     ~InConditionalContext()
@@ -247,5 +247,118 @@ std::optional<Ty> follow(std::optional<Ty> ty)
     else
         return std::nullopt;
 }
+
+/**
+ * Returns whether or not expr is a literal expression, for example:
+ * - Scalar literals (numbers, booleans, strings, nil)
+ * - Table literals
+ * - Lambdas (a "function literal")
+ */
+bool isLiteral(const AstExpr* expr);
+
+/**
+ * Given a table literal and a mapping from expression to type, determine
+ * whether any literal expression in this table depends on any blocked types.
+ * This is used as a precondition for bidirectional inference: be warned that
+ * the behavior of this algorithm is tightly coupled to that of bidirectional
+ * inference.
+ * @param expr Expression to search
+ * @param astTypes Mapping from AST node to TypeID
+ * @returns A vector of blocked types
+ */
+std::vector<TypeId> findBlockedTypesIn(AstExprTable* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
+
+/**
+ * Given a function call and a mapping from expression to type, determine
+ * whether the type of any argument in said call in depends on a blocked types.
+ * This is used as a precondition for bidirectional inference: be warned that
+ * the behavior of this algorithm is tightly coupled to that of bidirectional
+ * inference.
+ * @param expr Expression to search
+ * @param astTypes Mapping from AST node to TypeID
+ * @returns A vector of blocked types
+ */
+std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
+
+/**
+ * Given a scope and a free type, find the closest parent that has a present
+ * `interiorFreeTypes` and append the given type to said list. This list will
+ * be generalized when the requiste `GeneralizationConstraint` is resolved.
+ * @param scope Initial scope this free type was attached to
+ * @param ty Free type to track.
+ */
+void trackInteriorFreeType(Scope* scope, TypeId ty);
+
+void trackInteriorFreeTypePack(Scope* scope, TypePackId tp);
+
+// A fast approximation of subTy <: superTy
+bool fastIsSubtype(TypeId subTy, TypeId superTy);
+
+/**
+ * @param tables A list of potential table parts of a union
+ * @param exprType Type of the expression to match
+ * @return An element of `tables` that best matches `exprType`.
+ */
+std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+
+/**
+ * @param item A member of a table in an AST
+ * @return Whether the item is a key-value pair with a statically defined string key.
+ *
+ * ```
+ * {
+ *      ["foo"] = ..., -- is a record
+ *      bar = ..., -- is a record
+ *      ..., -- not a record: non-string key (number)
+ *      [true] = ..., -- not a record: non-string key (boolean)
+ *      [ foobar() ] = ..., -- not a record: unknown key value.
+ *      ["foo" .. "bar"] = ..., -- not a record (don't make us handle it).
+ * }
+ * ```
+ */
+bool isRecord(const AstExprTable::Item& item);
+
+/**
+ * Do a quick check for whether the type `ty` is exactly `false | nil`. This
+ * will *not* do any sort of semantic analysis, for example the type:
+ *
+ *      (boolean?) & (false | nil)
+ *
+ * ... will not be considered falsy, despite it being semantically equivalent
+ * to `false | nil`.
+ *
+ * @return Whether the input is approximately `false | nil`.
+ */
+bool isApproximatelyFalsyType(TypeId ty);
+
+/**
+ * Do a quick check for whether the type `ty` is exactly `~(false | nil)`.
+ * This will *not* do any sort of semantic analysis, for example the type:
+ *
+ *      unknown & ~(false | nil)
+ *
+ * ... will not be considered falsy, despite it being semantically equivalent
+ * to `~(false | nil)`.
+ *
+ * @return Whether the input is approximately `~(false | nil)`.
+ */
+bool isApproximatelyTruthyType(TypeId ty);
+
+// Unwraps any grouping expressions iteratively.
+AstExpr* unwrapGroup(AstExpr* expr);
+
+// These are magic types used in `TypeChecker2` and `NonStrictTypeChecker`
+//
+// `_luau_print` causes it's argument to be printed out, as in:
+//
+//      local x: _luau_print<number>
+//
+// ... will cause `number` to be printed.
+inline constexpr char kLuauPrint[] = "_luau_print";
+// `_luau_force_constraint_solving_incomplete` will cause us to _always_ emit
+// a constraint solving incomplete error to test semantics around that specific
+// error.
+inline constexpr char kLuauForceConstraintSolvingIncomplete[] = "_luau_force_constraint_solving_incomplete";
+
 
 } // namespace Luau

@@ -2,6 +2,7 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
+#include "ldebug.h"
 #include "lstate.h"
 #include "lvm.h"
 
@@ -36,6 +37,12 @@ static int auxresume(lua_State* L, lua_State* co, int narg)
         if (!lua_checkstack(co, narg))
             luaL_error(L, "too many arguments to resume");
         lua_xmove(L, co, narg);
+    }
+    else
+    {
+        // coroutine might be completely full already
+        if ((co->top - co->base) > LUAI_MAXCSTACK)
+            luaL_error(L, "too many arguments to resume");
     }
 
     co->singlestep = L->singlestep;
@@ -227,8 +234,14 @@ static int coclose(lua_State* L)
     else
     {
         lua_pushboolean(L, false);
-        if (lua_gettop(co))
+
+        if (co->status == LUA_ERRMEM)
+            lua_pushstring(L, LUA_MEMERRMSG);
+        else if (co->status == LUA_ERRERR)
+            lua_pushstring(L, LUA_ERRERRMSG);
+        else if (lua_gettop(co))
             lua_xmove(co, L, 1); // move error message
+
         lua_resetthread(co);
         return 2;
     }

@@ -1,12 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
 #include "Luau/LinterConfig.h"
 #include "Luau/ParseOptions.h"
 
+#include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
+#include <string_view>
 #include <vector>
 
 namespace Luau
@@ -19,6 +21,10 @@ constexpr const char* kConfigName = ".luaurc";
 struct Config
 {
     Config();
+    Config(const Config& other);
+    Config& operator=(const Config& other);
+    Config(Config&& other) = default;
+    Config& operator=(Config&& other) = default;
 
     Mode mode = Mode::Nonstrict;
 
@@ -32,8 +38,20 @@ struct Config
 
     std::vector<std::string> globals;
 
-    std::vector<std::string> paths;
-    std::unordered_map<std::string, std::string> aliases;
+    struct AliasInfo
+    {
+        std::string value;
+        std::string_view configLocation;
+        std::string originalCase; // The alias in its original case.
+    };
+
+    DenseHashMap<std::string, AliasInfo> aliases{""};
+
+    void setAlias(std::string alias, std::string value, const std::string& configLocation);
+
+private:
+    // Prevents making unnecessary copies of the same config location string.
+    DenseHashMap<std::string, std::unique_ptr<std::string>> configLocationCache{""};
 };
 
 struct ConfigResolver
@@ -61,6 +79,18 @@ std::optional<std::string> parseLintRuleString(
 
 bool isValidAlias(const std::string& alias);
 
-std::optional<std::string> parseConfig(const std::string& contents, Config& config, bool compat = false);
+struct ConfigOptions
+{
+    bool compat = false;
+
+    struct AliasOptions
+    {
+        std::string configLocation;
+        bool overwriteAliases;
+    };
+    std::optional<AliasOptions> aliasOptions = std::nullopt;
+};
+
+std::optional<std::string> parseConfig(const std::string& contents, Config& config, const ConfigOptions& options = ConfigOptions{});
 
 } // namespace Luau

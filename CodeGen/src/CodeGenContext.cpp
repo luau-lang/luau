@@ -5,6 +5,7 @@
 #include "CodeGenLower.h"
 #include "CodeGenX64.h"
 
+#include "Luau/CodeGenCommon.h"
 #include "Luau/CodeBlockUnwind.h"
 #include "Luau/UnwindBuilder.h"
 #include "Luau/UnwindBuilderDwarf2.h"
@@ -14,7 +15,6 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
@@ -346,13 +346,13 @@ void SharedCodeGenContextDeleter::operator()(const SharedCodeGenContext* codeGen
     return static_cast<BaseCodeGenContext*>(L->global->ecb.context);
 }
 
-static void onCloseState(lua_State* L) noexcept
+static void onCloseState(lua_State* L)
 {
     getCodeGenContext(L)->onCloseState();
     L->global->ecb = lua_ExecutionCallbacks{};
 }
 
-static void onDestroyFunction(lua_State* L, Proto* proto) noexcept
+static void onDestroyFunction(lua_State* L, Proto* proto)
 {
     getCodeGenContext(L)->onDestroyFunction(proto->execdata);
     proto->execdata = nullptr;
@@ -510,10 +510,7 @@ template<typename AssemblyBuilder>
         return CompilationResult{CodeGenCompilationResult::CodeGenNotInitialized};
 
     std::vector<Proto*> protos;
-    if (FFlag::LuauNativeAttribute)
-        gatherFunctions(protos, root, options.flags, root->flags & LPF_NATIVE_FUNCTION);
-    else
-        gatherFunctions_DEPRECATED(protos, root, options.flags);
+    gatherFunctions(protos, root, options.flags, root->flags & LPF_NATIVE_FUNCTION);
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     protos.erase(
@@ -672,6 +669,21 @@ void setNativeExecutionEnabled(lua_State* L, bool enabled)
 {
     if (getCodeGenContext(L) != nullptr)
         L->global->ecb.enter = enabled ? onEnter : onEnterDisabled;
+}
+
+void disableNativeExecutionForFunction(lua_State* L, const int level) noexcept
+{
+    CODEGEN_ASSERT(unsigned(level) < unsigned(L->ci - L->base_ci));
+
+    const CallInfo* ci = L->ci - level;
+    const TValue* o = ci->func;
+    CODEGEN_ASSERT(ttisfunction(o));
+
+    Proto* proto = clvalue(o)->l.p;
+    CODEGEN_ASSERT(proto);
+
+    CODEGEN_ASSERT(proto->codeentry != proto->code);
+    onDestroyFunction(L, proto);
 }
 
 static uint8_t userdataRemapperWrap(lua_State* L, const char* str, size_t len)

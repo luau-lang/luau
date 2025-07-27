@@ -60,7 +60,7 @@ struct ReplaceGenerics : Substitution
 };
 
 // A substitution which replaces generic functions by monomorphic functions
-struct Instantiation : Substitution
+struct Instantiation final : Substitution
 {
     Instantiation(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope)
         : Substitution(log, arena)
@@ -91,6 +91,11 @@ struct Instantiation : Substitution
 struct GenericTypeFinder : TypeOnceVisitor
 {
     bool found = false;
+
+    GenericTypeFinder()
+        : TypeOnceVisitor("GenericTypeFinder")
+    {
+    }
 
     bool visit(TypeId ty) override
     {
@@ -133,9 +138,9 @@ struct GenericTypeFinder : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const Luau::ClassType&) override
+    bool visit(TypeId ty, const Luau::ExternType&) override
     {
-        // During function instantiation, classes are not traversed even if they have generics
+        // During function instantiation, extern types are not traversed even if they have generics
         return false;
     }
 };

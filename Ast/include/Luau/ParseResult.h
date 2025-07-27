@@ -10,11 +10,12 @@ namespace Luau
 {
 
 class AstStatBlock;
+class CstNode;
 
 class ParseError : public std::exception
 {
 public:
-    ParseError(const Location& location, const std::string& message);
+    ParseError(const Location& location, std::string message);
 
     virtual const char* what() const throw();
 
@@ -55,6 +56,8 @@ struct Comment
     Location location;
 };
 
+using CstNodeMap = DenseHashMap<AstNode*, CstNode*>;
+
 struct ParseResult
 {
     AstStatBlock* root;
@@ -64,8 +67,23 @@ struct ParseResult
     std::vector<ParseError> errors;
 
     std::vector<Comment> commentLocations;
+
+    CstNodeMap cstNodeMap{nullptr};
 };
 
-static constexpr const char* kParseNameError = "%error-id%";
+struct ParseExprResult
+{
+    AstExpr* expr;
+    size_t lines = 0;
+
+    std::vector<HotComment> hotcomments;
+    std::vector<ParseError> errors;
+
+    std::vector<Comment> commentLocations;
+
+    CstNodeMap cstNodeMap{nullptr};
+};
+
+inline constexpr const char* kParseNameError = "%error-id%";
 
 } // namespace Luau

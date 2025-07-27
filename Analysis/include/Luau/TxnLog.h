@@ -65,11 +65,10 @@ T* getMutable(PendingTypePack* pending)
 // Log of what TypeIds we are rebinding, to be committed later.
 struct TxnLog
 {
-    explicit TxnLog(bool useScopes = false)
+    explicit TxnLog()
         : typeVarChanges(nullptr)
         , typePackChanges(nullptr)
         , ownedSeen()
-        , useScopes(useScopes)
         , sharedSeen(&ownedSeen)
     {
     }
@@ -192,16 +191,6 @@ struct TxnLog
     //
     // The pointer returned lives until `commit` or `clear` is called.
     PendingTypePack* changeLevel(TypePackId tp, TypeLevel newLevel);
-
-    // Queues the replacement of a type's scope with the provided scope.
-    //
-    // The pointer returned lives until `commit` or `clear` is called.
-    PendingType* changeScope(TypeId ty, NotNull<Scope> scope);
-
-    // Queues the replacement of a type pack's scope with the provided scope.
-    //
-    // The pointer returned lives until `commit` or `clear` is called.
-    PendingTypePack* changeScope(TypePackId tp, NotNull<Scope> scope);
 
     // Queues a replacement of a table type with another table type with a new
     // indexer.

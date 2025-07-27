@@ -55,6 +55,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::GET_IMPORT:
+    case IrCmd::GET_CACHED_IMPORT:
         invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::CONCAT:

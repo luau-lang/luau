@@ -16,7 +16,7 @@ namespace CodeGen
 {
 
 // This value is used in 'finishFunction' to mark the function that spans to the end of the whole code block
-static uint32_t kFullBlockFunction = ~0u;
+inline constexpr uint32_t kFullBlockFunction = ~0u;
 
 class UnwindBuilder
 {

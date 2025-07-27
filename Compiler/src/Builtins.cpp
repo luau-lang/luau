@@ -3,6 +3,9 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
+#include "Luau/Lexer.h"
+
+#include <array>
 
 namespace Luau
 {
@@ -134,6 +137,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_MATH_SIGN;
         if (builtin.method == "round")
             return LBF_MATH_ROUND;
+        if (builtin.method == "lerp")
+            return LBF_MATH_LERP;
     }
 
     if (builtin.object == "bit32")
@@ -220,6 +225,34 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BUFFER_WRITEF64;
     }
 
+    if (builtin.object == "vector")
+    {
+        if (builtin.method == "create")
+            return LBF_VECTOR;
+        if (builtin.method == "magnitude")
+            return LBF_VECTOR_MAGNITUDE;
+        if (builtin.method == "normalize")
+            return LBF_VECTOR_NORMALIZE;
+        if (builtin.method == "cross")
+            return LBF_VECTOR_CROSS;
+        if (builtin.method == "dot")
+            return LBF_VECTOR_DOT;
+        if (builtin.method == "floor")
+            return LBF_VECTOR_FLOOR;
+        if (builtin.method == "ceil")
+            return LBF_VECTOR_CEIL;
+        if (builtin.method == "abs")
+            return LBF_VECTOR_ABS;
+        if (builtin.method == "sign")
+            return LBF_VECTOR_SIGN;
+        if (builtin.method == "clamp")
+            return LBF_VECTOR_CLAMP;
+        if (builtin.method == "min")
+            return LBF_VECTOR_MIN;
+        if (builtin.method == "max")
+            return LBF_VECTOR_MAX;
+    }
+
     if (options.vectorCtor)
     {
         if (options.vectorLib)
@@ -240,23 +273,58 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
 struct BuiltinVisitor : AstVisitor
 {
     DenseHashMap<AstExprCall*, int>& result;
+    std::array<bool, 256> builtinIsDisabled;
 
     const DenseHashMap<AstName, Global>& globals;
     const DenseHashMap<AstLocal*, Variable>& variables;
 
     const CompileOptions& options;
+    const AstNameTable& names;
 
     BuiltinVisitor(
         DenseHashMap<AstExprCall*, int>& result,
         const DenseHashMap<AstName, Global>& globals,
         const DenseHashMap<AstLocal*, Variable>& variables,
-        const CompileOptions& options
+        const CompileOptions& options,
+        const AstNameTable& names
     )
         : result(result)
         , globals(globals)
         , variables(variables)
         , options(options)
+        , names(names)
     {
+        builtinIsDisabled.fill(false);
+
+        if (const char* const* ptr = options.disabledBuiltins)
+        {
+            for (; *ptr; ++ptr)
+            {
+                if (const char* dot = strchr(*ptr, '.'))
+                {
+                    AstName library = names.getWithType(*ptr, dot - *ptr).first;
+                    AstName name = names.get(dot + 1);
+
+                    if (library.value && name.value && getGlobalState(globals, name) == Global::Default)
+                    {
+                        Builtin builtin = Builtin{library, name};
+
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
+                    }
+                }
+                else
+                {
+                    if (AstName name = names.get(*ptr); name.value && getGlobalState(globals, name) == Global::Default)
+                    {
+                        Builtin builtin = Builtin{AstName(), name};
+
+                        if (int bfid = getBuiltinFunctionId(builtin, options); bfid >= 0)
+                            builtinIsDisabled[bfid] = true;
+                    }
+                }
+            }
+        }
     }
 
     bool visit(AstExprCall* node) override
@@ -266,6 +334,9 @@ struct BuiltinVisitor : AstVisitor
             return true;
 
         int bfid = getBuiltinFunctionId(builtin, options);
+
+        if (bfid >= 0 && builtinIsDisabled[bfid])
+            bfid = -1;
 
         // getBuiltinFunctionId optimistically assumes all select() calls are builtin but actually the second argument must be a vararg
         if (bfid == LBF_SELECT_VARARG && !(node->args.size == 2 && node->args.data[1]->is<AstExprVarargs>()))
@@ -283,10 +354,11 @@ void analyzeBuiltins(
     const DenseHashMap<AstName, Global>& globals,
     const DenseHashMap<AstLocal*, Variable>& variables,
     const CompileOptions& options,
-    AstNode* root
+    AstNode* root,
+    const AstNameTable& names
 )
 {
-    BuiltinVisitor visitor{result, globals, variables, options};
+    BuiltinVisitor visitor{result, globals, variables, options, names};
     root->visit(&visitor);
 }
 
@@ -463,6 +535,26 @@ BuiltinInfo getBuiltinInfo(int bfid)
     case LBF_BUFFER_WRITEF32:
     case LBF_BUFFER_WRITEF64:
         return {3, 0, BuiltinInfo::Flag_NoneSafe};
+
+    case LBF_VECTOR_MAGNITUDE:
+    case LBF_VECTOR_NORMALIZE:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_CROSS:
+    case LBF_VECTOR_DOT:
+        return {2, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_FLOOR:
+    case LBF_VECTOR_CEIL:
+    case LBF_VECTOR_ABS:
+    case LBF_VECTOR_SIGN:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_CLAMP:
+        return {3, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_VECTOR_MIN:
+    case LBF_VECTOR_MAX:
+        return {-1, 1}; // variadic
+
+    case LBF_MATH_LERP:
+        return {3, 1, BuiltinInfo::Flag_NoneSafe};
     }
 
     LUAU_UNREACHABLE();

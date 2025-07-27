@@ -85,8 +85,8 @@ set(LUAU_PB_SOURCES ${LUAU_PB_DIR}/luau.pb.cc ${LUAU_PB_DIR}/luau.pb.h)
 add_custom_command(
     OUTPUT ${LUAU_PB_SOURCES}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LUAU_PB_DIR}
-    COMMAND $<TARGET_FILE:protobuf::protoc> ${CMAKE_CURRENT_SOURCE_DIR}/luau.proto --proto_path=${CMAKE_CURRENT_SOURCE_DIR} --cpp_out=${LUAU_PB_DIR}
-    DEPENDS protobuf::protoc ${CMAKE_CURRENT_SOURCE_DIR}/luau.proto
+    COMMAND ${protobuf_PROTOC} ${CMAKE_CURRENT_SOURCE_DIR}/luau.proto --proto_path=${CMAKE_CURRENT_SOURCE_DIR} --cpp_out=${LUAU_PB_DIR}
+    DEPENDS ${protobuf_PROTOC} ${CMAKE_CURRENT_SOURCE_DIR}/luau.proto
 )
 
 add_executable(Luau.Fuzz.Proto)

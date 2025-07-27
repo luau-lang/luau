@@ -1751,7 +1751,8 @@ void BytecodeBuilder::validateVariadic() const
             // variadic sequence since they are never executed if FASTCALL does anything, so it's okay to skip their validation until CALL
             // (we can't simply start a variadic sequence here because that would trigger assertions during linked CALL validation)
         }
-        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_GETIMPORT || op == LOP_MOVE || op == LOP_GETUPVAL || op == LOP_GETGLOBAL || op == LOP_GETTABLEKS || op == LOP_COVERAGE)
+        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_GETIMPORT || op == LOP_MOVE || op == LOP_GETUPVAL || op == LOP_GETGLOBAL ||
+                 op == LOP_GETTABLEKS || op == LOP_COVERAGE)
         {
             // instructions inside a variadic sequence must be neutral (can't change L->top)
             // while there are many neutral instructions like this, here we check that the instruction is one of the few

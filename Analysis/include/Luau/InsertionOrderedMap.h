@@ -67,6 +67,19 @@ public:
             return &pairs.at(it->second).second;
     }
 
+    V& operator[](const K& k)
+    {
+        auto it = indices.find(k);
+        if (it == indices.end())
+        {
+            pairs.push_back(std::make_pair(k, V()));
+            indices[k] = pairs.size() - 1;
+            return pairs.back().second;
+        }
+        else
+            return pairs.at(it->second).second;
+    }
+
     const_iterator begin() const
     {
         return pairs.begin();

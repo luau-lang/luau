@@ -10,8 +10,10 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
+    , simplifier(newSimplifier(NotNull{&arena}, getBuiltins()))
     , forceTheFlag{FFlag::LuauSolverV2, true}
 {
+    getFrontend(); // Force the frontend to exist in the constructor.
     mainModule->name = "MainModule";
     mainModule->humanReadableName = "MainModule";
 
@@ -21,14 +23,19 @@ ConstraintGeneratorFixture::ConstraintGeneratorFixture()
 void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 {
     AstStatBlock* root = parse(code);
-    dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
+    dfg = std::make_unique<DataFlowGraph>(
+        DataFlowGraphBuilder::build(root, NotNull{&mainModule->defArena}, NotNull{&mainModule->keyArena}, NotNull{&ice})
+    );
     cg = std::make_unique<ConstraintGenerator>(
         mainModule,
         NotNull{&normalizer},
+        NotNull{simplifier.get()},
+        NotNull{&typeFunctionRuntime},
         NotNull(&moduleResolver),
-        builtinTypes,
+        getBuiltins(),
         NotNull(&ice),
-        frontend.globals.globalScope,
+        getFrontend().globals.globalScope,
+        getFrontend().globals.globalTypeFunctionScope,
         /*prepareModuleScope*/ nullptr,
         &logger,
         NotNull{dfg.get()},
@@ -42,7 +49,21 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
 void ConstraintGeneratorFixture::solve(const std::string& code)
 {
     generateConstraints(code);
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger, {}};
+    ConstraintSolver cs{
+        NotNull{&normalizer},
+        NotNull{simplifier.get()},
+        NotNull{&typeFunctionRuntime},
+        NotNull{rootScope},
+        constraints,
+        NotNull{&cg->scopeToFunction},
+        "MainModule",
+        NotNull(&moduleResolver),
+        {},
+        &logger,
+        NotNull{dfg.get()},
+        {}
+    };
+
     cs.run();
 }
 

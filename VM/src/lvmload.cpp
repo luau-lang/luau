@@ -13,7 +13,6 @@
 
 #include <string.h>
 
-// TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
 {
@@ -21,10 +20,10 @@ struct TempBuffer
     T* data;
     size_t count;
 
-    TempBuffer(lua_State* L, size_t count)
-        : L(L)
-        , data(luaM_newarray(L, count, T, 0))
-        , count(count)
+    TempBuffer()
+        : L(NULL)
+        , data(NULL)
+        , count(0)
     {
     }
 
@@ -36,7 +35,16 @@ struct TempBuffer
 
     ~TempBuffer() noexcept
     {
-        luaM_freearray(L, data, count, T, 0);
+        if (data)
+            luaM_freearray(L, data, count, T, 0);
+    }
+
+    void allocate(lua_State* L, size_t count)
+    {
+        LUAU_ASSERT(this->L == nullptr);
+        this->L = L;
+        this->data = luaM_newarray(L, count, T, 0);
+        this->count = count;
     }
 
     T& operator[](size_t index)
@@ -72,7 +80,7 @@ private:
     size_t originalThreshold = 0;
 };
 
-void luaV_getimport(lua_State* L, Table* env, TValue* k, StkId res, uint32_t id, bool propagatenil)
+void luaV_getimport(lua_State* L, LuaTable* env, TValue* k, StkId res, uint32_t id, bool propagatenil)
 {
     int count = id >> 30;
     LUAU_ASSERT(count > 0);
@@ -141,7 +149,7 @@ static TString* readString(TempBuffer<TString*>& strings, const char* data, size
     return id == 0 ? NULL : strings[id - 1];
 }
 
-static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
+static void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t id)
 {
     struct ResolveImport
     {
@@ -242,7 +250,15 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
     LUAU_ASSERT(offset == size);
 }
 
-int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env)
+static int loadsafe(
+    lua_State* L,
+    TempBuffer<TString*>& strings,
+    TempBuffer<Proto*>& protos,
+    const char* chunkname,
+    const char* data,
+    size_t size,
+    int env
+)
 {
     size_t offset = 0;
 
@@ -266,17 +282,6 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         return 1;
     }
 
-    // we will allocate a fair amount of memory so check GC before we do
-    luaC_checkGC(L);
-
-    // pause GC for the duration of deserialization - some objects we're creating aren't rooted
-    const ScopedSetGCThreshold pauseGC{L->global, SIZE_MAX};
-
-    // env is 0 for current environment and a stack index otherwise
-    Table* envt = (env == 0) ? L->gt : hvalue(luaA_toobject(L, env));
-
-    TString* source = luaS_new(L, chunkname);
-
     uint8_t typesversion = 0;
 
     if (version >= 4)
@@ -294,9 +299,14 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         }
     }
 
+    // env is 0 for current environment and a stack index otherwise
+    LuaTable* envt = (env == 0) ? L->gt : hvalue(luaA_toobject(L, env));
+
+    TString* source = luaS_new(L, chunkname);
+
     // string table
     unsigned int stringCount = readVarInt(data, size, offset);
-    TempBuffer<TString*> strings(L, stringCount);
+    strings.allocate(L, stringCount);
 
     for (unsigned int i = 0; i < stringCount; ++i)
     {
@@ -333,7 +343,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     // proto table
     unsigned int protoCount = readVarInt(data, size, offset);
-    TempBuffer<Proto*> protos(L, protoCount);
+    protos.allocate(L, protoCount);
 
     for (unsigned int i = 0; i < protoCount; ++i)
     {
@@ -481,7 +491,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             case LBC_CONSTANT_TABLE:
             {
                 int keys = readVarInt(data, size, offset);
-                Table* h = luaH_new(L, 0, keys);
+                LuaTable* h = luaH_new(L, 0, keys);
                 for (int i = 0; i < keys; ++i)
                 {
                     int key = readVarInt(data, size, offset);
@@ -591,4 +601,52 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     incr_top(L);
 
     return 0;
+}
+
+int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env)
+{
+    // we will allocate a fair amount of memory so check GC before we do
+    luaC_checkGC(L);
+
+    // pause GC for the duration of deserialization - some objects we're creating aren't rooted
+    const ScopedSetGCThreshold pauseGC{L->global, SIZE_MAX};
+
+    struct LoadContext
+    {
+        TempBuffer<TString*> strings;
+        TempBuffer<Proto*> protos;
+        const char* chunkname;
+        const char* data;
+        size_t size;
+        int env;
+
+        int result;
+
+        static void run(lua_State* L, void* ud)
+        {
+            LoadContext* ctx = (LoadContext*)ud;
+
+            ctx->result = loadsafe(L, ctx->strings, ctx->protos, ctx->chunkname, ctx->data, ctx->size, ctx->env);
+        }
+    } ctx = {
+        {},
+        {},
+        chunkname,
+        data,
+        size,
+        env,
+    };
+
+    int status = luaD_rawrunprotected(L, &LoadContext::run, &ctx);
+
+    // load can either succeed or get an OOM error, any other errors should be handled internally
+    LUAU_ASSERT(status == LUA_OK || status == LUA_ERRMEM);
+
+    if (status == LUA_ERRMEM)
+    {
+        lua_pushstring(L, LUA_MEMERRMSG); // out-of-memory error message doesn't require an allocation
+        return 1;
+    }
+
+    return ctx.result;
 }

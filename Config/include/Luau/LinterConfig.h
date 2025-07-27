@@ -15,7 +15,7 @@ struct HotComment;
 
 struct LintWarning
 {
-    // Make sure any new lint codes are documented here: https://luau-lang.org/lint
+    // Make sure any new lint codes are documented here: https://luau.org/lint
     // Note that in Studio, the active set of lint warnings is determined by FStringStudioLuauLints
     enum Code
     {
@@ -85,7 +85,7 @@ struct LintOptions
 };
 
 // clang-format off
-static const char* kWarningNames[] = {
+inline constexpr const char* kWarningNames[] = {
     "Unknown",
 
     "UnknownGlobal",

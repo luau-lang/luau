@@ -2,7 +2,8 @@
 #include "lua.h"
 #include "lualib.h"
 
-#include "Repl.h"
+#include "Luau/Repl.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -172,15 +173,17 @@ TEST_CASE_FIXTURE(ReplFixture, "CompleteGlobalVariables")
         CHECK(checkCompletion(completions, prefix, "myvariable1"));
         CHECK(checkCompletion(completions, prefix, "myvariable2"));
     }
+
     {
         // Try completing some builtin functions
         CompletionSet completions = getCompletionSet("math.m");
 
         std::string prefix = "math.";
-        CHECK(completions.size() == 3);
+        CHECK(completions.size() == 4);
         CHECK(checkCompletion(completions, prefix, "max("));
         CHECK(checkCompletion(completions, prefix, "min("));
         CHECK(checkCompletion(completions, prefix, "modf("));
+        CHECK(checkCompletion(completions, prefix, "map("));
     }
 }
 

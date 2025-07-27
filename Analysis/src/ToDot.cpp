@@ -10,7 +10,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -188,7 +189,29 @@ void StateDot::visitChildren(TypeId ty, int index)
                 return visitChild(*t.boundTo, index, "boundTo");
 
             for (const auto& [name, prop] : t.props)
-                visitChild(prop.type(), index, name.c_str());
+            {
+                if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                {
+                    if (prop.isShared())
+                        visitChild(*prop.readTy, index, name.c_str());
+                    else
+                    {
+                        if (prop.readTy)
+                        {
+                            std::string readName = "read " + name;
+                            visitChild(*prop.readTy, index, readName.c_str());
+                        }
+
+                        if (prop.writeTy)
+                        {
+                            std::string writeName = "write " + name;
+                            visitChild(*prop.writeTy, index, writeName.c_str());
+                        }
+                    }
+                }
+                else
+                    visitChild(prop.type_DEPRECATED(), index, name.c_str());
+            }
             if (t.indexer)
             {
                 visitChild(t.indexer->indexType, index, "[index]");
@@ -269,6 +292,12 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
         }
+        else if constexpr (std::is_same_v<T, NoRefineType>)
+        {
+            formatAppend(result, "NoRefineType %d", index);
+            finishNodeLabel(ty);
+            finishNode();
+        }
         else if constexpr (std::is_same_v<T, UnknownType>)
         {
             formatAppend(result, "UnknownType %d", index);
@@ -293,14 +322,36 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
         }
-        else if constexpr (std::is_same_v<T, ClassType>)
+        else if constexpr (std::is_same_v<T, ExternType>)
         {
-            formatAppend(result, "ClassType %s", t.name.c_str());
+            formatAppend(result, "ExternType %s", t.name.c_str());
             finishNodeLabel(ty);
             finishNode();
 
             for (const auto& [name, prop] : t.props)
-                visitChild(prop.type(), index, name.c_str());
+            {
+                if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                {
+                    if (prop.isShared())
+                        visitChild(*prop.readTy, index, name.c_str());
+                    else
+                    {
+                        if (prop.readTy)
+                        {
+                            std::string readName = "read " + name;
+                            visitChild(*prop.readTy, index, readName.c_str());
+                        }
+
+                        if (prop.writeTy)
+                        {
+                            std::string writeName = "write " + name;
+                            visitChild(*prop.writeTy, index, writeName.c_str());
+                        }
+                    }
+                }
+                else
+                    visitChild(prop.type_DEPRECATED(), index, name.c_str());
+            }
 
             if (t.parent)
                 visitChild(*t.parent, index, "[parent]");
@@ -414,7 +465,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
         finishNodeLabel(tp);
         finishNode();
     }
-    else if (get<Unifiable::Error>(tp))
+    else if (get<ErrorTypePack>(tp))
     {
         formatAppend(result, "ErrorTypePack %d", index);
         finishNodeLabel(tp);

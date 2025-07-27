@@ -20,6 +20,8 @@ namespace Luau
 namespace CodeGen
 {
 
+struct LoweringStats;
+
 // IR extensions to LuauBuiltinFunction enum (these only exist inside IR, and start from 256 to avoid collisions)
 enum
 {
@@ -67,18 +69,18 @@ enum class IrCmd : uint8_t
     LOAD_ENV,
 
     // Get pointer (TValue) to table array at index
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: int
     GET_ARR_ADDR,
 
     // Get pointer (LuaNode) to table node element at the active cached slot index
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: unsigned int (pcpos)
     // C: Kn
     GET_SLOT_NODE_ADDR,
 
     // Get pointer (LuaNode) to table node element at the main position of the specified key hash
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: unsigned int (hash)
     GET_HASH_NODE_ADDR,
 
@@ -114,10 +116,12 @@ enum class IrCmd : uint8_t
     STORE_INT,
 
     // Store a vector into TValue
+    // When optional 'E' tag is present, it is written out to the TValue as well
     // A: Rn
     // B: double (x)
     // C: double (y)
     // D: double (z)
+    // E: tag (optional)
     STORE_VECTOR,
 
     // Store a TValue into memory
@@ -183,6 +187,11 @@ enum class IrCmd : uint8_t
     // A: double
     SIGN_NUM,
 
+    // Select B if C == D, otherwise select A
+    // A, B: double (endpoints)
+    // C, D: double (condition arguments)
+    SELECT_NUM,
+
     // Add/Sub/Mul/Div/Idiv two vectors
     // A, B: TValue
     ADD_VEC,
@@ -193,6 +202,10 @@ enum class IrCmd : uint8_t
     // Negate a vector
     // A: TValue
     UNM_VEC,
+
+    // Compute dot product between two vectors
+    // A, B: TValue
+    DOT_VEC,
 
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
@@ -262,7 +275,7 @@ enum class IrCmd : uint8_t
     JUMP_SLOT_MATCH,
 
     // Get table length
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     TABLE_LEN,
 
     // Get string length
@@ -275,11 +288,11 @@ enum class IrCmd : uint8_t
     NEW_TABLE,
 
     // Duplicate a table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     DUP_TABLE,
 
     // Insert an integer key into a table and return the pointer to inserted value (TValue)
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: int (key)
     TABLE_SETNUM,
 
@@ -379,10 +392,18 @@ enum class IrCmd : uint8_t
     // C: Rn or unsigned int (key)
     SET_TABLE,
 
+    // TODO: remove with FFlagLuauCodeGenSimplifyImport2
     // Lookup a value in the environment
     // A: Rn (where to store the result)
     // B: unsigned int (import path)
     GET_IMPORT,
+
+    // Store an import from constant or the import path
+    // A: Rn (where to store the result)
+    // B: Kn
+    // C: unsigned int (import path)
+    // D: unsigned int (pcpos)
+    GET_CACHED_IMPORT,
 
     // Concatenate multiple TValues into a string
     // A: Rn (value start)
@@ -419,13 +440,13 @@ enum class IrCmd : uint8_t
     CHECK_TRUTHY,
 
     // Guard against readonly table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_READONLY,
 
     // Guard against table having a metatable
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NO_METATABLE,
@@ -436,7 +457,7 @@ enum class IrCmd : uint8_t
     CHECK_SAFE_ENV,
 
     // Guard against index overflowing the table array size
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: int (index)
     // C: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
@@ -492,11 +513,11 @@ enum class IrCmd : uint8_t
     BARRIER_OBJ,
 
     // Handle GC write barrier (backwards) for a write into a table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     BARRIER_TABLE_BACK,
 
     // Handle GC write barrier (forward) for a write into a table
-    // A: pointer (Table)
+    // A: pointer (LuaTable)
     // B: Rn (TValue that was written to the object)
     // C: tag/undef (tag of the value that was written)
     BARRIER_TABLE_FORWARD,
@@ -750,6 +771,7 @@ enum class IrConstKind : uint8_t
     Uint,
     Double,
     Tag,
+    Import,
 };
 
 struct IrConst
@@ -819,7 +841,7 @@ enum class IrOpKind : uint32_t
 
 // VmExit uses a special value to indicate that pcpos update should be skipped
 // This is only used during type checking at function entry
-constexpr uint32_t kVmExitEntryGuardPc = (1u << 28) - 1;
+inline constexpr uint32_t kVmExitEntryGuardPc = (1u << 28) - 1;
 
 struct IrOp
 {
@@ -887,7 +909,7 @@ struct IrInst
 };
 
 // When IrInst operands are used, current instruction index is often required to track lifetime
-constexpr uint32_t kInvalidInstIdx = ~0u;
+inline constexpr uint32_t kInvalidInstIdx = ~0u;
 
 struct IrInstHash
 {
@@ -1038,6 +1060,8 @@ struct IrFunction
 
     CfgInfo cfg;
 
+    LoweringStats* stats = nullptr;
+
     IrBlock& blockOp(IrOp op)
     {
         CODEGEN_ASSERT(op.kind == IrOpKind::Block);
@@ -1111,6 +1135,14 @@ struct IrFunction
         IrConst& value = constOp(op);
 
         CODEGEN_ASSERT(value.kind == IrConstKind::Uint);
+        return value.valueUint;
+    }
+
+    unsigned importOp(IrOp op)
+    {
+        IrConst& value = constOp(op);
+
+        CODEGEN_ASSERT(value.kind == IrConstKind::Import);
         return value.valueUint;
     }
 

@@ -7,9 +7,8 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/RequireTracer.h"
 #include "Luau/Scope.h"
+#include "Luau/Set.h"
 #include "Luau/TypeCheckLimits.h"
-#include "Luau/Variant.h"
-#include "Luau/AnyTypeSummary.h"
 
 #include <mutex>
 #include <string>
@@ -31,8 +30,8 @@ struct ModuleResolver;
 struct ParseResult;
 struct HotComment;
 struct BuildQueueItem;
+struct BuildQueueWorkState;
 struct FrontendCancellationToken;
-struct AnyTypeSummary;
 
 struct LoadDefinitionFileResult
 {
@@ -43,21 +42,6 @@ struct LoadDefinitionFileResult
 };
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
-
-std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr);
-
-// Exported only for convenient testing.
-std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& expr);
-
-/** Try to convert an AST fragment into a ModuleName.
- * Returns std::nullopt if the expression cannot be resolved.  This will most likely happen in cases where
- * the import path involves some dynamic computation that we cannot see into at typechecking time.
- *
- * Unintuitively, weirdly-formulated modules (like game.Parent.Parent.Parent.Foo) will successfully produce a ModuleName
- * as long as it falls within the permitted syntax.  This is ok because we will fail to find the module and produce an
- * error when we try during typechecking.
- */
-std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& expr);
 
 struct SourceNode
 {
@@ -71,13 +55,32 @@ struct SourceNode
         return forAutocomplete ? dirtyModuleForAutocomplete : dirtyModule;
     }
 
+    bool hasInvalidModuleDependency(bool forAutocomplete) const
+    {
+        return forAutocomplete ? invalidModuleDependencyForAutocomplete : invalidModuleDependency;
+    }
+
+    void setInvalidModuleDependency(bool value, bool forAutocomplete)
+    {
+        if (forAutocomplete)
+            invalidModuleDependencyForAutocomplete = value;
+        else
+            invalidModuleDependency = value;
+    }
+
     ModuleName name;
     std::string humanReadableName;
     DenseHashSet<ModuleName> requireSet{{}};
     std::vector<std::pair<ModuleName, Location>> requireLocations;
+    Set<ModuleName> dependents{{}};
+
     bool dirtySourceModule = true;
     bool dirtyModule = true;
     bool dirtyModuleForAutocomplete = true;
+
+    bool invalidModuleDependency = true;
+    bool invalidModuleDependencyForAutocomplete = true;
+
     double autocompleteLimitsMult = 1.0;
 };
 
@@ -112,6 +115,8 @@ struct FrontendOptions
     // An optional callback which is called for every *dirty* module was checked
     // Is multi-threaded typechecking is used, this callback might be called from multiple threads and has to be thread-safe
     std::function<void(const SourceModule& sourceModule, const Luau::Module& module)> customModuleCheck;
+
+    bool collectTypeAllocationStats = false;
 };
 
 struct CheckResult
@@ -132,8 +137,9 @@ struct FrontendModuleResolver : ModuleResolver
     std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
     std::string getHumanReadableModuleName(const ModuleName& moduleName) const override;
 
-    void setModule(const ModuleName& moduleName, ModulePtr module);
+    bool setModule(const ModuleName& moduleName, ModulePtr module);
     void clearModules();
+
 
 private:
     Frontend* frontend;
@@ -152,6 +158,13 @@ struct Frontend
         size_t filesStrict = 0;
         size_t filesNonstrict = 0;
 
+        size_t typesAllocated = 0;
+        size_t typePacksAllocated = 0;
+
+        size_t boolSingletonsMinted = 0;
+        size_t strSingletonsMinted = 0;
+        size_t uniqueStrSingletonsMinted = 0;
+
         double timeRead = 0;
         double timeParse = 0;
         double timeCheck = 0;
@@ -160,14 +173,23 @@ struct Frontend
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
+    void setLuauSolverSelectionFromWorkspace(SolverMode mode);
+    SolverMode getLuauSolverMode() const;
+    // The default value assuming there is no workspace setup yet
+    std::atomic<SolverMode> useNewLuauSolver{FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     // Parse module graph and prepare SourceNode/SourceModule data, including required dependencies without running typechecking
     void parse(const ModuleName& name);
+    void parseModules(const std::vector<ModuleName>& name);
 
     // Parse and typecheck module graph
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
 
+    bool allModuleDependenciesValid(const ModuleName& name, bool forAutocomplete = false) const;
+
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
     void markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty = nullptr);
+
+    void traverseDependents(const ModuleName& name, std::function<bool(SourceNode&)> processSubtree);
 
     /** Borrow a pointer into the SourceModule cache.
      *
@@ -182,6 +204,7 @@ struct Frontend
 
     void clearStats();
     void clear();
+    void clearBuiltinEnvironments();
 
     ScopePtr addEnvironment(const std::string& environmentName);
     ScopePtr getEnvironmentScope(const std::string& environmentName) const;
@@ -209,6 +232,7 @@ struct Frontend
     );
 
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
+    std::vector<ModuleName> getRequiredScripts(const ModuleName& name);
 
 private:
     ModulePtr check(
@@ -241,11 +265,13 @@ private:
     void checkBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);
+    void performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos);
+    void sendQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos);
+    void sendQueueCycleItemTask(std::shared_ptr<BuildQueueWorkState> state);
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 
     ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete) const;
-
     std::unordered_map<std::string, ScopePtr> environments;
     std::unordered_map<std::string, std::function<void(Frontend&, GlobalTypes&, ScopePtr)>> builtinDefinitions;
 
@@ -286,6 +312,7 @@ ModulePtr check(
     NotNull<ModuleResolver> moduleResolver,
     NotNull<FileResolver> fileResolver,
     const ScopePtr& globalScope,
+    const ScopePtr& typeFunctionScope,
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
     FrontendOptions options,
     TypeCheckLimits limits
@@ -300,6 +327,7 @@ ModulePtr check(
     NotNull<ModuleResolver> moduleResolver,
     NotNull<FileResolver> fileResolver,
     const ScopePtr& globalScope,
+    const ScopePtr& typeFunctionScope,
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
     FrontendOptions options,
     TypeCheckLimits limits,

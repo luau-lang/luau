@@ -49,7 +49,7 @@ bool Instantiation::ignoreChildren(TypeId ty)
 {
     if (log->getMutable<FunctionType>(ty))
         return true;
-    else if (get<ClassType>(ty))
+    else if (get<ExternType>(ty))
         return true;
     else
         return false;
@@ -60,10 +60,8 @@ TypeId Instantiation::clean(TypeId ty)
     const FunctionType* ftv = log->getMutable<FunctionType>(ty);
     LUAU_ASSERT(ftv);
 
-    FunctionType clone = FunctionType{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
-    clone.magicFunction = ftv->magicFunction;
-    clone.dcrMagicFunction = ftv->dcrMagicFunction;
-    clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
+    FunctionType clone = FunctionType{level, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+    clone.magic = ftv->magic;
     clone.tags = ftv->tags;
     clone.argNames = ftv->argNames;
     TypeId result = addType(std::move(clone));
@@ -121,7 +119,7 @@ bool ReplaceGenerics::ignoreChildren(TypeId ty)
         // whenever we quantify, so the vectors overlap if and only if they are equal.
         return (!generics.empty() || !genericPacks.empty()) && (ftv->generics == generics) && (ftv->genericPacks == genericPacks);
     }
-    else if (get<ClassType>(ty))
+    else if (get<ExternType>(ty))
         return true;
     else
     {
@@ -165,7 +163,7 @@ TypeId ReplaceGenerics::clean(TypeId ty)
     }
     else
     {
-        return addType(FreeType{scope, level});
+        return arena->freshType(builtinTypes, scope, level);
     }
 }
 

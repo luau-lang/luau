@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/TypeFwd.h"
 
 #include <memory>
@@ -44,6 +45,8 @@ struct ToStringOptions
     bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
     bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
     bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
+    bool hideTableAliasExpansions = false;        // If true, all table aliases will not be expanded
+    bool useQuestionMarks = true;                 // If true, use a postfix ? for options, else write them out as unions that include nil.
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypes
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     size_t compositeTypesSingleLineLimit = 5; // The number of type elements permitted on a single line when printing type unions/intersections
@@ -132,6 +135,10 @@ std::string dump(TypeId ty);
 std::string dump(const std::optional<TypeId>& ty);
 std::string dump(TypePackId ty);
 std::string dump(const std::optional<TypePackId>& ty);
+std::string dump(const std::vector<TypeId>& types);
+std::string dump(DenseHashMap<TypeId, TypeId>& types);
+std::string dump(DenseHashMap<TypePackId, TypePackId>& types);
+
 std::string dump(const Constraint& c);
 
 std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
@@ -151,4 +158,5 @@ inline std::string toString(const TypeOrPack& tyOrTp)
 
 std::string dump(const TypeOrPack& tyOrTp);
 
+std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& opts);
 } // namespace Luau

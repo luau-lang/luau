@@ -1,13 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
+#include "Luau/EqSatSimplification.h"
 #include "Luau/Set.h"
+#include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/TypePath.h"
-#include "Luau/TypeFunction.h"
-#include "Luau/TypeCheckLimits.h"
-#include "Luau/DenseHash.h"
 
 #include <vector>
 #include <optional>
@@ -21,7 +22,7 @@ struct InternalErrorReporter;
 
 class TypeIds;
 class Normalizer;
-struct NormalizedClassType;
+struct NormalizedExternType;
 struct NormalizedFunctionType;
 struct NormalizedStringType;
 struct NormalizedType;
@@ -59,7 +60,7 @@ struct SubtypingReasoningHash
 };
 
 using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
-static const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
+inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
 
 struct SubtypingResult
 {
@@ -70,6 +71,12 @@ struct SubtypingResult
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
     SubtypingReasonings reasoning{kEmptyReasoning};
+    DenseHashMap<TypePackId, TypePackId> mappedGenericPacks{nullptr};
+
+    // If this subtype result required testing free types, we might be making
+    // assumptions about what the free type eventually resolves to.  If so,
+    // those assumptions are recorded here.
+    std::vector<SubtypeConstraint> assumedConstraints;
 
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
@@ -96,6 +103,22 @@ struct SubtypingEnvironment
         DenseHashSet<TypeId> upperBound{nullptr};
     };
 
+    /* For nested subtyping relationship tests of mapped generic bounds, we keep the outer environment immutable */
+    SubtypingEnvironment* parent = nullptr;
+
+    /// Applies `mappedGenerics` to the given type.
+    /// This is used specifically to substitute for generics in type function instances.
+    std::optional<TypeId> applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
+
+    const TypeId* tryFindSubstitution(TypeId ty) const;
+    const SubtypingResult* tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const;
+
+    bool containsMappedType(TypeId ty) const;
+    bool containsMappedPack(TypePackId tp) const;
+
+    GenericBounds& getMappedTypeBounds(TypeId ty);
+    TypePackId* getMappedPackBounds(TypePackId tp);
+
     /*
      * When we encounter a generic over the course of a subtyping test, we need
      * to tentatively map that generic onto a type on the other side.
@@ -104,7 +127,7 @@ struct SubtypingEnvironment
     DenseHashMap<TypePackId, TypePackId> mappedGenericPacks{nullptr};
 
     /*
-     * See the test cyclic_tables_are_assumed_to_be_compatible_with_classes for
+     * See the test cyclic_tables_are_assumed_to_be_compatible_with_extern_types for
      * details.
      *
      * An empty value is equivalent to a nonexistent key.
@@ -112,17 +135,15 @@ struct SubtypingEnvironment
     DenseHashMap<TypeId, TypeId> substitutions{nullptr};
 
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> ephemeralCache{{}};
-
-    /// Applies `mappedGenerics` to the given type.
-    /// This is used specifically to substitute for generics in type function instances.
-    std::optional<TypeId> applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
 };
 
 struct Subtyping
 {
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
+    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> iceReporter;
 
     TypeCheckLimits limits;
@@ -136,13 +157,17 @@ struct Subtyping
     Variance variance = Variance::Covariant;
 
     using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
+    using SeenTypePackSet = Set<std::pair<TypePackId, TypePackId>, TypePairHash>;
 
     SeenSet seenTypes{{}};
+    SeenTypePackSet seenPacks{{}};
 
     Subtyping(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> typeArena,
+        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> iceReporter
     );
 
@@ -212,9 +237,14 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const ClassType* subClass, const ClassType* superClass, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const ExternType* subExternType,
+        const ExternType* superExternType,
+        NotNull<Scope> scope
+    );
     SubtypingResult
-    isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ClassType* subClass, TypeId superTy, const TableType* superTable, NotNull<Scope>);
+    isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ExternType* subExternType, TypeId superTy, const TableType* superTable, NotNull<Scope>);
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const FunctionType* subFunction,
@@ -242,11 +272,16 @@ private:
     );
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
-        const NormalizedClassType& subClass,
-        const NormalizedClassType& superClass,
+        const NormalizedExternType& subExternType,
+        const NormalizedExternType& superExternType,
         NotNull<Scope> scope
     );
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedClassType& subClass, const TypeIds& superTables, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const NormalizedExternType& subExternType,
+        const TypeIds& superTables,
+        NotNull<Scope> scope
+    );
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const NormalizedStringType& subString,

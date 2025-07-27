@@ -46,9 +46,9 @@ jobs:
     - name: make cli
       run: |
          make -j2 config=sanitize werror=1 luau luau-analyze luau-compile # match config with tests to improve build time
-         ./luau tests/conformance/assert.lua
-         ./luau-analyze tests/conformance/assert.lua
-         ./luau-compile tests/conformance/assert.lua
+         ./luau tests/conformance/assert.luau
+         ./luau-analyze tests/conformance/assert.luau
+         ./luau-compile tests/conformance/assert.luau
 
   windows:
     runs-on: windows-latest
@@ -81,12 +81,12 @@ jobs:
       shell: bash # necessary for fail-fast
       run: |
         cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI --config Debug # match config with tests to improve build time
-        Debug/luau tests/conformance/assert.lua
-        Debug/luau-analyze tests/conformance/assert.lua
-        Debug/luau-compile tests/conformance/assert.lua
+        Debug/luau tests/conformance/assert.luau
+        Debug/luau-analyze tests/conformance/assert.luau
+        Debug/luau-compile tests/conformance/assert.luau
 
   coverage:
-    runs-on: ubuntu-20.04 # needed for clang++-10 to avoid gcov compatibility issues
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - name: install
@@ -94,7 +94,7 @@ jobs:
         sudo apt install llvm
     - name: make coverage
       run: |
-        CXX=clang++-10 make -j2 config=coverage native=1 coverage
+        CXX=clang++ make -j2 config=coverage native=1 coverage
     - name: upload coverage
       uses: codecov/codecov-action@v3
       with:

@@ -14,10 +14,8 @@ bool Symbol::operator==(const Symbol& rhs) const
         return local == rhs.local;
     else if (global.value)
         return rhs.global.value && global == rhs.global.value; // Subtlety: AstName::operator==(const char*) uses strcmp, not pointer identity.
-    else if (FFlag::LuauSolverV2)
-        return !rhs.local && !rhs.global.value; // Reflexivity: we already know `this` Symbol is empty, so check that rhs is.
     else
-        return false;
+        return !rhs.local && !rhs.global.value; // Reflexivity: we already know `this` Symbol is empty, so check that rhs is.
 }
 
 std::string toString(const Symbol& name)

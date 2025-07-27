@@ -400,6 +400,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
     SINGLE_COMPARE(fsub(d1, d2, d3), 0x1E633841);
     SINGLE_COMPARE(fsub(s29, s29, s28), 0x1E3C3BBD);
 
+    SINGLE_COMPARE(faddp(s29, s28), 0x7E30DB9D);
+    SINGLE_COMPARE(faddp(d29, d28), 0x7E70DB9D);
+
     SINGLE_COMPARE(frinta(d1, d2), 0x1E664041);
     SINGLE_COMPARE(frintm(d1, d2), 0x1E654041);
     SINGLE_COMPARE(frintp(d1, d2), 0x1E64C041);

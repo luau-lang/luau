@@ -10,8 +10,8 @@
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauBoundLazyTypes2)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSolverAgnosticVisitType)
 
 namespace Luau
 {
@@ -73,6 +73,8 @@ struct GenericTypeVisitor
 {
     using Set = S;
 
+    const std::string visitorName;
+
     Set seen;
     bool skipBoundTypes = false;
     int recursionCounter = 0;
@@ -80,11 +82,14 @@ struct GenericTypeVisitor
 
     GenericTypeVisitor() = default;
 
-    explicit GenericTypeVisitor(Set seen, bool skipBoundTypes = false)
-        : seen(std::move(seen))
+    explicit GenericTypeVisitor(const std::string visitorName, Set seen, bool skipBoundTypes = false)
+        : visitorName(visitorName)
+        , seen(std::move(seen))
         , skipBoundTypes(skipBoundTypes)
     {
     }
+
+    virtual ~GenericTypeVisitor() {}
 
     virtual void cycle(TypeId) {}
     virtual void cycle(TypePackId) {}
@@ -125,11 +130,15 @@ struct GenericTypeVisitor
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const ClassType& ctv)
+    virtual bool visit(TypeId ty, const ExternType& etv)
     {
         return visit(ty);
     }
     virtual bool visit(TypeId ty, const AnyType& atv)
+    {
+        return visit(ty);
+    }
+    virtual bool visit(TypeId ty, const NoRefineType& nrt)
     {
         return visit(ty);
     }
@@ -186,7 +195,7 @@ struct GenericTypeVisitor
     {
         return visit(tp);
     }
-    virtual bool visit(TypePackId tp, const Unifiable::Error& etp)
+    virtual bool visit(TypePackId tp, const ErrorTypePack& etp)
     {
         return visit(tp);
     }
@@ -209,7 +218,7 @@ struct GenericTypeVisitor
 
     void traverse(TypeId ty)
     {
-        RecursionLimiter limiter{&recursionCounter, FInt::LuauVisitRecursionLimit};
+        RecursionLimiter limiter{visitorName, &recursionCounter, FInt::LuauVisitRecursionLimit};
 
         if (visit_detail::hasSeen(seen, ty))
         {
@@ -226,7 +235,20 @@ struct GenericTypeVisitor
         }
         else if (auto ftv = get<FreeType>(ty))
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverAgnosticVisitType)
+            {
+                if (visit(ty, *ftv))
+                {
+                    // Regardless of the choice of solver, all free types are guaranteed to have
+                    // lower and upper bounds
+                    LUAU_ASSERT(ftv->lowerBound);
+                    LUAU_ASSERT(ftv->upperBound);
+
+                    traverse(ftv->lowerBound);
+                    traverse(ftv->upperBound);
+                }
+            }
+            else if (FFlag::LuauSolverV2)
             {
                 if (visit(ty, *ftv))
                 {
@@ -276,7 +298,7 @@ struct GenericTypeVisitor
                 {
                     for (auto& [_name, prop] : ttv->props)
                     {
-                        if (FFlag::LuauSolverV2)
+                        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
                         {
                             if (auto ty = prop.readTy)
                                 traverse(*ty);
@@ -289,7 +311,7 @@ struct GenericTypeVisitor
                                 traverse(*ty);
                         }
                         else
-                            traverse(prop.type());
+                            traverse(prop.type_DEPRECATED());
                     }
 
                     if (ttv->indexer)
@@ -308,13 +330,13 @@ struct GenericTypeVisitor
                 traverse(mtv->metatable);
             }
         }
-        else if (auto ctv = get<ClassType>(ty))
+        else if (auto etv = get<ExternType>(ty))
         {
-            if (visit(ty, *ctv))
+            if (visit(ty, *etv))
             {
-                for (const auto& [name, prop] : ctv->props)
+                for (const auto& [name, prop] : etv->props)
                 {
-                    if (FFlag::LuauSolverV2)
+                    if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
                     {
                         if (auto ty = prop.readTy)
                             traverse(*ty);
@@ -327,24 +349,26 @@ struct GenericTypeVisitor
                             traverse(*ty);
                     }
                     else
-                        traverse(prop.type());
+                        traverse(prop.type_DEPRECATED());
                 }
 
-                if (ctv->parent)
-                    traverse(*ctv->parent);
+                if (etv->parent)
+                    traverse(*etv->parent);
 
-                if (ctv->metatable)
-                    traverse(*ctv->metatable);
+                if (etv->metatable)
+                    traverse(*etv->metatable);
 
-                if (ctv->indexer)
+                if (etv->indexer)
                 {
-                    traverse(ctv->indexer->indexType);
-                    traverse(ctv->indexer->indexResultType);
+                    traverse(etv->indexer->indexType);
+                    traverse(etv->indexer->indexResultType);
                 }
             }
         }
         else if (auto atv = get<AnyType>(ty))
             visit(ty, *atv);
+        else if (auto nrt = get<NoRefineType>(ty))
+            visit(ty, *nrt);
         else if (auto utv = get<UnionType>(ty))
         {
             if (visit(ty, *utv))
@@ -389,7 +413,7 @@ struct GenericTypeVisitor
                 traverse(unwrapped);
 
             // Visiting into LazyType that hasn't been unwrapped may necessarily cause infinite expansion, so we don't do that on purpose.
-            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassType
+            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ExternType
             // that doesn't need to be expanded.
         }
         else if (auto stv = get<SingletonType>(ty))
@@ -455,7 +479,7 @@ struct GenericTypeVisitor
         else if (auto gtv = get<GenericTypePack>(tp))
             visit(tp, *gtv);
 
-        else if (auto etv = get<Unifiable::Error>(tp))
+        else if (auto etv = get<ErrorTypePack>(tp))
             visit(tp, *etv);
 
         else if (auto pack = get<TypePack>(tp))
@@ -506,8 +530,8 @@ struct GenericTypeVisitor
  */
 struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 {
-    explicit TypeVisitor(bool skipBoundTypes = false)
-        : GenericTypeVisitor{{}, skipBoundTypes}
+    explicit TypeVisitor(const std::string visitorName, bool skipBoundTypes = false)
+        : GenericTypeVisitor{visitorName, {}, skipBoundTypes}
     {
     }
 };
@@ -515,8 +539,8 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
 struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
-    explicit TypeOnceVisitor(bool skipBoundTypes = false)
-        : GenericTypeVisitor{DenseHashSet<void*>{nullptr}, skipBoundTypes}
+    explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes = false)
+        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{nullptr}, skipBoundTypes}
     {
     }
 };

@@ -116,6 +116,13 @@ const char* luaO_pushfstring(lua_State* L, const char* fmt, ...)
     return msg;
 }
 
+// Possible chunkname prefixes:
+//
+// '=' prefix: meant to represent custom chunknames. When truncation is needed,
+// the beginning of the chunkname is kept.
+//
+// '@' prefix: meant to represent filepaths. When truncation is needed, the end
+// of the filepath is kept, as this is more useful for identifying the file.
 const char* luaO_chunkid(char* buf, size_t buflen, const char* source, size_t srclen)
 {
     if (*source == '=')

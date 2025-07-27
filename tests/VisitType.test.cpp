@@ -4,6 +4,7 @@
 
 #include "Luau/RecursionCounter.h"
 
+#include "Luau/Type.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -54,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_throw_when_limit_is_high_enough")
 
 TEST_CASE_FIXTURE(Fixture, "some_free_types_do_not_have_bounds")
 {
-    Type t{FreeType{TypeLevel{}}};
+    Type t{FreeType{TypeLevel{}, getBuiltins()->neverType, getBuiltins()->unknownType}};
 
     (void)toString(&t);
 }
@@ -63,8 +64,8 @@ TEST_CASE_FIXTURE(Fixture, "some_free_types_have_bounds")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
-    Scope scope{builtinTypes->anyTypePack};
-    Type t{FreeType{&scope, builtinTypes->neverType, builtinTypes->numberType}};
+    Scope scope{getBuiltins()->anyTypePack};
+    Type t{FreeType{&scope, getBuiltins()->neverType, getBuiltins()->numberType}};
 
     CHECK("('a <: number)" == toString(&t));
 }

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrUtils.h"
 
+#include "Luau/CodeGenOptions.h"
 #include "Luau/IrBuilder.h"
 
 #include "BitUtils.h"
@@ -9,6 +10,9 @@
 #include "lua.h"
 #include "lnumutils.h"
 
+#include <algorithm>
+#include <vector>
+
 #include <limits.h>
 #include <math.h>
 
@@ -16,6 +20,115 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+int getOpLength(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_GETGLOBAL:
+    case LOP_SETGLOBAL:
+    case LOP_GETIMPORT:
+    case LOP_GETTABLEKS:
+    case LOP_SETTABLEKS:
+    case LOP_NAMECALL:
+    case LOP_JUMPIFEQ:
+    case LOP_JUMPIFLE:
+    case LOP_JUMPIFLT:
+    case LOP_JUMPIFNOTEQ:
+    case LOP_JUMPIFNOTLE:
+    case LOP_JUMPIFNOTLT:
+    case LOP_NEWTABLE:
+    case LOP_SETLIST:
+    case LOP_FORGLOOP:
+    case LOP_LOADKX:
+    case LOP_FASTCALL2:
+    case LOP_FASTCALL2K:
+    case LOP_FASTCALL3:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
+        return 2;
+
+    default:
+        return 1;
+    }
+}
+
+bool isJumpD(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_JUMP:
+    case LOP_JUMPIF:
+    case LOP_JUMPIFNOT:
+    case LOP_JUMPIFEQ:
+    case LOP_JUMPIFLE:
+    case LOP_JUMPIFLT:
+    case LOP_JUMPIFNOTEQ:
+    case LOP_JUMPIFNOTLE:
+    case LOP_JUMPIFNOTLT:
+    case LOP_FORNPREP:
+    case LOP_FORNLOOP:
+    case LOP_FORGPREP:
+    case LOP_FORGLOOP:
+    case LOP_FORGPREP_INEXT:
+    case LOP_FORGPREP_NEXT:
+    case LOP_JUMPBACK:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+bool isSkipC(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_LOADB:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+bool isFastCall(LuauOpcode op)
+{
+    switch (int(op))
+    {
+    case LOP_FASTCALL:
+    case LOP_FASTCALL1:
+    case LOP_FASTCALL2:
+    case LOP_FASTCALL2K:
+    case LOP_FASTCALL3:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+int getJumpTarget(uint32_t insn, uint32_t pc)
+{
+    LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
+
+    if (isJumpD(op))
+        return int(pc + LUAU_INSN_D(insn) + 1);
+    else if (isFastCall(op))
+        return int(pc + LUAU_INSN_C(insn) + 2);
+    else if (isSkipC(op) && LUAU_INSN_C(insn))
+        return int(pc + LUAU_INSN_C(insn) + 1);
+    else if (int(op) == LOP_JUMPX)
+        return int(pc + LUAU_INSN_E(insn) + 1);
+    else
+        return -1;
+}
 
 IrValueKind getCmdValueKind(IrCmd cmd)
 {
@@ -68,6 +181,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::SQRT_NUM:
     case IrCmd::ABS_NUM:
     case IrCmd::SIGN_NUM:
+    case IrCmd::SELECT_NUM:
         return IrValueKind::Double;
     case IrCmd::ADD_VEC:
     case IrCmd::SUB_VEC:
@@ -75,6 +189,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::UNM_VEC:
         return IrValueKind::Tvalue;
+    case IrCmd::DOT_VEC:
+        return IrValueKind::Double;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
         return IrValueKind::Int;
@@ -124,6 +240,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
     case IrCmd::GET_IMPORT:
+    case IrCmd::GET_CACHED_IMPORT:
     case IrCmd::CONCAT:
     case IrCmd::GET_UPVALUE:
     case IrCmd::SET_UPVALUE:
@@ -649,6 +766,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             double v = function.doubleOp(inst.a);
 
             substitute(function, inst, build.constDouble(v > 0.0 ? 1.0 : v < 0.0 ? -1.0 : 0.0));
+        }
+        break;
+    case IrCmd::SELECT_NUM:
+        if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+        {
+            double c = function.doubleOp(inst.c);
+            double d = function.doubleOp(inst.d);
+
+            substitute(function, inst, c == d ? inst.b : inst.a);
         }
         break;
     case IrCmd::NOT_ANY:

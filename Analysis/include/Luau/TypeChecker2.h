@@ -2,15 +2,16 @@
 
 #pragma once
 
-#include "Luau/Error.h"
-#include "Luau/NotNull.h"
 #include "Luau/Common.h"
-#include "Luau/TypeUtils.h"
+#include "Luau/EqSatSimplification.h"
+#include "Luau/Error.h"
+#include "Luau/Normalize.h"
+#include "Luau/NotNull.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeOrPack.h"
-#include "Luau/Normalize.h"
-#include "Luau/Subtyping.h"
+#include "Luau/TypeUtils.h"
 
 namespace Luau
 {
@@ -37,18 +38,18 @@ struct Reasonings
 
     std::string toString()
     {
+        if (reasons.empty())
+            return "";
+
         // DenseHashSet ordering is entirely undefined, so we want to
         // sort the reasons here to achieve a stable error
         // stringification.
         std::sort(reasons.begin(), reasons.end());
-        std::string allReasons;
-        bool first = true;
+        std::string allReasons = "\nthis is because ";
         for (const std::string& reason : reasons)
         {
-            if (first)
-                first = false;
-            else
-                allReasons += "\n\t";
+            if (reasons.size() > 1)
+                allReasons += "\n\t * ";
 
             allReasons += reason;
         }
@@ -60,7 +61,9 @@ struct Reasonings
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<UnifierSharedState> sharedState,
+    NotNull<Simplifier> simplifier,
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
+    NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
     DcrLogger* logger,
     const SourceModule& sourceModule,
@@ -70,6 +73,8 @@ void check(
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
+    NotNull<Simplifier> simplifier;
+    NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DcrLogger* logger;
     const NotNull<TypeCheckLimits> limits;
     const NotNull<InternalErrorReporter> ice;
@@ -88,6 +93,8 @@ struct TypeChecker2
 
     TypeChecker2(
         NotNull<BuiltinTypes> builtinTypes,
+        NotNull<Simplifier> simplifier,
+        NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<UnifierSharedState> unifierState,
         NotNull<TypeCheckLimits> limits,
         DcrLogger* logger,
@@ -109,14 +116,14 @@ private:
     std::optional<StackPusher> pushStack(AstNode* node);
     void checkForInternalTypeFunction(TypeId ty, Location location);
     TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location);
-    TypePackId lookupPack(AstExpr* expr);
+    TypePackId lookupPack(AstExpr* expr) const;
     TypeId lookupType(AstExpr* expr);
     TypeId lookupAnnotation(AstType* annotation);
-    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation);
-    TypeId lookupExpectedType(AstExpr* expr);
-    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena);
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation) const;
+    TypeId lookupExpectedType(AstExpr* expr) const;
+    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena) const;
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena);
-    Scope* findInnermostScope(Location location);
+    Scope* findInnermostScope(Location location) const;
     void visit(AstStat* stat);
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);
@@ -140,7 +147,7 @@ private:
     void visit(AstTypeList types);
     void visit(AstStatDeclareFunction* stat);
     void visit(AstStatDeclareGlobal* stat);
-    void visit(AstStatDeclareClass* stat);
+    void visit(AstStatDeclareExternType* stat);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);
@@ -153,7 +160,7 @@ private:
     void visit(AstExprVarargs* expr);
     void visitCall(AstExprCall* call);
     void visit(AstExprCall* call);
-    std::optional<TypeId> tryStripUnionFromNil(TypeId ty);
+    std::optional<TypeId> tryStripUnionFromNil(TypeId ty) const;
     TypeId stripFromNilAndReport(TypeId ty, const Location& location);
     void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context, TypeId astIndexExprTy);
     void visit(AstExprIndexName* indexName, ValueContext context);
@@ -168,7 +175,7 @@ private:
     void visit(AstExprInterpString* interpString);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
-    void visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks);
+    void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
     void visit(AstType* ty);
     void visit(AstTypeReference* ty);
     void visit(AstTypeTable* table);
@@ -186,6 +193,11 @@ private:
 
     void explainError(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& result);
     void explainError(TypePackId subTy, TypePackId superTy, Location location, const SubtypingResult& result);
+
+    bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
+
+    bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
+
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location);
     bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location);
     void reportError(TypeError e);
@@ -210,11 +222,24 @@ private:
         std::vector<TypeError>& errors
     );
 
+    // Avoid duplicate warnings being emitted for the same global variable.
+    DenseHashSet<std::string> warnedGlobals{""};
+
+    void suggestAnnotations(AstExprFunction* expr, TypeId ty);
+
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const;
     bool isErrorSuppressing(Location loc, TypeId ty);
     bool isErrorSuppressing(Location loc1, TypeId ty1, Location loc2, TypeId ty2);
     bool isErrorSuppressing(Location loc, TypePackId tp);
     bool isErrorSuppressing(Location loc1, TypePackId tp1, Location loc2, TypePackId tp2);
+
+    // Returns whether we reported any errors
+    bool reportNonviableOverloadErrors(
+        std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads,
+        Location callFuncLocation,
+        size_t argHeadSize,
+        Location callLocation
+    );
 };
 
 } // namespace Luau

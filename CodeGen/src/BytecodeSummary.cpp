@@ -1,14 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeSummary.h"
-#include "Luau/BytecodeUtils.h"
+
+#include "Luau/IrUtils.h"
+
 #include "CodeGenLower.h"
 
 #include "lua.h"
 #include "lapi.h"
 #include "lobject.h"
 #include "lstate.h"
-
-LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
@@ -44,7 +44,7 @@ FunctionBytecodeSummary FunctionBytecodeSummary::fromProto(Proto* proto, unsigne
         Instruction insn = proto->code[i];
         uint8_t op = LUAU_INSN_OP(insn);
         summary.incCount(0, op);
-        i += Luau::getOpLength(LuauOpcode(op));
+        i += getOpLength(LuauOpcode(op));
     }
 
     return summary;
@@ -58,10 +58,7 @@ std::vector<FunctionBytecodeSummary> summarizeBytecode(lua_State* L, int idx, un
     Proto* root = clvalue(func)->l.p;
 
     std::vector<Proto*> protos;
-    if (FFlag::LuauNativeAttribute)
-        gatherFunctions(protos, root, CodeGen_ColdFunctions, root->flags & LPF_NATIVE_FUNCTION);
-    else
-        gatherFunctions_DEPRECATED(protos, root, CodeGen_ColdFunctions);
+    gatherFunctions(protos, root, CodeGen_ColdFunctions, root->flags & LPF_NATIVE_FUNCTION);
 
     std::vector<FunctionBytecodeSummary> summaries;
     summaries.reserve(protos.size());

@@ -2,8 +2,7 @@
 #include "IrTranslation.h"
 
 #include "Luau/Bytecode.h"
-#include "Luau/BytecodeUtils.h"
-#include "Luau/CodeGen.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
 
@@ -12,6 +11,8 @@
 #include "lobject.h"
 #include "lstate.h"
 #include "ltm.h"
+
+LUAU_FASTFLAGVARIABLE(LuauCodeGenSimplifyImport2)
 
 namespace Luau
 {
@@ -1216,27 +1217,35 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     int k = LUAU_INSN_D(*pc);
     uint32_t aux = pc[1];
 
-    IrOp fastPath = build.block(IrBlockKind::Internal);
-    IrOp fallback = build.block(IrBlockKind::Fallback);
+    if (FFlag::LuauCodeGenSimplifyImport2)
+    {
+        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+        build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));
+    }
+    else
+    {
+        IrOp fastPath = build.block(IrBlockKind::Internal);
+        IrOp fallback = build.block(IrBlockKind::Fallback);
 
-    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
 
-    // note: if import failed, k[] is nil; we could check this during codegen, but we instead use runtime fallback
-    // this allows us to handle ahead-of-time codegen smoothly when an import fails to resolve at runtime
-    IrOp tk = build.inst(IrCmd::LOAD_TAG, build.vmConst(k));
-    build.inst(IrCmd::JUMP_EQ_TAG, tk, build.constTag(LUA_TNIL), fallback, fastPath);
+        // note: if import failed, k[] is nil; we could check this during codegen, but we instead use runtime fallback
+        // this allows us to handle ahead-of-time codegen smoothly when an import fails to resolve at runtime
+        IrOp tk = build.inst(IrCmd::LOAD_TAG, build.vmConst(k));
+        build.inst(IrCmd::JUMP_EQ_TAG, tk, build.constTag(LUA_TNIL), fallback, fastPath);
 
-    build.beginBlock(fastPath);
+        build.beginBlock(fastPath);
 
-    IrOp tvk = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(k));
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvk);
+        IrOp tvk = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(k));
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvk);
 
-    IrOp next = build.blockAtInst(pcpos + 2);
-    FallbackStreamScope scope(build, fallback, next);
+        IrOp next = build.blockAtInst(pcpos + 2);
+        FallbackStreamScope scope(build, fallback, next);
 
-    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::GET_IMPORT, build.vmReg(ra), build.constUint(aux));
-    build.inst(IrCmd::JUMP, next);
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(IrCmd::GET_IMPORT, build.vmReg(ra), build.constUint(aux));
+        build.inst(IrCmd::JUMP, next);
+    }
 }
 
 void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -1502,7 +1511,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         return false;
     }
 
-    IrOp next = build.blockAtInst(pcpos + getOpLength(LOP_NAMECALL));
+    IrOp next = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LOP_NAMECALL)));
     IrOp fallback = build.block(IrBlockKind::Fallback);
     IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
     IrOp secondFastPath = build.block(IrBlockKind::Internal);

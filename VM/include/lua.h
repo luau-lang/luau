@@ -72,13 +72,11 @@ enum lua_Type
     LUA_TNIL = 0,     // must be 0 due to lua_isnoneornil
     LUA_TBOOLEAN = 1, // must be 1 due to l_isfalse
 
-
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
     LUA_TVECTOR,
 
     LUA_TSTRING, // all types above this must be value types, all types below this must be GC types - see iscollectable
-
 
     LUA_TTABLE,
     LUA_TFUNCTION,
@@ -154,6 +152,7 @@ LUA_API const float* lua_tovector(lua_State* L, int idx);
 LUA_API int lua_toboolean(lua_State* L, int idx);
 LUA_API const char* lua_tolstring(lua_State* L, int idx, size_t* len);
 LUA_API const char* lua_tostringatom(lua_State* L, int idx, int* atom);
+LUA_API const char* lua_tolstringatom(lua_State* L, int idx, size_t* len, int* atom);
 LUA_API const char* lua_namecallatom(lua_State* L, int* atom);
 LUA_API int lua_objlen(lua_State* L, int idx);
 LUA_API lua_CFunction lua_tocfunction(lua_State* L, int idx);
@@ -189,6 +188,7 @@ LUA_API int lua_pushthread(lua_State* L);
 
 LUA_API void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag);
 LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
+LUA_API void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag); // metatable fetched with lua_getuserdatametatable
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 
 LUA_API void* lua_newbuffer(lua_State* L, size_t sz);
@@ -325,7 +325,8 @@ LUA_API void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor);
 LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 
 // alternative access for metatables already registered with luaL_newmetatable
-LUA_API void lua_setuserdatametatable(lua_State* L, int tag, int idx);
+// used by lua_newuserdatataggedwithmetatable to create tagged userdata with the associated metatable assigned
+LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
 
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
@@ -334,6 +335,7 @@ LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 LUA_API void lua_clonefunction(lua_State* L, int idx);
 
 LUA_API void lua_cleartable(lua_State* L, int idx);
+LUA_API void lua_clonetable(lua_State* L, int idx);
 
 LUA_API lua_Alloc lua_getallocf(lua_State* L, void** ud);
 
@@ -453,6 +455,8 @@ struct lua_Callbacks
     void (*debugstep)(lua_State* L, lua_Debug* ar);      // gets called after each instruction in single step mode
     void (*debuginterrupt)(lua_State* L, lua_Debug* ar); // gets called when thread execution is interrupted by break in another thread
     void (*debugprotectederror)(lua_State* L);           // gets called when protected call results in an error
+
+    void (*onallocate)(lua_State* L, size_t osize, size_t nsize); // gets called when memory is allocated
 };
 typedef struct lua_Callbacks lua_Callbacks;
 

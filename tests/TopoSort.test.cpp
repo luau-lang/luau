@@ -338,6 +338,32 @@ TEST_CASE_FIXTURE(Fixture, "nested_type_annotations_depends_on_later_typealiases
     CHECK_EQ(sorted[2], Foo);
 }
 
+TEST_CASE_FIXTURE(Fixture, "function_return_type_depends_on_type_aliases")
+{
+    AstStatBlock* program = parse(R"(
+        type callbackFn<K, V> = (element: V, key: K, map: Map<K, V>) -> ()
+
+        export type Map<K, V> = {
+            forEach: (callback: callbackFn<K, V>) -> (),
+        }
+
+        function foo<K, V>(key: K, value: V): Map<K, V>
+        end
+    )");
+
+    auto sorted = toposort(*program);
+
+    REQUIRE_EQ(3, sorted.size());
+
+    auto callbackFn = program->body.data[0];
+    auto Map = program->body.data[1];
+    auto foo = program->body.data[2];
+
+    CHECK_EQ(sorted[0], callbackFn);
+    CHECK_EQ(sorted[1], Map);
+    CHECK_EQ(sorted[2], foo);
+}
+
 TEST_CASE_FIXTURE(Fixture, "return_comes_last")
 {
     AstStatBlock* program = parse(R"(

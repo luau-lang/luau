@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Allocator.h"
 #include "Luau/Ast.h"
 #include "Luau/Location.h"
 #include "Luau/DenseHash.h"
@@ -10,40 +11,6 @@
 
 namespace Luau
 {
-
-class Allocator
-{
-public:
-    Allocator();
-    Allocator(Allocator&&);
-
-    Allocator& operator=(Allocator&&) = delete;
-
-    ~Allocator();
-
-    void* allocate(size_t size);
-
-    template<typename T, typename... Args>
-    T* alloc(Args&&... args)
-    {
-        static_assert(std::is_trivially_destructible<T>::value, "Objects allocated with this allocator will never have their destructors run!");
-
-        T* t = static_cast<T*>(allocate(sizeof(T)));
-        new (t) T(std::forward<Args>(args)...);
-        return t;
-    }
-
-private:
-    struct Page
-    {
-        Page* next;
-
-        char data[8192];
-    };
-
-    Page* root;
-    size_t offset;
-};
 
 struct Lexeme
 {
@@ -120,6 +87,12 @@ struct Lexeme
         Reserved_END
     };
 
+    enum struct QuoteStyle
+    {
+        Single,
+        Double,
+    };
+
     Type type;
     Location location;
 
@@ -144,6 +117,8 @@ public:
     Lexeme(const Location& location, Type type, const char* name);
 
     unsigned int getLength() const;
+    unsigned int getBlockDepth() const;
+    QuoteStyle getQuoteStyle() const;
 
     std::string toString() const;
 };
@@ -186,7 +161,7 @@ private:
 class Lexer
 {
 public:
-    Lexer(const char* buffer, std::size_t bufferSize, AstNameTable& names);
+    Lexer(const char* buffer, std::size_t bufferSize, AstNameTable& names, Position startPosition = {0, 0});
 
     void setSkipComments(bool skip);
     void setReadNames(bool read);
@@ -211,6 +186,11 @@ public:
 
     static bool fixupQuotedString(std::string& data);
     static void fixupMultilineString(std::string& data);
+
+    unsigned int getOffset() const
+    {
+        return offset;
+    }
 
 private:
     char peekch() const;

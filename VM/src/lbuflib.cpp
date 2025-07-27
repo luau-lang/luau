@@ -247,6 +247,87 @@ static int buffer_fill(lua_State* L)
     return 0;
 }
 
+static int buffer_readbits(lua_State* L)
+{
+    size_t len = 0;
+    void* buf = luaL_checkbuffer(L, 1, &len);
+    int64_t bitoffset = (int64_t)luaL_checknumber(L, 2);
+    int bitcount = luaL_checkinteger(L, 3);
+
+    if (bitoffset < 0)
+        luaL_error(L, "buffer access out of bounds");
+
+    if (unsigned(bitcount) > 32)
+        luaL_error(L, "bit count is out of range of [0; 32]");
+
+    if (uint64_t(bitoffset + bitcount) > uint64_t(len) * 8)
+        luaL_error(L, "buffer access out of bounds");
+
+    unsigned startbyte = unsigned(bitoffset / 8);
+    unsigned endbyte = unsigned((bitoffset + bitcount + 7) / 8);
+
+    uint64_t data = 0;
+
+#if defined(LUAU_BIG_ENDIAN)
+    for (int i = int(endbyte) - 1; i >= int(startbyte); i--)
+        data = (data << 8) + uint8_t(((char*)buf)[i]);
+#else
+    memcpy(&data, (char*)buf + startbyte, endbyte - startbyte);
+#endif
+
+    uint64_t subbyteoffset = bitoffset & 0x7;
+    uint64_t mask = (1ull << bitcount) - 1;
+
+    lua_pushunsigned(L, unsigned((data >> subbyteoffset) & mask));
+    return 1;
+}
+
+static int buffer_writebits(lua_State* L)
+{
+    size_t len = 0;
+    void* buf = luaL_checkbuffer(L, 1, &len);
+    int64_t bitoffset = (int64_t)luaL_checknumber(L, 2);
+    int bitcount = luaL_checkinteger(L, 3);
+    unsigned value = luaL_checkunsigned(L, 4);
+
+    if (bitoffset < 0)
+        luaL_error(L, "buffer access out of bounds");
+
+    if (unsigned(bitcount) > 32)
+        luaL_error(L, "bit count is out of range of [0; 32]");
+
+    if (uint64_t(bitoffset + bitcount) > uint64_t(len) * 8)
+        luaL_error(L, "buffer access out of bounds");
+
+    unsigned startbyte = unsigned(bitoffset / 8);
+    unsigned endbyte = unsigned((bitoffset + bitcount + 7) / 8);
+
+    uint64_t data = 0;
+
+#if defined(LUAU_BIG_ENDIAN)
+    for (int i = int(endbyte) - 1; i >= int(startbyte); i--)
+        data = data * 256 + uint8_t(((char*)buf)[i]);
+#else
+    memcpy(&data, (char*)buf + startbyte, endbyte - startbyte);
+#endif
+
+    uint64_t subbyteoffset = bitoffset & 0x7;
+    uint64_t mask = ((1ull << bitcount) - 1) << subbyteoffset;
+
+    data = (data & ~mask) | ((uint64_t(value) << subbyteoffset) & mask);
+
+#if defined(LUAU_BIG_ENDIAN)
+    for (int i = int(startbyte); i < int(endbyte); i++)
+    {
+        ((char*)buf)[i] = data & 0xff;
+        data >>= 8;
+    }
+#else
+    memcpy((char*)buf + startbyte, &data, endbyte - startbyte);
+#endif
+    return 0;
+}
+
 static const luaL_Reg bufferlib[] = {
     {"create", buffer_create},
     {"fromstring", buffer_fromstring},
@@ -272,6 +353,8 @@ static const luaL_Reg bufferlib[] = {
     {"len", buffer_len},
     {"copy", buffer_copy},
     {"fill", buffer_fill},
+    {"readbits", buffer_readbits},
+    {"writebits", buffer_writebits},
     {NULL, NULL},
 };
 

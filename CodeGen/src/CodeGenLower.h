@@ -7,6 +7,7 @@
 #include "Luau/IrBuilder.h"
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
+#include "Luau/LoweringStats.h"
 #include "Luau/OptimizeConstProp.h"
 #include "Luau/OptimizeDeadStore.h"
 #include "Luau/OptimizeFinalX64.h"
@@ -27,30 +28,11 @@ LUAU_FASTFLAG(DebugCodegenSkipNumbering)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
-LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
 namespace CodeGen
 {
-
-inline void gatherFunctions_DEPRECATED(std::vector<Proto*>& results, Proto* proto, unsigned int flags)
-{
-    if (results.size() <= size_t(proto->bytecodeid))
-        results.resize(proto->bytecodeid + 1);
-
-    // Skip protos that we've already compiled in this run: this happens because at -O2, inlined functions get their protos reused
-    if (results[proto->bytecodeid])
-        return;
-
-    // Only compile cold functions if requested
-    if ((proto->flags & LPF_NATIVE_COLD) == 0 || (flags & CodeGen_ColdFunctions) != 0)
-        results[proto->bytecodeid] = proto;
-
-    // Recursively traverse child protos even if we aren't compiling this one
-    for (int i = 0; i < proto->sizep; i++)
-        gatherFunctions_DEPRECATED(results, proto->p[i], flags);
-}
 
 inline void gatherFunctionsHelper(
     std::vector<Proto*>& results,
@@ -82,7 +64,6 @@ inline void gatherFunctionsHelper(
 
 inline void gatherFunctions(std::vector<Proto*>& results, Proto* root, const unsigned int flags, const bool hasNativeFunctions = false)
 {
-    LUAU_ASSERT(FFlag::LuauNativeAttribute);
     gatherFunctionsHelper(results, root, flags, hasNativeFunctions, true);
 }
 
@@ -121,7 +102,7 @@ inline bool lowerImpl(
 
     bool outputEnabled = options.includeAssembly || options.includeIr;
 
-    IrToStringContext ctx{build.text, function.blocks, function.constants, function.cfg};
+    IrToStringContext ctx{build.text, function.blocks, function.constants, function.cfg, function.proto};
 
     // We use this to skip outlined fallback blocks from IR/asm text output
     size_t textSize = build.text.length();
@@ -318,6 +299,8 @@ inline bool lowerFunction(
     CodeGenCompilationResult& codeGenCompilationResult
 )
 {
+    ir.function.stats = stats;
+
     killUnusedBlocks(ir.function);
 
     unsigned preOptBlockCount = 0;

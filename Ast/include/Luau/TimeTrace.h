@@ -7,6 +7,7 @@
 #include <memory>
 
 #include <stdint.h>
+#include <string.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 

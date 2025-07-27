@@ -12,11 +12,15 @@
 
 using namespace Luau;
 
+
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
+
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
 TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         function foo(x, y) end
@@ -39,7 +43,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_could_return")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         function getMinCardCountForWidth(width)
@@ -67,7 +71,7 @@ TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    REQUIRE_NE(*builtinTypes->anyType, *requireType("foo"));
+    REQUIRE_NE(*getBuiltins()->anyType, *requireType("foo"));
 }
 #endif
 
@@ -103,7 +107,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types_are_ok")
 
 TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local m = 55
@@ -111,7 +115,7 @@ TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*builtinTypes->anyType, *requireType("m"));
+    CHECK_EQ(*getBuiltins()->anyType, *requireType("m"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
@@ -130,7 +134,7 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -148,7 +152,7 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -163,7 +167,7 @@ TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 
 TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -177,15 +181,15 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
     REQUIRE(ttv != nullptr);
 
     REQUIRE(ttv->props.count("foo"));
-    TypeId fooProp = ttv->props["foo"].type();
+    TypeId fooProp = ttv->props["foo"].type_DEPRECATED();
     REQUIRE(fooProp != nullptr);
 
-    CHECK_EQ(*fooProp, *builtinTypes->anyType);
+    CHECK_EQ(*fooProp, *getBuiltins()->anyType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local T = {
@@ -200,9 +204,11 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     TableType* ttv = getMutable<TableType>(requireType("T"));
     REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
 
-    CHECK_EQ(*builtinTypes->anyType, *ttv->props["one"].type());
-    CHECK_EQ(*builtinTypes->anyType, *ttv->props["two"].type());
-    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type())), "Should be a function: " << *ttv->props["three"].type());
+    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type_DEPRECATED());
+    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type_DEPRECATED());
+    CHECK_MESSAGE(
+        get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED()
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
@@ -261,7 +267,7 @@ TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_retu
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -313,6 +319,41 @@ TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_nonstrict")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauMagicTypes, true},
+        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
+    };
+
+    CheckResult results = check(R"(
+        --!nonstrict
+        local function _f(_x: _luau_force_constraint_solving_incomplete) end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete_is_hidden_nonstrict")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauMagicTypes, true},
+        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
+    };
+
+    CheckResult results = check(R"(
+        --!nonstrict
+        local function _f(_x: _luau_force_constraint_solving_incomplete) end
+        math.abs("pls")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, results);
+    CHECK(get<CheckedFunctionCallError>(results.errors[0]));
+    CHECK(get<ConstraintSolvingIncompleteError>(results.errors[1]));
 }
 
 TEST_SUITE_END();

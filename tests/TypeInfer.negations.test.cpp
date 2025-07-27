@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauEagerGeneralization4)
+
 namespace
 {
 
@@ -18,7 +20,7 @@ struct NegationFixture : Fixture
 
     NegationFixture()
     {
-        registerHiddenTypes(&frontend);
+        registerHiddenTypes(getFrontend());
     }
 };
 
@@ -50,9 +52,8 @@ TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 
 TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
 {
-    // CLI-117082 Cofinite strings cannot be compared for equality because normalization produces a large type with cycles
-    if (FFlag::LuauSolverV2)
-        return;
+    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+
     CheckResult result = check(R"(
         function f(e)
             if e == 'strictEqual' then
@@ -79,4 +80,5 @@ end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
 TEST_SUITE_END();
