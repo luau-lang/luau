@@ -21,6 +21,7 @@ LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauParseStringIndexer)
 LUAU_FASTFLAGVARIABLE(LuauParseAttributeFixUninit)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
+LUAU_FASTFLAGVARIABLE(LuauParseFixASTDeclareFunctionLocationStart)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -912,7 +913,17 @@ AstStat* Parser::parseAttributeStat()
         if (options.allowDeclarationSyntax && !strcmp("declare", lexer.current().data))
         {
             AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
-            return parseDeclaration(expr->location, attributes);
+
+            if (FFlag::LuauParseFixASTDeclareFunctionLocationStart)
+            {
+                // If there are attributes, set the location start to the first attribute's location.
+                Location exprLocation = expr->location;
+                if (attributes.size > 0)
+                    exprLocation = attributes.data[0]->location;
+
+                return parseDeclaration(exprLocation, attributes);
+            } else
+                return parseDeclaration(expr->location, attributes);
         }
         [[fallthrough]];
     default:
@@ -1233,11 +1244,6 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
         if (vararg && !varargAnnotation)
             return reportStatError(Location(start, end), {}, {}, "All declaration parameters must be annotated");
-
-        // If there are attributes, set the location start to the first attribute's location.
-        Location newStart = start;
-        if (attributes.size > 0)
-            newStart = attributes.data[0]->location;
 
         return allocator.alloc<AstStatDeclareFunction>(
             Location(newStart, end),
