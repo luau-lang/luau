@@ -10,6 +10,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauParseFixASTDeclareFunctionLocationStart);
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TranspilerTests");
@@ -1586,6 +1588,11 @@ TEST_CASE_FIXTURE(Fixture, "transpile_declare_global_stat")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_declare_function_stat")
 {
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauParseFixASTDeclareFunctionLocationStart, true}
+    };
+
     std::string code = R"(
     @checked @deprecated declare function ABC<E, A..., R1..., R2...>(
         f: (A...)-> R1..., err: (E)-> R2..., ...: number): (boolean, R1...)
