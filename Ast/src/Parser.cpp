@@ -1246,7 +1246,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             return reportStatError(Location(start, end), {}, {}, "All declaration parameters must be annotated");
 
         return allocator.alloc<AstStatDeclareFunction>(
-            Location(newStart, end),
+            Location(start, end),
             attributes,
             globalName.name,
             globalName.location,
