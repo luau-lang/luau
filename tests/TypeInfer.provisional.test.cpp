@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
@@ -1340,10 +1339,8 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
 
 TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDfgAllowUpdatesInLoops, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     // This is a tactical unsoundness we're introducing to resolve issues around
     // cyclic types. You can see that if this loop were to run more than once,
     // we'd error as we'd try to call a number.

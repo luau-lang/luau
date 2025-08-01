@@ -14,6 +14,8 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving)
 
 using namespace Luau;
 
@@ -845,6 +847,24 @@ return wrapper(test2, 1, "")
     CheckResult result = getFrontend().check("game/B");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "internal_types_are_scrubbed_from_module")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauMagicTypes, true},
+        {FFlag::LuauLimitDynamicConstraintSolving, true}
+    };
+
+    fileResolver.source["game/A"] = R"(
+return function(): _luau_blocked_type return nil :: any end
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<InternalError>(result.errors[0]));
+    CHECK("(...any) -> *error-type*" == toString(getFrontend().moduleResolver.getModule("game/A")->returnType));
 }
 
 TEST_SUITE_END();

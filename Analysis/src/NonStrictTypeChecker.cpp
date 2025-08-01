@@ -25,6 +25,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressesDynamicRequireErrors)
 
 namespace Luau
 {
@@ -1272,6 +1273,22 @@ void checkNonStrict(
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);
+
+    if (FFlag::LuauNewNonStrictSuppressesDynamicRequireErrors)
+    {
+        module->errors.erase(
+            std::remove_if(
+                module->errors.begin(),
+                module->errors.end(),
+                [](auto err)
+                {
+                    return get<UnknownRequire>(err) != nullptr;
+                }
+            ),
+            module->errors.end()
+        );
+    }
+
     freeze(module->interfaceTypes);
 }
 

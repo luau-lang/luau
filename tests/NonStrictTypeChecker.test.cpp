@@ -18,6 +18,7 @@
 LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAG(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
+LUAU_FASTFLAG(LuauNewNonStrictSuppressesDynamicRequireErrors)
 
 using namespace Luau;
 
@@ -814,5 +815,51 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_one_sided_conditionals")
     CHECK_EQ(err->context, UnknownSymbol::Context::Binding);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "new_non_strict_should_suppress_dynamic_require_errors")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNewNonStrictSuppressesDynamicRequireErrors, true}};
+    // Avoid warning about dynamic requires in new nonstrict mode
+    CheckResult result = check(Mode::Nonstrict, R"(
+function passThrough(module)
+    require(module)
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    // We should still warn about dynamic requires in strict mode
+    result = check(Mode::Strict, R"(
+function passThrough(module)
+    require(module)
+end
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const UnknownRequire* req = get<UnknownRequire>(result.errors[0]);
+    CHECK(req != nullptr);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "new_non_strict_should_suppress_unknown_require_errors")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNewNonStrictSuppressesDynamicRequireErrors, true}};
+
+    // Avoid warning about dynamic requires in new nonstrict mode
+    CheckResult result = check(Mode::Nonstrict, R"(
+require(script.NonExistent)
+require("@self/NonExistent")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    // We should still warn about dynamic requires in strict mode
+    result = check(Mode::Strict, R"(
+require(script.NonExistent)
+require("@self/NonExistent")
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    const UnknownRequire* req1 = get<UnknownRequire>(result.errors[0]);
+    CHECK(req1 != nullptr);
+    const UnknownRequire* req2 = get<UnknownRequire>(result.errors[1]);
+    CHECK(req2 != nullptr);
+}
 
 TEST_SUITE_END();

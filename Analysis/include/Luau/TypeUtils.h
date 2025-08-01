@@ -359,6 +359,9 @@ inline constexpr char kLuauPrint[] = "_luau_print";
 // a constraint solving incomplete error to test semantics around that specific
 // error.
 inline constexpr char kLuauForceConstraintSolvingIncomplete[] = "_luau_force_constraint_solving_incomplete";
+// `_luau_blocked_type` will cause us to always mint a blocked type that does
+// not get emplaced by constraint solving.
+inline constexpr char kLuauBlockedType[] = "_luau_blocked_type";
 
 
 } // namespace Luau

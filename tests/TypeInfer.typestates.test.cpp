@@ -6,7 +6,6 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 
 using namespace Luau;
 
@@ -710,7 +709,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDfgAllowUpdatesInLoops, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         --!strict

@@ -41,6 +41,8 @@ LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 
+LUAU_FASTFLAGVARIABLE(LuauIceLess)
+
 namespace Luau
 {
 
@@ -1551,7 +1553,15 @@ void TypeChecker2::visitCall(AstExprCall* call)
     {
         AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
         if (!indexExpr)
-            ice->ice("method call expression has no 'self'");
+        {
+            if (FFlag::LuauIceLess)
+            {
+                reportError(InternalError{"method call expression has no 'self'"}, call->location);
+                return;
+            }
+            else
+                ice->ice("method call expression has no 'self'");
+        }
 
         args.head.push_back(lookupType(indexExpr->expr));
         argExprs.push_back(indexExpr->expr);
@@ -1950,12 +1960,26 @@ void TypeChecker2::visit(AstExprFunction* fn)
     }
     else if (!normalizedFnTy->hasFunctions())
     {
-        ice->ice("Internal error: Lambda has non-function type " + toString(inferredFnTy), fn->location);
+        if (FFlag::LuauIceLess)
+        {
+            reportError(InternalError{"Internal error: Lambda has non-function type " + toString(inferredFnTy)}, fn->location);
+            return;
+        }
+        else
+            ice->ice("Internal error: Lambda has non-function type " + toString(inferredFnTy), fn->location);
     }
     else
     {
         if (1 != normalizedFnTy->functions.parts.size())
-            ice->ice("Unexpected: Lambda has unexpected type " + toString(inferredFnTy), fn->location);
+        {
+            if (FFlag::LuauIceLess)
+            {
+                reportError(InternalError{"Unexpected: Lambda has unexpected type " + toString(inferredFnTy)}, fn->location);
+                return;
+            }
+            else
+                ice->ice("Unexpected: Lambda has unexpected type " + toString(inferredFnTy), fn->location);
+        }
 
         const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
         LUAU_ASSERT(inferredFtv);
@@ -2591,6 +2615,11 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         return builtinTypes->errorType;
     else if (finite(pack) && size(pack) == 0)
         return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`
+    else if (FFlag::LuauIceLess)
+    {
+        reportError(InternalError{"flattenPack got a weird pack!"}, Location{});
+        return builtinTypes->errorType; // todo test this
+    }
     else
         ice->ice("flattenPack got a weird pack!");
 }
@@ -2648,7 +2677,7 @@ void TypeChecker2::visit(AstTypeReference* ty)
 {
     // No further validation is necessary in this case. The main logic for
     // _luau_print is contained in lookupAnnotation.
-    if (FFlag::DebugLuauMagicTypes && (ty->name == kLuauPrint || ty->name == kLuauForceConstraintSolvingIncomplete))
+    if (FFlag::DebugLuauMagicTypes && (ty->name == kLuauPrint || ty->name == kLuauForceConstraintSolvingIncomplete || ty->name == kLuauBlockedType))
         return;
 
     for (const AstTypeOrPack& param : ty->parameters)
@@ -2938,7 +2967,15 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
                 : traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes);
 
         if (!optSubLeaf || !optSuperLeaf)
-            ice->ice("Subtyping test returned a reasoning with an invalid path", location);
+        {
+            if (FFlag::LuauIceLess)
+            {
+                reportError(InternalError{"Subtyping test returned a reasoning with an invalid path"}, location);
+                return {}; // TOOD test this
+            }
+            else
+                ice->ice("Subtyping test returned a reasoning with an invalid path", location);
+        }
 
         const TypeOrPack& subLeaf = *optSubLeaf;
         const TypeOrPack& superLeaf = *optSuperLeaf;
@@ -2950,7 +2987,15 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         auto superLeafTp = get<TypePackId>(superLeaf);
 
         if (!subLeafTy && !superLeafTy && !subLeafTp && !superLeafTp)
-            ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
+        {
+            if (FFlag::LuauIceLess)
+            {
+                reportError(InternalError{"Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack."}, location);
+                return {}; // TODO test this?
+            }
+            else
+                ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
+        }
 
         std::string relation = "a subtype of";
         if (reasoning.variance == SubtypingVariance::Invariant)
