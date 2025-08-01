@@ -1916,7 +1916,7 @@ std::string dump(DenseHashMap<TypeId, TypeId>& types)
     ToStringOptions& opts = dumpOptions();
     for (const auto& [key, value] : types)
     {
-        if (s.length() == 1)
+        if (s.length() > 1)
             s += ", ";
         s += toString(key, opts) + " : " + toString(value, opts);
     }
@@ -1930,7 +1930,7 @@ std::string dump(DenseHashMap<TypePackId, TypePackId>& types)
     ToStringOptions& opts = dumpOptions();
     for (const auto& [key, value] : types)
     {
-        if (s.length() == 1)
+        if (s.length() > 1)
             s += ", ";
         s += toString(key, opts) + " : " + toString(value, opts);
     }

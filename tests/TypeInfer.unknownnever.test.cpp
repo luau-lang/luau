@@ -9,7 +9,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauEagerGeneralization4);
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch);
-LUAU_FASTFLAG(LuauForceSimplifyConstraint)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -333,7 +333,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     ScopedFastFlag sffs[] = {
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
-        {FFlag::LuauForceSimplifyConstraint, true},
+        {FFlag::LuauForceSimplifyConstraint2, true},
     };
 
     CheckResult result = check(R"(

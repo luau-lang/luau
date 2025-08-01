@@ -102,6 +102,11 @@ struct ConstraintSolver
     // scope tree.
     std::vector<std::unique_ptr<Constraint>> solverConstraints;
 
+    // Ticks downward toward zero each time a new constraint is pushed into
+    // solverConstraints. When this counter reaches zero, the type inference
+    // engine reports a CodeTooComplex error and aborts.
+    size_t solverConstraintLimit = 0;
+
     // This includes every constraint that has not been fully solved.
     // A constraint can be both blocked and unsolved, for instance.
     std::vector<NotNull<const Constraint>> unsolvedConstraints;

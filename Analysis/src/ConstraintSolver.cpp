@@ -26,11 +26,13 @@
 #include <algorithm>
 #include <utility>
 
+LUAU_FASTINTVARIABLE(LuauSolverConstraintLimit, 1000)
+LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
+
 LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
-LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
@@ -41,8 +43,10 @@ LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAGVARIABLE(LuauUseOrderedTypeSetsInConstraints)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauAvoidExcessiveTypeCopying)
-LUAU_FASTFLAGVARIABLE(LuauForceSimplifyConstraint)
+LUAU_FASTFLAGVARIABLE(LuauForceSimplifyConstraint2)
+LUAU_FASTFLAGVARIABLE(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericFollowBeforeChecking)
+LUAU_FASTFLAGVARIABLE(LuauLimitDynamicConstraintSolving)
 
 namespace Luau
 {
@@ -333,6 +337,7 @@ ConstraintSolver::ConstraintSolver(
     , rootScope(constraintSet.rootScope)
     , currentModuleName(std::move(moduleName))
     , dfg(dfg)
+    , solverConstraintLimit(FInt::LuauSolverConstraintLimit)
     , moduleResolver(moduleResolver)
     , requireCycles(std::move(requireCycles))
     , logger(logger)
@@ -367,6 +372,7 @@ ConstraintSolver::ConstraintSolver(
     , rootScope(rootScope)
     , currentModuleName(std::move(moduleName))
     , dfg(dfg)
+    , solverConstraintLimit(FInt::LuauSolverConstraintLimit)
     , moduleResolver(moduleResolver)
     , requireCycles(std::move(requireCycles))
     , logger(logger)
@@ -460,6 +466,11 @@ void ConstraintSolver::run()
                 throwTimeLimitError();
             if (limits.cancellationToken && limits.cancellationToken->requested())
                 throwUserCancelError();
+
+            // If we were _given_ a limit, and the current limit has hit zero, ]
+            // then early exit from constraint solving.
+            if (FFlag::LuauLimitDynamicConstraintSolving && FInt::LuauSolverConstraintLimit > 0 && solverConstraintLimit == 0)
+                break;
 
             std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
             StepSnapshot snapshot;
@@ -1528,7 +1539,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         auto it = begin(t);
         auto endIt = end(t);
 
-        LUAU_ASSERT(it != endIt);
+        if (FFlag::LuauCollapseShouldNotCrash && it == endIt)
+            return std::nullopt;
+
         TypeId fst = follow(*it);
         while (it != endIt)
         {
@@ -2940,14 +2953,14 @@ bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Co
 
     FindAllUnionMembers finder;
     finder.traverse(target);
-    // Clip this comment with LuauForceSimplifyConstraint
+    // Clip this comment with LuauForceSimplifyConstraint2
     //
-    // The flagging logic is roughly: if `LuauForceSimplifyConstraint` is
+    // The flagging logic is roughly: if `LuauForceSimplifyConstraint2` is
     // _not_ set, then we ignore the input `force`, as the RHS of the &&
     // is always true. Otherwise, when the flag is set, the RHS of the &&
     // is equivalent to `!force`: we only block on types when we're not
     // being force solved.
-    if (!finder.blockedTys.empty() && !(FFlag::LuauForceSimplifyConstraint && force))
+    if (!finder.blockedTys.empty() && !(FFlag::LuauForceSimplifyConstraint2 && force))
     {
         for (TypeId ty : finder.blockedTys)
             block(ty, constraint);
@@ -2960,6 +2973,18 @@ bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Co
         if (ty == target)
             continue;
         result = simplifyUnion(constraint->scope, constraint->location, result, ty);
+    }
+    if (FFlag::LuauForceSimplifyConstraint2)
+    {
+        // If we forced, then there _may_ be blocked types, and we should 
+        // include those in the union as well.
+        for (TypeId ty : finder.blockedTys)
+        {
+            ty = follow(ty);
+            if (ty == target)
+                continue;
+            result = simplifyUnion(constraint->scope, constraint->location, result, ty);
+        }
     }
     emplaceType<BoundType>(asMutable(target), result);
     return true;
@@ -3832,6 +3857,17 @@ NotNull<Constraint> ConstraintSolver::pushConstraint(NotNull<Scope> scope, const
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
 
+    if (FFlag::LuauLimitDynamicConstraintSolving)
+    {
+        if (solverConstraintLimit > 0)
+        {
+            --solverConstraintLimit;
+
+            if (solverConstraintLimit == 0)
+                reportError(CodeTooComplex{}, location);
+        }
+    }
+
     return borrow;
 }
 
@@ -3899,7 +3935,7 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
     if (!isReferenceCountedType(target))
         return;
 
-    if (FFlag::LuauForceSimplifyConstraint)
+    if (FFlag::LuauForceSimplifyConstraint2)
     {
         // This can happen in the _very_ specific case of:
         //
