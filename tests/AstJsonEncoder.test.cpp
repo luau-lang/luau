@@ -592,4 +592,18 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstGenericTypePackWithDefault")
     CHECK(toJson(root->body.data[0]) == expected);
 }
 
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstTypeOptional")
+{
+    AstStatBlock* root = expectParse(R"(
+            type Foo = string?
+        )");
+
+    CHECK(1 == root->body.size);
+
+    std::string_view expected =
+        R"({"type":"AstStatTypeAlias","location":"1,12 - 1,30","name":"Foo","generics":[],"genericPacks":[],"value":{"type":"AstTypeUnion","location":"1,23 - 1,30","types":[{"type":"AstTypeReference","location":"1,23 - 1,29","name":"string","nameLocation":"1,23 - 1,29","parameters":[]},{"type":"AstTypeOptional","location":"1,29 - 1,30"}]},"exported":false})";
+
+    CHECK(toJson(root->body.data[0]) == expected);
+}
+
 TEST_SUITE_END();

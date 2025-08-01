@@ -6,7 +6,7 @@
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
-LUAU_FASTFLAG(LuauForceSimplifyConstraint)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
 
 namespace Luau
 {
@@ -66,7 +66,7 @@ struct ReferenceCountInitializer_DEPRECATED : TypeOnceVisitor
 
     bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
     {
-        if (FFlag::LuauForceSimplifyConstraint)
+        if (FFlag::LuauForceSimplifyConstraint2)
             return tfit.function->canReduceGenerics;
         else
             return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
@@ -121,7 +121,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
     {
-        if (FFlag::LuauForceSimplifyConstraint)
+        if (FFlag::LuauForceSimplifyConstraint2)
             return tfit.function->canReduceGenerics;
         else
             return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;

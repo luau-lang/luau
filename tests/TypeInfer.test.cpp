@@ -35,10 +35,12 @@ LUAU_FASTFLAG(LuauInferPolarityOfReadWriteProperties)
 LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauForceSimplifyConstraint)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 
 using namespace Luau;
 
@@ -1902,7 +1904,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_derived_unsound_loops")
 {
-    ScopedFastFlag _{FFlag::LuauDfgAllowUpdatesInLoops, true};
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         for _ in ... do
             repeat
@@ -2529,7 +2530,7 @@ TEST_CASE_FIXTURE(Fixture, "simplify_constraint_can_force")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauForceSimplifyConstraint, true},
+        {FFlag::LuauForceSimplifyConstraint2, true},
         {FFlag::LuauSimplifyOutOfLine2, true},
         // NOTE: Feel free to clip this test when this flag is clipped.
         {FFlag::LuauPushFunctionTypesInFunctionStatement, false},
@@ -2587,6 +2588,50 @@ TEST_CASE_FIXTURE(Fixture, "non_standalone_constraint_solving_incomplete_is_hidd
     LUAU_REQUIRE_ERROR_COUNT(2, results);
     CHECK(get<ConstraintSolvingIncompleteError>(results.errors[0]));
     CHECK(get<TypeMismatch>(results.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_type_pack_follow")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true},
+        {FFlag::LuauMissingFollowMappedGenericPacks, true},
+    };
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+local _ = {[0]=_,}
+while _ do
+do
+local l2 = require(module0)
+end
+end
+do end
+function _(l0:typeof(_),l0,l0)
+local l0 = require(module0)
+_()(l0(),_,_(_())((_)))
+do end
+end
+_()(_(if nil then _))("",_,_(_,(_)))
+do end
+    )"));
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+local _ = {_,}
+while _ do
+do
+do end
+end
+end
+_ = nil
+function _(l0,l0,l0)
+local l0 = require(module0)
+_()(_(),_,_(_())(_,true)(_,_),l0)
+do end
+end
+_()(_())("",_.n0,_,_(_,true,(_)))
+do end
+    )"));
+
 }
 
 TEST_SUITE_END();

@@ -17,11 +17,15 @@
 
 using namespace Luau;
 
+LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -331,6 +335,38 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
     CheckResult result = check(src);
 
     (void)result;
+}
+
+TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLimitDynamicConstraintSolving, true},
+    };
+
+    constexpr const char* src = R"(
+        type Array<T> = {T}
+
+        type Hello = Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<number>>>>>>>>>>
+    )";
+
+    {
+        ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 1};
+        CheckResult result = check(src);
+        LUAU_CHECK_ERROR(result, CodeTooComplex);
+    }
+
+    {
+        ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 1000};
+        CheckResult result = check(src);
+        LUAU_CHECK_NO_ERRORS(result);
+    }
+
+    {
+        ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 0};
+        CheckResult result = check(src);
+        LUAU_CHECK_NO_ERRORS(result);
+    }
 }
 
 TEST_SUITE_END();

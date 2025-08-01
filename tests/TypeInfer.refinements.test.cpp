@@ -20,7 +20,9 @@ LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways)
 LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
-LUAU_FASTFLAG(LuauForceSimplifyConstraint)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
+LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 
 using namespace Luau;
 
@@ -2251,7 +2253,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
-        {FFlag::LuauForceSimplifyConstraint, true},
+        {FFlag::LuauForceSimplifyConstraint2, true},
     };
 
     CheckResult result = check(R"(
@@ -2898,6 +2900,33 @@ TEST_CASE_FIXTURE(Fixture, "cli_120460_table_access_on_phi_node")
             return bar:sub(2) -- previously this would be `...never`
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+        {FFlag::LuauForceSimplifyConstraint2, true},
+        {FFlag::LuauSimplifyOutOfLine2, true},
+    };
+
+    CheckResult results = check(R"(
+        local function track(instance): boolean
+            local isBasePart = instance:IsA("BasePart")
+            local isCharacter = false
+            if not isBasePart then
+                isCharacter = instance:FindFirstChildOfClass("Humanoid") and instance:FindFirstChild("HumanoidRootPart")
+            end
+            -- A verison of `SimplifyConstraint` mucked up the fact that this
+            -- is `boolean | and<unknown, unknown>`, and claimed it was only
+            -- `boolean`.
+            return isCharacter
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    REQUIRE(get<TypeMismatch>(results.errors[0]));
 }
 
 TEST_SUITE_END();

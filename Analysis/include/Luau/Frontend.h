@@ -113,7 +113,8 @@ struct FrontendOptions
     bool applyInternalLimitScaling = false;
 
     // An optional callback which is called for every *dirty* module was checked
-    // Is multi-threaded typechecking is used, this callback might be called from multiple threads and has to be thread-safe
+    // If multi-threaded typechecking is used, this callback might be called
+    // from multiple threads and has to be thread-safe
     std::function<void(const SourceModule& sourceModule, const Luau::Module& module)> customModuleCheck;
 
     bool collectTypeAllocationStats = false;

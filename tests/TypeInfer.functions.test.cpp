@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
@@ -3305,5 +3306,43 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
     // NOTE: This specifically _isn't_ `T` as defined by `Object.foobar`
     CHECK_EQ("a", toString(requireTypeAtPosition({9, 21})));
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_should_not_crash")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        // crash only happens right now with eager generalization off
+        {FFlag::LuauEagerGeneralization4, false},
+        {FFlag::LuauCollapseShouldNotCrash, true},
+    };
+
+    CheckResult result = check(R"(
+        return {
+            StartAPI = function()
+                local pointers = {}
+                local API = {}
+                local function getRealEnvResult(PointerOrPath)
+                    if pointers[PointerOrPath] then
+                        return pointers[PointerOrPath]
+                    end
+                end
+                API.OnInvoke = function()
+                    local realEnvResult, isResultPointer = getRealEnvResult(FunctionInEnvToRunPath)
+                    return realEnvResult(table.unpack(args, 2, args.n))
+                    if TableInEnvPath and type(TableInEnvPath) == 'string' then
+                        local realEnvResult, isResultPointer = getRealEnvResult(TableInEnvPath)
+                        return getmetatable(realEnvResult)
+                    end
+                    local realEnvResult, isResultPointer = getRealEnvResult(TableInEnvPath)
+                    local metaTableInEnv = getmetatable(realEnvResult)
+                    local result = metaTableInEnv[FuncToRun](realEnvResult,table.unpack(args, 3, args.n))
+                end
+            end
+        }
+    )");
+
+    // no expected behavior here beyond not crashing
+}
+
 
 TEST_SUITE_END();

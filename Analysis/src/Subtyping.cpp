@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAGVARIABLE(LuauMissingFollowMappedGenericPacks)
 
 namespace Luau
 {
@@ -975,7 +976,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                         if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
                         {
                             const TypePack* tp = get<TypePack>(*other);
-                            if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(tp->tail) : nullptr; vtp && vtp->hidden)
+                            if (const VariadicTypePack* vtp = tp
+                                                                  ? get<VariadicTypePack>(
+                                                                      FFlag::LuauMissingFollowMappedGenericPacks ? follow(tp->tail) : tp->tail)
+                                                                  : nullptr; vtp && vtp->hidden)
                             {
                                 TypePackId taillessTp = arena->addTypePack(tp->head);
                                 results.push_back(isCovariantWith(env, taillessTp, superTailPack, scope)
@@ -1066,7 +1070,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                         if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
                         {
                             const TypePack* tp = get<TypePack>(*other);
-                            if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(tp->tail) : nullptr; vtp && vtp->hidden)
+                            if (const VariadicTypePack* vtp = tp
+                                                                  ? get<VariadicTypePack>(
+                                                                      FFlag::LuauMissingFollowMappedGenericPacks ? follow(tp->tail) : tp->tail)
+                                                                  : nullptr; vtp && vtp->hidden)
                             {
                                 TypePackId taillessTp = arena->addTypePack(tp->head);
                                 results.push_back(isCovariantWith(env, subTailPack, taillessTp, scope)
