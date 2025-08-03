@@ -4384,7 +4384,7 @@ struct GlobalPrepopulator : AstVisitor
             for (size_t i = 0; i < assign->vars.size; i++)
             {
                 auto lhsExpr = assign->vars.data[i];
-                auto rhsExpr = assign->values.data[i];
+                auto rhsExpr = i < assign->values.size ? assign->values.data[i] : nullptr;
 
                 if (lhsExpr)
                 {
