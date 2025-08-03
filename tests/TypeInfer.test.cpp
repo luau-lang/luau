@@ -41,6 +41,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
+LUAU_FASTFLAG(LuauFixPrepopulateGlobalOnSameGlobal)
 
 using namespace Luau;
 
@@ -2524,6 +2525,22 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_two_errors")
     REQUIRE(err2);
     CHECK_EQ("foo", toString(err2->wantedType));
     CHECK_EQ("number", toString(err2->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "prepopulate_globals_global_on_same_global_name_assign")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauFixPrepopulateGlobalOnSameGlobal, true}
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        a = a
+        function a:test() end
+    )");
+
+    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
 }
 
 TEST_CASE_FIXTURE(Fixture, "simplify_constraint_can_force")
