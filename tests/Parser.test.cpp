@@ -701,6 +701,19 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_numbers_octal")
+{
+    AstStat* stat = parse("return 0o1, 0o0, 0o52, 0o1777777777777777777777");
+    REQUIRE(stat != nullptr);
+
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    CHECK(str->list.size == 4);
+    CHECK_EQ(str->list.data[0]->as<AstExprConstantNumber>()->value, 1);
+    CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0);
+    CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
+    CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
     matchParseError("return 0b123", "Malformed number");
@@ -709,6 +722,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
     matchParseError("return 0x0x123", "Malformed number");
     matchParseError("return 0xffffffffffffffffffffllllllg", "Malformed number");
     matchParseError("return 0x0xffffffffffffffffffffffffffff", "Malformed number");
+    matchParseError("return 0o898", "Malformed number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
@@ -1694,14 +1708,15 @@ return
 .5,
 12_34_56,
 0x1234,
- 0b010101
+0b010101,
+0o777
 )");
 
     REQUIRE(stat != nullptr);
 
     AstStatReturn* ret = stat->body.data[0]->as<AstStatReturn>();
     REQUIRE(ret != nullptr);
-    CHECK(ret->list.size == 6);
+    CHECK(ret->list.size == 7);
 
     AstExprConstantNumber* num;
 
@@ -1728,6 +1743,11 @@ return
     num = ret->list.data[5]->as<AstExprConstantNumber>();
     REQUIRE(num != nullptr);
     CHECK_EQ(num->value, 0x15);
+
+    num = ret->list.data[6]->as<AstExprConstantNumber>();
+    REQUIRE(num != nullptr);
+    CHECK_EQ(num->value, 511);
+
 }
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_of_functions_unions_and_intersections")

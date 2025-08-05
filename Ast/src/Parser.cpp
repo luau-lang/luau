@@ -3174,7 +3174,7 @@ AstExpr* Parser::parseAssertionExpr()
 
 static ConstantNumberParseResult parseInteger(double& result, const char* data, int base)
 {
-    LUAU_ASSERT(base == 2 || base == 16);
+    LUAU_ASSERT(base == 2 || base == 16 || base == 8);
 
     char* end = nullptr;
     unsigned long long value = strtoull(data, &end, base);
@@ -3192,7 +3192,14 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
         value = strtoull(data, &end, base);
 
         if (errno == ERANGE)
-            return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
+        {
+            if (base == 2)
+                return ConstantNumberParseResult::BinOverflow;
+            else if (base == 8)
+                return ConstantNumberParseResult::OctOverflow;
+            else
+                return ConstantNumberParseResult::HexOverflow;
+        }
     }
 
     if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
@@ -3206,6 +3213,10 @@ static ConstantNumberParseResult parseDouble(double& result, const char* data)
     // binary literal
     if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
         return parseInteger(result, data + 2, 2);
+
+    // octal literal
+    if (data[0] == '0' && (data[1] == 'o' || data[1] == 'O') && data[2])
+        return parseInteger(result, data + 2, 8);
 
     // hexadecimal literal
     if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])

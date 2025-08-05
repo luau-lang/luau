@@ -582,6 +582,12 @@ TEST_CASE("binary_numbers")
     CHECK_EQ(code, transpile(code).code);
 }
 
+TEST_CASE("octal_numbers")
+{
+    const std::string code = R"( local a = 0o777 )";
+    CHECK_EQ(code, transpile(code).code);
+}
+
 TEST_CASE("single_quoted_strings")
 {
     const std::string code = R"( local a = 'hello world' )";

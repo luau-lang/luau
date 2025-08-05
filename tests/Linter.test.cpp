@@ -2235,11 +2235,13 @@ TEST_CASE_FIXTURE(Fixture, "IntegerParsing")
     LintResult result = lint(R"(
 local _ = 0b10000000000000000000000000000000000000000000000000000000000000000
 local _ = 0x10000000000000000
+local _ = 0o2000000000000000000000
 )");
 
-    REQUIRE(2 == result.warnings.size());
+    REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and was truncated to 2^64");
     CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
+    CHECK_EQ(result.warnings[2].text, "Octal number literal exceeded available precision and was truncated to 2^64");
 }
 
 TEST_CASE_FIXTURE(Fixture, "IntegerParsingDecimalImprecise")
