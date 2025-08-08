@@ -37,10 +37,9 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 LUAU_FASTFLAG(LuauHeapDumpStringSizeOverhead)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_DYNAMIC_FASTFLAG(LuauErrorYield)
 LUAU_DYNAMIC_FASTFLAG(LuauSafeStackCheck)
-
+LUAU_FASTFLAG(LuauCompileCli162537)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -1211,15 +1210,10 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         for (const auto& [name, prop] : t->props)
         {
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-            {
-                if (prop.readTy)
-                    populateRTTI(L, *prop.readTy);
-                else if (prop.writeTy)
-                    populateRTTI(L, *prop.writeTy);
-            }
-            else
-                populateRTTI(L, prop.type_DEPRECATED());
+            if (prop.readTy)
+                populateRTTI(L, *prop.readTy);
+            else if (prop.writeTy)
+                populateRTTI(L, *prop.writeTy);
 
             lua_setfield(L, -2, name.c_str());
         }
@@ -3333,6 +3327,60 @@ TEST_CASE("HugeFunctionLoadFailure")
     REQUIRE_EQ(largeAllocationToFail, expectedTotalLargeAllocations);
 }
 
+TEST_CASE("HugeConstantTable")
+{
+    ScopedFastFlag luauCompileCli162537{FFlag::LuauCompileCli162537, true};
+
+    std::string source = "function foo(...)\n";
+
+    source += "    local args = ...\n";
+    source += "    local t = args and {\n";
+
+    for (int i = 0; i < 400; i++)
+    {
+        for (int k = 0; k < 100; k++)
+        {
+            source += "call(";
+            source += std::to_string(i * 100 + k);
+            source += ".125), ";
+        }
+
+        source += "\n        ";
+    }
+
+    source += "    }\n";
+    source += "    return { a = 1, b = 2, c = 3 }\n";
+    source += "end\n";
+    source += "return foo().a + foo().b\n";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    if (codegen && luau_codegen_supported())
+        luau_codegen_create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=HugeConstantTable", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    if (codegen && luau_codegen_supported())
+    {
+        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+        Luau::CodeGen::compile(L, -1, nativeOptions);
+    }
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+
+    CHECK(lua_tonumber(L, -1) == 3);
+}
 
 TEST_CASE("IrInstructionLimit")
 {

@@ -13,8 +13,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionTypeFunctionArgs)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -77,7 +75,7 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                if (FFlag::LuauSolverV2)
                 {
                     if (fit->second.readTy)
                         return fit->second.readTy;
@@ -136,7 +134,7 @@ std::optional<TypeId> findMetatableEntry(
     auto it = mtt->props.find(entry);
     if (it != mtt->props.end())
     {
-        if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2)
         {
             if (it->second.readTy)
                 return it->second.readTy;
@@ -209,7 +207,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                if (FFlag::LuauSolverV2)
                 {
                     switch (context)
                     {
@@ -469,23 +467,20 @@ TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 {
-    if (FFlag::LuauErrorSuppressionTypeFunctionArgs)
+    if (auto tfit = get<TypeFunctionInstanceType>(follow(ty)))
     {
-        if (auto tfit = get<TypeFunctionInstanceType>(follow(ty)))
+        for (auto ty : tfit->typeArguments)
         {
-            for (auto ty : tfit->typeArguments)
-            {
-                std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
+            std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
 
-                if (!normType)
-                    return ErrorSuppression::NormalizationFailed;
+            if (!normType)
+                return ErrorSuppression::NormalizationFailed;
 
-                if (normType->shouldSuppressErrors())
-                    return ErrorSuppression::Suppress;
-            }
-
-            return ErrorSuppression::DoNotSuppress;
+            if (normType->shouldSuppressErrors())
+                return ErrorSuppression::Suppress;
         }
+
+        return ErrorSuppression::DoNotSuppress;
     }
 
     std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);

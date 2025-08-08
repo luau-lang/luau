@@ -12,7 +12,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -526,7 +525,7 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
         return std::nullopt;
 
     TypeId followed;
-    if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+    if (FFlag::LuauSolverV2)
     {
         if (indexIt->second.readTy)
             followed = follow(*indexIt->second.readTy);

@@ -21,11 +21,9 @@
 #include <utility>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteMissingFollows)
 LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
@@ -79,8 +77,7 @@ static ParenthesesRecommendation getParenRecommendationForIntersect(const Inters
     ParenthesesRecommendation rec = ParenthesesRecommendation::None;
     for (Luau::TypeId partId : intersect->parts)
     {
-        if (FFlag::LuauAutocompleteMissingFollows)
-            partId = follow(partId);
+        partId = follow(partId);
         if (auto partFunc = Luau::get<FunctionType>(partId))
         {
             rec = std::max(rec, getParenRecommendationForFunc(partFunc, nodes));
@@ -370,7 +367,7 @@ static void autocompleteProps(
         if (indexIt != mtable->props.end())
         {
             TypeId followed;
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2)
                 followed = follow(*indexIt->second.readTy);
             else
                 followed = follow(indexIt->second.type_DEPRECATED());
@@ -1636,8 +1633,7 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(
     {
         for (TypeId part : intersect->parts)
         {
-            if (FFlag::LuauAutocompleteMissingFollows)
-                part = follow(part);
+            part = follow(part);
             if (auto candidateFunctionType = Luau::get<FunctionType>(part))
             {
                 if (std::optional<AutocompleteEntryMap> ret = performCallback(candidateFunctionType))

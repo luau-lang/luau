@@ -12,11 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
-LUAU_FASTFLAG(LuauStringFormatImprovements)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauWriteOnlyPropertyMangling)
-LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 
@@ -713,18 +709,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauArityMismatchOnUndersaturatedUnknownArguments)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[0]));
         CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[1]));
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        // Counterintuitively, the parameter l0 is unconstrained and therefore it is valid to pass nil.
-        // The new solver therefore considers that parameter to be optional.
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK("Argument count mismatch. Function expects at least 1 argument, but none are specified" == toString(result.errors[0]));
     }
     else
     {
@@ -1317,14 +1306,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
     REQUIRE(mathTy);
     TableType* ttv = getMutable<TableType>(mathTy);
     REQUIRE(ttv);
-    const FunctionType* ftv;
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-    {
-        REQUIRE(ttv->props["frexp"].readTy);
-        ftv = get<FunctionType>(*ttv->props["frexp"].readTy);
-    }
-    else
-        ftv = get<FunctionType>(ttv->props["frexp"].type_DEPRECATED());
+
+    REQUIRE(ttv->props["frexp"].readTy);
+    const FunctionType* ftv = get<FunctionType>(*ttv->props["frexp"].readTy);
+
     REQUIRE(ftv);
     auto original = ftv->level;
 
@@ -1679,7 +1664,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any")
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any_2")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff{FFlag::LuauStringFormatImprovements, true};
 
     CheckResult result = check(R"(
         local fmt = "Hello, %s!" :: any
@@ -1695,7 +1679,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_any_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_singleton_types")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff{FFlag::LuauStringFormatImprovements, true};
 
     CheckResult result = check(R"(
         local fmt: "Hello, %s!" = "Hello, %s!"
@@ -1713,7 +1696,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_should_support_singleton_types
 TEST_CASE_FIXTURE(BuiltinsFixture, "better_string_format_error_when_format_string_is_dynamic")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff{FFlag::LuauStringFormatImprovements, true};
 
     CheckResult result = check(R"(
         local fmt: string = "Hello, %s!"
@@ -1733,7 +1715,6 @@ TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEnableWriteOnlyProperties, true},
         {FFlag::LuauWriteOnlyPropertyMangling, true},
         {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
     };

@@ -6,6 +6,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenFixRexw, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -37,7 +39,10 @@ static_assert(sizeof(cmovTextForCondition) / sizeof(cmovTextForCondition[0]) == 
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
 
 #define REX_W_BIT(value) (value ? 0x8 : 0x0)
-#define REX_W(reg) REX_W_BIT((reg).size == SizeX64::qword || ((reg).size == SizeX64::byte && (reg).index >= 4))
+// TODO: remove with DFFlagLuauCodeGenFixRexw
+#define REX_W_DEPRECATED(reg) REX_W_BIT((reg).size == SizeX64::qword || ((reg).size == SizeX64::byte && (reg).index >= 4))
+#define REX_W(reg) REX_W_BIT((reg).size == SizeX64::qword)
+#define REX_FORCE(reg) (((reg).size == SizeX64::byte && (reg).index >= 4) ? 0x40 : 0x00)
 #define REX_R(reg) (((reg).index & 0x8) >> 1)
 #define REX_X(reg) (((reg).index & 0x8) >> 2)
 #define REX_B(reg) (((reg).index & 0x8) >> 3)
@@ -1390,25 +1395,52 @@ void AssemblyBuilderX64::
 
 void AssemblyBuilderX64::placeRex(RegisterX64 op)
 {
-    uint8_t code = REX_W(op) | REX_B(op);
+    if (DFFlag::LuauCodeGenFixRexw)
+    {
+        uint8_t code = REX_W(op) | REX_B(op) | REX_FORCE(op);
 
-    if (code != 0)
-        place(code | 0x40);
+        if (code != 0)
+            place(code | 0x40);
+    }
+    else
+    {
+        uint8_t code = REX_W_DEPRECATED(op) | REX_B(op);
+
+        if (code != 0)
+            place(code | 0x40);
+    }
 }
 
 void AssemblyBuilderX64::placeRex(OperandX64 op)
 {
-    uint8_t code = 0;
+    if (DFFlag::LuauCodeGenFixRexw)
+    {
+        uint8_t code = 0;
 
-    if (op.cat == CategoryX64::reg)
-        code = REX_W(op.base) | REX_B(op.base);
-    else if (op.cat == CategoryX64::mem)
-        code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
+        if (op.cat == CategoryX64::reg)
+            code = REX_W(op.base) | REX_B(op.base) | REX_FORCE(op.base);
+        else if (op.cat == CategoryX64::mem)
+            code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
+        else
+            CODEGEN_ASSERT(!"No encoding for left operand of this category");
+
+        if (code != 0)
+            place(code | 0x40);
+    }
     else
-        CODEGEN_ASSERT(!"No encoding for left operand of this category");
+    {
+        uint8_t code = 0;
 
-    if (code != 0)
-        place(code | 0x40);
+        if (op.cat == CategoryX64::reg)
+            code = REX_W_DEPRECATED(op.base) | REX_B(op.base);
+        else if (op.cat == CategoryX64::mem)
+            code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
+        else
+            CODEGEN_ASSERT(!"No encoding for left operand of this category");
+
+        if (code != 0)
+            place(code | 0x40);
+    }
 }
 
 void AssemblyBuilderX64::placeRexNoW(OperandX64 op)
@@ -1428,15 +1460,30 @@ void AssemblyBuilderX64::placeRexNoW(OperandX64 op)
 
 void AssemblyBuilderX64::placeRex(RegisterX64 lhs, OperandX64 rhs)
 {
-    uint8_t code = REX_W(lhs);
+    if (DFFlag::LuauCodeGenFixRexw)
+    {
+        uint8_t code = REX_W(lhs) | REX_FORCE(lhs);
 
-    if (rhs.cat == CategoryX64::imm)
-        code |= REX_B(lhs);
+        if (rhs.cat == CategoryX64::imm)
+            code |= REX_B(lhs);
+        else
+            code |= REX_R(lhs) | REX_X(rhs.index) | REX_B(rhs.base) | REX_FORCE(lhs) | REX_FORCE(rhs.base);
+
+        if (code != 0)
+            place(code | 0x40);
+    }
     else
-        code |= REX_R(lhs) | REX_X(rhs.index) | REX_B(rhs.base);
+    {
+        uint8_t code = REX_W_DEPRECATED(lhs);
 
-    if (code != 0)
-        place(code | 0x40);
+        if (rhs.cat == CategoryX64::imm)
+            code |= REX_B(lhs);
+        else
+            code |= REX_R(lhs) | REX_X(rhs.index) | REX_B(rhs.base);
+
+        if (code != 0)
+            place(code | 0x40);
+    }
 }
 
 void AssemblyBuilderX64::placeVex(OperandX64 dst, OperandX64 src1, OperandX64 src2, bool setW, uint8_t mode, uint8_t prefix)

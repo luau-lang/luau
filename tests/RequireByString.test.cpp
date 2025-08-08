@@ -568,6 +568,20 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RegisterRuntimeModule")
     assertOutputContainsAll({"true"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RegisterRuntimeModuleCaseInsensitive")
+{
+    lua_pushcfunction(L, luarequire_registermodule, nullptr);
+    lua_pushstring(L, "@test/helloworld");
+    lua_newtable(L);
+    lua_pushstring(L, "hello");
+    lua_pushstring(L, "world");
+    lua_settable(L, -3);
+    lua_call(L, 2, 0);
+
+    runCode(L, "return require('@TeSt/heLLoWoRld').hello == 'world'");
+    assertOutputContainsAll({"true"});
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "ProxyRequire")
 {
     luarequire_pushproxyrequire(L, requireConfigInit, createCliRequireContext(L));

@@ -5,7 +5,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
 using namespace Luau;
 
@@ -63,8 +63,6 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_different_values_to_x")
 
 TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     // Parameter `x` has a fresh type `'x` bounded by `never` and `unknown`.
     // The first use of `x` constrains `x`'s upper bound by `string | number`.
     // The second use of `x`, aliased by `y`, constrains `x`'s upper bound by `string?`.
@@ -404,6 +402,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
     };
 
     CheckResult result = check(R"(

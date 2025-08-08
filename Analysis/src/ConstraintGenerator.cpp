@@ -36,21 +36,16 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauGlobalVariableModuleIsolation)
 LUAU_FASTFLAGVARIABLE(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAGVARIABLE(LuauDisablePrimitiveInferenceInLargeTables)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
-LUAU_FASTFLAGVARIABLE(LuauSkipLvalueForCompoundAssignment)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauRefineTablesWithReadType)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTracksRValueRefinements)
 LUAU_FASTFLAGVARIABLE(LuauPushFunctionTypesInFunctionStatement)
-LUAU_FASTFLAGVARIABLE(LuauInferActualIfElseExprType)
+LUAU_FASTFLAGVARIABLE(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAGVARIABLE(LuauDoNotPrototypeTableIndex)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving)
+LUAU_FASTFLAGVARIABLE(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 
 namespace Luau
 {
@@ -233,6 +228,11 @@ ConstraintGenerator::ConstraintGenerator(
     , logger(logger)
 {
     LUAU_ASSERT(module);
+
+    if (FFlag::LuauEagerGeneralization4)
+    {
+        LUAU_ASSERT(FFlag::LuauTrackFreeInteriorTypePacks);
+    }
 }
 
 ConstraintSet ConstraintGenerator::run(AstStatBlock* block)
@@ -261,7 +261,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     rootScope->location = block->location;
     module->astScopes[block] = NotNull{scope.get()};
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.emplace_back();
     else
         DEPRECATED_interiorTypes.emplace_back();
@@ -297,7 +297,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
         }
     );
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
     {
         scope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
         scope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
@@ -316,7 +316,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
         }
     );
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.pop_back();
     else
         DEPRECATED_interiorTypes.pop_back();
@@ -354,13 +354,13 @@ void ConstraintGenerator::visitFragmentRoot(const ScopePtr& resumeScope, AstStat
     // We prepopulate global data in the resumeScope to avoid writing data into the old modules scopes
     prepopulateGlobalScopeForFragmentTypecheck(globalScope, resumeScope, block);
     // Pre
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.emplace_back();
     else
         DEPRECATED_interiorTypes.emplace_back();
     visitBlockWithoutChildScope(resumeScope, block);
     // Post
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.pop_back();
     else
         DEPRECATED_interiorTypes.pop_back();
@@ -390,9 +390,12 @@ void ConstraintGenerator::visitFragmentRoot(const ScopePtr& resumeScope, AstStat
 
 TypeId ConstraintGenerator::freshType(const ScopePtr& scope, Polarity polarity)
 {
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
     {
-        auto ft = Luau::freshType(arena, builtinTypes, scope.get(), polarity);
+        const TypeId ft = FFlag::LuauEagerGeneralization4
+            ? Luau::freshType(arena, builtinTypes, scope.get(), polarity)
+            : Luau::freshType(arena, builtinTypes, scope.get());
+
         interiorFreeTypes.back().types.push_back(ft);
 
         if (FFlag::LuauEagerGeneralization4)
@@ -412,7 +415,7 @@ TypePackId ConstraintGenerator::freshTypePack(const ScopePtr& scope, Polarity po
 {
     FreeTypePack f{scope.get(), polarity};
     TypePackId result = arena->addTypePack(TypePackVar{std::move(f)});
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.back().typePacks.push_back(result);
     return result;
 }
@@ -1035,6 +1038,11 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStat* stat)
 {
     RecursionLimiter limiter{"ConstraintGenerator", &recursionCount, FInt::LuauCheckRecursionLimit};
+
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
+        LUAU_ASSERT(DEPRECATED_interiorTypes.empty());
+    else
+        LUAU_ASSERT(interiorFreeTypes.empty());
 
     if (auto s = stat->as<AstStatBlock>())
         return visit(scope, s);
@@ -1741,16 +1749,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAss
 {
     TypeId resultTy = checkAstExprBinary(scope, assign->location, assign->op, assign->var, assign->value, std::nullopt).ty;
     module->astCompoundAssignResultTypes[assign] = resultTy;
-
-    if (!FFlag::LuauSkipLvalueForCompoundAssignment)
-    {
-        TypeId lhsType = check(scope, assign->var).ty;
-        visitLValue(scope, assign->var, lhsType);
-
-        follow(lhsType);
-        follow(resultTy);
-    }
-
+    // NOTE: We do not update lvalues for compound assignments. This is
+    // intentional.
     return ControlFlow::None;
 }
 
@@ -1870,7 +1870,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     // Place this function as a child of the non-type function scope
     scope->children.push_back(NotNull{sig.signatureScope.get()});
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.emplace_back();
     else
         DEPRECATED_interiorTypes.push_back(std::vector<TypeId>{});
@@ -1888,7 +1888,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
         }
     );
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
     {
         sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
         sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
@@ -1897,7 +1897,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
         sig.signatureScope->interiorFreeTypes = std::move(DEPRECATED_interiorTypes.back());
 
     getMutable<BlockedType>(generalizedTy)->setOwner(gc);
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.pop_back();
     else
         DEPRECATED_interiorTypes.pop_back();
@@ -1993,7 +1993,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 }
             );
 
-            if (FFlag::LuauLimitDynamicConstraintSolving)
+            if (FFlag::LuauLimitDynamicConstraintSolving3)
             {
                 // If we don't emplace an error type here, then later we'll be
                 // exposing a blocked type in this file's type interface. This
@@ -2074,88 +2074,56 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         {
             Luau::Property& prop = props[propName];
 
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            if (auto readTy = prop.readTy)
             {
-                if (auto readTy = prop.readTy)
-                {
-                    // We special-case this logic to keep the intersection flat; otherwise we
-                    // would create a ton of nested intersection types.
-                    if (const IntersectionType* itv = get<IntersectionType>(*readTy))
-                    {
-                        std::vector<TypeId> options = itv->parts;
-                        options.push_back(propTy);
-                        TypeId newItv = arena->addType(IntersectionType{std::move(options)});
-
-                        prop.readTy = newItv;
-                    }
-                    else if (get<FunctionType>(*readTy))
-                    {
-                        TypeId intersection = arena->addType(IntersectionType{{*readTy, propTy}});
-
-                        prop.readTy = intersection;
-                    }
-                    else
-                    {
-                        reportError(
-                            declaredExternType->location,
-                            GenericError{format("Cannot overload read type of non-function class member '%s'", propName.c_str())}
-                        );
-                    }
-                }
-
-                if (auto writeTy = prop.writeTy)
-                {
-                    // We special-case this logic to keep the intersection flat; otherwise we
-                    // would create a ton of nested intersection types.
-                    if (const IntersectionType* itv = get<IntersectionType>(*writeTy))
-                    {
-                        std::vector<TypeId> options = itv->parts;
-                        options.push_back(propTy);
-                        TypeId newItv = arena->addType(IntersectionType{std::move(options)});
-
-                        prop.writeTy = newItv;
-                    }
-                    else if (get<FunctionType>(*writeTy))
-                    {
-                        TypeId intersection = arena->addType(IntersectionType{{*writeTy, propTy}});
-
-                        prop.writeTy = intersection;
-                    }
-                    else
-                    {
-                        reportError(
-                            declaredExternType->location,
-                            GenericError{format("Cannot overload write type of non-function class member '%s'", propName.c_str())}
-                        );
-                    }
-                }
-            }
-            else
-            {
-                TypeId currentTy = prop.type_DEPRECATED();
-
                 // We special-case this logic to keep the intersection flat; otherwise we
                 // would create a ton of nested intersection types.
-                if (const IntersectionType* itv = get<IntersectionType>(currentTy))
+                if (const IntersectionType* itv = get<IntersectionType>(*readTy))
                 {
                     std::vector<TypeId> options = itv->parts;
                     options.push_back(propTy);
                     TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
                     prop.readTy = newItv;
-                    prop.writeTy = newItv;
                 }
-                else if (get<FunctionType>(currentTy))
+                else if (get<FunctionType>(*readTy))
                 {
-                    TypeId intersection = arena->addType(IntersectionType{{currentTy, propTy}});
+                    TypeId intersection = arena->addType(IntersectionType{{*readTy, propTy}});
 
                     prop.readTy = intersection;
+                }
+                else
+                {
+                    reportError(
+                        declaredExternType->location,
+                        GenericError{format("Cannot overload read type of non-function class member '%s'", propName.c_str())}
+                    );
+                }
+            }
+
+            if (auto writeTy = prop.writeTy)
+            {
+                // We special-case this logic to keep the intersection flat; otherwise we
+                // would create a ton of nested intersection types.
+                if (const IntersectionType* itv = get<IntersectionType>(*writeTy))
+                {
+                    std::vector<TypeId> options = itv->parts;
+                    options.push_back(propTy);
+                    TypeId newItv = arena->addType(IntersectionType{std::move(options)});
+
+                    prop.writeTy = newItv;
+                }
+                else if (get<FunctionType>(*writeTy))
+                {
+                    TypeId intersection = arena->addType(IntersectionType{{*writeTy, propTy}});
+
                     prop.writeTy = intersection;
                 }
                 else
                 {
                     reportError(
-                        declaredExternType->location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())}
+                        declaredExternType->location,
+                        GenericError{format("Cannot overload write type of non-function class member '%s'", propName.c_str())}
                     );
                 }
             }
@@ -2653,7 +2621,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     //
     // The intent is (probably) not for this to be an array-like table with a massive
     // union for the value, but instead a `{ string }`.
-    if (FFlag::LuauDisablePrimitiveInferenceInLargeTables && largeTableDepth > 0)
+    if (largeTableDepth > 0)
         return Inference{builtinTypes->stringType};
 
     TypeId freeTy = nullptr;
@@ -2694,7 +2662,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     //
     // The intent is (probably) not for this to be a table where each element
     // is potentially `true` or `false` as a singleton, but just `boolean`.
-    if (FFlag::LuauDisablePrimitiveInferenceInLargeTables && largeTableDepth > 0)
+    if (largeTableDepth > 0)
         return Inference{builtinTypes->booleanType};
 
     TypeId freeTy = nullptr;
@@ -2866,7 +2834,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
     Checkpoint startCheckpoint = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, func, expectedType);
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.emplace_back();
     else
         DEPRECATED_interiorTypes.push_back(std::vector<TypeId>{});
@@ -2884,7 +2852,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
         }
     );
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
     {
         sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
         sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
@@ -3114,7 +3082,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
     applyRefinements(elseScope, ifElse->falseExpr->location, refinementArena.negation(refinement));
     TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
 
-    if (FFlag::LuauInferActualIfElseExprType)
+    if (FFlag::LuauInferActualIfElseExprType2)
         return Inference{makeUnion(scope, ifElse->location, thenType, elseType)};
     else
         return Inference{expectedType ? *expectedType : makeUnion(scope, ifElse->location, thenType, elseType)};
@@ -3406,11 +3374,10 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
     ttv->definitionLocation = expr->location;
     ttv->scope = scope.get();
 
-    if (FFlag::LuauDisablePrimitiveInferenceInLargeTables && FInt::LuauPrimitiveInferenceInTableLimit > 0 &&
-        expr->items.size > size_t(FInt::LuauPrimitiveInferenceInTableLimit))
+    if (FInt::LuauPrimitiveInferenceInTableLimit > 0 && expr->items.size > size_t(FInt::LuauPrimitiveInferenceInTableLimit))
         largeTableDepth++;
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauTrackFreeInteriorTypePacks)
         interiorFreeTypes.back().types.push_back(ty);
     else
         DEPRECATED_interiorTypes.back().push_back(ty);
@@ -3503,23 +3470,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
         }
     }
 
-    if (expectedType && !FFlag::LuauTableLiteralSubtypeSpecificCheck2)
-    {
-        addConstraint(
-            scope,
-            expr->location,
-            TableCheckConstraint{
-                *expectedType,
-                ty,
-                expr,
-                NotNull{&module->astTypes},
-                NotNull{&module->astExpectedTypes},
-            }
-        );
-    }
-
-    if (FFlag::LuauDisablePrimitiveInferenceInLargeTables && FInt::LuauPrimitiveInferenceInTableLimit > 0 &&
-        expr->items.size > size_t(FInt::LuauPrimitiveInferenceInTableLimit))
+    if (FInt::LuauPrimitiveInferenceInTableLimit > 0 && expr->items.size > size_t(FInt::LuauPrimitiveInferenceInTableLimit))
         largeTableDepth--;
 
     return Inference{ty};
@@ -3775,7 +3726,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
             else
                 return resolveType_(scope, ref->parameters.data[0].type, inTypeArguments);
         }
-        else if (FFlag::LuauLimitDynamicConstraintSolving && ref->name == "_luau_blocked_type")
+        else if (FFlag::LuauLimitDynamicConstraintSolving3 && ref->name == "_luau_blocked_type")
         {
             return arena->addType(BlockedType{});
         }
@@ -3871,11 +3822,6 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
             p.readTy = propTy;
             break;
         case AstTableAccess::Write:
-            if (!FFlag::LuauEnableWriteOnlyProperties)
-            {
-                reportError(*prop.accessLocation, GenericError{"write keyword is illegal here"});
-                p.readTy = propTy;
-            }
             p.writeTy = propTy;
             break;
         default:
@@ -4401,17 +4347,6 @@ struct GlobalPrepopulator : AstVisitor
 
 void ConstraintGenerator::prepopulateGlobalScopeForFragmentTypecheck(const ScopePtr& globalScope, const ScopePtr& resumeScope, AstStatBlock* program)
 {
-    if (!FFlag::LuauGlobalVariableModuleIsolation)
-    {
-        FragmentTypeCheckGlobalPrepopulator_DEPRECATED gp{NotNull{globalScope.get()}, NotNull{resumeScope.get()}, dfg, arena};
-
-        if (prepareModuleScope)
-            prepareModuleScope(module->name, resumeScope);
-
-        program->visit(&gp);
-    }
-
-
     // Handle type function globals as well, without preparing a module scope since they have a separate environment
     GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
     program->visit(&tfgp);

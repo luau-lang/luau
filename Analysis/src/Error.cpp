@@ -20,9 +20,8 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -427,7 +426,7 @@ struct ErrorConverter
             }
             else
             {
-                if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                if (FFlag::LuauSolverV2)
                     return it->second.readTy;
                 else
                     return it->second.type_DEPRECATED();
@@ -462,11 +461,8 @@ struct ErrorConverter
             return err;
         }
 
-        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
-        {
-            if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
-                return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
-        }
+        if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
+            return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
 
         return "Cannot call a value of type " + toString(e.ty);
     }
@@ -785,8 +781,12 @@ struct ErrorConverter
     std::string operator()(const CheckedFunctionCallError& e) const
     {
         // TODO: What happens if checkedFunctionName cannot be found??
-        return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
-               ", but got '" + Luau::toString(e.passed) + "'";
+        if (FFlag::LuauNewNonStrictReportsOneIndexedErrors)
+            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
+                   std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
+        else
+            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
+                   ", but got '" + Luau::toString(e.passed) + "'";
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
