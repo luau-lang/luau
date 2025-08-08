@@ -17,8 +17,8 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauParseStringIndexer)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
+LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -951,6 +951,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
+    ScopedFastFlag sff{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto columnOfEndBraceError = [this](const char* code)
     {
         try
@@ -969,9 +970,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
         }
     };
 
-    // This makes sure that the error is coming from the brace itself
-    CHECK_EQ(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ = `{abcdefg`"));
-    CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
+    // This makes sure that the error is coming from the closing brace itself
+    CHECK_EQ(columnOfEndBraceError("_ = `{a`"), 7);
+    CHECK_EQ(columnOfEndBraceError("_ = `{abcdefg`"), 13);
+    CHECK_EQ(columnOfEndBraceError("_ =       `{a`"), columnOfEndBraceError("_ = `{abcdefg`"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table")
@@ -4194,8 +4196,136 @@ TEST_CASE_FIXTURE(Fixture, "parsing_type_suffix_for_return_type_with_variadic")
 
 TEST_CASE_FIXTURE(Fixture, "parsing_string_union_indexers")
 {
-    ScopedFastFlag _{FFlag::LuauParseStringIndexer, true};
     parse(R"(type foo = { ["bar" | "baz"]: number })");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_at_eof")
+{
+    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
+    auto parseResult = tryParse(R"(print(`{e.x} {e.a)");
+    const auto first = parseResult.root->body.data[0];
+    auto expr = first->as<AstStatExpr>();
+    CHECK(expr != nullptr);
+    auto call = expr->expr->as<AstExprCall>();
+    CHECK(call != nullptr);
+    auto interpString = call->args.data[0]->as<AstExprInterpString>();
+    CHECK(interpString != nullptr);
+    CHECK(interpString->expressions.size == 2);
+    CHECK(interpString->location.begin == Position(0, 6));
+    CHECK(interpString->location.end == Position(0, 17));
+    CHECK_EQ(parseResult.errors.size(), 2);
+
+    auto err = parseResult.errors[0];
+    CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '}'?");
+    CHECK_EQ(err.getLocation(), Location({0, 16}, {0, 17}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_backtick_at_eof")
+{
+    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
+    auto parseResult = tryParse(R"(print(`{e.x} {e.a})");
+    const auto first = parseResult.root->body.data[0];
+    auto expr = first->as<AstStatExpr>();
+    CHECK(expr != nullptr);
+    auto call = expr->expr->as<AstExprCall>();
+    CHECK(call != nullptr);
+    auto interpString = call->args.data[0]->as<AstExprInterpString>();
+    CHECK(interpString != nullptr);
+    CHECK(interpString->expressions.size == 2);
+    CHECK(interpString->location.begin == Position(0, 6));
+    CHECK(interpString->location.end == Position(0, 18));
+    CHECK_EQ(parseResult.errors.size(), 2);
+
+    auto err = parseResult.errors[0];
+    CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '`'?");
+    CHECK_EQ(err.getLocation(), Location({0, 17}, {0, 18}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_with_backtick_at_eof")
+{
+    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
+    auto parseResult = tryParse(R"(print(`{e.x} {e.a`)");
+    const auto first = parseResult.root->body.data[0];
+    auto expr = first->as<AstStatExpr>();
+    CHECK(expr != nullptr);
+    auto call = expr->expr->as<AstExprCall>();
+    CHECK(call != nullptr);
+    auto interpString = call->args.data[0]->as<AstExprInterpString>();
+    CHECK(interpString != nullptr);
+    CHECK(interpString->expressions.size == 2);
+    CHECK(interpString->location.begin == Position(0, 6));
+    CHECK(interpString->location.end == Position(0, 18));
+    CHECK_EQ(parseResult.errors.size(), 2);
+
+    auto err = parseResult.errors[0];
+    CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '}'?");
+    CHECK_EQ(err.getLocation(), Location({0, 17}, {0, 18}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_broken_string")
+{
+    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
+    auto parseResult = tryParse(R"(print(`{e.x} {e.a
+)");
+    const auto first = parseResult.root->body.data[0];
+    auto expr = first->as<AstStatExpr>();
+    CHECK(expr != nullptr);
+    auto call = expr->expr->as<AstExprCall>();
+    CHECK(call != nullptr);
+    auto interpString = call->args.data[0]->as<AstExprInterpString>();
+    CHECK(interpString != nullptr);
+    CHECK(interpString->expressions.size == 2);
+    CHECK(interpString->location.begin == Position(0, 6));
+    CHECK(interpString->location.end == Position(0, 17));
+    CHECK_EQ(parseResult.errors.size(), 2);
+
+    auto err = parseResult.errors[0];
+    CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '}'?");
+    CHECK_EQ(err.getLocation(), Location({0, 16}, {0, 17}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_backtick_broken_string")
+{
+    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
+    auto parseResult = tryParse(R"(print(`{e.x} {e.a}
+)");
+    const auto first = parseResult.root->body.data[0];
+    auto expr = first->as<AstStatExpr>();
+    CHECK(expr != nullptr);
+    auto call = expr->expr->as<AstExprCall>();
+    CHECK(call != nullptr);
+    auto interpString = call->args.data[0]->as<AstExprInterpString>();
+    CHECK(interpString != nullptr);
+    CHECK(interpString->expressions.size == 2);
+    CHECK(interpString->location.begin == Position(0, 6));
+    CHECK(interpString->location.end == Position(0, 18));
+    CHECK_EQ(parseResult.errors.size(), 2);
+
+    auto err = parseResult.errors[0];
+    CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '`'?");
+    CHECK_EQ(err.getLocation(), Location({0, 17}, {0, 18}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_with_backtick_broken_string")
+{
+    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
+    auto parseResult = tryParse(R"(print(`{e.x} {e.a`
+)");
+    const auto first = parseResult.root->body.data[0];
+    auto expr = first->as<AstStatExpr>();
+    CHECK(expr != nullptr);
+    auto call = expr->expr->as<AstExprCall>();
+    CHECK(call != nullptr);
+    auto interpString = call->args.data[0]->as<AstExprInterpString>();
+    CHECK(interpString != nullptr);
+    CHECK(interpString->expressions.size == 2);
+    CHECK(interpString->location.begin == Position(0, 6));
+    CHECK(interpString->location.end == Position(0, 18));
+    CHECK_EQ(parseResult.errors.size(), 2);
+
+    auto err = parseResult.errors[0];
+    CHECK_EQ(err.getMessage(), "Malformed interpolated string; did you forget to add a '}'?");
+    CHECK_EQ(err.getLocation(), Location({0, 17}, {0, 18}));
 }
 
 TEST_SUITE_END();

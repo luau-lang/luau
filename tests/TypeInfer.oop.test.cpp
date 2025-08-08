@@ -14,7 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -29,11 +29,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
         someTable.Function1() -- Argument count mismatch
     )");
 
-    if (!FFlag::LuauSolverV2 || FFlag::LuauArityMismatchOnUndersaturatedUnknownArguments)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        REQUIRE(get<CountMismatch>(result.errors[0]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CountMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_help_2")
@@ -47,11 +44,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
         someTable.Function2() -- Argument count mismatch
     )");
 
-    if (!FFlag::LuauSolverV2 || FFlag::LuauArityMismatchOnUndersaturatedUnknownArguments)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        REQUIRE(get<CountMismatch>(result.errors[0]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CountMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_another_overload_works")
@@ -561,6 +555,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
     };
 
     CheckResult result = check(R"(
@@ -593,6 +588,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
     };
 
     CheckResult result = check(R"(

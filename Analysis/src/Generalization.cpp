@@ -15,11 +15,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-
 LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization4)
-LUAU_FASTFLAGVARIABLE(LuauGeneralizationCannotMutateAcrossModules)
 
 namespace Luau
 {
@@ -485,56 +481,33 @@ struct FreeTypeSearcher : TypeVisitor
 
         for (const auto& [_name, prop] : tt.props)
         {
-            if (FFlag::LuauEnableWriteOnlyProperties)
+            if (prop.isReadOnly())
             {
-                if (prop.isReadOnly())
-                {
-                    traverse(*prop.readTy);
-                }
-                else if (prop.isWriteOnly())
-                {
-                    Polarity p = polarity;
-                    polarity = Polarity::Negative;
-                    traverse(*prop.writeTy);
-                    polarity = p;
-                }
-                else if (prop.isShared())
-                {
-                    Polarity p = polarity;
-                    polarity = Polarity::Mixed;
-                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                        traverse(*prop.readTy);
-                    else
-                        traverse(prop.type_DEPRECATED());
-                    polarity = p;
-                }
-                else
-                {
-                    LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
-
-                    traverse(*prop.readTy);
-                    Polarity p = polarity;
-                    polarity = Polarity::Negative;
-                    traverse(*prop.writeTy);
-                    polarity = p;
-                }
+                traverse(*prop.readTy);
+            }
+            else if (prop.isWriteOnly())
+            {
+                Polarity p = polarity;
+                polarity = Polarity::Negative;
+                traverse(*prop.writeTy);
+                polarity = p;
+            }
+            else if (prop.isShared())
+            {
+                Polarity p = polarity;
+                polarity = Polarity::Mixed;
+                traverse(*prop.readTy);
+                polarity = p;
             }
             else
             {
-                if (prop.isReadOnly())
-                    traverse(*prop.readTy);
-                else
-                {
-                    LUAU_ASSERT(prop.isShared());
+                LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
 
-                    Polarity p = polarity;
-                    polarity = Polarity::Mixed;
-                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                        traverse(*prop.readTy);
-                    else
-                        traverse(prop.type_DEPRECATED());
-                    polarity = p;
-                }
+                traverse(*prop.readTy);
+                Polarity p = polarity;
+                polarity = Polarity::Negative;
+                traverse(*prop.writeTy);
+                polarity = p;
             }
         }
 
@@ -1447,56 +1420,33 @@ struct GenericCounter : TypeVisitor
 
         for (const auto& [_name, prop] : tt.props)
         {
-            if (FFlag::LuauEnableWriteOnlyProperties)
+            if (prop.isReadOnly())
             {
-                if (prop.isReadOnly())
-                {
-                    traverse(*prop.readTy);
-                }
-                else if (prop.isWriteOnly())
-                {
-                    Polarity p = polarity;
-                    polarity = Polarity::Negative;
-                    traverse(*prop.writeTy);
-                    polarity = p;
-                }
-                else if (prop.isShared())
-                {
-                    Polarity p = polarity;
-                    polarity = Polarity::Mixed;
-                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                        traverse(*prop.readTy);
-                    else
-                        traverse(prop.type_DEPRECATED());
-                    polarity = p;
-                }
-                else
-                {
-                    LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
-
-                    traverse(*prop.readTy);
-                    Polarity p = polarity;
-                    polarity = Polarity::Negative;
-                    traverse(*prop.writeTy);
-                    polarity = p;
-                }
+                traverse(*prop.readTy);
+            }
+            else if (prop.isWriteOnly())
+            {
+                Polarity p = polarity;
+                polarity = Polarity::Negative;
+                traverse(*prop.writeTy);
+                polarity = p;
+            }
+            else if (prop.isShared())
+            {
+                Polarity p = polarity;
+                polarity = Polarity::Mixed;
+                traverse(*prop.readTy);
+                polarity = p;
             }
             else
             {
-                if (prop.isReadOnly())
-                    traverse(*prop.readTy);
-                else
-                {
-                    LUAU_ASSERT(prop.isShared());
+                LUAU_ASSERT(prop.isReadWrite() && !prop.isShared());
 
-                    Polarity p = polarity;
-                    polarity = Polarity::Mixed;
-                    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                        traverse(*prop.readTy);
-                    else
-                        traverse(prop.type_DEPRECATED());
-                    polarity = p;
-                }
+                traverse(*prop.readTy);
+                Polarity p = polarity;
+                polarity = Polarity::Negative;
+                traverse(*prop.writeTy);
+                polarity = p;
             }
         }
 
@@ -1596,7 +1546,7 @@ void pruneUnnecessaryGenerics(
     {
         if (state.count == 1 && state.polarity != Polarity::Mixed)
         {
-            if (FFlag::LuauGeneralizationCannotMutateAcrossModules && arena.get() != generic->owningArena)
+            if (arena.get() != generic->owningArena)
                 continue;
             emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
         }

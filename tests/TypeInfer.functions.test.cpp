@@ -24,16 +24,12 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
-LUAU_FASTFLAG(LuauArityMismatchOnUndersaturatedUnknownArguments)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -82,8 +78,6 @@ TEST_CASE_FIXTURE(Fixture, "tc_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         function myFunction(): number
             local a = 0
@@ -195,15 +189,9 @@ TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
     const TableType* tt = get<TableType>(follow(t));
     REQUIRE(tt);
 
-    TypeId fooTy;
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-    {
-        const Property& foo = tt->props.at("foo");
-        REQUIRE(foo.readTy);
-        fooTy = *foo.readTy;
-    }
-    else
-        fooTy = tt->props.at("foo").type_DEPRECATED();
+    const Property& foo = tt->props.at("foo");
+    REQUIRE(foo.readTy);
+    TypeId fooTy = *foo.readTy;
     CHECK("<a>(a) -> a" == toString(fooTy));
 }
 
@@ -249,15 +237,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 
     REQUIRE(ttv->props.count("f"));
 
-    TypeId k;
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-    {
-        const Property& f = ttv->props["f"];
-        REQUIRE(f.readTy);
-        k = *f.readTy;
-    }
-    else
-        k = ttv->props["f"].type_DEPRECATED();
+    const Property& f = ttv->props["f"];
+    REQUIRE(f.readTy);
+    TypeId k = *f.readTy;
     REQUIRE(k);
 }
 
@@ -1510,8 +1492,6 @@ local a: TableWithFunc = { x = 3, y = 4, f = function(a, b) return a + b end }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
 local function f(): {string|number}
     return {1, "b", 3}
@@ -1697,8 +1677,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
 {
-    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
-
     CheckResult result = check(R"(
 local t: { f: ((x: number) -> number)? } = {}
 
@@ -1713,7 +1691,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
+    if (FFlag::LuauEagerGeneralization4)
     {
         LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, WhereClauseNeeded); // x2
@@ -1783,8 +1761,6 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_unsealed_overwrite")
 {
-    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
-
     CheckResult result = check(R"(
 local t = { f = nil :: ((x: number) -> number)? }
 
@@ -2061,10 +2037,7 @@ u.b().foo()
         CHECK_EQ(toString(result.errors[2]), "Argument count mismatch. Function expects 1 to 3 arguments, but none are specified");
         CHECK_EQ(toString(result.errors[3]), "Argument count mismatch. Function expects 2 to 4 arguments, but none are specified");
         CHECK_EQ(toString(result.errors[4]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
-        if (FFlag::LuauArityMismatchOnUndersaturatedUnknownArguments)
-            CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 3 arguments, but only 1 is specified");
-        else
-            CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 2 to 3 arguments, but only 1 is specified");
+        CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 3 arguments, but only 1 is specified");
         CHECK_EQ(toString(result.errors[6]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
         CHECK_EQ(toString(result.errors[7]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
         CHECK_EQ(toString(result.errors[8]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
@@ -2454,8 +2427,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         function num()
             return 5
@@ -2478,8 +2449,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_after_num_or_str")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         local function num_or_str()
             if math.random() > 0.5 then
@@ -2623,7 +2592,11 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+    };
 
     // CLI-114134: This test:
     // a) Has a kind of weird result (suggesting `number | false` is not great);
@@ -2632,12 +2605,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
     // clearly `number`. Hopefully the egraph will be able to unfold this.
 
     CheckResult result = check(R"(
-function fib(n)
-    return n < 2 and 1 or fib(n-1) + fib(n-2)
-end
-)");
+        function fib(n)
+            return n < 2 and 1 or fib(n-1) + fib(n-2)
+        end
+    )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
     LUAU_ASSERT(err);
     CHECK("false | number" == toString(err->recommendedReturn));
@@ -2647,13 +2620,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
 {
     if (!FFlag::LuauSolverV2)
         return;
-    CheckResult result = check(R"(
-function fib(n, u)
-    return (n or u) and (n < u and n + fib(n,u))
-end
-)");
 
-    LUAU_REQUIRE_ERRORS(result);
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+    };
+
+    CheckResult result = check(R"(
+        function fib(n, u)
+            return (n or u) and (n < u and n + fib(n,u))
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
     LUAU_ASSERT(err);
     CHECK("number" == toString(err->recommendedReturn));
@@ -2932,10 +2911,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSimplifyOutOfLine2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSimplifyOutOfLine2, true};
 
     CheckResult result = check(R"(
         function foo(player)
@@ -2954,17 +2930,23 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
     {
         // The new solver should ideally be able to do better here, but this is no worse than the old solver.
 
-        if (FFlag::LuauEagerGeneralization4)
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
         {
             LUAU_REQUIRE_ERROR_COUNT(2, result);
+
             auto tm1 = get<TypeMismatch>(result.errors[0]);
             REQUIRE(tm1);
             CHECK(toString(tm1->wantedType) == "string");
             CHECK(toString(tm1->givenType) == "boolean");
+
             auto tm2 = get<TypeMismatch>(result.errors[1]);
             REQUIRE(tm2);
             CHECK(toString(tm2->wantedType) == "string");
-            CHECK(toString(tm2->givenType) == "unknown & ~(false?)");
+
+            if (FFlag::LuauEagerGeneralization4)
+                CHECK(toString(tm2->givenType) == "unknown & ~(false?)");
+            else
+                CHECK(toString(tm2->givenType) == "~(false?)");
         }
         else
         {

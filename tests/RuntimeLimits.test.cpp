@@ -25,7 +25,9 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
+LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -292,7 +294,9 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
         // These flags are required to surface the problem.
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
         {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
 
         // And this flag is the one that fixes it.
         {FFlag::LuauSimplifyAnyAndUnion, true},
@@ -341,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauLimitDynamicConstraintSolving, true},
+        {FFlag::LuauLimitDynamicConstraintSolving3, true},
     };
 
     constexpr const char* src = R"(
@@ -367,6 +371,67 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
         CheckResult result = check(src);
         LUAU_CHECK_NO_ERRORS(result);
     }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constraints_2")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLimitDynamicConstraintSolving3, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
+        {FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints, true},
+    };
+
+    ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 50};
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        export type T = typeof(setmetatable(
+            {},
+            {} :: typeof(T)
+        ))
+
+        function T.One(): T
+            return nil :: any
+        end
+
+        function T.Two(self: T) end
+
+        function T.Three(self: T, x)
+            self.Prop[x] = true
+        end
+
+        function T.Four(self: T, x)
+            print("", x)
+        end
+
+        function T.Five(self: T) end
+
+        function T.Six(self: T) end
+
+        function T.Seven(self: T) end
+
+        function T.Eight(self: T) end
+
+        function T.Nine(self: T) end
+
+        function T.Ten(self: T) end
+
+        function T.Eleven(self: T) end
+
+        function T.Twelve(self: T) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR(result, UnknownProperty);
+
+    // A sanity check to ensure that this statistic is being recorded at all.
+    CHECK(frontend->stats.dynamicConstraintsCreated > 10);
+
+    CHECK(frontend->stats.dynamicConstraintsCreated < 40);
 }
 
 TEST_SUITE_END();

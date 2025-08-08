@@ -15,10 +15,10 @@
 #include "doctest.h"
 #include <iostream>
 
-LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAG(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressesDynamicRequireErrors)
+LUAU_FASTFLAG(LuauNewNonStrictReportsOneIndexedErrors)
 
 using namespace Luau;
 
@@ -125,6 +125,7 @@ declare os : {
 }
 
 @checked declare function require(target : any) : any
+@checked declare function getAllTheArgsWrong(one: string, two: number, three: boolean) : any
 )BUILTIN_SRC";
 };
 
@@ -629,8 +630,6 @@ optionalArgsAtTheEnd1("a", nil, 3)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_packs_in_non_strict")
 {
-    ScopedFastFlag sff{FFlag::LuauNewNonStrictFixGenericTypePacks, true};
-
     CheckResult result = checkNonStrict(R"(
         --!nonstrict
         local test: <T...>(T...) -> () -- TypeError: Unknown type 'T'
@@ -860,6 +859,24 @@ require("@self/NonExistent")
     CHECK(req1 != nullptr);
     const UnknownRequire* req2 = get<UnknownRequire>(result.errors[1]);
     CHECK(req2 != nullptr);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "new_non_strict_stringifies_checked_function_errors_as_one_indexed")
+{
+    ScopedFastFlag sff = {FFlag::LuauNewNonStrictReportsOneIndexedErrors, true};
+    CheckResult result = checkNonStrict(R"(
+getAllTheArgsWrong(3, true, "what")
+)");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    const CheckedFunctionCallError* err1 = get<CheckedFunctionCallError>(result.errors[0]);
+    const CheckedFunctionCallError* err2 = get<CheckedFunctionCallError>(result.errors[1]);
+    const CheckedFunctionCallError* err3 = get<CheckedFunctionCallError>(result.errors[2]);
+    CHECK(err1 != nullptr);
+    CHECK(err2 != nullptr);
+    CHECK(err3 != nullptr);
+    CHECK_EQ("Function 'getAllTheArgsWrong' expects 'string' at argument #1, but got 'number'", toString(result.errors[0]));
+    CHECK_EQ("Function 'getAllTheArgsWrong' expects 'number' at argument #2, but got 'boolean'", toString(result.errors[1]));
+    CHECK_EQ("Function 'getAllTheArgsWrong' expects 'boolean' at argument #3, but got 'string'", toString(result.errors[2]));
 }
 
 TEST_SUITE_END();

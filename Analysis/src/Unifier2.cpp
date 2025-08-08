@@ -18,10 +18,7 @@
 #include <optional>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 
 namespace Luau
@@ -52,32 +49,17 @@ static bool areCompatible(TypeId left, TypeId right)
         // the right table is free (and therefore potentially has an indexer or
         // a compatible property)
 
-        if (FFlag::LuauRemoveTypeCallsForReadWriteProps || FFlag::LuauRefineTablesWithReadType)
+        if (rightTable->state == TableState::Free || rightTable->indexer.has_value())
+            return true;
+
+        if (leftProp.isReadOnly() || leftProp.isShared())
         {
-            if (rightTable->state == TableState::Free || rightTable->indexer.has_value())
+            if (isOptionalOrFree(*leftProp.readTy))
                 return true;
-
-            if (leftProp.isReadOnly() || leftProp.isShared())
-            {
-                if (isOptionalOrFree(*leftProp.readTy))
-                    return true;
-            }
-
-            // FIXME: Could this create an issue for write only / divergent properties?
-            return false;
-        }
-        else
-        {
-            LUAU_ASSERT(leftProp.isReadOnly() || leftProp.isShared());
-
-            const TypeId leftType = follow(leftProp.isReadOnly() ? *leftProp.readTy : leftProp.type_DEPRECATED());
-
-            if (isOptional(leftType) || get<FreeType>(leftType) || rightTable->state == TableState::Free || rightTable->indexer.has_value())
-                return true;
-
-            return false;
         }
 
+        // FIXME: Could this create an issue for write only / divergent properties?
+        return false;
     };
 
     for (const auto& [name, leftProp] : leftTable->props)
@@ -106,7 +88,7 @@ static bool areCompatible(TypeId left, TypeId right)
 // returns `true` if `ty` is irressolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypeId ty)
 {
-    if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+    if (FFlag::LuauEagerGeneralization4)
     {
         if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state != TypeFunctionInstanceState::Unsolved)
             return false;
@@ -446,28 +428,11 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
         {
             const Property& superProp = superPropOpt->second;
 
-            if (FFlag::LuauEnableWriteOnlyProperties)
-            {
-                if (subProp.readTy && superProp.readTy)
-                    result &= unify(*subProp.readTy, *superProp.readTy);
+            if (subProp.readTy && superProp.readTy)
+                result &= unify(*subProp.readTy, *superProp.readTy);
 
-                if (subProp.writeTy && superProp.writeTy)
-                    result &= unify(*superProp.writeTy, *subProp.writeTy);
-            }
-            else
-            {
-                if (subProp.isReadOnly() && superProp.isReadOnly())
-                    result &= unify(*subProp.readTy, *superPropOpt->second.readTy);
-                else if (subProp.isReadOnly())
-                    result &= unify(*subProp.readTy, superProp.type_DEPRECATED());
-                else if (superProp.isReadOnly())
-                    result &= unify(subProp.type_DEPRECATED(), *superProp.readTy);
-                else
-                {
-                    result &= unify(subProp.type_DEPRECATED(), superProp.type_DEPRECATED());
-                    result &= unify(superProp.type_DEPRECATED(), subProp.type_DEPRECATED());
-                }
-            }
+            if (subProp.writeTy && superProp.writeTy)
+                result &= unify(*superProp.writeTy, *subProp.writeTy);
         }
     }
 

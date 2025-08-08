@@ -33,9 +33,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
-LUAU_FASTFLAGVARIABLE(LuauStringFormatImprovements)
 LUAU_FASTFLAGVARIABLE(LuauUpdateSetMetatableTypeSignature)
 LUAU_FASTFLAGVARIABLE(LuauUpdateGetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
@@ -339,14 +337,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     auto it = stringMetatableTable->props.find("__index");
     LUAU_ASSERT(it != stringMetatableTable->props.end());
 
-
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-    {
-        addGlobalBinding(globals, "string", *it->second.readTy, "@luau");
-        addGlobalBinding(globals, "string", *it->second.writeTy, "@luau");
-    }
-    else
-        addGlobalBinding(globals, "string", it->second.type_DEPRECATED(), "@luau");
+    addGlobalBinding(globals, "string", *it->second.readTy, "@luau");
+    addGlobalBinding(globals, "string", *it->second.writeTy, "@luau");
 
     // Setup 'vector' metatable
     if (auto it = globals.globalScope->exportedTypeBindings.find("vector"); it != globals.globalScope->exportedTypeBindings.end())
@@ -504,20 +496,10 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreach"].deprecated = true;
         ttv->props["foreachi"].deprecated = true;
 
-        if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-        {
-            attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
-            if (FFlag::LuauTableCloneClonesType3)
-                attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
-            attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
-        }
-        else
-        {
-            attachMagicFunction(ttv->props["pack"].type_DEPRECATED(), std::make_shared<MagicPack>());
-            if (FFlag::LuauTableCloneClonesType3)
-                attachMagicFunction(ttv->props["clone"].type_DEPRECATED(), std::make_shared<MagicClone>());
-            attachMagicFunction(ttv->props["freeze"].type_DEPRECATED(), std::make_shared<MagicFreeze>());
-        }
+        attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
+        if (FFlag::LuauTableCloneClonesType3)
+            attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
+        attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
     }
 
     TypeId requireTy = getGlobalBinding(globals, "require");
@@ -665,114 +647,68 @@ bool MagicFormat::infer(const MagicFunctionCallContext& context)
 {
     TypeArena* arena = context.solver->arena;
 
-    if (FFlag::LuauStringFormatImprovements)
+    auto iter = begin(context.arguments);
+
+    // we'll suppress any errors for `string.format` if the format string is error suppressing.
+    if (iter == end(context.arguments) || shouldSuppressErrors(context.solver->normalizer, follow(*iter)) == ErrorSuppression::Suppress)
     {
-        auto iter = begin(context.arguments);
-
-        // we'll suppress any errors for `string.format` if the format string is error suppressing.
-        if (iter == end(context.arguments) || shouldSuppressErrors(context.solver->normalizer, follow(*iter)) == ErrorSuppression::Suppress)
-        {
-            TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
-            asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
-            return true;
-        }
-
-        AstExprConstantString* fmt = nullptr;
-        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
-            fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
-
-        if (!context.callSite->self && context.callSite->args.size > 0)
-            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-        std::optional<std::string_view> formatString;
-        if (fmt)
-            formatString = {fmt->value.data, fmt->value.size};
-        else if (auto singleton = get<SingletonType>(follow(*iter)))
-        {
-            if (auto stringSingleton = get<StringSingleton>(singleton))
-                formatString = {stringSingleton->value};
-        }
-
-        if (!formatString)
-            return false;
-
-        std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, formatString->data(), formatString->size());
-        const auto& [params, tail] = flatten(context.arguments);
-
-        size_t paramOffset = 1;
-
-        // unify the prefix one argument at a time - needed if any of the involved types are free
-        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
-        {
-            context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
-        }
-
-        // if we know the argument count or if we have too many arguments for sure, we can issue an error
-        size_t numActualParams = params.size();
-        size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
-
-        if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-            context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
-
-        // This is invoked at solve time, so we just need to provide a type for the result of :/.format
         TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
         asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
-
         return true;
     }
-    else
+
+    AstExprConstantString* fmt = nullptr;
+    if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+        fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
+
+    if (!context.callSite->self && context.callSite->args.size > 0)
+        fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+    std::optional<std::string_view> formatString;
+    if (fmt)
+        formatString = {fmt->value.data, fmt->value.size};
+    else if (auto singleton = get<SingletonType>(follow(*iter)))
     {
-        AstExprConstantString* fmt = nullptr;
-        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
-        {
-            if (auto group = index->expr->as<AstExprGroup>())
-                fmt = group->expr->as<AstExprConstantString>();
-            else
-                fmt = index->expr->as<AstExprConstantString>();
-        }
-
-        if (!context.callSite->self && context.callSite->args.size > 0)
-            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-        if (!fmt)
-            return false;
-
-        std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, fmt->value.data, fmt->value.size);
-        const auto& [params, tail] = flatten(context.arguments);
-
-        size_t paramOffset = 1;
-
-        // unify the prefix one argument at a time - needed if any of the involved types are free
-        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
-        {
-            context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
-        }
-
-        // if we know the argument count or if we have too many arguments for sure, we can issue an error
-        size_t numActualParams = params.size();
-        size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
-
-        if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-            context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
-
-        // This is invoked at solve time, so we just need to provide a type for the result of :/.format
-        TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
-        asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
-
-        return true;
+        if (auto stringSingleton = get<StringSingleton>(singleton))
+            formatString = {stringSingleton->value};
     }
+
+    if (!formatString)
+        return false;
+
+    std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, formatString->data(), formatString->size());
+    const auto& [params, tail] = flatten(context.arguments);
+
+    size_t paramOffset = 1;
+
+    // unify the prefix one argument at a time - needed if any of the involved types are free
+    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+    {
+        context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
+    }
+
+    // if we know the argument count or if we have too many arguments for sure, we can issue an error
+    size_t numActualParams = params.size();
+    size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
+
+    if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
+        context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
+
+    // This is invoked at solve time, so we just need to provide a type for the result of :/.format
+    TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
+    asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
+
+    return true;
 }
 
 bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 {
-    if (FFlag::LuauStringFormatImprovements)
-    {
-        auto iter = begin(context.arguments);
+    auto iter = begin(context.arguments);
 
-        if (iter == end(context.arguments))
-        {
-            context.typechecker->reportError(
-                CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
+    if (iter == end(context.arguments))
+    {
+        context.typechecker->reportError(
+            CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
             );
             return true;
         }
@@ -848,73 +784,6 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
         }
 
         return true;
-    }
-    else
-    {
-        AstExprConstantString* fmt = nullptr;
-        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
-        {
-            if (auto group = index->expr->as<AstExprGroup>())
-                fmt = group->expr->as<AstExprConstantString>();
-            else
-                fmt = index->expr->as<AstExprConstantString>();
-        }
-
-        if (!context.callSite->self && context.callSite->args.size > 0)
-            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-        if (!fmt)
-        {
-            context.typechecker->reportError(
-                CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
-            );
-            return true;
-        }
-
-        // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
-        // This does _not_ handle cases like:
-        //
-        //  local foo : () -> (...string) = (nil :: any)
-        //  print(string.format("%s %d %s", foo()))
-        //
-        // ... which should be disallowed.
-
-        std::vector<TypeId> expected = parseFormatString(context.builtinTypes, fmt->value.data, fmt->value.size);
-
-        const auto& [params, tail] = flatten(context.arguments);
-
-        size_t paramOffset = 1;
-        // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
-        bool calledWithSelf = expected.size() == context.callSite->args.size;
-        // unify the prefix one argument at a time
-        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
-        {
-            TypeId actualTy = params[i + paramOffset];
-            TypeId expectedTy = expected[i];
-            Location location =
-                context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
-            // use subtyping instead here
-            SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
-
-            if (!result.isSubtype)
-            {
-                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
-                {
-                case ErrorSuppression::Suppress:
-                    break;
-                case ErrorSuppression::NormalizationFailed:
-                    break;
-                case ErrorSuppression::DoNotSuppress:
-                    Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
-
-                    if (!reasonings.suppressed)
-                        context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
-                }
-            }
-        }
-
-        return true;
-    }
 }
 
 static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)

@@ -20,8 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeFollowMetatable)
-
 namespace Luau
 {
 
@@ -390,7 +388,7 @@ private:
     void serializeChildren(const MetatableType* m1, TypeFunctionTableType* m2)
     {
         // Serialize main part of the metatable immediately
-        if (auto tableTy = get<TableType>(FFlag::LuauTypeFunctionSerializeFollowMetatable ? follow(m1->table) : m1->table))
+        if (auto tableTy = get<TableType>(follow(m1->table)))
             serializeChildren(tableTy, m2);
 
         m2->metatable = shallowSerialize(m1->metatable);

@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -205,10 +204,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type T<a> = { v: a }
@@ -224,10 +220,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type T<a> = { v: a }

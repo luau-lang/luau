@@ -106,7 +106,15 @@ static ResolvedRequire resolveRequire(luarequire_Configuration* lrc, lua_State* 
 static int checkRegisteredModules(lua_State* L, const char* path)
 {
     luaL_findtable(L, LUA_REGISTRYINDEX, registeredCacheTableKey, 1);
-    lua_getfield(L, -1, path);
+
+    std::string pathLower = std::string(path);
+    for (char& c : pathLower)
+    {
+        if (c >= 'A' && c <= 'Z')
+            c -= ('A' - 'a');
+    }
+
+    lua_getfield(L, -1, pathLower.c_str());
     if (lua_isnil(L, -1))
     {
         lua_pop(L, 2);
@@ -242,6 +250,16 @@ int registerModuleImpl(lua_State* L)
     std::string_view pathView(path, len);
     if (pathView.empty() || pathView[0] != '@')
         luaL_argerrorL(L, 1, "path must begin with '@'");
+
+    // Make path lowercase to ensure case-insensitive matching.
+    std::string pathLower = std::string(path, len);
+    for (char& c : pathLower)
+    {
+        if (c >= 'A' && c <= 'Z')
+            c -= ('A' - 'a');
+    }
+    lua_pushstring(L, pathLower.c_str());
+    lua_replace(L, 1);
 
     luaL_findtable(L, LUA_REGISTRYINDEX, registeredCacheTableKey, 1);
     // (1) path, (2) result, (3) cache table

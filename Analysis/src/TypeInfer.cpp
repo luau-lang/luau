@@ -34,8 +34,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
-LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
-
 namespace Luau
 {
 
@@ -1912,7 +1910,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     else if (auto a = expr.as<AstExprUnary>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprBinary>())
-        result = FFlag::LuauReduceCheckBinaryExprStackPressure ? checkExpr(scope, *a, expectedType) : checkExpr_DEPRECATED(scope, *a, expectedType);
+        result = checkExpr(scope, *a, expectedType);
     else if (auto a = expr.as<AstExprTypeAssertion>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprError>())
@@ -3200,63 +3198,6 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
             return {checkBinaryOperation(scope, expr, lhs.type, rhs.type), std::move(predicates)};
         };
         return checkExprOr();
-    }
-    else
-    {
-        // Expected types are not useful for other binary operators.
-        WithPredicate<TypeId> lhs = checkExpr(scope, *expr.left);
-        WithPredicate<TypeId> rhs = checkExpr(scope, *expr.right);
-
-        // Intentionally discarding predicates with other operators.
-        return WithPredicate{checkBinaryOperation(scope, expr, lhs.type, rhs.type, lhs.predicates)};
-    }
-}
-
-WithPredicate<TypeId> TypeChecker::checkExpr_DEPRECATED(const ScopePtr& scope, const AstExprBinary& expr, std::optional<TypeId> expectedType)
-{
-    if (expr.op == AstExprBinary::And)
-    {
-        auto [lhsTy, lhsPredicates] = checkExpr(scope, *expr.left, expectedType);
-
-        ScopePtr innerScope = childScope(scope, expr.location);
-        resolve(lhsPredicates, innerScope, true);
-
-        auto [rhsTy, rhsPredicates] = checkExpr(innerScope, *expr.right, expectedType);
-
-        return {checkBinaryOperation(scope, expr, lhsTy, rhsTy), {AndPredicate{std::move(lhsPredicates), std::move(rhsPredicates)}}};
-    }
-    else if (expr.op == AstExprBinary::Or)
-    {
-        auto [lhsTy, lhsPredicates] = checkExpr(scope, *expr.left, expectedType);
-
-        ScopePtr innerScope = childScope(scope, expr.location);
-        resolve(lhsPredicates, innerScope, false);
-
-        auto [rhsTy, rhsPredicates] = checkExpr(innerScope, *expr.right, expectedType);
-
-        // Because of C++, I'm not sure if lhsPredicates was not moved out by the time we call checkBinaryOperation.
-        TypeId result = checkBinaryOperation(scope, expr, lhsTy, rhsTy, lhsPredicates);
-        return {result, {OrPredicate{std::move(lhsPredicates), std::move(rhsPredicates)}}};
-    }
-    else if (expr.op == AstExprBinary::CompareEq || expr.op == AstExprBinary::CompareNe)
-    {
-        // For these, passing expectedType is worse than simply forcing them, because their implementation
-        // may inadvertently check if expectedTypes exist first and use it, instead of forceSingleton first.
-        WithPredicate<TypeId> lhs = checkExpr(scope, *expr.left, std::nullopt, /*forceSingleton=*/true);
-        WithPredicate<TypeId> rhs = checkExpr(scope, *expr.right, std::nullopt, /*forceSingleton=*/true);
-        if (auto predicate = tryGetTypeGuardPredicate(expr))
-            return {booleanType, {std::move(*predicate)}};
-
-        PredicateVec predicates;
-        if (auto lvalue = tryGetLValue(*expr.left))
-            predicates.push_back(EqPredicate{std::move(*lvalue), rhs.type, expr.location});
-        if (auto lvalue = tryGetLValue(*expr.right))
-            predicates.push_back(EqPredicate{std::move(*lvalue), lhs.type, expr.location});
-
-        if (!predicates.empty() && expr.op == AstExprBinary::CompareNe)
-            predicates = {NotPredicate{std::move(predicates)}};
-
-        return {checkBinaryOperation(scope, expr, lhs.type, rhs.type), std::move(predicates)};
     }
     else
     {

@@ -21,7 +21,6 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunOptional)
 
 namespace Luau
 {
@@ -455,8 +454,6 @@ static int getSingletonValue(lua_State* L)
 // Otherwise, makes a union of the two things.
 static int createOptional(lua_State* L)
 {
-    LUAU_ASSERT(FFlag::LuauTypeFunOptional);
-
     int argumentCount = lua_gettop(L);
     if (argumentCount != 1)
         luaL_error(L, "types.optional: expected 1 argument, but got %d", argumentCount);
@@ -1663,12 +1660,12 @@ void registerTypesLibrary(lua_State* L)
         {"negationof", createNegation},
         {"unionof", createUnion},
         {"intersectionof", createIntersection},
+        {"optional", createOptional},
         {"newtable", createTable},
         {"newfunction", createFunction},
         {"copy", deepCopy},
         {"generic", createGeneric},
 
-        {(FFlag::LuauTypeFunOptional) ? "optional" : nullptr, (FFlag::LuauTypeFunOptional) ? createOptional : nullptr},
         {nullptr, nullptr}
     };
 

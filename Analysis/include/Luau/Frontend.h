@@ -170,6 +170,8 @@ struct Frontend
         double timeParse = 0;
         double timeCheck = 0;
         double timeLint = 0;
+
+        size_t dynamicConstraintsCreated = 0;
     };
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
@@ -243,6 +245,7 @@ private:
         std::optional<ScopePtr> environmentScope,
         bool forAutocomplete,
         bool recordJsonLog,
+        Frontend::Stats& stats,
         TypeCheckLimits typeCheckLimits
     );
 
@@ -333,6 +336,7 @@ ModulePtr check(
     FrontendOptions options,
     TypeCheckLimits limits,
     bool recordJsonLog,
+    Frontend::Stats& stats,
     std::function<void(const ModuleName&, std::string)> writeJsonLog
 );
 

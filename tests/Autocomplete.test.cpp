@@ -20,7 +20,6 @@ LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
@@ -4560,8 +4559,6 @@ end
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
 {
-    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
-
     check(R"(
         local function foobar(tbl: { tag: "left" | "right" })
             tbl.tag = "@1"
@@ -4575,8 +4572,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_local_table")
 {
-    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
-
     check(R"(
         type Entry = { field: number, prop: string }
         local x : {Entry} = {}
@@ -4603,8 +4598,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_local_table")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_type_assertion")
 {
-    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
-
     check(R"(
         type Entry = { field: number, prop: string }
         return ( { f@1, p@2 } :: Entry )
@@ -4621,7 +4614,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
     ScopedFastFlag sffs[] = {
         // Somewhat surprisingly, the old solver didn't cover this case.
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExpectedTypeVisitor, true},
         {FFlag::LuauImplicitTableIndexerKeys3, true},
     };
 
@@ -4648,7 +4640,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_witho
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExpectedTypeVisitor, true},
         {FFlag::LuauImplicitTableIndexerKeys3, true},
     };
 
@@ -4679,10 +4670,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_witho
 
 TEST_CASE_FIXTURE(ACFixture, "bidirectional_autocomplete_in_function_call")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExpectedTypeVisitor, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     check(R"(
         local function take(_: { choice: "left" | "right" }) end
