@@ -16,8 +16,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauAvoidGenericsLeakingDuringFunctionCallCheck)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -227,7 +227,10 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+    };
 
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
@@ -261,7 +264,10 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+    };
 
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
@@ -376,10 +382,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local func: <T>(T, (T) -> ()) -> () = nil :: any
@@ -398,10 +401,7 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     // FIXME: CLI-156389: this is clearly wrong, but also predates this PR.
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -415,7 +415,6 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
 {
-    ScopedFastFlag _{FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true};
     // All we care about here is that this has no errors, and we correctly
     // infer that the `false` literal should be typed as `false`.
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -428,9 +427,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional_inference")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauAvoidGenericsLeakingDuringFunctionCallCheck, true},
+    ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
     };
 
     fileResolver.source["Module/ListFns"] = R"(

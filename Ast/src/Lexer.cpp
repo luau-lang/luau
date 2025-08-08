@@ -1009,6 +1009,14 @@ Lexeme Lexer::readNext()
     }
 }
 
+std::optional<Lexer::BraceType> Lexer::peekBraceStackTop()
+{
+    if (braceStack.empty())
+        return std::nullopt;
+    else
+        return {braceStack.back()};
+}
+
 LUAU_NOINLINE Lexeme Lexer::readUtf8Error()
 {
     Position start = position();

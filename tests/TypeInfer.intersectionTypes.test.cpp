@@ -10,11 +10,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -337,10 +335,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauPushFunctionTypesInFunctionStatement, true};
 
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
@@ -463,8 +458,6 @@ Type 'number' could not be converted into 'X')";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }

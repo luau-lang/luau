@@ -21,7 +21,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
@@ -3061,7 +3060,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     }
     else if (get<TableType>(there) || get<MetatableType>(there))
     {
-        if (useNewLuauSolver() && FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
+        if (useNewLuauSolver())
         {
             NormalizedExternType externTypes = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);

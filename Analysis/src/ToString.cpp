@@ -21,7 +21,6 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticStringification)
 
 /*
@@ -42,7 +41,6 @@ LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticStringification)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
-LUAU_FASTFLAGVARIABLE(LuauFixEmptyTypePackStringification)
 
 namespace Luau
 {
@@ -420,10 +418,7 @@ struct TypeStringifier
         if (prop.isShared())
         {
             emitKey(name);
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                stringify(*prop.readTy);
-            else
-                stringify(prop.type_DEPRECATED());
+            stringify(*prop.readTy);
             return;
         }
 
@@ -493,8 +488,7 @@ struct TypeStringifier
 
             bool wrap = !singleTp && get<TypePack>(follow(tp));
 
-            if (FFlag::LuauFixEmptyTypePackStringification)
-                wrap &= !isEmpty(tp);
+            wrap &= !isEmpty(tp);
 
             if (wrap)
                 state.emit("(");
@@ -742,7 +736,7 @@ struct TypeStringifier
 
         state.emit("(");
 
-        if (FFlag::LuauFixEmptyTypePackStringification && isEmpty(ftv.argTypes))
+        if (isEmpty(ftv.argTypes))
         {
             // if we've got an empty argument pack, we're done.
         }
@@ -753,7 +747,7 @@ struct TypeStringifier
 
         state.emit(") -> ");
 
-        bool plural = FFlag::LuauFixEmptyTypePackStringification ? !isEmpty(ftv.retTypes) : true;
+        bool plural = !isEmpty(ftv.retTypes);
 
         auto retBegin = begin(ftv.retTypes);
         auto retEnd = end(ftv.retTypes);
@@ -1270,14 +1264,11 @@ struct TypePackStringifier
             return;
         }
 
-        if (FFlag::LuauFixEmptyTypePackStringification)
+        if (tp.head.empty() && (!tp.tail || isEmpty(*tp.tail)))
         {
-            if (tp.head.empty() && (!tp.tail || isEmpty(*tp.tail)))
-            {
-                state.emit("()");
-                state.unsee(&tp);
-                return;
-            }
+            state.emit("()");
+            state.unsee(&tp);
+            return;
         }
 
         bool first = true;
@@ -1827,34 +1818,18 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
 
     state.emit("): ");
 
-    if (FFlag::LuauFixEmptyTypePackStringification)
-    {
-        size_t retSize = size(ftv.retTypes);
-        bool hasTail = !finite(ftv.retTypes);
-        bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize > 1);
+    size_t retSize = size(ftv.retTypes);
+    bool hasTail = !finite(ftv.retTypes);
+    bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize > 1);
 
-        if (wrap)
-            state.emit("(");
+    if (wrap)
+        state.emit("(");
 
-        tvs.stringify(ftv.retTypes);
+    tvs.stringify(ftv.retTypes);
 
-        if (wrap)
-            state.emit(")");
-    }
-    else
-    {
-        size_t retSize = size(ftv.retTypes);
-        bool hasTail = !finite(ftv.retTypes);
-        bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize != 1);
+    if (wrap)
+        state.emit(")");
 
-        if (wrap)
-            state.emit("(");
-
-        tvs.stringify(ftv.retTypes);
-
-        if (wrap)
-            state.emit(")");
-    }
 
     return result.name;
 }

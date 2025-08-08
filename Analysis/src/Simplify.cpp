@@ -18,8 +18,6 @@
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
-LUAU_FASTFLAGVARIABLE(LuauSimplificationTableExternType)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAGVARIABLE(LuauRelateTablesAreNeverDisjoint)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAGVARIABLE(LuauMissingSeenSetRelate)
@@ -307,11 +305,7 @@ Relation relateTables(TypeId left, TypeId right, SimplifierSeenSet& seen)
     if (!leftProp.isShared() || !rightProp.isShared())
         return Relation::Intersects;
 
-    Relation r;
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-        r = relate(*leftProp.readTy, *rightProp.readTy, seen);
-    else
-        r = relate(leftProp.type_DEPRECATED(), rightProp.type_DEPRECATED(), seen);
+    Relation r = relate(*leftProp.readTy, *rightProp.readTy, seen);
     if (r == Relation::Coincident && 1 != leftTable->props.size())
     {
         // eg {tag: "cat", prop: string} & {tag: "cat"}
@@ -394,12 +388,9 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     if (isTypeVariable(left) || isTypeVariable(right))
         return Relation::Intersects;
 
-    if (FFlag::LuauSimplificationTableExternType)
-    {
-        // if either type is a type function, we cannot know if they'll be related.
-        if (get<TypeFunctionInstanceType>(left) || get<TypeFunctionInstanceType>(right))
-            return Relation::Intersects;
-    }
+    // if either type is a type function, we cannot know if they'll be related.
+    if (get<TypeFunctionInstanceType>(left) || get<TypeFunctionInstanceType>(right))
+        return Relation::Intersects;
 
     if (get<ErrorType>(left))
     {
@@ -588,42 +579,37 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
             return Relation::Intersects;
         }
 
-        if (FFlag::LuauSimplificationTableExternType)
+        if (auto re = get<ExternType>(right))
         {
-            if (auto re = get<ExternType>(right))
+            Relation overall = Relation::Coincident;
+
+            for (auto& [name, prop] : lt->props)
             {
-                Relation overall = Relation::Coincident;
-
-                for (auto& [name, prop] : lt->props)
+                if (auto propInExternType = re->props.find(name); propInExternType != re->props.end())
                 {
-                    if (auto propInExternType = re->props.find(name); propInExternType != re->props.end())
+                    Relation propRel;
+                    if (FFlag::LuauMissingSeenSetRelate)
                     {
-                        Relation propRel;
-                        if (FFlag::LuauMissingSeenSetRelate)
-                        {
-                            LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
-                            propRel = relate(*prop.readTy, *propInExternType->second.readTy, seen);
-                        }
-                        else if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                        {
-                            LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
-                            propRel = relate(*prop.readTy, *propInExternType->second.readTy);
-                        }
-                        else
-                            propRel = relate(prop.type_DEPRECATED(), propInExternType->second.type_DEPRECATED());
-
-                        if (propRel == Relation::Disjoint)
-                            return Relation::Disjoint;
-
-                        if (propRel == Relation::Coincident)
-                            continue;
-
-                        overall = Relation::Intersects;
+                        LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
+                        propRel = relate(*prop.readTy, *propInExternType->second.readTy, seen);
                     }
-                }
+                    else
+                    {
+                        LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
+                        propRel = relate(*prop.readTy, *propInExternType->second.readTy);
+                    }
 
-                return overall;
+                    if (propRel == Relation::Disjoint)
+                        return Relation::Disjoint;
+
+                    if (propRel == Relation::Coincident)
+                        continue;
+
+                    overall = Relation::Intersects;
+                }
             }
+
+            return overall;
         }
 
         // TODO metatables
@@ -1319,11 +1305,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
             auto it = rt->props.find(propName);
             if (it != rt->props.end() && leftProp.isShared() && it->second.isShared())
             {
-                Relation r;
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-                    r = relate(*leftProp.readTy, *it->second.readTy);
-                else
-                    r = relate(leftProp.type_DEPRECATED(), it->second.type_DEPRECATED());
+                Relation r = relate(*leftProp.readTy, *it->second.readTy);
 
                 switch (r)
                 {

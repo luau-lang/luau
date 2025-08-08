@@ -130,7 +130,6 @@ private:
     // function funcname funcbody
     LUAU_FORCEINLINE AstStat* parseFunctionStat(const AstArray<AstAttr*>& attributes = {nullptr, 0});
 
-    std::pair<bool, AstAttr::Type> validateAttribute_DEPRECATED(const char* attributeName, const TempVector<AstAttr*>& attributes);
     std::optional<AstAttr::Type> validateAttribute(const char* attributeName, const TempVector<AstAttr*>& attributes);
 
     // attribute ::= '@' NAME

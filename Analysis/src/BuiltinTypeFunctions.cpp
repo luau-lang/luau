@@ -17,16 +17,14 @@
 #include "Luau/UserDefinedTypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauNotAllBinaryTypeFunsHaveDefaults)
 LUAU_FASTFLAG(LuauEmptyStringInKeyOf)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauAvoidExcessiveTypeCopying)
 LUAU_FASTFLAG(LuauOccursCheckForRefinement)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
+LUAU_FASTFLAGVARIABLE(LuauDoNotBlockOnStuckTypeFunctions)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
@@ -682,6 +680,16 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
 }
 
+namespace
+{
+bool isBlockedOrUnsolvedType(TypeId ty)
+{
+    if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
+        return true;
+    return is<BlockedType, PendingExpansionType>(ty);
+}
+} // namespace
+
 TypeFunctionReductionResult<TypeId> andTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -748,10 +756,20 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (FFlag::LuauEagerGeneralization4)
     {
-        if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+        if (FFlag::LuauDoNotBlockOnStuckTypeFunctions)
+        {
+            if (isBlockedOrUnsolvedType(lhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+            else if (isBlockedOrUnsolvedType(rhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+        }
+        else
+        {
+            if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+            else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+        }
     }
     else
     {
@@ -795,10 +813,20 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
 
     if (FFlag::LuauEagerGeneralization4)
     {
-        if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+        if (FFlag::LuauDoNotBlockOnStuckTypeFunctions)
+        {
+            if (isBlockedOrUnsolvedType(lhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+            else if (isBlockedOrUnsolvedType(rhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+        }
+        else
+        {
+            if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+            else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
+                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
+        }
     }
     else
     {
@@ -1302,8 +1330,18 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             return {targetTy, {}};
     }
 
-    const bool targetIsPending = FFlag::LuauEagerGeneralization4 ? is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy)
-                                                                 : isPending(targetTy, ctx->solver);
+    bool targetIsPending = false;
+
+    if (FFlag::LuauEagerGeneralization4)
+    {
+        targetIsPending = FFlag::LuauDoNotBlockOnStuckTypeFunctions
+            ? isBlockedOrUnsolvedType(targetTy)
+            : is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy);
+    }
+    else
+    {
+        targetIsPending = isPending(targetTy, ctx->solver);
+    }
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (targetIsPending)
@@ -2133,20 +2171,15 @@ bool searchPropsAndIndexer(
         if (tblProps.find(stringSingleton->value) != tblProps.end())
         {
 
-            TypeId propTy;
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-            {
-                Property& prop = tblProps.at(stringSingleton->value);
+            Property& prop = tblProps.at(stringSingleton->value);
 
-                if (prop.readTy)
-                    propTy = follow(*prop.readTy);
-                else if (prop.writeTy)
-                    propTy = follow(*prop.writeTy);
-                else // found the property, but there was no type associated with it
-                    return false;
-            }
-            else
-                propTy = follow(tblProps.at(stringSingleton->value).type_DEPRECATED());
+            TypeId propTy;
+            if (prop.readTy)
+                propTy = follow(*prop.readTy);
+            else if (prop.writeTy)
+                propTy = follow(*prop.writeTy);
+            else // found the property, but there was no type associated with it
+                return false;
 
             // property is a union type -> we need to extend our reduction type
             if (auto propUnionTy = get<UnionType>(propTy))
@@ -2804,21 +2837,10 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
     scope->exportedTypeBindings[keyofFunc.name] = mkUnaryTypeFunction(&keyofFunc);
     scope->exportedTypeBindings[rawkeyofFunc.name] = mkUnaryTypeFunction(&rawkeyofFunc);
 
-    if (FFlag::LuauNotAllBinaryTypeFunsHaveDefaults)
-    {
-        scope->exportedTypeBindings[indexFunc.name] = mkBinaryTypeFunction(&indexFunc);
-        scope->exportedTypeBindings[rawgetFunc.name] = mkBinaryTypeFunction(&rawgetFunc);
-    }
-    else
-    {
-        scope->exportedTypeBindings[indexFunc.name] = mkBinaryTypeFunctionWithDefault(&indexFunc);
-        scope->exportedTypeBindings[rawgetFunc.name] = mkBinaryTypeFunctionWithDefault(&rawgetFunc);
-    }
+    scope->exportedTypeBindings[indexFunc.name] = mkBinaryTypeFunction(&indexFunc);
+    scope->exportedTypeBindings[rawgetFunc.name] = mkBinaryTypeFunction(&rawgetFunc);
 
-    if (FFlag::LuauNotAllBinaryTypeFunsHaveDefaults)
-        scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunction(&setmetatableFunc);
-    else
-        scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunctionWithDefault(&setmetatableFunc);
+    scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunction(&setmetatableFunc);
     scope->exportedTypeBindings[getmetatableFunc.name] = mkUnaryTypeFunction(&getmetatableFunc);
 }
 

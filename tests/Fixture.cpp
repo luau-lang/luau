@@ -285,6 +285,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
             if (FFlag::LuauSolverV2)
             {
                 Mode mode = sourceModule->mode ? *sourceModule->mode : Mode::Strict;
+                Frontend::Stats stats;
                 ModulePtr module = Luau::check(
                     *sourceModule,
                     mode,
@@ -299,6 +300,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
                     getFrontend().options,
                     {},
                     false,
+                    stats,
                     {}
                 );
 

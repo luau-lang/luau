@@ -22,7 +22,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressesDynamicRequireErrors)
@@ -1095,43 +1094,19 @@ struct NonStrictTypeChecker
         Scope* scope = findInnermostScope(tp->location);
         LUAU_ASSERT(scope);
 
-        if (FFlag::LuauNewNonStrictFixGenericTypePacks)
-        {
-            if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
-                return;
+        if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+            return;
 
-            if (scope->lookupType(tp->genericName.value))
-                return reportError(
-                    SwappedGenericTypeParameter{
-                        tp->genericName.value,
-                        SwappedGenericTypeParameter::Kind::Pack,
-                    },
-                    tp->location
-                );
+        if (scope->lookupType(tp->genericName.value))
+            return reportError(
+                SwappedGenericTypeParameter{
+                    tp->genericName.value,
+                    SwappedGenericTypeParameter::Kind::Pack,
+                },
+                tp->location
+            );
 
-            reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-        }
-        else
-        {
-            std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
-            if (!alias.has_value())
-            {
-                if (scope->lookupType(tp->genericName.value))
-                {
-                    reportError(
-                        SwappedGenericTypeParameter{
-                            tp->genericName.value,
-                            SwappedGenericTypeParameter::Kind::Pack,
-                        },
-                        tp->location
-                    );
-                }
-            }
-            else
-            {
-                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-            }
-        }
+        reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
     }
 
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)

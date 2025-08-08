@@ -30,7 +30,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticVisitType)
 LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticSetType)
@@ -714,9 +713,6 @@ Property Property::create(std::optional<TypeId> read, std::optional<TypeId> writ
 
 TypeId Property::type_DEPRECATED() const
 {
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps && !FFlag::LuauUseWorkspacePropToChooseSolver)
-        LUAU_ASSERT(!FFlag::LuauSolverV2);
-
     LUAU_ASSERT(readTy);
     return *readTy;
 }
@@ -841,7 +837,7 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
         if (l->first != r->first)
             return false;
 
-        if (FFlag::LuauSolverV2 && (FFlag::LuauSubtypingCheckFunctionGenericCounts || FFlag::LuauRemoveTypeCallsForReadWriteProps))
+        if (FFlag::LuauSolverV2)
         {
             if (l->second.readTy && r->second.readTy)
             {
@@ -1090,7 +1086,7 @@ void persist(TypeId ty)
 
             for (const auto& [_name, prop] : ttv->props)
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                if (FFlag::LuauSolverV2)
                 {
                     if (prop.readTy)
                         queue.push_back(*prop.readTy);
@@ -1112,7 +1108,7 @@ void persist(TypeId ty)
         {
             for (const auto& [_name, prop] : etv->props)
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                if (FFlag::LuauSolverV2)
                 {
                     if (prop.readTy)
                         queue.push_back(*prop.readTy);

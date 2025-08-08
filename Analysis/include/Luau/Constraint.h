@@ -337,9 +337,6 @@ struct Constraint
 
     std::vector<NotNull<Constraint>> dependencies;
 
-    // Clip with LuauUseOrderedTypeSetsInConstraints
-    DenseHashSet<TypeId> getMaybeMutatedFreeTypes_DEPRECATED() const;
-
     TypeIds getMaybeMutatedFreeTypes() const;
 };
 

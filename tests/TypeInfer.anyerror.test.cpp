@@ -14,7 +14,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -248,13 +247,8 @@ TEST_CASE_FIXTURE(Fixture, "assign_prop_to_table_by_calling_any_yields_any")
     REQUIRE(ttv);
     REQUIRE(ttv->props.count("prop"));
 
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-    {
-        REQUIRE(ttv->props["prop"].readTy);
-        CHECK_EQ("any", toString(*ttv->props["prop"].readTy));
-    }
-    else
-        REQUIRE_EQ("any", toString(ttv->props["prop"].type_DEPRECATED()));
+    REQUIRE(ttv->props["prop"].readTy);
+    CHECK_EQ("any", toString(*ttv->props["prop"].readTy));
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")

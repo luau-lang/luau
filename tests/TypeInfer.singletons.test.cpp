@@ -7,7 +7,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -376,10 +375,7 @@ TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -396,8 +392,6 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }
