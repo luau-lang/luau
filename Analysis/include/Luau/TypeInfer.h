@@ -130,7 +130,6 @@ struct TypeChecker
         const PredicateVec& predicates = {}
     );
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprBinary& expr, std::optional<TypeId> expectedType = std::nullopt);
-    WithPredicate<TypeId> checkExpr_DEPRECATED(const ScopePtr& scope, const AstExprBinary& expr, std::optional<TypeId> expectedType = std::nullopt);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);

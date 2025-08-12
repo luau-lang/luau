@@ -13,7 +13,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 // For each `Luau::clone` call, we will clone only up to N amount of types _and_ packs, as controlled by this limit.
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
-LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticClone)
 
 namespace Luau
 {
@@ -203,37 +202,22 @@ public:
 private:
     Property shallowClone(const Property& p)
     {
-        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticClone)
-        {
-            std::optional<TypeId> cloneReadTy;
-            if (auto ty = p.readTy)
-                cloneReadTy = shallowClone(*ty);
+        std::optional<TypeId> cloneReadTy;
+        if (auto ty = p.readTy)
+            cloneReadTy = shallowClone(*ty);
 
-            std::optional<TypeId> cloneWriteTy;
-            if (auto ty = p.writeTy)
-                cloneWriteTy = shallowClone(*ty);
+        std::optional<TypeId> cloneWriteTy;
+        if (auto ty = p.writeTy)
+            cloneWriteTy = shallowClone(*ty);
 
-            Property cloned = Property::create(cloneReadTy, cloneWriteTy);
-            cloned.deprecated = p.deprecated;
-            cloned.deprecatedSuggestion = p.deprecatedSuggestion;
-            cloned.location = p.location;
-            cloned.tags = p.tags;
-            cloned.documentationSymbol = p.documentationSymbol;
-            cloned.typeLocation = p.typeLocation;
-            return cloned;
-        }
-        else
-        {
-            return Property{
-                shallowClone(p.type_DEPRECATED()),
-                p.deprecated,
-                p.deprecatedSuggestion,
-                p.location,
-                p.tags,
-                p.documentationSymbol,
-                p.typeLocation,
-            };
-        }
+        Property cloned = Property::create(cloneReadTy, cloneWriteTy);
+        cloned.deprecated = p.deprecated;
+        cloned.deprecatedSuggestion = p.deprecatedSuggestion;
+        cloned.location = p.location;
+        cloned.tags = p.tags;
+        cloned.documentationSymbol = p.documentationSymbol;
+        cloned.typeLocation = p.typeLocation;
+        return cloned;
     }
 
     void cloneChildren(TypeId ty)

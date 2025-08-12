@@ -28,19 +28,16 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
-LUAU_FASTFLAG(LuauSkipLvalueForCompoundAssignment)
-LUAU_FASTFLAG(LuauMissingFollowInAssignIndexConstraint)
 LUAU_FASTFLAG(LuauOccursCheckForRefinement)
 LUAU_FASTFLAG(LuauInferPolarityOfReadWriteProperties)
-LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
-LUAU_FASTFLAG(LuauInferActualIfElseExprType)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
+LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauFixPrepopulateGlobalOnSameGlobal)
 
 using namespace Luau;
@@ -1219,7 +1216,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 
     if (FFlag::LuauSolverV2)
     {
-        CHECK(4 == result.errors.size());
+        REQUIRE(4 == result.errors.size());
         CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
         CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
         CHECK(Location{{3, 45}, {3, 46}} == result.errors[2].location);
@@ -2022,6 +2019,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
     };
 
     auto result = check(R"(
@@ -2057,6 +2055,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
     };
 
     CheckResult result = check(R"(
@@ -2090,6 +2089,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
     };
 
     LUAU_REQUIRE_ERRORS(check(R"(
@@ -2259,8 +2259,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "self_bound_due_to_compound_assign")
 {
-    ScopedFastFlag _{FFlag::LuauSkipLvalueForCompoundAssignment, true};
-
     loadDefinition(R"(
         declare class Camera
             CameraType: string
@@ -2369,7 +2367,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "is_safe_integer_example")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_remover_heap_use_after_free")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+    };
 
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if l0.n0.n0 then {n4(...,setmetatable(setmetatable(_),_)),_ == _,} elseif _.ceil._ then _ elseif _ then not _
@@ -2389,8 +2390,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_remover_heap_use_after_free")
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_assign_index_constraint")
 {
-    ScopedFastFlag _{FFlag::LuauMissingFollowInAssignIndexConstraint, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         _._G = nil
         for _ in ... do
@@ -2422,7 +2421,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_infer_divergent_rw_props")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEnableWriteOnlyProperties, true},
         {FFlag::LuauInferPolarityOfReadWriteProperties, true},
     };
 
@@ -2447,11 +2445,10 @@ TEST_CASE_FIXTURE(Fixture, "oss_1815_verbatim")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInferActualIfElseExprType, true},
+        {FFlag::LuauInferActualIfElseExprType2, true},
         // This is needed so that we don't hide the string literal free types
         // behind a `union<_, _>`
         {FFlag::LuauSimplifyOutOfLine2, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
     };
 
     CheckResult results = check(R"(
@@ -2483,8 +2480,7 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_bidirectional_inference")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInferActualIfElseExprType, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+        {FFlag::LuauInferActualIfElseExprType2, true},
     };
 
     CheckResult results = check(R"(
@@ -2505,8 +2501,7 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_two_errors")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInferActualIfElseExprType, true},
-        {FFlag::LuauTableLiteralSubtypeSpecificCheck2, true},
+        {FFlag::LuauInferActualIfElseExprType2, true},
     };
 
     CheckResult results = check(R"(

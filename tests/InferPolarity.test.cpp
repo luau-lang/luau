@@ -10,12 +10,16 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauEagerGeneralization4);
 LUAU_FASTFLAG(LuauInferPolarityOfReadWriteProperties)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
 TEST_SUITE_BEGIN("InferPolarity");
 
 TEST_CASE_FIXTURE(Fixture, "T where T = { m: <a>(a) -> T }")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+    };
 
     TypeArena arena;
     ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
@@ -53,6 +57,7 @@ TEST_CASE_FIXTURE(Fixture, "<a, b>({ read x: a, write x: b }) -> ()")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
         {FFlag::LuauInferPolarityOfReadWriteProperties, true},
     };
 

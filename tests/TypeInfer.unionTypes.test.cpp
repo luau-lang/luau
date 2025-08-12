@@ -11,7 +11,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -583,8 +582,6 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 

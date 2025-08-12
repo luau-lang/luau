@@ -30,16 +30,13 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauEnableWriteOnlyProperties)
-LUAU_FASTFLAG(LuauNewNonStrictFixGenericTypePacks)
-LUAU_FASTFLAGVARIABLE(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
 LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAGVARIABLE(LuauSuppressErrorsForMultipleNonviableOverloads)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
-LUAU_FASTFLAG(LuauInferActualIfElseExprType)
+LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 
@@ -722,72 +719,69 @@ void TypeChecker2::visit(AstStatReturn* ret)
 {
     Scope* scope = findInnermostScope(ret->location);
     TypePackId expectedRetType = scope->returnType;
-    if (FFlag::LuauTableLiteralSubtypeSpecificCheck2)
+    if (ret->list.size == 0)
     {
-        if (ret->list.size == 0)
-        {
-            testIsSubtype(builtinTypes->emptyTypePack, expectedRetType, ret->location);
-            return;
-        }
+        testIsSubtype(builtinTypes->emptyTypePack, expectedRetType, ret->location);
+        return;
+    }
 
-        auto [head, _] = extendTypePack(module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
-        bool isSubtype = true;
-        std::vector<TypeId> actualHead;
-        std::optional<TypePackId> actualTail;
-        for (size_t idx = 0; idx < ret->list.size - 1; idx++)
+    auto [head, _] = extendTypePack(module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
+    bool isSubtype = true;
+    std::vector<TypeId> actualHead;
+    std::optional<TypePackId> actualTail;
+    for (size_t idx = 0; idx < ret->list.size - 1; idx++)
+    {
+        if (idx < head.size())
         {
-            if (idx < head.size())
-            {
-                isSubtype &= testPotentialLiteralIsSubtype(ret->list.data[idx], head[idx]);
-                actualHead.push_back(head[idx]);
-            }
+            if (FFlag::LuauInferActualIfElseExprType2)
+                isSubtype &= testLiteralOrAstTypeIsSubtype(ret->list.data[idx], head[idx]);
             else
-            {
-                actualHead.push_back(lookupType(ret->list.data[idx]));
-            }
-        }
-
-        // This stanza is deconstructing what constraint generation does to
-        // return statements. If we have some statement like:
-        //
-        //  return E0, E1, E2, ... , EN
-        //
-        // All expressions *except* the last will be types, and the last can
-        // potentially be a pack. However, if the last expression is a function
-        // call or varargs (`...`), then we _could_ have a pack in the final
-        // position. Additionally, if we have an argument overflow, then we can't
-        // do anything interesting with subtyping.
-        //
-        // _If_ the last argument is not a function call or varargs and we have
-        // at least an argument underflow, then we grab the last type out of
-        // the type pack head and use that to check the subtype of
-        auto lastExpr = ret->list.data[ret->list.size - 1];
-        if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
-        {
-            actualTail = lookupPack(lastExpr);
+                isSubtype &= testPotentialLiteralIsSubtype(ret->list.data[idx], head[idx]);
+            actualHead.push_back(head[idx]);
         }
         else
         {
-            auto lastType = head[ret->list.size - 1];
-            isSubtype &= testPotentialLiteralIsSubtype(lastExpr, lastType);
-            actualHead.push_back(lastType);
+            actualHead.push_back(lookupType(ret->list.data[idx]));
         }
+    }
 
-        // After all that, we still fire a pack subtype test to determine
-        // whether we have a well-formed return statement. We only fire
-        // this if all the previous subtype tests have succeeded, lest
-        // we double error.
-        if (isSubtype)
-        {
-            auto reconstructedRetType = module->internalTypes.addTypePack(TypePack{std::move(actualHead), std::move(actualTail)});
-            testIsSubtype(reconstructedRetType, expectedRetType, ret->location);
-        }
+    // This stanza is deconstructing what constraint generation does to
+    // return statements. If we have some statement like:
+    //
+    //  return E0, E1, E2, ... , EN
+    //
+    // All expressions *except* the last will be types, and the last can
+    // potentially be a pack. However, if the last expression is a function
+    // call or varargs (`...`), then we _could_ have a pack in the final
+    // position. Additionally, if we have an argument overflow, then we can't
+    // do anything interesting with subtyping.
+    //
+    // _If_ the last argument is not a function call or varargs and we have
+    // at least an argument underflow, then we grab the last type out of
+    // the type pack head and use that to check the subtype of
+    auto lastExpr = ret->list.data[ret->list.size - 1];
+    if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+    {
+        actualTail = lookupPack(lastExpr);
     }
     else
     {
-        TypeArena* arena = &module->internalTypes;
-        TypePackId actualRetType = reconstructPack(ret->list, *arena);
-        testIsSubtype(actualRetType, expectedRetType, ret->location);
+        auto lastType = head[ret->list.size - 1];
+        if (FFlag::LuauInferActualIfElseExprType2)
+            isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+        else
+            isSubtype &= testPotentialLiteralIsSubtype(lastExpr, lastType);
+        actualHead.push_back(lastType);
+    }
+
+    // After all that, we still fire a pack subtype test to determine
+    // whether we have a well-formed return statement. We only fire
+    // this if all the previous subtype tests have succeeded, lest
+    // we double error.
+    if (isSubtype)
+    {
+        auto reconstructedRetType = module->internalTypes.addTypePack(TypePack{std::move(actualHead), std::move(actualTail)});
+        testIsSubtype(reconstructedRetType, expectedRetType, ret->location);
     }
 
     for (AstExpr* expr : ret->list)
@@ -819,12 +813,7 @@ void TypeChecker2::visit(AstStatLocal* local)
                 TypeId annotationType = lookupAnnotation(var->annotation);
                 TypeId valueType = value ? lookupType(value) : nullptr;
                 if (valueType)
-                {
-                    if (FFlag::LuauTableLiteralSubtypeSpecificCheck2)
-                        testPotentialLiteralIsSubtype(value, annotationType);
-                    else
-                        testIsSubtype(valueType, annotationType, value->location);
-                }
+                    testPotentialLiteralIsSubtype(value, annotationType);
 
                 visit(var->annotation);
             }
@@ -1233,33 +1222,19 @@ void TypeChecker2::visit(AstStatAssign* assign)
             continue;
         }
 
-        if (FFlag::LuauTableLiteralSubtypeSpecificCheck2)
+        // FIXME CLI-142462: Due to the fact that we do not type state
+        // tables properly, table types "time travel." We can take
+        // advantage of this for the specific code pattern of:
+        //
+        //  local t = {}
+        //  t.foo = {} -- Type of the RHS gets time warped to `{ bar: {} }`
+        //  t.foo.bar = {}
+        //
+        if (testLiteralOrAstTypeIsSubtype(rhs, lhsType))
         {
-            // FIXME CLI-142462: Due to the fact that we do not type state
-            // tables properly, table types "time travel." We can take
-            // advantage of this for the specific code pattern of:
-            //
-            //  local t = {}
-            //  t.foo = {} -- Type of the RHS gets time warped to `{ bar: {} }`
-            //  t.foo.bar = {}
-            //
-            if (testLiteralOrAstTypeIsSubtype(rhs, lhsType))
-            {
-                if (std::optional<TypeId> bindingType = getBindingType(lhs))
-                    testLiteralOrAstTypeIsSubtype(rhs, *bindingType);
-            }
-        }
-        else
-        {
-            bool ok = testIsSubtype(rhsType, lhsType, rhs->location);
-
             // If rhsType </: lhsType, then it's not useful to also report that rhsType </: bindingType
-            if (ok)
-            {
-                std::optional<TypeId> bindingType = getBindingType(lhs);
-                if (bindingType)
-                    testIsSubtype(rhsType, *bindingType, rhs->location);
-            }
+            if (std::optional<TypeId> bindingType = getBindingType(lhs))
+                testLiteralOrAstTypeIsSubtype(rhs, *bindingType);
         }
     }
 }
@@ -2067,7 +2042,7 @@ void TypeChecker2::visit(AstExprFunction* fn)
     // If the function type has a function annotation, we need to see if we can suggest an annotation
     if (normalizedFnTy)
     {
-        if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+        if (FFlag::LuauEagerGeneralization4)
             suggestAnnotations(fn, normalizedFnTy->functions.parts.front());
         else
         {
@@ -2905,43 +2880,19 @@ void TypeChecker2::visit(AstTypePackGeneric* tp)
     Scope* scope = findInnermostScope(tp->location);
     LUAU_ASSERT(scope);
 
-    if (FFlag::LuauNewNonStrictFixGenericTypePacks)
-    {
-        if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
-            return;
+    if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+        return;
 
-        if (scope->lookupType(tp->genericName.value))
-            return reportError(
-                SwappedGenericTypeParameter{
-                    tp->genericName.value,
-                    SwappedGenericTypeParameter::Kind::Pack,
-                },
-                tp->location
-            );
+    if (scope->lookupType(tp->genericName.value))
+        return reportError(
+            SwappedGenericTypeParameter{
+                tp->genericName.value,
+                SwappedGenericTypeParameter::Kind::Pack,
+            },
+            tp->location
+        );
 
-        reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-    }
-    else
-    {
-        std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
-        if (!alias.has_value())
-        {
-            if (scope->lookupType(tp->genericName.value))
-            {
-                reportError(
-                    SwappedGenericTypeParameter{
-                        tp->genericName.value,
-                        SwappedGenericTypeParameter::Kind::Pack,
-                    },
-                    tp->location
-                );
-            }
-            else
-            {
-                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-            }
-        }
-    }
+    reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
 }
 
 template<typename TID>
@@ -3110,7 +3061,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     auto exprType = follow(lookupType(expr));
     expectedType = follow(expectedType);
 
-    if (FFlag::LuauInferActualIfElseExprType)
+    if (FFlag::LuauInferActualIfElseExprType2)
     {
         if (auto group = expr->as<AstExprGroup>())
         {
@@ -3162,20 +3113,9 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     Set<std::optional<std::string>> missingKeys{{}};
     for (const auto& [name, prop] : expectedTableType->props)
     {
-        if (FFlag::LuauEnableWriteOnlyProperties)
+        if (prop.readTy)
         {
-            if (prop.readTy)
-            {
-                if (!isOptional(*prop.readTy))
-                    missingKeys.insert(name);
-            }
-        }
-        else
-        {
-            LUAU_ASSERT(!prop.isWriteOnly());
-
-            auto readTy = *prop.readTy;
-            if (!isOptional(readTy))
+            if (!isOptional(*prop.readTy))
                 missingKeys.insert(name);
         }
     }
@@ -3213,22 +3153,11 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             }
             else
             {
-                if (FFlag::LuauEnableWriteOnlyProperties)
-                {
-                    // If the type has a read type, then we have an expected type for it, otherwise, we actually don't
-                    // care what's assigned to it because the only allowed behavior is writing to that property.
+                // If the type has a read type, then we have an expected type for it, otherwise, we actually don't
+                // care what's assigned to it because the only allowed behavior is writing to that property.
 
-                    if (expectedIt->second.readTy)
-                    {
-                        module->astExpectedTypes[item.value] = *expectedIt->second.readTy;
-                        isSubtype &= testPotentialLiteralIsSubtype(item.value, *expectedIt->second.readTy);
-                    }
-                }
-                else
+                if (expectedIt->second.readTy)
                 {
-                    // TODO: What do we do for write only props?
-                    LUAU_ASSERT(expectedIt->second.readTy);
-                    // Some property is in the expected type: we can test against the specific type.
                     module->astExpectedTypes[item.value] = *expectedIt->second.readTy;
                     isSubtype &= testPotentialLiteralIsSubtype(item.value, *expectedIt->second.readTy);
                 }

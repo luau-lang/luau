@@ -13,8 +13,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauFixEmptyTypePackStringification)
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -338,10 +336,7 @@ local c: Packed<string, number, boolean>
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
-    if (FFlag::LuauFixEmptyTypePackStringification)
-        CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "()");
-    else
-        CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
+    CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "()");
 
     auto ttvB = get<TableType>(requireType("b"));
     REQUIRE(ttvB);
@@ -1095,8 +1090,6 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         function foo<T...>(...: T...): T...
             return ...

@@ -28,6 +28,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileCli162537)
 
 namespace Luau
 {
@@ -1928,7 +1929,11 @@ struct Compiler
                     CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
                 LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
-                shape.keys[shape.length++] = int16_t(cid);
+
+                if (FFlag::LuauCompileCli162537)
+                    shape.keys[shape.length++] = cid;
+                else
+                    shape.keys[shape.length++] = int16_t(cid);
             }
 
             int32_t tid = bytecode.addConstantTable(shape);

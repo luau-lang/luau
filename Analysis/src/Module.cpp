@@ -16,7 +16,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 
 namespace Luau
 {
@@ -100,6 +100,7 @@ struct ClonePublicInterface : Substitution
     // NOTE: This can be made non-optional after
     // LuauUseWorkspacePropToChooseSolver is clipped.
     std::optional<SolverMode> solverMode{std::nullopt};
+    bool internalTypeEscaped = false;
 
     ClonePublicInterface(const TxnLog* log, NotNull<BuiltinTypes> builtinTypes, Module* module)
         : Substitution(log, &module->interfaceTypes)
@@ -177,21 +178,20 @@ struct ClonePublicInterface : Substitution
         {
             ttv->level = TypeLevel{0, 0};
             if (isNewSolver())
+            {
                 ttv->scope = nullptr;
+                if (FFlag::LuauLimitDynamicConstraintSolving3)
+                    ttv->state = TableState::Sealed;
+            }
         }
 
         if (isNewSolver())
         {
-            if (FFlag::LuauLimitDynamicConstraintSolving)
+            if (FFlag::LuauLimitDynamicConstraintSolving3)
             {
                 if (is<FreeType, BlockedType, PendingExpansionType>(ty))
                 {
-                    module->errors.emplace_back(
-                        Location{}, // Not amazing but the best we can do.
-                        module->name,
-                        InternalError{"An internal type is escaping this module; please report this bug at "
-                                      "https://github.com/luau-lang/luau/issues"}
-                    );
+                    internalTypeEscaped = true;
                     result = builtinTypes->errorType;
                 }
                 else if (auto genericty = getMutable<GenericType>(result))
@@ -225,16 +225,11 @@ struct ClonePublicInterface : Substitution
     {
         if (isNewSolver())
         {
-            if (FFlag::LuauLimitDynamicConstraintSolving)
+            if (FFlag::LuauLimitDynamicConstraintSolving3)
             {
                 if (is<FreeTypePack, BlockedTypePack>(tp))
                 {
-                    module->errors.emplace_back(
-                        Location{},
-                        module->name,
-                        InternalError{"An internal type pack is escaping this module; please report this bug at "
-                            "https://github.com/luau-lang/luau/issues"}
-                    );
+                    internalTypeEscaped = true;
                     return builtinTypes->errorTypePack;
                 }
 
@@ -369,6 +364,16 @@ void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes,
         *tf = clonePublicInterface.cloneTypeFun(*tf);
     }
 
+    if (FFlag::LuauLimitDynamicConstraintSolving3 && clonePublicInterface.internalTypeEscaped)
+    {
+        errors.emplace_back(
+            Location{}, // Not amazing but the best we can do.
+            name,
+            InternalError{"An internal type is escaping this module; please report this bug at "
+                "https://github.com/luau-lang/luau/issues"}
+        );
+    }
+
     // Copy external stuff over to Module itself
     this->returnType = moduleScope->returnType;
     this->exportedTypeBindings = moduleScope->exportedTypeBindings;
@@ -408,6 +413,16 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     for (auto& tf : typeFunctionAliases)
     {
         *tf = clonePublicInterface.cloneTypeFun(*tf);
+    }
+
+    if (FFlag::LuauLimitDynamicConstraintSolving3 && clonePublicInterface.internalTypeEscaped)
+    {
+        errors.emplace_back(
+            Location{}, // Not amazing but the best we can do.
+            name,
+            InternalError{"An internal type is escaping this module; please report this bug at "
+                "https://github.com/luau-lang/luau/issues"}
+        );
     }
 
     // Copy external stuff over to Module itself

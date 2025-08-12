@@ -44,12 +44,11 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_FASTFLAGVARIABLE(LuauExpectedTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauTrackTypeAllocations)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 
 namespace Luau
 {
@@ -211,7 +210,8 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(
     if (parseResult.errors.size() > 0)
         return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), nullptr};
 
-    ModulePtr checkedModule = check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, {});
+    Frontend::Stats dummyStats;
+    ModulePtr checkedModule = check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, dummyStats, {});
 
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), std::move(checkedModule)};
@@ -988,6 +988,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
             environmentScope,
             /*forAutocomplete*/ true,
             /*recordJsonLog*/ false,
+            item.stats,
             std::move(typeCheckLimits)
         );
 
@@ -1018,7 +1019,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     }
 
     ModulePtr module =
-        check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, std::move(typeCheckLimits));
+        check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, item.stats, std::move(typeCheckLimits));
 
     double duration = getTimestamp() - timestamp;
 
@@ -1171,6 +1172,8 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
         stats.strSingletonsMinted += item.stats.strSingletonsMinted;
         stats.uniqueStrSingletonsMinted += item.stats.uniqueStrSingletonsMinted;
     }
+
+    stats.dynamicConstraintsCreated += item.stats.dynamicConstraintsCreated;
 }
 
 void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
@@ -1333,41 +1336,6 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-ModulePtr check(
-    const SourceModule& sourceModule,
-    Mode mode,
-    const std::vector<RequireCycle>& requireCycles,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler,
-    NotNull<ModuleResolver> moduleResolver,
-    NotNull<FileResolver> fileResolver,
-    const ScopePtr& parentScope,
-    const ScopePtr& typeFunctionScope,
-    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
-    FrontendOptions options,
-    TypeCheckLimits limits,
-    std::function<void(const ModuleName&, std::string)> writeJsonLog
-)
-{
-    const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson;
-    return check(
-        sourceModule,
-        mode,
-        requireCycles,
-        builtinTypes,
-        iceHandler,
-        moduleResolver,
-        fileResolver,
-        parentScope,
-        typeFunctionScope,
-        std::move(prepareModuleScope),
-        std::move(options),
-        std::move(limits),
-        recordJsonLog,
-        std::move(writeJsonLog)
-    );
-}
-
 struct InternalTypeFinder : TypeOnceVisitor
 {
     InternalTypeFinder()
@@ -1431,6 +1399,7 @@ ModulePtr check(
     FrontendOptions options,
     TypeCheckLimits limits,
     bool recordJsonLog,
+    Frontend::Stats& stats,
     std::function<void(const ModuleName&, std::string)> writeJsonLog
 )
 {
@@ -1555,6 +1524,8 @@ ModulePtr check(
         result->cancelled = true;
     }
 
+    stats.dynamicConstraintsCreated += cs->solverConstraints.size();
+
     if (recordJsonLog)
     {
         std::string output = logger->compileOutput();
@@ -1641,22 +1612,19 @@ ModulePtr check(
             result->errors.clear();
     }
 
-    if (FFlag::LuauExpectedTypeVisitor)
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&result->astTypes},
-            NotNull{&result->astExpectedTypes},
-            NotNull{&result->astResolvedTypes},
-            NotNull{&result->internalTypes},
-            builtinTypes,
-            NotNull{parentScope.get()}
-        };
-        sourceModule.root->visit(&etv);
-    }
+    ExpectedTypeVisitor etv{
+        NotNull{&result->astTypes},
+        NotNull{&result->astExpectedTypes},
+        NotNull{&result->astResolvedTypes},
+        NotNull{&result->internalTypes},
+        builtinTypes,
+        NotNull{parentScope.get()}
+    };
+    sourceModule.root->visit(&etv);
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.
-    if (FFlag::LuauLimitDynamicConstraintSolving)
+    if (FFlag::LuauLimitDynamicConstraintSolving3)
     {
         if (FFlag::DebugLuauForbidInternalTypes)
         {
@@ -1696,7 +1664,7 @@ ModulePtr check(
     else
         result->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
 
-    if (!FFlag::LuauLimitDynamicConstraintSolving)
+    if (!FFlag::LuauLimitDynamicConstraintSolving3)
     {
         if (FFlag::DebugLuauForbidInternalTypes)
         {
@@ -1751,6 +1719,7 @@ ModulePtr Frontend::check(
     std::optional<ScopePtr> environmentScope,
     bool forAutocomplete,
     bool recordJsonLog,
+    Frontend::Stats& stats,
     TypeCheckLimits typeCheckLimits
 )
 {
@@ -1778,6 +1747,7 @@ ModulePtr Frontend::check(
                 options,
                 std::move(typeCheckLimits),
                 recordJsonLog,
+                stats,
                 writeJsonLog
             );
         }

@@ -4,6 +4,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/EqSatSimplification.h"
 #include "Luau/Set.h"
+#include "Luau/SubtypingVariance.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
@@ -31,17 +32,6 @@ struct Scope;
 struct TableIndexer;
 struct TypeArena;
 struct TypeCheckLimits;
-
-enum class SubtypingVariance
-{
-    // Used for an empty key. Should never appear in actual code.
-    Invalid,
-    Covariant,
-    // This is used to identify cases where we have a covariant + a
-    // contravariant reason and we need to merge them.
-    Contravariant,
-    Invariant,
-};
 
 struct SubtypingReasoning
 {
@@ -327,6 +317,12 @@ private:
 
     [[noreturn]] void unexpected(TypeId ty);
     [[noreturn]] void unexpected(TypePackId tp);
+
+    SubtypingResult trySemanticSubtyping(SubtypingEnvironment& env,
+                                         TypeId subTy,
+                                         TypeId superTy,
+                                         NotNull<Scope> scope,
+                                         SubtypingResult& original);
 };
 
 } // namespace Luau

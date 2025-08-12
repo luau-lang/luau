@@ -29,7 +29,6 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 
-LUAU_FASTFLAG(LuauTypeFunOptional)
 LUAU_FASTFLAG(LuauUpdateSetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
 
@@ -203,7 +202,6 @@ struct BuiltinsFixture : Fixture
     explicit BuiltinsFixture(bool prepareAutocomplete = false);
 
     // For the purpose of our tests, we're always the latest version of type functions.
-    ScopedFastFlag sff_optionalInTypeFunctionLib{FFlag::LuauTypeFunOptional, true};
     Frontend& getFrontend() override;
 };
 

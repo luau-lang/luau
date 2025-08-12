@@ -9,6 +9,11 @@
     <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 1">cl</DisplayString>
     <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 2">dl</DisplayString>
     <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 3">bl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 4">spl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 5">bpl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 6">sil</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index == 7">dil</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::byte &amp;&amp; index >= 8">e{(int)index,d}b</DisplayString>
     
     <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::dword &amp;&amp; index == 0">eax</DisplayString>
     <DisplayString Condition="size == Luau::CodeGen::X64::SizeX64::dword &amp;&amp; index == 1">ecx</DisplayString>
