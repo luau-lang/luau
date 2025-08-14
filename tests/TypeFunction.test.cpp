@@ -1037,6 +1037,36 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
     // Should not crash!
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "typefunc_dependency_issue1")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+        CheckResult check1 = check(R"(
+local tbl_A = {} :: typeof({entry1 = 1})
+tbl_A.entry1b = "hi"
+
+type tbl_B = {entry2: nil}
+local tbl_C = nil :: getmetatable< typeof( setmetatable({}, {entry3b="abc2"}) ) >
+tbl_C.entry3 = "abc" 
+tbl_C.entry4 = "hi2"
+
+local test = nil :: typeof(tbl_C)
+local tbl_ABC = nil :: typeof(tbl_A) & tbl_B & typeof(tbl_C)
+
+local indexesABC = nil :: keyof<typeof(tbl_ABC)>
+)");
+
+    auto test1 = requireType("indexesABC");
+
+    if (auto ty = follow(test1)->ty.get_if<UnionType>())
+    {
+        CHECK_EQ(ty->options.size(), 6);
+    }
+    else
+        LUAU_ASSERT(false); // It should be a UnionType
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
 {
     if (!FFlag::LuauSolverV2)
