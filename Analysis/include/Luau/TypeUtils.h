@@ -4,6 +4,7 @@
 #include "Luau/Error.h"
 #include "Luau/Location.h"
 #include "Luau/Type.h"
+#include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
 
 #include <memory>
@@ -362,6 +363,39 @@ inline constexpr char kLuauForceConstraintSolvingIncomplete[] = "_luau_force_con
 // `_luau_blocked_type` will cause us to always mint a blocked type that does
 // not get emplaced by constraint solving.
 inline constexpr char kLuauBlockedType[] = "_luau_blocked_type";
+
+struct UnionBuilder
+{
+    UnionBuilder(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes);
+    void add(TypeId ty);
+    TypeId build();
+    size_t size() const;
+    void reserve(size_t size);
+
+private:
+    NotNull<TypeArena> arena;
+    NotNull<BuiltinTypes> builtinTypes;
+    TypeIds options;
+    bool isTop = false;
+};
+
+struct IntersectionBuilder
+{
+    IntersectionBuilder(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes);
+    void add(TypeId ty);
+    TypeId build();
+    size_t size() const;
+    void reserve(size_t size);
+
+private:
+    NotNull<TypeArena> arena;
+    NotNull<BuiltinTypes> builtinTypes;
+    TypeIds parts;
+    bool isBottom = false;
+};
+
+TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
+TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 
 
 } // namespace Luau

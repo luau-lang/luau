@@ -16,6 +16,8 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization4)
+LUAU_FASTFLAGVARIABLE(LuauReduceSetTypeStackPressure)
+LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 
 namespace Luau
 {
@@ -334,7 +336,7 @@ struct FreeTypeSearcher : TypeVisitor
     NotNull<DenseHashSet<TypeId>> cachedTypes;
 
     explicit FreeTypeSearcher(NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeVisitor("FreeTypeSearcher", /*skipBoundTypes*/ true)
+        : TypeVisitor("FreeTypeSearcher", /* skipBoundTypes */ true)
         , scope(scope)
         , cachedTypes(cachedTypes)
     {
@@ -622,38 +624,56 @@ struct TypeCacher : TypeOnceVisitor
     DenseHashSet<TypePackId> uncacheablePacks{nullptr};
 
     explicit TypeCacher(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeOnceVisitor("TypeCacher", /* skipBoundTypes */ false)
+        : TypeOnceVisitor("TypeCacher", /* skipBoundTypes */ FFlag::LuauReduceSetTypeStackPressure)
         , cachedTypes(cachedTypes)
     {
     }
 
     void cache(TypeId ty) const
     {
-        cachedTypes->insert(ty);
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            cachedTypes->insert(follow(ty));
+        else
+            cachedTypes->insert(ty);
     }
 
     bool isCached(TypeId ty) const
     {
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            return cachedTypes->contains(follow(ty));
+
         return cachedTypes->contains(ty);
     }
 
     void markUncacheable(TypeId ty)
     {
-        uncacheable.insert(ty);
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            uncacheable.insert(follow(ty));
+        else
+            uncacheable.insert(ty);
     }
 
     void markUncacheable(TypePackId tp)
     {
-        uncacheablePacks.insert(tp);
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            uncacheablePacks.insert(follow(tp));
+        else
+            uncacheablePacks.insert(tp);
     }
 
     bool isUncacheable(TypeId ty) const
     {
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            return uncacheable.contains(follow(ty));
+
         return uncacheable.contains(ty);
     }
 
     bool isUncacheable(TypePackId tp) const
     {
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            return uncacheablePacks.contains(follow(tp));
+
         return uncacheablePacks.contains(tp);
     }
 
@@ -668,6 +688,7 @@ struct TypeCacher : TypeOnceVisitor
 
     bool visit(TypeId ty, const BoundType& btv) override
     {
+        LUAU_ASSERT(!FFlag::LuauReduceSetTypeStackPressure);
         traverse(btv.boundTo);
         if (isUncacheable(btv.boundTo))
             markUncacheable(ty);
@@ -1381,14 +1402,37 @@ struct GenericCounter : TypeVisitor
 
     Polarity polarity = Polarity::Positive;
 
+    int depth = 0;
+    bool hitLimits = false;
+
     explicit GenericCounter(NotNull<DenseHashSet<TypeId>> cachedTypes)
         : TypeVisitor("GenericCounter")
         , cachedTypes(cachedTypes)
     {
     }
 
+    void checkLimits()
+    {
+        if (FFlag::LuauReduceSetTypeStackPressure && depth > FInt::LuauGenericCounterMaxDepth)
+            hitLimits = true;
+    }
+
+    bool visit(TypeId ty) override
+    {
+        checkLimits();
+        return !FFlag::LuauReduceSetTypeStackPressure || !hitLimits;
+    }
+
+
     bool visit(TypeId ty, const FunctionType& ft) override
     {
+        std::optional<RecursionCounter> rc{std::nullopt};
+        if (FFlag::LuauReduceSetTypeStackPressure)
+        {
+            rc.emplace(&depth);
+            checkLimits();
+        }
+
         if (ty->persistent)
             return false;
 
@@ -1408,6 +1452,13 @@ struct GenericCounter : TypeVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
+        std::optional<RecursionCounter> rc{std::nullopt};
+        if (FFlag::LuauReduceSetTypeStackPressure)
+        {
+            rc.emplace(&depth);
+            checkLimits();
+        }
+
         if (ty->persistent)
             return false;
 
@@ -1542,13 +1593,16 @@ void pruneUnnecessaryGenerics(
 
     counter.traverse(ty);
 
-    for (const auto& [generic, state] : counter.generics)
+    if (!FFlag::LuauReduceSetTypeStackPressure || !counter.hitLimits)
     {
-        if (state.count == 1 && state.polarity != Polarity::Mixed)
+        for (const auto& [generic, state] : counter.generics)
         {
-            if (arena.get() != generic->owningArena)
-                continue;
-            emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
+            if (state.count == 1 && state.polarity != Polarity::Mixed)
+            {
+                if (arena.get() != generic->owningArena)
+                    continue;
+                emplaceType<BoundType>(asMutable(generic), builtinTypes->unknownType);
+            }
         }
     }
 
@@ -1564,9 +1618,12 @@ void pruneUnnecessaryGenerics(
                 return true;
             seen.insert(ty);
 
-            auto state = counter.generics.find(ty);
-            if (state && state->count == 0)
-                return true;
+            if (!FFlag::LuauReduceSetTypeStackPressure || !counter.hitLimits)
+            {
+                auto state = counter.generics.find(ty);
+                if (state && state->count == 0)
+                    return true;
+            }
 
             return !get<GenericType>(ty);
         }
@@ -1574,11 +1631,16 @@ void pruneUnnecessaryGenerics(
 
     functionTy->generics.erase(it, functionTy->generics.end());
 
-    for (const auto& [genericPack, state] : counter.genericPacks)
+
+    if (!FFlag::LuauReduceSetTypeStackPressure || !counter.hitLimits)
     {
-        if (state.count == 1)
-            emplaceTypePack<BoundTypePack>(asMutable(genericPack), builtinTypes->unknownTypePack);
+        for (const auto& [genericPack, state] : counter.genericPacks)
+        {
+            if (state.count == 1)
+                emplaceTypePack<BoundTypePack>(asMutable(genericPack), builtinTypes->unknownTypePack);
+        }
     }
+
 
     DenseHashSet<TypePackId> seen2{nullptr};
     auto it2 = std::remove_if(
@@ -1591,9 +1653,12 @@ void pruneUnnecessaryGenerics(
                 return true;
             seen2.insert(tp);
 
-            auto state = counter.genericPacks.find(tp);
-            if (state && state->count == 0)
-                return true;
+            if (!FFlag::LuauReduceSetTypeStackPressure || !counter.hitLimits)
+            {
+                auto state = counter.genericPacks.find(tp);
+                if (state && state->count == 0)
+                    return true;
+            }
 
             return !get<GenericTypePack>(tp);
         }

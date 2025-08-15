@@ -19,6 +19,7 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
+LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -3726,6 +3727,118 @@ end)");
     CHECK_EQ(attributes.size, 1);
 
     checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 0), Position(1, 8)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_parametrized_attribute_on_function_stat")
+{
+    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
+
+    AstStatBlock* stat = parse(R"(
+@[deprecated{ use = "greetng", reason = "Using <hello> is too causal"}]
+function hello(x, y)
+    return x + y
+end)");
+
+    LUAU_ASSERT(stat != nullptr);
+
+    AstStatFunction* statFun = stat->body.data[0]->as<AstStatFunction>();
+    LUAU_ASSERT(statFun != nullptr);
+
+    AstArray<AstAttr*> attributes = statFun->func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+
+    checkAttribute(attributes.data[0], AstAttr::Type::Deprecated, Location(Position(1, 2), Position(1, 70)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "non_literal_attribute_arguments_is_not_allowed")
+{
+    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
+    ParseResult result = tryParse(R"(
+@[deprecated{ reason = reasonString }]
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(
+        result.errors, 1, Location(Position(1, 13), Position(1, 37)), "Only literals can be passed as arguments for attributes"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_arguments_for_depricated_is_not_allowed")
+{
+    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
+    ParseResult result = tryParse(R"(
+@[deprecated({}, "Very deprecated")]
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 2), Position(1, 12)), "@deprecated can be parametrized only by 1 argument");
+
+    result = tryParse(R"(
+@[deprecated "Very deprecated"]
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 13), Position(1, 30)), "Unknown argument type for @deprecated");
+
+    result = tryParse(R"(
+@[deprecated{ foo = "bar" }]
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(
+        result.errors,
+        1,
+        Location(Position(1, 14), Position(1, 17)),
+        "Unknown argument 'foo' for @deprecated. Only string constants for 'use' and 'reason' are allowed"
+    );
+
+    result = tryParse(R"(
+@[deprecated{ use = 5 }]
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 20), Position(1, 21)), "Only constant string allowed as value for 'use'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "do_not_hang_on_incomplete_attribute_list")
+{
+    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
+    ParseResult result = tryParse(R"(
+@[]
+function hello(x, y)
+    return x + y
+end)");
+    checkFirstErrorForAttributes(
+        result.errors, 1, Location(Position(1, 0), Position(1, 3)), "Attribute list cannot be empty"
+    );
+
+    result = tryParse(R"(@[)");
+
+    checkFirstErrorForAttributes(
+        result.errors, 1, Location(Position(0, 2), Position(0, 2)), "Expected identifier when parsing attribute name, got <eof>"
+    );
+
+    result = tryParse(R"(@[
+        function foo() end
+    )");
+
+    checkFirstErrorForAttributes(
+        result.errors, 1, Location(Position(1, 8), Position(1, 16)), "Expected identifier when parsing attribute name, got 'function'"
+    );
+
+    result = tryParse(R"(@[deprecated
+        local function foo() end
+    )");
+
+    checkFirstErrorForAttributes(
+        result.errors, 1, Location(Position(1, 8), Position(1, 13)), "Expected ']' (to close '@[' at line 1), got 'local'"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")

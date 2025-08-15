@@ -130,7 +130,13 @@ private:
     // function funcname funcbody
     LUAU_FORCEINLINE AstStat* parseFunctionStat(const AstArray<AstAttr*>& attributes = {nullptr, 0});
 
-    std::optional<AstAttr::Type> validateAttribute(const char* attributeName, const TempVector<AstAttr*>& attributes);
+    std::optional<AstAttr::Type> validateAttribute(
+        Location loc,
+        const char* attributeName,
+        const TempVector<AstAttr*>& attributes,
+        const AstArray<AstExpr*>& args
+    );
+    std::optional<AstAttr::Type> validateAttribute_DEPRECATED(const char* attributeName, const TempVector<AstAttr*>& attributes);
 
     // attribute ::= '@' NAME
     void parseAttribute(TempVector<AstAttr*>& attribute);
@@ -287,6 +293,7 @@ private:
     // simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | [attributes] FUNCTION body | primaryexp
     AstExpr* parseSimpleExpr();
 
+    std::tuple<AstArray<AstExpr*>, Location, Location> parseCallList(TempVector<Position>* commaPositions);
     // args ::=  `(' [explist] `)' | tableconstructor | String
     AstExpr* parseFunctionArgs(AstExpr* func, bool self);
 

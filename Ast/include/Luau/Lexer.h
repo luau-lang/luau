@@ -55,6 +55,7 @@ struct Lexeme
         BlockComment,
 
         Attribute,
+        AttributeOpen,
 
         BrokenString,
         BrokenComment,

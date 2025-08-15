@@ -1331,7 +1331,7 @@ static bool autocompleteIfElseExpression(
     if (node->is<AstExprIfElse>())
     {
         // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
-        // expression.
+        // expression).
         return true;
     }
 

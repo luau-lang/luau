@@ -1037,8 +1037,9 @@ void lua_call(lua_State* L, int nargs, int nresults)
 /*
 ** Execute a protected call.
 */
+// data to `f_call'
 struct CallS
-{ // data to `f_call'
+{
     StkId func;
     int nresults;
 };
@@ -1068,6 +1069,42 @@ int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
     int status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
 
     adjustresults(L, nresults);
+    return status;
+}
+
+/*
+** Execute a protected C call.
+*/
+// data to `f_Ccall'
+struct CCallS
+{
+    lua_CFunction func;
+    void* ud;
+};
+
+static void f_Ccall(lua_State* L, void* ud)
+{
+    struct CCallS* c = cast_to(struct CCallS*, ud);
+
+    if (!lua_checkstack(L, 2))
+        luaG_runerror(L, "stack limit");
+
+    lua_pushcclosurek(L, c->func, nullptr, 0, nullptr);
+    lua_pushlightuserdata(L, c->ud);
+    luaD_call(L, L->top - 2, 0);
+}
+
+int lua_cpcall(lua_State* L, lua_CFunction func, void* ud)
+{
+    api_check(L, L->status == 0);
+
+    struct CCallS c;
+    c.func = func;
+    c.ud = ud;
+
+    int status = luaD_pcall(L, f_Ccall, &c, savestack(L, L->top), 0);
+
+    adjustresults(L, 0);
     return status;
 }
 

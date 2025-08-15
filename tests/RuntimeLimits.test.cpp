@@ -18,6 +18,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauSolverConstraintLimit)
+LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(LuauSolverV2)
@@ -28,6 +29,11 @@ LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauLimitUnification)
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
+LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
+LUAU_FASTINT(LuauGenericCounterMaxDepth)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -295,8 +301,8 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
         {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
 
         // And this flag is the one that fixes it.
         {FFlag::LuauSimplifyAnyAndUnion, true},
@@ -380,6 +386,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
         {FFlag::LuauLimitDynamicConstraintSolving3, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
         {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
         {FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints, true},
     };
@@ -432,6 +439,181 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
     CHECK(frontend->stats.dynamicConstraintsCreated > 10);
 
     CHECK(frontend->stats.dynamicConstraintsCreated < 40);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(0.5))
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        // This flags surfaced and solves the problem. (The original PR was reverted)
+        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
+    };
+
+    constexpr const char* src = R"LUAU(
+    type DataProxy = any
+
+    type _Transaction = (c: _ApolloCache) -> ()
+    type _ApolloCache = {
+	    read: <T, TVariables>(self: _ApolloCache, query: Cache_ReadOptions<TVariables, T>) -> T | nil,
+	    write: <TResult, TVariables>(self: _ApolloCache, write: Cache_WriteOptions<TResult, TVariables>) -> Reference | nil,
+	    diff: <T>(self: _ApolloCache, query: Cache_DiffOptions) -> Cache_DiffResult<T>,
+	    watch: (self: _ApolloCache, watch: Cache_WatchOptions<Record<string, any>>) -> (),
+	    reset: (self: _ApolloCache) -> Promise<nil>,
+	    evict: (self: _ApolloCache, options: Cache_EvictOptions) -> boolean,
+	    restore: (self: _ApolloCache, serializedState: TSerialized_) -> _ApolloCache,
+	    extract: (self: _ApolloCache, optimistic: boolean?) -> any,
+	    removeOptimistic: (self: _ApolloCache, id: string) -> (),
+	    batch: (self: _ApolloCache, options: Cache_BatchOptions<_ApolloCache>) -> (),
+	    performTransaction: (self: _ApolloCache, transaction: _Transaction, optimisticId: string) -> (),
+	    recordOptimisticTransaction: (self: _ApolloCache, transaction: _Transaction, optimisticId: string) -> (),
+	    transformDocument: (self: _ApolloCache, document: DocumentNode) -> DocumentNode,
+	    identify: (self: _ApolloCache, object: StoreObject | Reference) -> string | nil,
+	    gc: (self: _ApolloCache) -> Array<string>,
+	    modify: (self: _ApolloCache, options: Cache_ModifyOptions) -> boolean,
+	    transformForLink: (self: _ApolloCache, document: DocumentNode) -> DocumentNode,
+	    readQuery: <QueryType, TVariables>(
+		    self: _ApolloCache,
+		    options: Cache_ReadQueryOptions<QueryType, TVariables>,
+		    optimistic: boolean?
+	    ) -> QueryType | nil,
+	    readFragment: <FragmentType, TVariables>(
+		    self: _ApolloCache,
+		    options: Cache_ReadFragmentOptions<FragmentType, TVariables>,
+		    optimistic: boolean?
+	    ) -> FragmentType | nil,
+	    writeQuery: <TData, TVariables>(self: _ApolloCache, Cache_WriteQueryOptions<TData, TVariables>) -> Reference | nil,
+	    writeFragment: <TData, TVariables>(
+		    self: _ApolloCache,
+		    Cache_WriteFragmentOptions<TData, TVariables>
+	    ) -> Reference | nil,
+    }
+
+    export type ApolloCache<TSerialized> = {
+	    -- something here needed
+	    read: <T, TVariables>(self: ApolloCache<TSerialized>, query: Cache_ReadOptions<TVariables, T>) -> T | nil,
+	    write: <TResult, TVariables>(
+		    self: ApolloCache<TSerialized>,
+		    write: Cache_WriteOptions<TResult, TVariables>
+	    ) -> Reference | nil,
+	    diff: <T>(self: ApolloCache<TSerialized>, query: Cache_DiffOptions) -> Cache_DiffResult<T>,
+	    watch: (self: ApolloCache<TSerialized>, watch: Cache_WatchOptions<Record<string, any>>) -> (() -> ()),
+	    reset: (self: ApolloCache<TSerialized>) -> Promise<nil>,
+	    evict: (self: ApolloCache<TSerialized>, options: Cache_EvictOptions) -> boolean,
+	    restore: (self: ApolloCache<TSerialized>, serializedState: TSerialized_) -> _ApolloCache,
+	    extract: (self: ApolloCache<TSerialized>, optimistic: boolean?) -> TSerialized,
+	    removeOptimistic: (self: ApolloCache<TSerialized>, id: string) -> (),
+	    batch: (self: ApolloCache<TSerialized>, options: Cache_BatchOptions<_ApolloCache>) -> (),
+	    performTransaction: (self: ApolloCache<TSerialized>, transaction: _Transaction, optimisticId: string) -> (),
+	    -- bottom text
+	    -- TOP
+	    recordOptimisticTransaction: (
+		    self: ApolloCache<TSerialized>,
+		    transaction: _Transaction,
+		    optimisticId: string
+	    ) -> (),
+	    transformDocument: (self: ApolloCache<TSerialized>, document: DocumentNode) -> DocumentNode,
+	    identify: (self: ApolloCache<TSerialized>, object: StoreObject | Reference) -> string | nil,
+	    gc: (self: ApolloCache<TSerialized>) -> Array<string>,
+	    modify: (self: ApolloCache<TSerialized>, options: Cache_ModifyOptions) -> boolean,
+	    -- BOTTOM
+
+	    transformForLink: (self: ApolloCache<TSerialized>, document: DocumentNode) -> DocumentNode,
+	    readQuery: <QueryType, TVariables>(
+		    self: ApolloCache<TSerialized>,
+		    options: Cache_ReadQueryOptions<QueryType, TVariables>,
+		    optimistic: boolean?
+	    ) -> QueryType | nil,
+	    readFragment: <FragmentType, TVariables>(
+		    self: ApolloCache<TSerialized>,
+		    options: Cache_ReadFragmentOptions<FragmentType, TVariables>,
+		    optimistic: boolean?
+	    ) -> FragmentType | nil,
+	    writeQuery: <TData, TVariables>(
+		    self: ApolloCache<TSerialized>,
+		    Cache_WriteQueryOptions<TData, TVariables>
+	    ) -> Reference | nil,
+	    writeFragment: <TData, TVariables>(
+		    self: ApolloCache<TSerialized>,
+		    Cache_WriteFragmentOptions<TData, TVariables>
+	    ) -> Reference | nil,
+    }
+
+
+    export type InMemoryCache = ApolloCache<NormalizedCacheObject> & {
+	    performTransaction: (
+		    self: InMemoryCache,
+		    update: (cache: InMemoryCache) -> ()
+	    ) -> ()
+    }
+
+    type InMemoryCachePrivate = InMemoryCache & {
+	    broadcastWatches: (self: InMemoryCachePrivate) -> (), -- ROBLOX NOTE: protected method
+    }
+
+    local InMemoryCache = {}
+    InMemoryCache.__index = InMemoryCache
+
+    -- InMemoryCache.batch = nil :: any
+    function InMemoryCache:batch()
+	    self = self :: InMemoryCachePrivate
+
+	    if self.txCount == 0 then
+		    self:broadcastWatches() --  problematic call?
+	    end
+    end
+    )LUAU";
+
+    std::ignore = check(src);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
+        {FFlag::LuauReduceSetTypeStackPressure, true},
+    };
+
+    ScopedFastInt sfi{FInt::LuauGenericCounterMaxDepth, 1};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function get(scale)
+            print(scale.Do.Re.Mi)
+        end
+    )"));
+    CHECK_EQ("<a>({ read Do: { read Re: { read Mi: a } } }) -> ()", toString(requireType("get")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping" * doctest::timeout(2.0))
+{
+    ScopedFastFlag sff[] = {
+        // These are necessary to trigger the bug
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
+
+        // This is the fix
+        {FFlag::LuauLimitUnification, true}
+    };
+
+    ScopedFastInt sfi{FInt::LuauTypeInferIterationLimit, 100};
+
+    CheckResult result = check(R"(
+        local function l0<A...>()
+            for l0=_,_ do
+            end
+        end
+
+        _ = if _._ then function(l0)
+        end elseif _._G then if `` then {n0=_,} else "luauExprConstantSt" elseif _[_][l0] then function()
+        end elseif _.n0 then if _[_] then if _ then _ else "aeld" elseif false then 0 else "lead"
+        return _.n0
+    )");
+
+    LUAU_REQUIRE_ERROR(result, UnificationTooComplex);
 }
 
 TEST_SUITE_END();
