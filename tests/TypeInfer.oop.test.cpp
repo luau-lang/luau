@@ -15,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -556,6 +557,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -589,6 +591,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(

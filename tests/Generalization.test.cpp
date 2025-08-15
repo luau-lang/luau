@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 
 TEST_SUITE_BEGIN("Generalization");
@@ -229,7 +230,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a 
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
     };
 
     TableType tt;
@@ -266,7 +268,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     auto [aTy, aFree] = freshType();
@@ -429,7 +432,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     fileResolver.source["Module/ListFns"] = R"(

@@ -12,7 +12,6 @@
 #include "Luau/TypeFunction.h"
 
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <unordered_set>
@@ -890,6 +889,11 @@ struct ErrorConverter
     {
         return "None of the overloads for function that accept " + std::to_string(e.attemptedArgCount) + " arguments are compatible.";
     }
+
+    std::string operator()(const RecursiveRestraintViolation& e) const
+    {
+        return "Recursive type being used with different parameters.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1514,6 +1518,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, MultipleNonviableOverloads>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, RecursiveRestraintViolation>)
     {
     }
     else

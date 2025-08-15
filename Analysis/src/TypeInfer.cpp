@@ -14,7 +14,6 @@
 #include "Luau/TimeTrace.h"
 #include "Luau/TopoSortStatements.h"
 #include "Luau/ToString.h"
-#include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
@@ -33,6 +32,8 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 namespace Luau
 {
@@ -1851,6 +1852,16 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
     ftv->argNames.reserve(global.paramNames.size);
     for (const auto& el : global.paramNames)
         ftv->argNames.push_back(FunctionArgument{el.first.value, el.second});
+
+    if (FFlag::LuauParametrizedAttributeSyntax)
+    {
+        AstAttr* deprecatedAttr = global.getAttribute(AstAttr::Type::Deprecated);
+        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+        if (deprecatedAttr)
+        {
+            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
+        }
+    }
 
     Name fnName(global.name.value);
 
@@ -3930,6 +3941,16 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
     for (AstLocal* local : expr.args)
         ftv->argNames.push_back(FunctionArgument{local->name.value, local->location});
 
+    if (FFlag::LuauParametrizedAttributeSyntax)
+    {
+        AstAttr* deprecatedAttr = expr.getAttribute(AstAttr::Type::Deprecated);
+        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+        if (deprecatedAttr)
+        {
+            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
+        }
+    }
+
     return std::make_pair(funTy, funScope);
 }
 
@@ -5768,6 +5789,16 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
                 ftv->argNames.push_back(std::nullopt);
         }
 
+        if (FFlag::LuauParametrizedAttributeSyntax)
+        {
+            AstAttr* deprecatedAttr = func->getAttribute(AstAttr::Type::Deprecated);
+            ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+            if (deprecatedAttr)
+            {
+                ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
+            }
+        }
+
         return fnType;
     }
     else if (auto typeOf = annotation.as<AstTypeTypeof>())
@@ -5913,7 +5944,10 @@ TypeId TypeChecker::instantiateTypeFun(
     }
     if (applyTypeFunction.encounteredForwardedType)
     {
-        reportError(TypeError{location, GenericError{"Recursive type being used with different parameters"}});
+        if (FFlag::LuauNameConstraintRestrictRecursiveTypes)
+            reportError(TypeError{location, RecursiveRestraintViolation{}});
+        else
+            reportError(TypeError{location, GenericError{"Recursive type being used with different parameters"}});
         return errorRecoveryType(scope);
     }
 

@@ -3,6 +3,7 @@
 
 #include "Luau/Location.h"
 #include "Luau/ParseOptions.h"
+#include "Luau/ParseResult.h"
 
 #include <string>
 
@@ -24,6 +25,7 @@ void dump(AstNode* node);
 // Never fails on a well-formed AST
 std::string transpile(AstStatBlock& ast);
 std::string transpileWithTypes(AstStatBlock& block);
+std::string transpileWithTypes(AstStatBlock &block, const CstNodeMap& cstNodeMap);
 
 // Only fails when parsing fails
 TranspileResult transpile(std::string_view source, ParseOptions options = ParseOptions{}, bool withTypes = false);

@@ -881,7 +881,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RememberTagsAndValues")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -925,7 +925,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "PropagateThroughTvalue")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -954,7 +954,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipCheckTag")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -981,7 +981,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipOncePerBlockChecks")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1020,7 +1020,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RememberTableState")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1066,7 +1066,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RememberNewTableState")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1098,7 +1098,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipUselessBarriers")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1129,7 +1129,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ConcatInvalidation")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1186,7 +1186,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BuiltinFastcallsMayInvalidateMemory")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1219,7 +1219,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RedundantStoreCheckConstantType")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1249,7 +1249,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagation")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1281,7 +1281,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagationConflicting")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1317,7 +1317,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TruthyTestRemoval")
     build.inst(IrCmd::RETURN, build.constUint(3));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1356,7 +1356,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FalsyTestRemoval")
     build.inst(IrCmd::RETURN, build.constUint(3));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1391,7 +1391,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagEqRemoval")
     build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1423,7 +1423,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
     build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1454,7 +1454,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumCmpRemoval")
     build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1482,7 +1482,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DataFlowsThroughDirectJumpToUniqueSuccessor
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1515,7 +1515,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DataDoesNotFlowThroughDirectJumpToNonUnique
     build.inst(IrCmd::JUMP, block2);
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1551,7 +1551,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "EntryBlockUseRemoval")
     build.inst(IrCmd::JUMP, entry);
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1586,7 +1586,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval1")
     build.inst(IrCmd::JUMP, block);
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1628,7 +1628,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval2")
     build.inst(IrCmd::JUMP, block);
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1664,7 +1664,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntNumIntPeepholes")
     build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1700,7 +1700,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "InvalidateReglinkVersion")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1744,7 +1744,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumericSimplifications")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(9));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1809,8 +1809,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SimplePathExtraction")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
-    createLinearBlocks(build, true);
+    constPropInBlockChains(build);
+    createLinearBlocks(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1885,8 +1885,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoPathExtractionForBlocksWithLiveOutValues"
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
-    createLinearBlocks(build, true);
+    constPropInBlockChains(build);
+    createLinearBlocks(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1937,8 +1937,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "InfiniteLoopInPathAnalysis")
     build.inst(IrCmd::JUMP, block2);
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
-    createLinearBlocks(build, true);
+    constPropInBlockChains(build);
+    createLinearBlocks(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1967,7 +1967,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "PartialStoreInvalidation")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -1995,7 +1995,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "VaridicRegisterRangeInvalidation")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2021,7 +2021,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "LoadPropagatesOnlyRightType")
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2065,7 +2065,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecks")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     // In the future, we might even see duplicate identical TValue loads go away
     // In the future, we might even see loads of different VM regs with the same value go away
@@ -2131,7 +2131,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksAvoidNil")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constUint(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2192,7 +2192,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksInvalidation")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     // In the future, we might even see duplicate identical TValue loads go away
     // In the future, we might even see loads of different VM regs with the same value go away
@@ -2250,7 +2250,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateArrayElemChecksSameIndex")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     // In the future, we might even see duplicate identical TValue loads go away
     // In the future, we might even see loads of different VM regs with the same value go away
@@ -2310,7 +2310,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateArrayElemChecksSameValue")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     // In the future, we might even see duplicate identical TValue loads go away
     // In the future, we might even see loads of different VM regs with the same value go away
@@ -2368,7 +2368,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateArrayElemChecksLowerIndex")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2424,7 +2424,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateArrayElemChecksInvalidations")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2480,7 +2480,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ArrayElemChecksNegativeIndex")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2540,7 +2540,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2584,7 +2584,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLenghtChecksNegativeIndex")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2618,7 +2618,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagVectorSkipErrorFix")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::Yes) == R"(
 bb_0:                                                       ; useCount: 0
@@ -2655,7 +2655,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ForgprepInvalidation")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2687,7 +2687,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FastCallEffects1")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2710,7 +2710,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FastCallEffects2")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2735,7 +2735,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "InferNumberTagFromLimitedContext")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2757,7 +2757,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore1")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -2783,7 +2783,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore2")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3259,7 +3259,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RemoveDuplicateCalculation")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3295,7 +3295,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "LateTableStateLink")
     build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3326,7 +3326,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RegisterVersioning")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3355,7 +3355,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SetListIsABlocker")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3384,7 +3384,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "CallIsABlocker")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3413,7 +3413,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoPropagationOfCapturedRegs")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 ; captured regs: R0
@@ -3445,7 +3445,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoDeadLoadReuse")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3472,7 +3472,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoDeadValueReuse")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3514,7 +3514,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TValueLoadToSplitStore")
     build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3547,7 +3547,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagStoreUpdatesValueVersion")
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3575,7 +3575,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagStoreUpdatesSetUpval")
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3606,7 +3606,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagSelfEqualityCheckRemoval")
     build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3647,7 +3647,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TaggedValuePropagationIntoTvalueChecksRegis
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
@@ -3705,7 +3705,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SimpleDoubleStore")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
@@ -3743,7 +3743,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "UnusedAtReturn")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
@@ -3766,7 +3766,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "UnusedAtReturnPartial")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Partial stores cannot be removed, even if unused
@@ -3795,7 +3795,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse1")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
@@ -3826,7 +3826,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse2")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Stores to pointers can be safely removed at 'return' point, but have to preserved for any GC assist trigger (such as a call)
@@ -3856,7 +3856,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse3")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Stores to pointers can be safely removed if there are no potential implicit uses by any GC assists
@@ -3883,7 +3883,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse4")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // It is important for tag overwrite to TNIL to kill not only the previous tag store, but the value as well
@@ -3914,7 +3914,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "PartialVsFullStoresWithRecombination")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
@@ -3939,7 +3939,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IgnoreFastcallAdjustment")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
@@ -3968,7 +3968,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "JumpImplicitLiveOut")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Even though bb_0 doesn't have R1 as a live out, chain optimization used the knowledge of those writes happening to optimize duplicate stores
@@ -4002,7 +4002,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "KeepCapturedRegisterStores")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Captured registers may be modified from called user functions (plain or hidden in metamethods)
@@ -4059,7 +4059,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "StoreCannotBeReplacedWithCheck")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
@@ -4115,7 +4115,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FullStoreHasToBeObservableFromFallbacks")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Even though R1 is not live in of the fallback, stack state cannot be left in a partial store state
@@ -4169,7 +4169,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FullStoreHasToBeObservableFromFallbacks2")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // If table tag store at the start is removed, GC assists in the fallback can observe value with a wrong tag
@@ -4281,7 +4281,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SafePartialValueStoresWithPreservedTag")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // If table tag store at the start is removed, GC assists in the fallback can observe value with a wrong tag
@@ -4333,7 +4333,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SafePartialValueStoresWithPreservedTag2")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // If table tag store at the start is removed, GC assists in the fallback can observe value with a wrong tag
@@ -4391,7 +4391,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotReturnWithPartialStores")
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
-    constPropInBlockChains(build, true);
+    constPropInBlockChains(build);
     markDeadStoresInBlockChains(build);
 
     // Even though R1 is not live out at return, we stored table tag followed by an integer value

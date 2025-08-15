@@ -1352,4 +1352,27 @@ TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
     )"));
 }
 
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        local function f(x: unknown): string
+            if typeof(x) == 'table' then
+                if typeof(x.foo) == 'string' and typeof(x.bar) == 'string' then
+                    return x.foo .. x.bar
+                end
+            end
+            return ''
+        end
+    )");
+
+    // We'd like for this to be 0
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
+    CHECK(Position{3, 56} == result.errors[0].location.begin);
+    CHECK(Position{3, 61} == result.errors[0].location.end);
+}
+
 TEST_SUITE_END();

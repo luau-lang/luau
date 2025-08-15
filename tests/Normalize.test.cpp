@@ -14,7 +14,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 using namespace Luau;
@@ -1222,7 +1221,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSimplifyOutOfLine2, true},
         {FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true},
     };
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};

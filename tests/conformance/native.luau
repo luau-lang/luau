@@ -379,7 +379,7 @@ local function vec3compsum(a: vector)
   return a.X + a.Y + a.Z
 end
 
-assert(vec3compsum(vector(1, 2, 4)) == 7.0)
+assert(vec3compsum(vector.create(1, 2, 4)) == 7.0)
 
 local function vec3add(a: vector, b: vector) return a + b end
 local function vec3sub(a: vector, b: vector) return a - b end
@@ -387,17 +387,17 @@ local function vec3mul(a: vector, b: vector) return a * b end
 local function vec3div(a: vector, b: vector) return a / b end
 local function vec3neg(a: vector) return -a end
 
-assert(vec3add(vector(10, 20, 40), vector(1, 0, 2)) == vector(11, 20, 42))
-assert(vec3sub(vector(10, 20, 40), vector(1, 0, 2)) == vector(9, 20, 38))
-assert(vec3mul(vector(10, 20, 40), vector(1, 0, 2)) == vector(10, 0, 80))
-assert(vec3div(vector(10, 20, 40), vector(1, 0, 2)) == vector(10, math.huge, 20))
-assert(vec3neg(vector(10, 20, 40)) == vector(-10, -20, -40))
+assert(vec3add(vector.create(10, 20, 40), vector.create(1, 0, 2)) == vector.create(11, 20, 42))
+assert(vec3sub(vector.create(10, 20, 40), vector.create(1, 0, 2)) == vector.create(9, 20, 38))
+assert(vec3mul(vector.create(10, 20, 40), vector.create(1, 0, 2)) == vector.create(10, 0, 80))
+assert(vec3div(vector.create(10, 20, 40), vector.create(1, 0, 2)) == vector.create(10, math.huge, 20))
+assert(vec3neg(vector.create(10, 20, 40)) == vector.create(-10, -20, -40))
 
 local function vec3mulnum(a: vector, b: number) return a * b end
 local function vec3mulconst(a: vector) return a * 4 end
 
-assert(vec3mulnum(vector(10, 20, 40), 4) == vector(40, 80, 160))
-assert(vec3mulconst(vector(10, 20, 40), 4) == vector(40, 80, 160))
+assert(vec3mulnum(vector.create(10, 20, 40), 4) == vector.create(40, 80, 160))
+assert(vec3mulconst(vector.create(10, 20, 40), 4) == vector.create(40, 80, 160))
 
 local function bufferbounds(zero)
   local b1 = buffer.create(1)

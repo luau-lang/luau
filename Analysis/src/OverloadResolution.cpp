@@ -10,7 +10,9 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 namespace Luau
 {
@@ -47,7 +49,23 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(T
         {
             Subtyping::Variance variance = subtyping.variance;
             subtyping.variance = Subtyping::Variance::Contravariant;
-            SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
+            SubtypingResult r;
+            if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
+            {
+                std::vector<TypeId> generics;
+                generics.reserve(ftv->generics.size());
+                for (TypeId g : ftv->generics)
+                {
+                    g = follow(g);
+                    if (get<GenericType>(g))
+                        generics.emplace_back(g);
+                }
+                r = subtyping.isSubtype(
+                    argsPack, ftv->argTypes, scope, !generics.empty() ? std::optional<std::vector<TypeId>>{generics} : std::nullopt
+                );
+            }
+            else
+                r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
             subtyping.variance = variance;
 
             if (!useFreeTypeBounds && !r.assumedConstraints.empty())
@@ -584,7 +602,7 @@ SolveResult solveFunctionCall(
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, resultPack});
     Unifier2 u2{NotNull{arena}, builtinTypes, scope, iceReporter};
 
-    const bool occursCheckPassed = u2.unify(*overloadToUse, inferredTy);
+    const UnifyResult unifyResult = u2.unify(*overloadToUse, inferredTy);
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
@@ -598,8 +616,23 @@ SolveResult solveFunctionCall(
             resultPack = *subst;
     }
 
-    if (!occursCheckPassed)
-        return {SolveResult::OccursCheckFailed};
+    if (FFlag::LuauLimitUnification)
+    {
+        switch (unifyResult)
+        {
+            case Luau::UnifyResult::Ok:
+                break;
+            case Luau::UnifyResult::OccursCheckFailed:
+                return {SolveResult::CodeTooComplex};
+            case Luau::UnifyResult::TooComplex:
+                return {SolveResult::OccursCheckFailed};
+        }
+    }
+    else
+    {
+        if (unifyResult != UnifyResult::Ok)
+            return {SolveResult::OccursCheckFailed};
+    }
 
     SolveResult result;
     result.result = SolveResult::Ok;

@@ -35,11 +35,6 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
-LUAU_FASTFLAGVARIABLE(LuauOccursCheckForRefinement)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
-LUAU_FASTFLAGVARIABLE(LuauEmptyStringInKeyOf)
-LUAU_FASTFLAGVARIABLE(LuauAvoidExcessiveTypeCopying)
 
 namespace Luau
 {
