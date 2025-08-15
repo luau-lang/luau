@@ -327,6 +327,9 @@ TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_n
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
         {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
+        // This debug flag is normally on, but we turn it off as we're testing
+        // the exact behavior it enables.
+        {FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, false},
     };
 
     CheckResult results = check(R"(

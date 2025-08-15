@@ -54,6 +54,7 @@ struct Reducer
     ParseOptions parseOptions;
 
     ParseResult parseResult;
+    CstNodeMap cstNodeMap{nullptr};
     AstStatBlock* root;
 
     std::string scriptName;
@@ -64,6 +65,7 @@ struct Reducer
     Reducer()
     {
         parseOptions.captureComments = true;
+        parseOptions.storeCstData = true;
     }
 
     std::string readLine(FILE* f)
@@ -83,7 +85,7 @@ struct Reducer
 
     void writeTempScript(bool minify = false)
     {
-        std::string source = transpileWithTypes(*root);
+        std::string source = transpileWithTypes(*root, cstNodeMap);
 
         if (minify)
         {
@@ -454,6 +456,7 @@ struct Reducer
         }
 
         root = parseResult.root;
+        cstNodeMap = std::move(parseResult.cstNodeMap);
 
         const TestResult initialResult = run();
         if (initialResult == TestResult::NoBug)

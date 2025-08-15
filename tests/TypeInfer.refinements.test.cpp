@@ -13,12 +13,14 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways)
 LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
 LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
+LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 
 using namespace Luau;
 
@@ -141,7 +143,7 @@ struct RefinementExternTypeFixture : BuiltinsFixture
 
         for (const auto& [name, ty] : getFrontend().globals.globalScope->exportedTypeBindings)
             persist(ty.type);
-        getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+        getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
 
         freeze(getFrontend().globals.globalTypes);
     }
@@ -464,6 +466,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_tested_n
     }
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_to_undefined_method_is_not_a_refinement")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: unknown)
+            if typeof(x) == "table" then
+                if x.foo() then
+                end
+            end
+            return (nil :: never)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto unknownProp = get<UnknownProperty>(result.errors[0]);
+    REQUIRE_MESSAGE(unknownProp, "Expected UnknownProperty but got " << result.errors[0]);
+    CHECK("foo" == unknownProp->key);
+    CHECK("table" == toString(unknownProp->table));
+
+    CHECK(Position{3, 19} == result.errors[0].location.begin);
+    CHECK(Position{3, 24} == result.errors[0].location.end);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_typeguard")
 {
     CheckResult result = check(R"(
@@ -512,8 +542,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
 
 TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
 {
-    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
-
     CheckResult result = check(R"(
         local t: {x: number?} = {x = 1}
 
@@ -658,6 +686,7 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
         {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
     };
 
@@ -1017,8 +1046,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "either_number_or_string")
 
 TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 {
-    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
-
     CheckResult result = check(R"(
         local function f(t: {x: boolean}?)
             if not t or t.x then
@@ -1271,8 +1298,6 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
-    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
-
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
 
@@ -1438,7 +1463,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "typeguard_cast_free_table_to_vec
 {
     // CLI-115286 - Refining via type(x) == 'vector' does not work in the new solver
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
-    getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
     CheckResult result = check(R"(
         local function f(vec)
             local X, Y, Z = vec.X, vec.Y, vec.Z
@@ -2229,6 +2254,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
         {FFlag::LuauForceSimplifyConstraint2, true},
     };
 
@@ -2250,6 +2276,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_variant")
 {
+    ScopedFastFlag _[] = {
+        {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true},
+        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+    };
+
     // FIXME CLI-141364: An underlying bug in normalization means the type of
     // `isIndexKey` is platform dependent.
     CheckResult result = check(R"(
@@ -2260,7 +2294,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
                 and math.floor(k) == k -- no float keys
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauSolverV2)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        // For some reason we emit two errors here.
+        for (const auto& e : result.errors)
+            CHECK(get<ExplicitFunctionAnnotationRecommended>(e));
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ex")
@@ -2686,10 +2728,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1451")
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_single")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineTablesWithReadType, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local function invokeDisconnect(d: unknown)
@@ -2705,10 +2744,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_single")
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_union")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineTablesWithReadType, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type Disconnectable = {
@@ -2876,12 +2912,41 @@ TEST_CASE_FIXTURE(Fixture, "cli_120460_table_access_on_phi_node")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_never")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineDistributesOverUnions, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Config with
+            KeyboardEnabled: boolean
+            MouseEnabled: boolean
+        end
+    )");
+
+    CheckResult results = check(R"(
+        local config: Config
+        local function serialize()
+            if config.KeyboardEnabled and config.MouseEnabled then
+                return 0
+            else
+                print(config)
+                return 1
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+    CHECK_EQ("Config", toString(requireTypeAtPosition({6, 24})));
+}
+
 TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauForceSimplifyConstraint2, true},
-        {FFlag::LuauSimplifyOutOfLine2, true},
     };
 
     CheckResult results = check(R"(

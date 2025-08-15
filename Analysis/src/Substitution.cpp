@@ -10,6 +10,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -92,6 +93,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
             clone.argNames = a.argNames;
             clone.isCheckedFunction = a.isCheckedFunction;
             clone.isDeprecatedFunction = a.isDeprecatedFunction;
+            clone.deprecatedInfo = a.deprecatedInfo;
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, TableType>)
@@ -299,7 +301,10 @@ std::pair<int, bool> Tarjan::indexify(TypeId ty)
     if (fresh)
     {
         index = int(nodes.size());
-        nodes.push_back({ty, nullptr, false, false, index});
+        if (FFlag::LuauEmplaceNotPushBack)
+            nodes.emplace_back(ty, nullptr, false, false, index);
+        else
+            nodes.push_back({ty, nullptr, false, false, index});
     }
 
     return {index, fresh};
@@ -314,7 +319,10 @@ std::pair<int, bool> Tarjan::indexify(TypePackId tp)
     if (fresh)
     {
         index = int(nodes.size());
-        nodes.push_back({nullptr, tp, false, false, index});
+        if (FFlag::LuauEmplaceNotPushBack)
+            nodes.emplace_back(nullptr, tp, false, false, index);
+        else
+            nodes.push_back({nullptr, tp, false, false, index});
     }
 
     return {index, fresh};
@@ -384,7 +392,10 @@ TarjanResult Tarjan::loop()
             {
                 // Original recursion point, update the parent continuation point and start the new element
                 worklist.back() = {index, currEdge + 1, lastEdge};
-                worklist.push_back({childIndex, -1, -1});
+                if (FFlag::LuauEmplaceNotPushBack)
+                    worklist.emplace_back(childIndex, -1, -1);
+                else
+                    worklist.push_back({childIndex, -1, -1});
 
                 // We need to continue the top-level loop from the start with the new worklist element
                 foundFresh = true;
@@ -442,7 +453,10 @@ TarjanResult Tarjan::visitRoot(TypeId ty)
     ty = log->follow(ty);
 
     auto [index, fresh] = indexify(ty);
-    worklist.push_back({index, -1, -1});
+    if (FFlag::LuauEmplaceNotPushBack)
+        worklist.emplace_back(index, -1, -1);
+    else
+        worklist.push_back({index, -1, -1});
     return loop();
 }
 
@@ -455,7 +469,10 @@ TarjanResult Tarjan::visitRoot(TypePackId tp)
     tp = log->follow(tp);
 
     auto [index, fresh] = indexify(tp);
-    worklist.push_back({index, -1, -1});
+    if (FFlag::LuauEmplaceNotPushBack)
+        worklist.emplace_back(index, -1, -1);
+    else
+        worklist.push_back({index, -1, -1});
     return loop();
 }
 

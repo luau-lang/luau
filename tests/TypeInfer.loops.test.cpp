@@ -15,7 +15,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -182,8 +181,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 }
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
-
     CheckResult result = check(R"(
         local n
         local s

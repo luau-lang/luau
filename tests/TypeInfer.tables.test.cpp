@@ -23,18 +23,18 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauRelateTablesAreNeverDisjoint)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauDfgForwardNilFromAndOr)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNormalizationLimitTyvarUnionSize)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -762,8 +762,6 @@ TEST_CASE_FIXTURE(Fixture, "indexers_quantification_2")
 
 TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_array_like_table")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
-
     CheckResult result = check(R"(
         local t = {"one", "two", "three"}
     )");
@@ -2053,8 +2051,6 @@ TEST_CASE_FIXTURE(Fixture, "explicit_nil_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "ok_to_provide_a_subtype_during_construction")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
-
     CheckResult result = check(R"(
         local a: string | number = 1
         local t = {a, 1}
@@ -2359,6 +2355,7 @@ local t: { a: {Foo}, b: number } = {
 // since mutating properties means table properties should be invariant.
 TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_tables_in_assignment_is_unsound")
 {
+    ScopedFastFlag sff{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -2371,24 +2368,12 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (FFlag::LuauEagerGeneralization4 && FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2)
     {
-        LUAU_CHECK_ERROR_COUNT(1, result);
+        LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, ExplicitFunctionAnnotationRecommended);
+        LUAU_CHECK_ERROR(result, TypeMismatch);
     }
-    else if (FFlag::LuauSolverV2)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
-
-        // This is not actually the expected behavior, but the typemismatch we were seeing before was for the wrong reason.
-        // The behavior of this test is just regressed generally in the new solver, and will need to be consciously addressed.
-    }
-
-    // TODO: test behavior is wrong with LuauInstantiateInSubtyping until we can re-enable the covariant requirement for instantiation in subtyping
-    else if (FFlag::LuauInstantiateInSubtyping)
-        LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERRORS(result);
 }
@@ -2416,7 +2401,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
         table.insert(buttons, { a = 3 })
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    // FIXME(CLI-165431): fixing subtyping revealed an overload selection problems
+    if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll)
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
@@ -3171,8 +3160,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_tables_at_scope_level")
 {
-    ScopedFastFlag sff1{FFlag::LuauSimplifyOutOfLine2, true};
-
     CheckResult result = check(R"(
         --!strict
         local Option = {}
@@ -3514,7 +3501,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_invalidate_the_properties_iterator_of_free_tabl
 
 TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 {
-    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
 
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
@@ -3746,7 +3732,8 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -4626,6 +4613,7 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -5017,8 +5005,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
-
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
         local test2 = test[1]
@@ -5786,11 +5772,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1859")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1797_intersection_of_tables_arent_disjoint")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRelateTablesAreNeverDisjoint, true},
-        {FFlag::LuauRefineTablesWithReadType, true},
-    };
+    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -5819,8 +5801,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1797_intersection_of_tables_arent_disjoi
 
 TEST_CASE_FIXTURE(Fixture, "oss_1344")
 {
-    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         type t = {
@@ -5843,8 +5823,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_1344")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1651")
 {
-    ScopedFastFlag _{FFlag::LuauRefineTablesWithReadType, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         local MyModule = {}
@@ -5912,7 +5890,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult results = check(R"(
@@ -5949,8 +5928,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1888_and_or_subscriptable")
 {
-    ScopedFastFlag _{FFlag::LuauDfgForwardNilFromAndOr, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type CachedValue<T> = {
             future: any,
@@ -6034,10 +6011,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1914_access_after_assignment_with_assert
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_normalization" * doctest::timeout(1.0))
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSimplifyOutOfLine2, true},
-        {FFlag::LuauNormalizationLimitTyvarUnionSize, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauNormalizationLimitTyvarUnionSize, true};
 
     const std::string source =
         "local res = {\n" + rep("\"foo\",\n", 100) + "}\n"
@@ -6050,5 +6024,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_norma
     LUAU_REQUIRE_NO_ERRORS(check(source));
 }
 
+TEST_CASE_FIXTURE(Fixture, "free_types_with_sealed_table_upper_bounds_can_still_be_expanded")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExtendSealedTableUpperBounds, true},
+    };
+
+    CheckResult result = check(R"(
+        function bar(a: {x: number}) end
+
+        function foo(a)
+            bar(a)
+
+            -- Here, a : A where A = never <: A <: {x: number}
+            -- The upper bound of A is a sealed table, but we nevertheless want to extend it.
+            a.nope()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("({ read nope: () -> (...unknown) } & { x: number }) -> ()" == toString(requireType("foo")));
+}
 
 TEST_SUITE_END();

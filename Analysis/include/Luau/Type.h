@@ -391,6 +391,7 @@ struct FunctionType
     bool hasNoFreeOrGenericTypes = false;
     bool isCheckedFunction = false;
     bool isDeprecatedFunction = false;
+    std::shared_ptr<AstAttr::DeprecatedInfo> deprecatedInfo;
 };
 
 enum class TableState

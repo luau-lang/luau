@@ -12,7 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauWriteOnlyPropertyMangling)
+LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 
@@ -1715,7 +1715,6 @@ TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauWriteOnlyPropertyMangling, true},
         {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
     };
 
@@ -1734,6 +1733,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_into_any")
     LUAU_REQUIRE_NO_ERRORS(check(R"(
 table.insert(1::any, 2::any)
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_requires_all_fields")
+{
+    ScopedFastFlag _{FFlag::LuauNoScopeShallNotSubsumeAll, true};
+
+    CheckResult result = check(R"(
+        local function huh(): { { x: number, y: string } }
+            local ret = {}
+            while true do
+                table.insert(ret, { x = 42 })
+            end
+            return ret
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_known_property_identity")

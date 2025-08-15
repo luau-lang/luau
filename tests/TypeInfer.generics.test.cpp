@@ -11,12 +11,13 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
-LUAU_FASTFLAG(LuauSubtypingCheckFunctionGenericCounts)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauContainsAnyGenericFollowBeforeChecking)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 using namespace Luau;
 
@@ -782,8 +783,6 @@ TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names_old_solver")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_types")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingCheckFunctionGenericCounts, true};
-
     CheckResult result = check(R"(
 type C = () -> ()
 type D = <T>() -> ()
@@ -815,8 +814,6 @@ local d: D = c
 }
 TEST_CASE_FIXTURE(Fixture, "generic_function_mismatch_with_argument")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingCheckFunctionGenericCounts, true};
-
     CheckResult result = check(R"(
 type C = (number) -> ()
 type D = <T>(number) -> ()
@@ -849,8 +846,6 @@ local d: D = c
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingCheckFunctionGenericCounts, true};
-
     CheckResult result = check(R"(
 type C = () -> ()
 type D = <T...>() -> ()
@@ -1414,8 +1409,6 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
-
-
     if (FFlag::LuauSolverV2)
     {
         CheckResult result = check(R"(
@@ -1500,14 +1493,14 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded"
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-// Important FIXME CLI-158432: This test exposes some problems with overload
+// Important FIXME CLI-161128: This test exposes some problems with overload
 // selection and generic type substitution when
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
     ScopedFastFlag _[] = {
-        {FFlag::LuauSubtypingCheckFunctionGenericCounts, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
     CheckResult result;
 
@@ -1546,6 +1539,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
     }
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions_2")
+{
+    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}};
+
+    CheckResult result = check(R"(
+        type t = <a>(a, a, (a, a) -> a) -> a
+        type u = (number, number, <X>(X, X) -> X) -> number
+
+        local foo = (nil :: any) :: t
+        local bar : u = foo
+        )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
@@ -1829,9 +1836,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_packs_shouldnt_be_bound_to_themselves")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingCheckFunctionGenericCounts, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(

@@ -52,6 +52,7 @@ struct GeneralizationConstraint
 
     std::vector<TypeId> interiorTypes;
     bool hasDeprecatedAttribute = false;
+    AstAttr::DeprecatedInfo deprecatedInfo;
 
     /// If true, never introduce generics.  Always replace free types by their
     /// bounds or unknown. Presently used only to generalize the whole module.

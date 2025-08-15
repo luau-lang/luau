@@ -6,7 +6,6 @@
 #include "Luau/Common.h"
 #include "Luau/Simplify.h"
 #include "Luau/Type.h"
-#include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Normalize.h"
 #include "Luau/Error.h"
@@ -17,7 +16,6 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeUtils.h"
 
-#include <iostream>
 #include <iterator>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
@@ -25,6 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressesDynamicRequireErrors)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -42,7 +41,10 @@ struct StackPusher
         : stack(&stack)
         , scope(scope)
     {
-        stack.push_back(NotNull{scope});
+        if (FFlag::LuauEmplaceNotPushBack)
+            stack.emplace_back(scope);
+        else
+            stack.push_back(NotNull{scope});
     }
 
     ~StackPusher()

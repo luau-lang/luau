@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauEagerGeneralization4);
+LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 using namespace Luau;
 
@@ -1870,6 +1871,191 @@ end
 
         REQUIRE(1 == result.warnings.size());
         checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
+{
+    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
+
+    // @deprecated works on local functions
+    {
+        LintResult result = lint(R"(
+@[deprecated{ use = "prodfun", reason = "Too old." }]
+local function testfun(x)
+    return x + 1
+end
+
+testfun(1)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(
+            result.warnings[0], Position(6, 0), Position(6, 7), "Function 'testfun' is deprecated, use 'prodfun' instead. Too old."
+        );
+    }
+
+    // @deprecated works on globals functions
+    {
+        LintResult result = lint(R"(
+@[deprecated{ use = "prodfun", reason = "Too old." }]
+function testfun(x)
+    return x + 1
+end
+
+testfun(1)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(
+            result.warnings[0], Position(6, 0), Position(6, 7), "Function 'testfun' is deprecated, use 'prodfun' instead. Too old."
+        );
+    }
+
+    // @deprecated with only 'use' works on local functions
+    {
+        LintResult result = lint(R"(
+@[deprecated{ use = "prodfun" }]
+local function testfun(x)
+    return x + 1
+end
+
+testfun(1)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(6, 0), Position(6, 7), "Function 'testfun' is deprecated, use 'prodfun' instead");
+    }
+
+    // @deprecated with only 'use' works on globals functions
+    {
+        LintResult result = lint(R"(
+@[deprecated{ use = "prodfun" }]
+function testfun(x)
+    return x + 1
+end
+
+testfun(1)
+)");
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(6, 0), Position(6, 7), "Function 'testfun' is deprecated, use 'prodfun' instead");
+    }
+
+
+    // @deprecated with only 'reason' works on local functions
+    {
+        LintResult result = lint(R"(
+@[deprecated{ reason = "Too old." }]
+local function testfun(x)
+    return x + 1
+end
+
+testfun(1)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(6, 0), Position(6, 7), "Function 'testfun' is deprecated. Too old.");
+    }
+
+    // @deprecated with only 'reason' works on globals functions
+    {
+        LintResult result = lint(R"(
+@[deprecated{ reason = "Too old." }]
+function testfun(x)
+    return x + 1
+end
+
+testfun(1)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(6, 0), Position(6, 7), "Function 'testfun' is deprecated. Too old.");
+    }
+
+    // @deprecated works for methods with a literal class name
+    {
+        LintResult result = lint(R"(
+Account = { balance=0 }
+
+@[deprecated{use = 'credit', reason = 'It sounds cool'}]
+function Account:deposit(v)
+    self.balance = self.balance + v
+end
+
+Account:deposit(200.00)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(8, 0), Position(8, 15), "Member 'Account.deposit' is deprecated, use 'credit' instead. It sounds cool");
+    }
+
+    // @deprecated works for methods with a compound expression class name
+    {
+        LintResult result = lint(R"(
+Account = { balance=0 }
+
+function getAccount()
+    return Account
+end
+
+@[deprecated{use = 'credit', reason = 'It sounds cool'}]
+function Account:deposit (v)
+    self.balance = self.balance + v
+end
+
+(getAccount()):deposit(200.00)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated, use 'credit' instead. It sounds cool");
+    }
+
+    {
+        loadDefinition(R"(
+@[deprecated{use = 'foo', reason = 'Do better.'}] declare function bar(x: number): string
+)");
+
+        LintResult result = lint(R"(
+bar(2)
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(1, 0), Position(1, 3), "Function 'bar' is deprecated, use 'foo' instead. Do better.");
+    }
+
+    {
+        loadDefinition(R"(
+declare Hooty : {
+    tooty : @[deprecated{use = 'foo', reason = 'bar'}] @checked (number) -> number
+}
+)");
+        LintResult result = lint(R"(
+print(Hooty:tooty(2.0))
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(1, 6), Position(1, 17), "Member 'Hooty.tooty' is deprecated, use 'foo' instead. bar");
+    }
+
+    {
+        loadDefinition(R"(
+declare class Foo
+   @[deprecated{use = 'foo', reason = 'baz'}]
+   function bar(self, value: number) : number
+end
+
+declare Foo: {
+   new: () -> Foo
+}
+)");
+
+        LintResult result = lint(R"(
+local foo = Foo.new()
+print(foo:bar(2.0))
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(2, 6), Position(2, 13), "Member 'bar' is deprecated, use 'foo' instead. baz");
     }
 }
 

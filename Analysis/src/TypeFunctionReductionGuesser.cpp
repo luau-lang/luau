@@ -11,9 +11,9 @@
 #include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
 
-#include <iostream>
 #include <optional>
-#include <ostream>
+
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -169,7 +169,10 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
         if (get<TypeFunctionInstanceType>(guess))
             continue;
 
-        results.push_back({local->name.value, guess});
+        if (FFlag::LuauEmplaceNotPushBack)
+            results.emplace_back(local->name.value, guess);
+        else
+            results.push_back({local->name.value, guess});
     }
 
     // Submit a guess for return types

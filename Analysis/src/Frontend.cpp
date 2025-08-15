@@ -16,12 +16,10 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
-#include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/Variant.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -29,7 +27,6 @@
 #include <condition_variable>
 #include <exception>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 
 LUAU_FASTINT(LuauTypeInferIterationLimit)
@@ -49,6 +46,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -127,14 +125,24 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
     {
         for (auto& [name, prop] : ttv->props)
         {
-            prop.documentationSymbol = rootName + "." + name;
+            std::string n;
+            n.reserve(rootName.size() + 1 + name.size());
+            n += rootName;
+            n += ".";
+            n += name;
+            prop.documentationSymbol = std::move(n);
         }
     }
     else if (ExternType* etv = getMutable<ExternType>(ty))
     {
         for (auto& [name, prop] : etv->props)
         {
-            prop.documentationSymbol = rootName + "." + name;
+            std::string n;
+            n.reserve(rootName.size() + 1 + name.size());
+            n += rootName;
+            n += ".";
+            n += name;
+            prop.documentationSymbol = std::move(n);
         }
     }
 }
@@ -168,7 +176,15 @@ static void persistCheckedTypes(ModulePtr checkedModule, GlobalTypes& globals, S
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
         TypeId globalTy = clone(ty, globals.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/global/" + name;
+
+        static constexpr const char infix[] = "/global/";
+        constexpr int infixLength = sizeof(infix) - 1; // exclude the null terminator
+        std::string documentationSymbol;
+        documentationSymbol.reserve(packageName.size() + infixLength + name.size());
+        documentationSymbol += packageName;
+        documentationSymbol += infix;
+        documentationSymbol += name;
+
         generateDocumentationSymbols(globalTy, documentationSymbol);
         targetScope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
 
@@ -178,7 +194,15 @@ static void persistCheckedTypes(ModulePtr checkedModule, GlobalTypes& globals, S
     for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
     {
         TypeFun globalTy = clone(ty, globals.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/globaltype/" + name;
+
+        static constexpr const char infix[] = "/globaltype/";
+        constexpr int infixLength = sizeof(infix) - 1; // exclude the null terminator
+        std::string documentationSymbol;
+        documentationSymbol.reserve(packageName.size() + infixLength + name.size());
+        documentationSymbol += packageName;
+        documentationSymbol += infix;
+        documentationSymbol += name;
+
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
         targetScope->exportedTypeBindings[name] = globalTy;
 
@@ -224,7 +248,7 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(
 namespace
 {
 
-static ErrorVec accumulateErrors(
+ErrorVec accumulateErrors(
     const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes,
     ModuleResolver& moduleResolver,
     const ModuleName& name
@@ -277,7 +301,7 @@ static ErrorVec accumulateErrors(
     return result;
 }
 
-static void filterLintOptions(LintOptions& lintOptions, const std::vector<HotComment>& hotcomments, Mode mode)
+void filterLintOptions(LintOptions& lintOptions, const std::vector<HotComment>& hotcomments, Mode mode)
 {
     uint64_t ignoreLints = LintWarning::parseMask(hotcomments);
 
@@ -369,7 +393,10 @@ std::vector<RequireCycle> getRequireCycles(
 
         if (!cycle.empty())
         {
-            result.push_back({depLocation, std::move(cycle)});
+            if (FFlag::LuauEmplaceNotPushBack)
+                result.emplace_back(RequireCycle{depLocation, std::move(cycle)});
+            else
+                result.push_back({depLocation, std::move(cycle)});
 
             // note: if we didn't find a cycle, all nodes that we've seen don't depend [transitively] on start
             // so it's safe to *only* clear seen vector when we find a cycle
@@ -402,7 +429,7 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
 {
 }
 
-void Frontend::setLuauSolverSelectionFromWorkspace(SolverMode mode)
+void Frontend::setLuauSolverMode(SolverMode mode)
 {
     useNewLuauSolver.store(mode);
 }
@@ -1029,8 +1056,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         applyInternalLimitScaling(sourceNode, module, *item.options.moduleTimeLimitSec);
 
     item.stats.timeCheck += duration;
-    item.stats.filesStrict += mode == Mode::Strict;
-    item.stats.filesNonstrict += mode == Mode::Nonstrict;
+    item.stats.filesStrict += (mode == Mode::Strict) ? 1 : 0;
+    item.stats.filesNonstrict += (mode == Mode::Nonstrict) ? 1 : 0;
 
     if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
     {
@@ -1103,7 +1130,10 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     ErrorVec parseErrors;
 
     for (const ParseError& pe : sourceModule.parseErrors)
-        parseErrors.push_back(TypeError{pe.getLocation(), item.name, SyntaxError{pe.what()}});
+        if (FFlag::LuauEmplaceNotPushBack)
+            parseErrors.emplace_back(pe.getLocation(), item.name, SyntaxError{pe.what()});
+        else
+            parseErrors.push_back(TypeError{pe.getLocation(), item.name, SyntaxError{pe.what()}});
 
     module->errors.insert(module->errors.begin(), parseErrors.begin(), parseErrors.end());
 
@@ -1333,7 +1363,7 @@ SourceModule* Frontend::getSourceModule(const ModuleName& moduleName)
 
 const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) const
 {
-    return const_cast<Frontend*>(this)->getSourceModule(moduleName);
+    return const_cast<Frontend*>(this)->getSourceModule(moduleName); // NOLINT(cppcoreguidelines-pro-type-const-cast)
 }
 
 struct InternalTypeFinder : TypeOnceVisitor

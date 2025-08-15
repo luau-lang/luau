@@ -305,8 +305,6 @@ struct ConstPropState
 
     uint32_t* getPreviousInstIndex(const IrInst& inst)
     {
-        CODEGEN_ASSERT(useValueNumbering);
-
         if (uint32_t* prevIdx = valueMap.find(inst))
         {
             // Previous load might have been removed as unused
@@ -325,7 +323,7 @@ struct ConstPropState
 
     std::pair<IrCmd, uint32_t> getPreviousVersionedLoadForTag(uint8_t tag, IrOp vmReg)
     {
-        if (useValueNumbering && !function.cfg.captured.regs.test(vmRegOp(vmReg)))
+        if (!function.cfg.captured.regs.test(vmRegOp(vmReg)))
         {
             if (tag == LUA_TBOOLEAN)
             {
@@ -350,9 +348,6 @@ struct ConstPropState
     // Find existing value of the instruction that is exactly the same, or record current on for future lookups
     void substituteOrRecord(IrInst& inst, uint32_t instIdx)
     {
-        if (!useValueNumbering)
-            return;
-
         if (uint32_t* prevIdx = getPreviousInstIndex(inst))
         {
             substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
@@ -367,9 +362,6 @@ struct ConstPropState
     void substituteOrRecordVmRegLoad(IrInst& loadInst)
     {
         CODEGEN_ASSERT(loadInst.a.kind == IrOpKind::VmReg);
-
-        if (!useValueNumbering)
-            return;
 
         // To avoid captured register invalidation tracking in lowering later, values from loads from captured registers are not propagated
         // This prevents the case where load value location is linked to memory in case of a spill and is then clobbered in a user call
@@ -404,9 +396,6 @@ struct ConstPropState
     {
         CODEGEN_ASSERT(storeInst.a.kind == IrOpKind::VmReg);
         CODEGEN_ASSERT(storeInst.b.kind == IrOpKind::Inst);
-
-        if (!useValueNumbering)
-            return;
 
         // To avoid captured register invalidation tracking in lowering later, values from stores into captured registers are not propagated
         // This prevents the case where store creates an alternative value location in case of a spill and is then clobbered in a user call
@@ -493,8 +482,6 @@ struct ConstPropState
     }
 
     IrFunction& function;
-
-    bool useValueNumbering = false;
 
     std::array<RegisterInfo, 256> regs;
 
@@ -1858,12 +1845,11 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     constPropInBlock(build, linearBlock, state);
 }
 
-void constPropInBlockChains(IrBuilder& build, bool useValueNumbering)
+void constPropInBlockChains(IrBuilder& build)
 {
     IrFunction& function = build.function;
 
     ConstPropState state{function};
-    state.useValueNumbering = useValueNumbering;
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
 
@@ -1879,7 +1865,7 @@ void constPropInBlockChains(IrBuilder& build, bool useValueNumbering)
     }
 }
 
-void createLinearBlocks(IrBuilder& build, bool useValueNumbering)
+void createLinearBlocks(IrBuilder& build)
 {
     // Go through internal block chains and outline them into a single new block.
     // Outlining will be able to linearize the execution, even if there was a jump to a block with multiple users,
@@ -1887,7 +1873,6 @@ void createLinearBlocks(IrBuilder& build, bool useValueNumbering)
     IrFunction& function = build.function;
 
     ConstPropState state{function};
-    state.useValueNumbering = useValueNumbering;
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
 

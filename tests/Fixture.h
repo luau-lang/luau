@@ -30,7 +30,8 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 
 LUAU_FASTFLAG(LuauUpdateSetMetatableTypeSignature)
-LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
+LUAU_FASTFLAG(LuauTidyTypeUtils)
+LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::LuauSolverV2, FFlag::DebugLuauForceAllNewSolverTests};
 
@@ -153,11 +154,15 @@ struct Fixture
     // In that case, flag can be forced to 'true' using the example below:
     // ScopedFastFlag sff_LuauExampleFlagDefinition{FFlag::LuauExampleFlagDefinition, true};
     ScopedFastFlag sff_LuauUpdateSetMetatableTypeSignature{FFlag::LuauUpdateSetMetatableTypeSignature, true};
-    ScopedFastFlag sff_LuauUpdateGetMetatableTypeSignature{FFlag::LuauUpdateGetMetatableTypeSignature, true};
+
+    ScopedFastFlag sff_TypeUtilTidy{FFlag::LuauTidyTypeUtils, true};
 
     // Arena freezing marks the `TypeArena`'s underlying memory as read-only, raising an access violation whenever you mutate it.
     // This is useful for tracking down violations of Luau's memory model.
     ScopedFastFlag sff_DebugLuauFreezeArena{FFlag::DebugLuauFreezeArena, true};
+
+    // This makes sure that errant cases of constraint solving failing to complete still pop up in tests.
+    ScopedFastFlag sff_DebugLuauAlwaysShowConstraintSolvingIncomplete{FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;

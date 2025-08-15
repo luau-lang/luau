@@ -66,6 +66,13 @@ struct TarjanWorklistVertex
     int index;
     int currEdge;
     int lastEdge;
+
+    TarjanWorklistVertex(int index, int currEdge, int lastEdge)
+        : index(index)
+        , currEdge(currEdge)
+        , lastEdge(lastEdge)
+    {
+    }
 };
 
 struct TarjanNode
@@ -79,6 +86,15 @@ struct TarjanNode
     // Tarjan calculates the lowlink for each vertex,
     // which is the lowest ancestor index reachable from the vertex.
     int lowlink;
+
+    TarjanNode(TypeId ty, TypePackId tp, bool onStack, bool dirty, int lowlink)
+        : ty(ty)
+        , tp(tp)
+        , onStack(onStack)
+        , dirty(dirty)
+        , lowlink(lowlink)
+    {
+    }
 };
 
 // Tarjan's algorithm for finding the SCCs in a cyclic structure.

@@ -5,7 +5,10 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 using namespace Luau;
 
@@ -361,6 +364,12 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type"
 
 TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_2")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineDistributesOverUnions, true},
+        {FFlag::LuauReduceSetTypeStackPressure, true},
+    };
+
     CheckResult result = check(R"(
         local t = {x = nil}
 
@@ -375,10 +384,9 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<TypeMismatch>(result.errors[0]);
-    CHECK_EQ("t | { x: number }", toString(err->wantedType));
-    CHECK_EQ("{ x: string }", toString(err->givenType));
-
-    CHECK("{ x: nil } | { x: number }" == toString(requireTypeAtPosition({4, 18}), {true}));
+    CHECK_EQ("number?", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+    CHECK("{ x: number? }" == toString(requireTypeAtPosition({4, 18}), {true}));
     CHECK("number?" == toString(requireTypeAtPosition({4, 20})));
 }
 
@@ -403,6 +411,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(

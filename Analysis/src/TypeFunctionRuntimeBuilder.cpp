@@ -19,6 +19,7 @@
 // used to control the recursion limit of any operations done by user-defined type functions
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -470,12 +471,35 @@ struct SerializedGeneric
     bool isNamed = false;
     std::string name;
     T type = nullptr;
+
+    explicit SerializedGeneric(std::string name)
+        : name(std::move(name))
+    {
+    }
+
+    SerializedGeneric(bool isNamed, std::string name, T type)
+        : isNamed(isNamed)
+        , name(std::move(name))
+        , type(std::move(type))
+    {
+    }
 };
 
 struct SerializedFunctionScope
 {
     size_t oldQueueSize = 0;
     TypeFunctionFunctionType* function = nullptr;
+
+    explicit SerializedFunctionScope(size_t oldQueueSize)
+        : oldQueueSize(oldQueueSize)
+    {
+    }
+
+    SerializedFunctionScope(size_t oldQueueSize, TypeFunctionFunctionType* function)
+        : oldQueueSize(oldQueueSize)
+        , function(function)
+    {
+    }
 };
 
 // Complete inverse of TypeFunctionSerializer
@@ -901,7 +925,10 @@ private:
 
     void deserializeChildren(TypeFunctionFunctionType* f2, FunctionType* f1)
     {
-        functionScopes.push_back({queue.size(), f2});
+        if (FFlag::LuauEmplaceNotPushBack)
+            functionScopes.emplace_back(queue.size(), f2);
+        else
+            functionScopes.push_back({queue.size(), f2});
 
         std::set<std::pair<bool, std::string>> genericNames;
 
@@ -923,7 +950,10 @@ private:
             genericNames.insert(nameKey);
 
             TypeId mapping = state->ctx->arena->addTV(Type(gty->isNamed ? GenericType{state->ctx->scope.get(), gty->name} : GenericType{}));
-            genericTypes.push_back({gty->isNamed, gty->name, mapping});
+            if (FFlag::LuauEmplaceNotPushBack)
+                genericTypes.emplace_back(gty->isNamed, gty->name, mapping);
+            else
+                genericTypes.push_back({gty->isNamed, gty->name, mapping});
         }
 
         for (auto tp : f2->genericPacks)
@@ -944,7 +974,10 @@ private:
 
             TypePackId mapping =
                 state->ctx->arena->addTypePack(TypePackVar(gtp->isNamed ? GenericTypePack{state->ctx->scope.get(), gtp->name} : GenericTypePack{}));
-            genericPacks.push_back({gtp->isNamed, gtp->name, mapping});
+            if (FFlag::LuauEmplaceNotPushBack)
+                genericPacks.emplace_back(gtp->isNamed, gtp->name, mapping);
+            else
+                genericPacks.push_back({gtp->isNamed, gtp->name, mapping});
         }
 
         f1->generics.reserve(f2->generics.size());
