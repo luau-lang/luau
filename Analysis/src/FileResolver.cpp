@@ -4,7 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/StringUtils.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string_view>

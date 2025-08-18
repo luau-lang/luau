@@ -17,6 +17,7 @@
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
+LUAU_FASTFLAGVARIABLE(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -270,7 +271,11 @@ struct ClonePublicInterface : Substitution
         }
         else
         {
-            module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
+
+            if (FFlag::LuauEmplaceNotPushBack)
+                module->errors.emplace_back(module->scopes[0].first, UnificationTooComplex{});
+            else
+                module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
             return builtinTypes->errorType;
         }
     }
@@ -284,7 +289,10 @@ struct ClonePublicInterface : Substitution
         }
         else
         {
-            module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
+            if (FFlag::LuauEmplaceNotPushBack)
+                module->errors.emplace_back(module->scopes[0].first, UnificationTooComplex{});
+            else
+                module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
             return builtinTypes->errorTypePack;
         }
     }

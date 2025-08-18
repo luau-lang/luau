@@ -28,8 +28,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileCli162537)
-
 namespace Luau
 {
 
@@ -1930,10 +1928,7 @@ struct Compiler
 
                 LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
 
-                if (FFlag::LuauCompileCli162537)
-                    shape.keys[shape.length++] = cid;
-                else
-                    shape.keys[shape.length++] = int16_t(cid);
+                shape.keys[shape.length++] = cid;
             }
 
             int32_t tid = bytecode.addConstantTable(shape);

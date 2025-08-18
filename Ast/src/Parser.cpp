@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(LuauParseIncompleteInterpStringsWithLocation)
+LUAU_FASTFLAGVARIABLE(LuauParametrizedAttributeSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -27,17 +28,65 @@ bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
 namespace Luau
 {
 
+using AttributeArgumentsValidator = std::function<std::vector<std::pair<Location, std::string>>(Location, const AstArray<AstExpr*>&)>;
+
 struct AttributeEntry
 {
     const char* name;
     AstAttr::Type type;
+    std::optional<AttributeArgumentsValidator> argsValidator;
+};
+
+std::vector<std::pair<Location, std::string>> deprecatedArgsValidator(Location attrLoc, const AstArray<AstExpr*>& args)
+{
+
+    if (args.size == 0)
+        return {};
+    if (args.size > 1)
+        return {{attrLoc, "@deprecated can be parametrized only by 1 argument"}};
+
+    if (!args.data[0]->is<AstExprTable>())
+        return {{args.data[0]->location, "Unknown argument type for @deprecated"}};
+
+    std::vector<std::pair<Location, std::string>> errors;
+    for (const AstExprTable::Item& item : args.data[0]->as<AstExprTable>()->items)
+    {
+        if (item.kind == AstExprTable::Item::Kind::Record)
+        {
+            AstArray<char> keyString = item.key->as<AstExprConstantString>()->value;
+            std::string key(keyString.data, keyString.size);
+            if (key != "use" && key != "reason")
+            {
+                errors.emplace_back(
+                    item.key->location,
+                    format("Unknown argument '%s' for @deprecated. Only string constants for 'use' and 'reason' are allowed", key.c_str())
+                );
+            }
+            else if (!item.value->is<AstExprConstantString>())
+            {
+                errors.emplace_back(item.value->location, format("Only constant string allowed as value for '%s'", key.c_str()));
+            }
+        }
+        else
+        {
+            errors.emplace_back(item.value->location, "Only constants keys 'use' and 'reason' are allowed for @deprecated attribute");
+        }
+    }
+    return errors;
+}
+
+AttributeEntry kAttributeEntries_DEPRECATED[] = {
+    {"@checked", AstAttr::Type::Checked, {}},
+    {"@native", AstAttr::Type::Native, {}},
+    {"@deprecated", AstAttr::Type::Deprecated, {}},
+    {nullptr, AstAttr::Type::Checked, {}}
 };
 
 AttributeEntry kAttributeEntries[] = {
-    {"@checked", AstAttr::Type::Checked},
-    {"@native", AstAttr::Type::Native},
-    {"@deprecated", AstAttr::Type::Deprecated},
-    {nullptr, AstAttr::Type::Checked}
+    {"checked", AstAttr::Type::Checked, {}},
+    {"native", AstAttr::Type::Native, {}},
+    {"deprecated", AstAttr::Type::Deprecated, deprecatedArgsValidator},
+    {nullptr, AstAttr::Type::Checked, {}}
 };
 
 ParseError::ParseError(const Location& location, std::string message)
@@ -359,6 +408,7 @@ AstStat* Parser::parseStat()
     case Lexeme::ReservedBreak:
         return parseBreak();
     case Lexeme::Attribute:
+    case Lexeme::AttributeOpen:
         return parseAttributeStat();
     default:;
     }
@@ -768,16 +818,65 @@ AstStat* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
     return node;
 }
 
-std::optional<AstAttr::Type> Parser::validateAttribute(const char* attributeName, const TempVector<AstAttr*>& attributes)
+std::optional<AstAttr::Type> Parser::validateAttribute(
+    Location loc,
+    const char* attributeName,
+    const TempVector<AstAttr*>& attributes,
+    const AstArray<AstExpr*>& args
+)
 {
     // check if the attribute name is valid
     std::optional<AstAttr::Type> type;
+    std::optional<AttributeArgumentsValidator> argsValidator;
 
     for (int i = 0; kAttributeEntries[i].name; ++i)
     {
         if (strcmp(attributeName, kAttributeEntries[i].name) == 0)
         {
             type = kAttributeEntries[i].type;
+            argsValidator = kAttributeEntries[i].argsValidator;
+            break;
+        }
+    }
+
+    if (!type)
+    {
+        if (strlen(attributeName) == 0)
+            report(loc, "Attribute name is missing");
+        else
+            report(loc, "Invalid attribute '@%s'", attributeName);
+    }
+    else
+    {
+        // check that attribute is not duplicated
+        for (const AstAttr* attr : attributes)
+        {
+            if (attr->type == *type)
+                report(loc, "Cannot duplicate attribute '@%s'", attributeName);
+        }
+        if (argsValidator)
+        {
+            auto errorsToReport = (*argsValidator)(loc, args);
+            for (const auto& [errorLoc, msg] : errorsToReport)
+            {
+                report(errorLoc, "%s", msg.c_str());
+            }
+        }
+    }
+
+    return type;
+}
+
+std::optional<AstAttr::Type> Parser::validateAttribute_DEPRECATED(const char* attributeName, const TempVector<AstAttr*>& attributes)
+{
+    // check if the attribute name is valid
+    std::optional<AstAttr::Type> type;
+
+    for (int i = 0; kAttributeEntries_DEPRECATED[i].name; ++i)
+    {
+        if (strcmp(attributeName, kAttributeEntries_DEPRECATED[i].name) == 0)
+        {
+            type = kAttributeEntries_DEPRECATED[i].type;
             break;
         }
     }
@@ -805,17 +904,93 @@ std::optional<AstAttr::Type> Parser::validateAttribute(const char* attributeName
 // attribute ::= '@' NAME
 void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 {
-    LUAU_ASSERT(lexer.current().type == Lexeme::Type::Attribute);
+    AstArray<AstExpr*> empty;
+    if (!FFlag::LuauParametrizedAttributeSyntax)
+    {
+        LUAU_ASSERT(lexer.current().type == Lexeme::Type::Attribute);
 
-    Location loc = lexer.current().location;
+        Location loc = lexer.current().location;
 
-    const char* name = lexer.current().name;
-    std::optional<AstAttr::Type> type = validateAttribute(name, attributes);
+        const char* name = lexer.current().name;
+        std::optional<AstAttr::Type> type = validateAttribute_DEPRECATED(name, attributes);
 
-    nextLexeme();
+        nextLexeme();
 
-    if (type)
-        attributes.push_back(allocator.alloc<AstAttr>(loc, *type));
+        if (type)
+            attributes.push_back(allocator.alloc<AstAttr>(loc, *type, empty));
+
+        return;
+    }
+
+    LUAU_ASSERT(lexer.current().type == Lexeme::Type::Attribute || lexer.current().type == Lexeme::Type::AttributeOpen);
+
+    if (lexer.current().type == Lexeme::Type::Attribute)
+    {
+        Location loc = lexer.current().location;
+
+        const char* name = lexer.current().name;
+        std::optional<AstAttr::Type> type = validateAttribute(loc, name, attributes, empty);
+
+        nextLexeme();
+
+        if (type)
+            attributes.push_back(allocator.alloc<AstAttr>(loc, *type, empty));
+    }
+    else
+    {
+        Lexeme open = lexer.current();
+        nextLexeme();
+
+        if (lexer.current().type != ']')
+        {
+            while (true)
+            {
+                Name name = parseName("attribute name");
+
+                Location nameLoc = name.location;
+                const char* attrName = name.name.value;
+
+                if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || lexer.current().type == '{' ||
+                    lexer.current().type == '(')
+                {
+
+                    auto [args, argsLocation, _exprLocation] = parseCallList(nullptr);
+
+                    for (const AstExpr* arg : args)
+                    {
+                        if (!isConstantLiteral(arg) && !isLiteralTable(arg))
+                            report(argsLocation, "Only literals can be passed as arguments for attributes");
+                    }
+
+                    std::optional<AstAttr::Type> type = validateAttribute(nameLoc, attrName, attributes, args);
+
+                    if (type)
+                        attributes.push_back(allocator.alloc<AstAttr>(Location(nameLoc, argsLocation), *type, args));
+                }
+                else
+                {
+                    std::optional<AstAttr::Type> type = validateAttribute(nameLoc, attrName, attributes, empty);
+                    if (type)
+                        attributes.push_back(allocator.alloc<AstAttr>(nameLoc, *type, empty));
+                }
+
+                if (lexer.current().type == ',')
+                {
+                    nextLexeme();
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            report(Location(open.location, lexer.current().location), "Attribute list cannot be empty");
+        }
+
+        expectMatchAndConsume(']', open);
+    }
 }
 
 // attributes ::= {attribute}
@@ -823,11 +998,11 @@ AstArray<AstAttr*> Parser::parseAttributes()
 {
     Lexeme::Type type = lexer.current().type;
 
-    LUAU_ASSERT(type == Lexeme::Attribute);
+    LUAU_ASSERT(type == Lexeme::Attribute || type == Lexeme::AttributeOpen);
 
     TempVector<AstAttr*> attributes(scratchAttr);
 
-    while (lexer.current().type == Lexeme::Attribute)
+    while (lexer.current().type == Lexeme::Attribute || (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
         parseAttribute(attributes);
 
     return copy(attributes);
@@ -1235,7 +1410,8 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
         {
             AstArray<AstAttr*> attributes{nullptr, 0};
 
-            if (lexer.current().type == Lexeme::Attribute)
+            if (lexer.current().type == Lexeme::Attribute ||
+                (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
             {
                 attributes = Parser::parseAttributes();
 
@@ -2350,7 +2526,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
     AstArray<AstAttr*> attributes{nullptr, 0};
 
-    if (lexer.current().type == Lexeme::Attribute)
+    if (lexer.current().type == Lexeme::Attribute || (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
     {
         if (!inDeclarationContext)
         {
@@ -2997,7 +3173,7 @@ AstExpr* Parser::parseSimpleExpr()
 
     AstArray<AstAttr*> attributes{nullptr, 0};
 
-    if (lexer.current().type == Lexeme::Attribute)
+    if (lexer.current().type == Lexeme::Attribute || (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
     {
         attributes = parseAttributes();
 
@@ -3083,6 +3259,47 @@ AstExpr* Parser::parseSimpleExpr()
     else
     {
         return parsePrimaryExpr(/* asStatement= */ false);
+    }
+}
+
+std::tuple<AstArray<AstExpr*>, Location, Location> Parser::parseCallList(TempVector<Position>* commaPositions)
+{
+    LUAU_ASSERT(
+        lexer.current().type == '(' || lexer.current().type == '{' || lexer.current().type == Lexeme::RawString ||
+        lexer.current().type == Lexeme::QuotedString
+    );
+    if (lexer.current().type == '(')
+    {
+        Position argStart = lexer.current().location.end;
+
+        MatchLexeme matchParen = lexer.current();
+        nextLexeme();
+
+        TempVector<AstExpr*> args(scratchExpr);
+
+        if (lexer.current().type != ')')
+            parseExprList(args, commaPositions);
+
+        Location end = lexer.current().location;
+        Position argEnd = end.end;
+
+        expectMatchAndConsume(')', matchParen);
+
+        return {copy(args), Location(argStart, argEnd), Location(matchParen.position, lexer.previousLocation().begin)};
+    }
+    else if (lexer.current().type == '{')
+    {
+        Position argStart = lexer.current().location.end;
+        AstExpr* expr = parseTableConstructor();
+        Position argEnd = lexer.previousLocation().end;
+
+        return {copy(&expr, 1), Location(argStart, argEnd), expr->location};
+    }
+    else
+    {
+        Location argLocation = lexer.current().location;
+        AstExpr* expr = parseString();
+        return {copy(&expr, 1), argLocation, expr->location};
     }
 }
 

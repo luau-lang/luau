@@ -52,6 +52,8 @@ public:
     bool empty() const;
     size_t count(TypeId ty) const;
 
+    void reserve(size_t n);
+
     template<class Iterator>
     void insert(Iterator begin, Iterator end)
     {

@@ -2,6 +2,7 @@
 
 #include "Luau/Simplify.h"
 
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
@@ -18,10 +19,10 @@
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
-LUAU_FASTFLAGVARIABLE(LuauRelateTablesAreNeverDisjoint)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
-LUAU_FASTFLAGVARIABLE(LuauMissingSeenSetRelate)
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
+LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyAnyAndUnion)
+LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 namespace Luau
 {
@@ -288,7 +289,7 @@ Relation relateTables(TypeId left, TypeId right, SimplifierSeenSet& seen)
     );
 
     if (!foundPropFromLeftInRight && !foundPropFromRightInLeft && leftTable->props.size() >= 1 && rightTable->props.size() >= 1)
-        return FFlag::LuauRelateTablesAreNeverDisjoint ? Relation::Intersects : Relation::Disjoint;
+        return Relation::Intersects;
 
     const auto [propName, rightProp] = *begin(rightTable->props);
 
@@ -587,17 +588,8 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
             {
                 if (auto propInExternType = re->props.find(name); propInExternType != re->props.end())
                 {
-                    Relation propRel;
-                    if (FFlag::LuauMissingSeenSetRelate)
-                    {
-                        LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
-                        propRel = relate(*prop.readTy, *propInExternType->second.readTy, seen);
-                    }
-                    else
-                    {
-                        LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
-                        propRel = relate(*prop.readTy, *propInExternType->second.readTy);
-                    }
+                    LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
+                    Relation propRel = relate(*prop.readTy, *propInExternType->second.readTy, seen);
 
                     if (propRel == Relation::Disjoint)
                         return Relation::Disjoint;
@@ -630,7 +622,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
             return Relation::Disjoint;
         }
 
-        if (FFlag::LuauRefineTablesWithReadType && is<TableType>(right))
+        if (is<TableType>(right))
         {
             // FIXME: This could be better in that we can say a table only
             // intersects with an extern type if they share a property, but
@@ -784,9 +776,41 @@ TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
     LUAU_ASSERT(leftUnion);
 
     bool changed = false;
-    std::set<TypeId> newParts;
-
     size_t maxSize = DFInt::LuauSimplificationComplexityLimit;
+
+    if (FFlag::LuauReduceSetTypeStackPressure)
+    {
+        if (leftUnion->options.size() > maxSize)
+            return addIntersection(arena, builtinTypes, {left, right});
+
+        UnionBuilder ub(arena, builtinTypes);
+        ub.reserve(leftUnion->options.size());
+
+        for (TypeId part : leftUnion)
+        {
+            TypeId simplified = intersect(right, part);
+            changed |= simplified != part;
+
+            if (get<NeverType>(simplified))
+            {
+                changed = true;
+                continue;
+            }
+
+            ub.add(simplified);
+
+            // Initial combination size check could not predict nested union iteration
+            if (ub.size() > maxSize)
+                return addIntersection(arena, builtinTypes, {left, right});
+        }
+
+        if (!changed)
+            return left;
+
+        return ub.build();
+    }
+
+    std::set<TypeId> newParts;
 
     if (leftUnion->options.size() > maxSize)
         return arena->addType(IntersectionType{{left, right}});
@@ -837,6 +861,26 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
 
     if (optionSize > maxSize)
         return arena->addType(IntersectionType{{left, right}});
+
+    if (FFlag::LuauReduceSetTypeStackPressure)
+    {
+        UnionBuilder ub{arena, builtinTypes};
+        for (TypeId leftPart : leftUnion)
+        {
+            for (TypeId rightPart : rightUnion)
+            {
+                TypeId simplified = intersect(leftPart, rightPart);
+
+                ub.add(simplified);
+
+                // Initial combination size check could not predict nested union iteration
+                if (ub.size() > maxSize)
+                    return addIntersection(arena, builtinTypes, {left, right});
+            }
+        }
+
+        return ub.build();
+    }
 
     for (TypeId leftPart : leftUnion)
     {
@@ -933,14 +977,11 @@ std::optional<TypeId> TypeSimplifier::basicIntersectWithTruthy(TypeId target) co
 {
     target = follow(target);
 
-    if (FFlag::LuauRefineTablesWithReadType)
-    {
-        if (isApproximatelyTruthyType(target))
-            return target;
+    if (isApproximatelyTruthyType(target))
+        return target;
 
-        if (isApproximatelyFalsyType(target))
-            return builtinTypes->neverType;
-    }
+    if (isApproximatelyFalsyType(target))
+        return builtinTypes->neverType;
 
     if (is<UnknownType>(target))
         return builtinTypes->truthyType;
@@ -978,14 +1019,11 @@ std::optional<TypeId> TypeSimplifier::basicIntersectWithFalsy(TypeId target) con
 {
     target = follow(target);
 
-    if (FFlag::LuauRefineTablesWithReadType)
-    {
-        if (isApproximatelyTruthyType(target))
-            return builtinTypes->neverType;
+    if (isApproximatelyTruthyType(target))
+        return builtinTypes->neverType;
 
-        if (isApproximatelyFalsyType(target))
-            return target;
-    }
+    if (isApproximatelyFalsyType(target))
+        return target;
 
     if (is<NeverType, ErrorType>(target))
         return target;
@@ -1033,7 +1071,6 @@ TypeId TypeSimplifier::intersectTypeWithNegation(TypeId left, TypeId right)
     {
         // ~(A | B) & C
         // (~A & C) & (~B & C)
-
         bool changed = false;
         std::set<TypeId> newParts;
 
@@ -1196,7 +1233,12 @@ TypeId TypeSimplifier::intersectIntersectionWithType(TypeId left, TypeId right)
     LUAU_ASSERT(leftIntersection);
 
     if (leftIntersection->parts.size() > (size_t)DFInt::LuauSimplificationComplexityLimit)
-        return arena->addType(IntersectionType{{left, right}});
+    {
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            return addIntersection(arena, builtinTypes, {left, right});
+        else
+            return arena->addType(IntersectionType{{left, right}});
+    }
 
     bool changed = false;
     std::set<TypeId> newParts;
@@ -1355,42 +1397,21 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
         return std::nullopt;
     }
 
-    if (FFlag::LuauRefineTablesWithReadType)
-    {
-        if (isApproximatelyTruthyType(left))
-            if (auto res = basicIntersectWithTruthy(right))
-                return res;
+    if (isApproximatelyTruthyType(left))
+        if (auto res = basicIntersectWithTruthy(right))
+            return res;
 
-        if (isApproximatelyTruthyType(right))
-            if (auto res = basicIntersectWithTruthy(left))
-                return res;
+    if (isApproximatelyTruthyType(right))
+        if (auto res = basicIntersectWithTruthy(left))
+            return res;
 
-        if (isApproximatelyFalsyType(left))
-            if (auto res = basicIntersectWithFalsy(right))
-                return res;
+    if (isApproximatelyFalsyType(left))
+        if (auto res = basicIntersectWithFalsy(right))
+            return res;
 
-        if (isApproximatelyFalsyType(right))
-            if (auto res = basicIntersectWithFalsy(left))
-                return res;
-    }
-    else
-    {
-        if (isTruthyType_DEPRECATED(left))
-            if (auto res = basicIntersectWithTruthy(right))
-                return res;
-
-        if (isTruthyType_DEPRECATED(right))
-            if (auto res = basicIntersectWithTruthy(left))
-                return res;
-
-        if (isFalsyType_DEPRECATED(left))
-            if (auto res = basicIntersectWithFalsy(right))
-                return res;
-
-        if (isFalsyType_DEPRECATED(right))
-            if (auto res = basicIntersectWithFalsy(left))
-                return res;
-    }
+    if (isApproximatelyFalsyType(right))
+        if (auto res = basicIntersectWithFalsy(left))
+            return res;
 
 
     Relation relation = relate(left, right);
@@ -1458,13 +1479,19 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
     if (isTypeVariable(left))
     {
         blockedTypes.insert(left);
-        return arena->addType(IntersectionType{{left, right}});
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            return addIntersection(arena, builtinTypes, {left, right});
+        else
+            return arena->addType(IntersectionType{{left, right}});
     }
 
     if (isTypeVariable(right))
     {
         blockedTypes.insert(right);
-        return arena->addType(IntersectionType{{left, right}});
+        if (FFlag::LuauReduceSetTypeStackPressure)
+            return addIntersection(arena, builtinTypes, {left, right});
+        else
+            return arena->addType(IntersectionType{{left, right}});
     }
 
     if (auto ut = get<UnionType>(left))
@@ -1514,6 +1541,47 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
     if (auto leftUnion = get<UnionType>(left))
     {
         bool changed = false;
+
+        if (FFlag::LuauReduceSetTypeStackPressure)
+        {
+            UnionBuilder ub(arena, builtinTypes);
+            ub.reserve(leftUnion->options.size());
+            for (TypeId part : leftUnion)
+            {
+                if (get<NeverType>(part))
+                {
+                    changed = true;
+                    continue;
+                }
+
+                Relation r = relate(part, right);
+                switch (r)
+                {
+                case Relation::Coincident:
+                case Relation::Superset:
+                    return left;
+                case Relation::Subset:
+                    ub.add(right);
+                    changed = true;
+                    break;
+                default:
+                    ub.add(part);
+                    ub.add(right);
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (!changed)
+                return left;
+
+            // If the left-side is changed but has no parts, then the left-side union is uninhabited.
+            if (ub.size() == 0)
+                return right;
+
+            return ub.build();
+        }
+
         std::set<TypeId> newParts;
         for (TypeId part : leftUnion)
         {
@@ -1573,6 +1641,44 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
                 {
                     if (abs->value != bbs->value)
                         return builtinTypes->booleanType;
+                }
+            }
+        }
+    }
+
+    if (FFlag::LuauRefineDistributesOverUnions)
+    {
+        if (const auto [lt, rt] = get2<TableType, TableType>(left, right); lt && rt)
+        {
+            if (1 == lt->props.size() && 1 == rt->props.size())
+            {
+                const auto [propName, leftProp] = *begin(lt->props);
+                const auto [rightPropName, rightProp] = *begin(rt->props);
+
+                if (rightPropName != propName)
+                    return arena->addType(UnionType{{left, right}});
+
+                if (leftProp.readTy && rightProp.readTy)
+                {
+                    Relation r = relate(*leftProp.readTy, *rightProp.readTy);
+
+                    switch (r)
+                    {
+                        case Relation::Disjoint:
+                        {
+                            TableType result;
+                            result.state = TableState::Sealed;
+                            result.props[propName] = union_(*leftProp.readTy, *rightProp.readTy);
+                            return arena->addType(result);
+                        }
+                        case Relation::Superset:
+                        case Relation::Coincident:
+                            return left;
+                        case Relation::Subset:
+                            return right;
+                        default:
+                            break;
+                    }
                 }
             }
         }

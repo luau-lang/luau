@@ -67,7 +67,7 @@ ecall(checkthread, 2)
 call(checkuserdata, newproxy())
 ecall(checkuserdata, 2)
 
-call(checkvector, vector(1, 2, 3))
+call(checkvector, vector.create(1, 2, 3))
 ecall(checkvector, 2)
 
 call(checkbuffer, buffer.create(10))

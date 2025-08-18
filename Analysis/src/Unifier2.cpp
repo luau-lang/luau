@@ -17,9 +17,13 @@
 #include <algorithm>
 #include <optional>
 
+LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
+LUAU_FASTFLAGVARIABLE(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 
 namespace Luau
 {
@@ -131,23 +135,43 @@ Unifier2::Unifier2(
 {
 }
 
-bool Unifier2::unify(TypeId subTy, TypeId superTy)
+UnifyResult Unifier2::unify(TypeId subTy, TypeId superTy)
 {
+    iterationCount = 0;
+    return unify_(subTy, superTy);
+}
+
+UnifyResult Unifier2::unify(TypePackId subTp, TypePackId superTp)
+{
+    iterationCount = 0;
+    return unify_(subTp, superTp);
+}
+
+UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
+{
+    if (FFlag::LuauLimitUnification)
+    {
+        if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
+            return UnifyResult::TooComplex;
+
+        ++iterationCount;
+    }
+
     subTy = follow(subTy);
     superTy = follow(superTy);
 
     if (auto subGen = genericSubstitutions.find(subTy))
-        return unify(*subGen, superTy);
+        return unify_(*subGen, superTy);
 
     if (auto superGen = genericSubstitutions.find(superTy))
-        return unify(subTy, *superGen);
+        return unify_(subTy, *superGen);
 
     if (seenTypePairings.contains({subTy, superTy}))
-        return true;
+        return UnifyResult::Ok;
     seenTypePairings.insert({subTy, superTy});
 
     if (subTy == superTy)
-        return true;
+        return UnifyResult::Ok;
 
     // We have potentially done some unifications while dispatching either `SubtypeConstraint` or `PackSubtypeConstraint`,
     // so rather than implementing backtracking or traversing the entire type graph multiple times, we could push
@@ -159,10 +183,13 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     if ((isIrresolvable(subTy) || isIrresolvable(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
     {
         if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
-            return true;
+            return UnifyResult::Ok;
 
-        incompleteSubtypes.push_back(SubtypeConstraint{subTy, superTy});
-        return true;
+        if (FFlag::LuauEmplaceNotPushBack)
+            incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
+        else
+            incompleteSubtypes.push_back(SubtypeConstraint{subTy, superTy});
+        return UnifyResult::Ok;
     }
 
     FreeType* subFree = getMutable<FreeType>(subTy);
@@ -179,44 +206,44 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     }
 
     if (subFree || superFree)
-        return true;
+        return UnifyResult::Ok;
 
     auto subFn = get<FunctionType>(subTy);
     auto superFn = get<FunctionType>(superTy);
     if (subFn && superFn)
-        return unify(subTy, superFn);
+        return unify_(subTy, superFn);
 
     auto subUnion = get<UnionType>(subTy);
     auto superUnion = get<UnionType>(superTy);
     if (subUnion)
-        return unify(subUnion, superTy);
+        return unify_(subUnion, superTy);
     else if (superUnion)
-        return unify(subTy, superUnion);
+        return unify_(subTy, superUnion);
 
     auto subIntersection = get<IntersectionType>(subTy);
     auto superIntersection = get<IntersectionType>(superTy);
     if (subIntersection)
-        return unify(subIntersection, superTy);
+        return unify_(subIntersection, superTy);
     else if (superIntersection)
-        return unify(subTy, superIntersection);
+        return unify_(subTy, superIntersection);
 
     auto subNever = get<NeverType>(subTy);
     auto superNever = get<NeverType>(superTy);
     if (subNever && superNever)
-        return true;
+        return UnifyResult::Ok;
     else if (subNever && superFn)
     {
         // If `never` is the subtype, then we can propagate that inward.
-        bool argResult = unify(superFn->argTypes, builtinTypes->neverTypePack);
-        bool retResult = unify(builtinTypes->neverTypePack, superFn->retTypes);
-        return argResult && retResult;
+        UnifyResult argResult = unify_(superFn->argTypes, builtinTypes->neverTypePack);
+        UnifyResult retResult = unify_(builtinTypes->neverTypePack, superFn->retTypes);
+        return argResult & retResult;
     }
     else if (subFn && superNever)
     {
         // If `never` is the supertype, then we can propagate that inward.
-        bool argResult = unify(builtinTypes->neverTypePack, subFn->argTypes);
-        bool retResult = unify(subFn->retTypes, builtinTypes->neverTypePack);
-        return argResult && retResult;
+        UnifyResult argResult = unify_(builtinTypes->neverTypePack, subFn->argTypes);
+        UnifyResult retResult = unify_(subFn->retTypes, builtinTypes->neverTypePack);
+        return argResult & retResult;
     }
 
     auto subAny = get<AnyType>(subTy);
@@ -226,15 +253,15 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     auto superTable = get<TableType>(superTy);
 
     if (subAny && superAny)
-        return true;
+        return UnifyResult::Ok;
     else if (subAny && superFn)
-        return unify(subAny, superFn);
+        return unify_(subAny, superFn);
     else if (subFn && superAny)
-        return unify(subFn, superAny);
+        return unify_(subFn, superAny);
     else if (subAny && superTable)
-        return unify(subAny, superTable);
+        return unify_(subAny, superTable);
     else if (subTable && superAny)
-        return unify(subTable, superAny);
+        return unify_(subTable, superAny);
 
     if (subTable && superTable)
     {
@@ -245,35 +272,35 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
         LUAU_ASSERT(!subTable->boundTo);
         LUAU_ASSERT(!superTable->boundTo);
 
-        return unify(subTable, superTable);
+        return unify_(subTable, superTable);
     }
 
     auto subMetatable = get<MetatableType>(subTy);
     auto superMetatable = get<MetatableType>(superTy);
     if (subMetatable && superMetatable)
-        return unify(subMetatable, superMetatable);
+        return unify_(subMetatable, superMetatable);
     else if (subMetatable && superAny)
-        return unify(subMetatable, superAny);
+        return unify_(subMetatable, superAny);
     else if (subAny && superMetatable)
-        return unify(subAny, superMetatable);
+        return unify_(subAny, superMetatable);
     else if (subMetatable) // if we only have one metatable, unify with the inner table
-        return unify(subMetatable->table, superTy);
+        return unify_(subMetatable->table, superTy);
     else if (superMetatable) // if we only have one metatable, unify with the inner table
-        return unify(subTy, superMetatable->table);
+        return unify_(subTy, superMetatable->table);
 
     auto [subNegation, superNegation] = get2<NegationType, NegationType>(subTy, superTy);
     if (subNegation && superNegation)
-        return unify(subNegation->ty, superNegation->ty);
+        return unify_(subNegation->ty, superNegation->ty);
 
     // The unification failed, but we're not doing type checking.
-    return true;
+    return UnifyResult::Ok;
 }
 
 // If superTy is a function and subTy already has a
 // potentially-compatible function in its upper bound, we assume that
 // the function is not overloaded and attempt to combine superTy into
 // subTy's existing function bound.
-bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
+UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 {
     FreeType* subFree = getMutable<FreeType>(subTy);
     LUAU_ASSERT(subFree);
@@ -282,13 +309,13 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     {
         subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
         expandedFreeTypes[subTy].push_back(superTy);
-        return true;
+        return UnifyResult::Ok;
     };
 
     TypeId upperBound = follow(subFree->upperBound);
 
     if (get<FunctionType>(upperBound))
-        return unify(subFree->upperBound, superTy);
+        return unify_(subFree->upperBound, superTy);
 
     const FunctionType* superFunction = get<FunctionType>(superTy);
     if (!superFunction)
@@ -302,7 +329,7 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     if (!upperBoundIntersection)
         return doDefault();
 
-    bool ok = true;
+    UnifyResult result = UnifyResult::Ok;
     bool foundOne = false;
 
     for (TypeId part : upperBoundIntersection->parts)
@@ -316,17 +343,17 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
         if (!subArgTail && subArgHead.size() == superArgHead.size())
         {
             foundOne = true;
-            ok &= unify(part, superTy);
+            result &= unify_(part, superTy);
         }
     }
 
     if (foundOne)
-        return ok;
+        return result;
     else
         return doDefault();
 }
 
-bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
+UnifyResult Unifier2::unify_(TypeId subTy, const FunctionType* superFn)
 {
     const FunctionType* subFn = get<FunctionType>(subTy);
 
@@ -359,64 +386,86 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
         }
     }
 
-    bool argResult = unify(superFn->argTypes, subFn->argTypes);
-    bool retResult = unify(subFn->retTypes, superFn->retTypes);
-    return argResult && retResult;
+    UnifyResult argResult = unify_(superFn->argTypes, subFn->argTypes);
+    UnifyResult retResult = unify_(subFn->retTypes, superFn->retTypes);
+    return argResult & retResult;
 }
 
-bool Unifier2::unify(const UnionType* subUnion, TypeId superTy)
+UnifyResult Unifier2::unify_(const UnionType* subUnion, TypeId superTy)
 {
-    bool result = true;
+    UnifyResult result = UnifyResult::Ok;
 
     // if the occurs check fails for any option, it fails overall
     for (auto subOption : subUnion->options)
     {
         if (areCompatible(subOption, superTy))
-            result &= unify(subOption, superTy);
+            result &= unify_(subOption, superTy);
     }
 
     return result;
 }
 
-bool Unifier2::unify(TypeId subTy, const UnionType* superUnion)
+UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
 {
-    bool result = true;
+    if (FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+    {
+        subTy = follow(subTy);
+        // T <: T | U1 | U2 | ... | Un is trivially true, so we don't gain any information by unifying
+        for (const auto superOption : superUnion)
+        {
+            if (subTy == superOption)
+                return UnifyResult::Ok;
+        }
+    }
+
+    UnifyResult result = UnifyResult::Ok;
 
     // if the occurs check fails for any option, it fails overall
     for (auto superOption : superUnion->options)
     {
         if (areCompatible(subTy, superOption))
-            result &= unify(subTy, superOption);
+            result &= unify_(subTy, superOption);
     }
 
     return result;
 }
 
-bool Unifier2::unify(const IntersectionType* subIntersection, TypeId superTy)
+UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, TypeId superTy)
 {
-    bool result = true;
+    if (FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+    {
+        superTy = follow(superTy);
+        // T & I1 & I2 & ... & In <: T is trivially true, so we don't gain any information by unifying
+        for (const auto subOption : subIntersection)
+        {
+            if (superTy == subOption)
+                return UnifyResult::Ok;
+        }
+    }
+
+    UnifyResult result = UnifyResult::Ok;
 
     // if the occurs check fails for any part, it fails overall
     for (auto subPart : subIntersection->parts)
-        result &= unify(subPart, superTy);
+        result &= unify_(subPart, superTy);
 
     return result;
 }
 
-bool Unifier2::unify(TypeId subTy, const IntersectionType* superIntersection)
+UnifyResult Unifier2::unify_(TypeId subTy, const IntersectionType* superIntersection)
 {
-    bool result = true;
+    UnifyResult result = UnifyResult::Ok;
 
     // if the occurs check fails for any part, it fails overall
     for (auto superPart : superIntersection->parts)
-        result &= unify(subTy, superPart);
+        result &= unify_(subTy, superPart);
 
     return result;
 }
 
-bool Unifier2::unify(TableType* subTable, const TableType* superTable)
+UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
 {
-    bool result = true;
+    UnifyResult result = UnifyResult::Ok;
 
     // It suffices to only check one direction of properties since we'll only ever have work to do during unification
     // if the property is present in both table types.
@@ -429,10 +478,10 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
             const Property& superProp = superPropOpt->second;
 
             if (subProp.readTy && superProp.readTy)
-                result &= unify(*subProp.readTy, *superProp.readTy);
+                result &= unify_(*subProp.readTy, *superProp.readTy);
 
             if (subProp.writeTy && superProp.writeTy)
-                result &= unify(*superProp.writeTy, *subProp.writeTy);
+                result &= unify_(*superProp.writeTy, *subProp.writeTy);
         }
     }
 
@@ -441,7 +490,7 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
 
     while (subTypeParamsIter != subTable->instantiatedTypeParams.end() && superTypeParamsIter != superTable->instantiatedTypeParams.end())
     {
-        result &= unify(*subTypeParamsIter, *superTypeParamsIter);
+        result &= unify_(*subTypeParamsIter, *superTypeParamsIter);
 
         subTypeParamsIter++;
         superTypeParamsIter++;
@@ -453,7 +502,7 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
     while (subTypePackParamsIter != subTable->instantiatedTypePackParams.end() &&
            superTypePackParamsIter != superTable->instantiatedTypePackParams.end())
     {
-        result &= unify(*subTypePackParamsIter, *superTypePackParamsIter);
+        result &= unify_(*subTypePackParamsIter, *superTypePackParamsIter);
 
         subTypePackParamsIter++;
         superTypePackParamsIter++;
@@ -461,13 +510,13 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
 
     if (subTable->indexer && superTable->indexer)
     {
-        result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);
-        result &= unify(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+        result &= unify_(subTable->indexer->indexType, superTable->indexer->indexType);
+        result &= unify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
         if (FFlag::LuauEagerGeneralization4)
         {
             // FIXME: We can probably do something more efficient here.
-            result &= unify(superTable->indexer->indexType, subTable->indexer->indexType);
-            result &= unify(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+            result &= unify_(superTable->indexer->indexType, subTable->indexer->indexType);
+            result &= unify_(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
         }
     }
 
@@ -498,104 +547,126 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
     return result;
 }
 
-bool Unifier2::unify(const MetatableType* subMetatable, const MetatableType* superMetatable)
+UnifyResult Unifier2::unify_(const MetatableType* subMetatable, const MetatableType* superMetatable)
 {
-    return unify(subMetatable->metatable, superMetatable->metatable) && unify(subMetatable->table, superMetatable->table);
+    UnifyResult metatableResult = unify_(subMetatable->metatable, superMetatable->metatable);
+    if (metatableResult != UnifyResult::Ok)
+        return metatableResult;
+    return unify_(subMetatable->table, superMetatable->table);
 }
 
-bool Unifier2::unify(const AnyType* subAny, const FunctionType* superFn)
+UnifyResult Unifier2::unify_(const AnyType* subAny, const FunctionType* superFn)
 {
     // If `any` is the subtype, then we can propagate that inward.
-    bool argResult = unify(superFn->argTypes, builtinTypes->anyTypePack);
-    bool retResult = unify(builtinTypes->anyTypePack, superFn->retTypes);
-    return argResult && retResult;
+    UnifyResult argResult = unify_(superFn->argTypes, builtinTypes->anyTypePack);
+    UnifyResult retResult = unify_(builtinTypes->anyTypePack, superFn->retTypes);
+    return argResult & retResult;
 }
 
-bool Unifier2::unify(const FunctionType* subFn, const AnyType* superAny)
+UnifyResult Unifier2::unify_(const FunctionType* subFn, const AnyType* superAny)
 {
     // If `any` is the supertype, then we can propagate that inward.
-    bool argResult = unify(builtinTypes->anyTypePack, subFn->argTypes);
-    bool retResult = unify(subFn->retTypes, builtinTypes->anyTypePack);
-    return argResult && retResult;
+    UnifyResult argResult = unify_(builtinTypes->anyTypePack, subFn->argTypes);
+    UnifyResult retResult = unify_(subFn->retTypes, builtinTypes->anyTypePack);
+    return argResult & retResult;
 }
 
-bool Unifier2::unify(const AnyType* subAny, const TableType* superTable)
+UnifyResult Unifier2::unify_(const AnyType* subAny, const TableType* superTable)
 {
     for (const auto& [propName, prop] : superTable->props)
     {
         if (prop.readTy)
-            unify(builtinTypes->anyType, *prop.readTy);
+            unify_(builtinTypes->anyType, *prop.readTy);
 
         if (prop.writeTy)
-            unify(*prop.writeTy, builtinTypes->anyType);
+            unify_(*prop.writeTy, builtinTypes->anyType);
     }
 
     if (superTable->indexer)
     {
-        unify(builtinTypes->anyType, superTable->indexer->indexType);
-        unify(builtinTypes->anyType, superTable->indexer->indexResultType);
+        unify_(builtinTypes->anyType, superTable->indexer->indexType);
+        unify_(builtinTypes->anyType, superTable->indexer->indexResultType);
     }
 
-    return true;
+    return UnifyResult::Ok;
 }
 
-bool Unifier2::unify(const TableType* subTable, const AnyType* superAny)
+UnifyResult Unifier2::unify_(const TableType* subTable, const AnyType* superAny)
 {
     for (const auto& [propName, prop] : subTable->props)
     {
         if (prop.readTy)
-            unify(*prop.readTy, builtinTypes->anyType);
+            unify_(*prop.readTy, builtinTypes->anyType);
 
         if (prop.writeTy)
-            unify(builtinTypes->anyType, *prop.writeTy);
+            unify_(builtinTypes->anyType, *prop.writeTy);
     }
 
     if (subTable->indexer)
     {
-        unify(subTable->indexer->indexType, builtinTypes->anyType);
-        unify(subTable->indexer->indexResultType, builtinTypes->anyType);
+        unify_(subTable->indexer->indexType, builtinTypes->anyType);
+        unify_(subTable->indexer->indexResultType, builtinTypes->anyType);
     }
 
-    return true;
+    return UnifyResult::Ok;
 }
 
-bool Unifier2::unify(const MetatableType* subMetatable, const AnyType*)
+UnifyResult Unifier2::unify_(const MetatableType* subMetatable, const AnyType*)
 {
-    return unify(subMetatable->metatable, builtinTypes->anyType) && unify(subMetatable->table, builtinTypes->anyType);
+    UnifyResult metatableResult = unify_(subMetatable->metatable, builtinTypes->anyType);
+    if (metatableResult != UnifyResult::Ok)
+        return metatableResult;
+
+    return unify_(subMetatable->table, builtinTypes->anyType);
 }
 
-bool Unifier2::unify(const AnyType*, const MetatableType* superMetatable)
+UnifyResult Unifier2::unify_(const AnyType*, const MetatableType* superMetatable)
 {
-    return unify(builtinTypes->anyType, superMetatable->metatable) && unify(builtinTypes->anyType, superMetatable->table);
+    UnifyResult metatableResult = unify_(builtinTypes->anyType, superMetatable->metatable);
+    if (metatableResult != UnifyResult::Ok)
+        return metatableResult;
+
+    return unify_(builtinTypes->anyType, superMetatable->table);
 }
 
 // FIXME?  This should probably return an ErrorVec or an optional<TypeError>
 // rather than a boolean to signal an occurs check failure.
-bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
+UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
 {
+    if (FFlag::LuauLimitUnification)
+    {
+        if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
+            return UnifyResult::TooComplex;
+
+        ++iterationCount;
+    }
+
     subTp = follow(subTp);
     superTp = follow(superTp);
 
     if (auto subGen = genericPackSubstitutions.find(subTp))
-        return unify(*subGen, superTp);
+        return unify_(*subGen, superTp);
 
     if (auto superGen = genericPackSubstitutions.find(superTp))
-        return unify(subTp, *superGen);
+        return unify_(subTp, *superGen);
 
     if (seenTypePackPairings.contains({subTp, superTp}))
-        return true;
+        return UnifyResult::Ok;
     seenTypePackPairings.insert({subTp, superTp});
 
     if (subTp == superTp)
-        return true;
+        return UnifyResult::Ok;
 
     if (isIrresolvable(subTp) || isIrresolvable(superTp))
     {
         if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTp) || uninhabitedTypeFunctions->contains(superTp)))
-            return true;
+            return UnifyResult::Ok;
 
-        incompleteSubtypes.push_back(PackSubtypeConstraint{subTp, superTp});
-        return true;
+        if (FFlag::LuauEmplaceNotPushBack)
+            incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
+        else
+            incompleteSubtypes.push_back(PackSubtypeConstraint{subTp, superTp});
+        return UnifyResult::Ok;
     }
 
     const FreeTypePack* subFree = get<FreeTypePack>(subTp);
@@ -607,11 +678,11 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
         if (OccursCheckResult::Fail == occursCheck(seen, subTp, superTp))
         {
             emplaceTypePack<BoundTypePack>(asMutable(subTp), builtinTypes->errorTypePack);
-            return false;
+            return UnifyResult::OccursCheckFailed;
         }
 
         emplaceTypePack<BoundTypePack>(asMutable(subTp), superTp);
-        return true;
+        return UnifyResult::Ok;
     }
 
     if (superFree)
@@ -620,11 +691,11 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
         if (OccursCheckResult::Fail == occursCheck(seen, superTp, subTp))
         {
             emplaceTypePack<BoundTypePack>(asMutable(superTp), builtinTypes->errorTypePack);
-            return false;
+            return UnifyResult::OccursCheckFailed;
         }
 
         emplaceTypePack<BoundTypePack>(asMutable(superTp), subTp);
-        return true;
+        return UnifyResult::Ok;
     }
 
     size_t maxLength = std::max(flatten(subTp).first.size(), flatten(superTp).first.size());
@@ -640,10 +711,10 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
     }
 
     if (subTypes.size() < maxLength || superTypes.size() < maxLength)
-        return true;
+        return UnifyResult::Ok;
 
     for (size_t i = 0; i < maxLength; ++i)
-        unify(subTypes[i], superTypes[i]);
+        unify_(subTypes[i], superTypes[i]);
 
     if (subTail && superTail)
     {
@@ -651,7 +722,7 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
         TypePackId followedSuperTail = follow(*superTail);
 
         if (get<FreeTypePack>(followedSubTail) || get<FreeTypePack>(followedSuperTail))
-            return unify(followedSubTail, followedSuperTail);
+            return unify_(followedSubTail, followedSuperTail);
     }
     else if (subTail)
     {
@@ -666,7 +737,7 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
             emplaceTypePack<BoundTypePack>(asMutable(followedSuperTail), builtinTypes->emptyTypePack);
     }
 
-    return true;
+    return UnifyResult::Ok;
 }
 
 TypeId Unifier2::mkUnion(TypeId left, TypeId right)

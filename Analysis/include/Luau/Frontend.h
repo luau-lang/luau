@@ -176,7 +176,7 @@ struct Frontend
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
-    void setLuauSolverSelectionFromWorkspace(SolverMode mode);
+    void setLuauSolverMode(SolverMode mode);
     SolverMode getLuauSolverMode() const;
     // The default value assuming there is no workspace setup yet
     std::atomic<SolverMode> useNewLuauSolver{FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
@@ -330,7 +330,7 @@ ModulePtr check(
     NotNull<InternalErrorReporter> iceHandler,
     NotNull<ModuleResolver> moduleResolver,
     NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope,
+    const ScopePtr& parentScope,
     const ScopePtr& typeFunctionScope,
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
     FrontendOptions options,

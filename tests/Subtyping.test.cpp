@@ -18,7 +18,9 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 using namespace Luau;
 
@@ -191,6 +193,11 @@ struct SubtypeFixture : Fixture
     TypePackId genericCs = arena.addTypePack(GenericTypePack{"C"});
 
     SubtypingResult isSubtype(TypeId subTy, TypeId superTy)
+    {
+        return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()});
+    }
+
+    SubtypingResult isSubtype(TypePackId subTy, TypePackId superTy)
     {
         return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()});
     }
@@ -722,11 +729,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> T <: (number) -> number")
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> T <!: (number) -> string")
 {
     CHECK_IS_NOT_SUBTYPE(genericTToTType, numberToStringType);
-}
-
-TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> () <: <U>(U) -> ()")
-{
-    CHECK_IS_SUBTYPE(genericTToNothingType, genericUToNothingType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> () <!: <T>(T) -> ()")
@@ -1430,6 +1432,94 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
     }
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "(() -> number) -> () <: (<T>() -> T) -> ()")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
+
+    TypeId f1 = fn({nothingToNumberType}, {});
+    TypeId f2 = fn({genericNothingToTType}, {});
+    CHECK_IS_SUBTYPE(f1, f2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> ()) -> () <: (<T>(T) -> ()) -> ()")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
+
+    TypeId f1 = fn({numberToNothingType}, {});
+    TypeId f2 = fn({genericTToNothingType}, {});
+    CHECK_IS_SUBTYPE(f1, f2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> number) -> () <: (<T>(T) -> T) -> ()")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
+
+    TypeId f1 = fn({numberToNumberType}, {});
+    TypeId f2 = fn({genericTToTType}, {});
+    CHECK_IS_SUBTYPE(f1, f2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>(x: T, y: T, f: (T, T) -> T) -> T <: (number, number, <U>(U, U) -> add<U, U>) -> number")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
+
+    TypeId f1 = arena.addType(FunctionType(
+        {genericT},
+        {},
+        arena.addTypePack({genericT, genericT, fn({genericT, genericT}, {genericT})}),
+        // (T, T, (T, T) -> T)
+        arena.addTypePack({genericT}),
+        std::nullopt,
+        false
+    ));
+    TypeId addUToU = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {genericU, genericU}});
+    TypeId f2 = fn(
+        {
+            builtinTypes->numberType,
+            builtinTypes->numberType,
+            arena.addType(FunctionType({genericU}, {}, arena.addTypePack({genericU, genericU}), arena.addTypePack({addUToU})))
+            // <U>(U, U) -> add<U, U>
+        },
+        {builtinTypes->numberType}
+    );
+    CHECK_IS_SUBTYPE(f1, f2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "no_caching_type_function_instances_with_mapped_generics")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
+
+    // (<U>(U) -> keyof<U>, <U>(U) -> keyof<U>) </: (({"a" : number}) -> "a", ({"b" : number}) -> "a")
+
+    TypeId keyOfU = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions.keyofFunc, {genericU}});
+    // <U>(U) -> keyof<U>
+    TypeId uToKeyOfU = arena.addType(FunctionType({genericU}, {}, arena.addTypePack({genericU}), arena.addTypePack({keyOfU})));
+    TypePackId subTypePack = arena.addTypePack({uToKeyOfU, uToKeyOfU});
+
+    TypeId tblA = tbl({{"a", builtinTypes->numberType}});
+    TypeId tblB = tbl({{"b", builtinTypes->numberType}});
+    TypeId aSingleton = arena.addType(SingletonType{StringSingleton{"a"}});
+    TypePackId superTypePack = arena.addTypePack({fn({tblA}, {aSingleton}), fn({tblB}, {aSingleton})});
+
+    CHECK_IS_NOT_SUBTYPE(subTypePack, superTypePack);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_non_generics_in_function_generics")
+{
+    // This should not crash
+    check(R"(
+        local _ = _
+        function _(l0)
+        for _ in _(_) do
+        end
+        l0[_](
+            _(_()) + _
+        )
+        end
+        _(_)
+    )");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Subtyping.Subpaths");
@@ -1657,7 +1747,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     TypeId argTy = arena.freshType(getBuiltins(), moduleScope.get());

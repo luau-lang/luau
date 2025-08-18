@@ -504,6 +504,15 @@ struct MultipleNonviableOverloads
     bool operator==(const MultipleNonviableOverloads& rhs) const;
 };
 
+// Error where a type alias violates the recursive restraint, ie when a type alias T<A> has T with different arguments on the RHS.
+struct RecursiveRestraintViolation
+{
+    bool operator==(const RecursiveRestraintViolation& rhs) const
+    {
+        return true;
+    }
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -559,7 +568,8 @@ using TypeErrorData = Variant<
     CannotCheckDynamicStringFormatCalls,
     GenericTypeCountMismatch,
     GenericTypePackCountMismatch,
-    MultipleNonviableOverloads>;
+    MultipleNonviableOverloads,
+    RecursiveRestraintViolation>;
 
 struct TypeErrorSummary
 {

@@ -102,6 +102,10 @@ struct Scope
     std::optional<std::vector<TypeId>> interiorFreeTypes;
     std::optional<std::vector<TypePackId>> interiorFreeTypePacks;
 
+    // A set of type alias names that are invalid because they violate the recursion restrictions of type aliases.
+    DenseHashSet<std::string> invalidTypeAliasNames{""};
+    bool isInvalidTypeAliasName(const std::string& name) const;
+
     NotNull<Scope> findNarrowestScopeContaining(Location);
 };
 

@@ -14,7 +14,6 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
-LUAU_FASTFLAGVARIABLE(LuauDfgForwardNilFromAndOr)
 
 namespace Luau
 {
@@ -1036,23 +1035,13 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprUnary* u)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprBinary* b)
 {
-    if (FFlag::LuauDfgForwardNilFromAndOr)
-    {
-        auto left = visitExpr(b->left);
-        auto right = visitExpr(b->right);
-        // I think there's some subtlety here. There are probably cases where
-        // X or Y / X and Y can _never_ "be subscripted."
-        auto subscripted = (b->op == AstExprBinary::And || b->op == AstExprBinary::Or) &&
-                           (containsSubscriptedDefinition(left.def) || containsSubscriptedDefinition(right.def));
-        return {defArena->freshCell(Symbol{}, b->location, subscripted), nullptr};
-    }
-    else
-    {
-        visitExpr(b->left);
-        visitExpr(b->right);
-
-        return {defArena->freshCell(Symbol{}, b->location), nullptr};
-    }
+    auto left = visitExpr(b->left);
+    auto right = visitExpr(b->right);
+    // I think there's some subtlety here. There are probably cases where
+    // X or Y / X and Y can _never_ "be subscripted."
+    auto subscripted = (b->op == AstExprBinary::And || b->op == AstExprBinary::Or) &&
+                       (containsSubscriptedDefinition(left.def) || containsSubscriptedDefinition(right.def));
+    return {defArena->freshCell(Symbol{}, b->location, subscripted), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)

@@ -6,7 +6,6 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAGVARIABLE(LuauInferPolarityOfReadWriteProperties)
 
 namespace Luau
 {
