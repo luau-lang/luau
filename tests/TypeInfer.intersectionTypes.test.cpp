@@ -1485,4 +1485,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
     CHECK_EQ("Player & { read Character: ~(false?) }", toString(requireTypeAtPosition({3, 23})));
 }
 
+TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_optional_functions")
+{
+    CheckResult result = check(R"(
+        type Drawing = { update: (() -> boolean)? }
+        type Counter = { count: number }
+        function create(): Drawing & Counter
+            return {
+                count = 34,
+                update = function() return true end
+            }
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

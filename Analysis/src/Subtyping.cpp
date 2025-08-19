@@ -2142,7 +2142,46 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingResult res{true};
 
     if (superProp.isShared() && subProp.isShared())
-        res.andAlso(isInvariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
+    {
+        // Check if this is an optional function compatibility case
+        bool isOptionalFunctionCase = false;
+        if (const UnionType* superUnion = get<UnionType>(follow(*superProp.readTy)))
+        {
+            // Only handle the specific case: function <: function?
+            // This must be exactly a union of nil and a function type
+            if (superUnion->options.size() == 2)
+            {
+                bool hasNil = false;
+                bool hasFunction = false;
+                bool hasOther = false;
+                for (TypeId option : superUnion)
+                {
+                    if (isNil(option))
+                        hasNil = true;
+                    else if (get<FunctionType>(follow(option)))
+                        hasFunction = true;
+                    else
+                        hasOther = true;
+                }
+                // Only treat as optional function if it's exactly nil | function (no other types)
+                if (hasNil && hasFunction && !hasOther && get<FunctionType>(follow(*subProp.readTy)))
+                {
+                    isOptionalFunctionCase = true;
+                }
+            }
+        }
+
+        if (isOptionalFunctionCase)
+        {
+            // For optional function cases, use covariant subtyping
+            res.andAlso(isCovariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
+        }
+        else
+        {
+            // For other shared properties, use invariant subtyping
+            res.andAlso(isInvariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
+        }
+    }
     else
     {
         if (superProp.readTy.has_value() && subProp.readTy.has_value())
