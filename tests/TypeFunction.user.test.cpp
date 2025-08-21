@@ -12,7 +12,7 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
-LUAU_FASTFLAG(DebugLuauRenameClassToExtern)
+LUAU_FASTFLAG(LuauRenameClassToExtern)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2457,7 +2457,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_extern_tag")
     ScopedFastFlag sff[]{
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauDeclareExternType, true},
-        {FFlag::DebugLuauRenameClassToExtern, true}
+        {FFlag::LuauRenameClassToExtern, true}
     };
 
     loadDefinition(R"(
