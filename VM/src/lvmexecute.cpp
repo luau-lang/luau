@@ -244,7 +244,7 @@ reentry:
         {
             if (L->global->cb.debugstep && !luau_skipstep(LUAU_INSN_OP(*pc)))
             {
-                VM_PROTECT(luau_callhook(L, L->global->cb.debugstep, NULL));
+                VM_PROTECT(luau_callhook(L, L->global->cb.debugstep, L->global->cb.userdata));
 
                 // allow debugstep hook to put thread into error/yield state
                 if (L->status != 0)
