@@ -15,6 +15,9 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
+LUAU_FASTFLAGVARIABLE(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -95,6 +98,10 @@ struct ClonePublicInterface : Substitution
 {
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Module> module;
+    // NOTE: This can be made non-optional after
+    // LuauUseWorkspacePropToChooseSolver is clipped.
+    std::optional<SolverMode> solverMode{std::nullopt};
+    bool internalTypeEscaped = false;
 
     ClonePublicInterface(const TxnLog* log, NotNull<BuiltinTypes> builtinTypes, Module* module)
         : Substitution(log, &module->interfaceTypes)
@@ -102,6 +109,20 @@ struct ClonePublicInterface : Substitution
         , module(module)
     {
         LUAU_ASSERT(module);
+    }
+
+    ClonePublicInterface(const TxnLog* log, NotNull<BuiltinTypes> builtinTypes, Module* module, SolverMode solverMode)
+        : Substitution(log, &module->interfaceTypes)
+        , builtinTypes(builtinTypes)
+        , module(module)
+        , solverMode(solverMode)
+    {
+        LUAU_ASSERT(module);
+    }
+
+    bool isNewSolver() const
+    {
+        return FFlag::LuauSolverV2 || (FFlag::LuauUseWorkspacePropToChooseSolver && solverMode == SolverMode::New);
     }
 
     bool isDirty(TypeId ty) override
@@ -157,25 +178,44 @@ struct ClonePublicInterface : Substitution
         else if (TableType* ttv = getMutable<TableType>(result))
         {
             ttv->level = TypeLevel{0, 0};
-            if (FFlag::LuauSolverV2)
+            if (isNewSolver())
+            {
                 ttv->scope = nullptr;
+                if (FFlag::LuauLimitDynamicConstraintSolving3)
+                    ttv->state = TableState::Sealed;
+            }
         }
 
-        if (FFlag::LuauSolverV2)
+        if (isNewSolver())
         {
-            if (auto freety = getMutable<FreeType>(result))
+            if (FFlag::LuauLimitDynamicConstraintSolving3)
             {
-                module->errors.emplace_back(
-                    freety->scope->location,
-                    module->name,
-                    InternalError{"Free type is escaping its module; please report this bug at "
-                                  "https://github.com/luau-lang/luau/issues"}
-                );
-                result = builtinTypes->errorType;
+                if (is<FreeType, BlockedType, PendingExpansionType>(ty))
+                {
+                    internalTypeEscaped = true;
+                    result = builtinTypes->errorType;
+                }
+                else if (auto genericty = getMutable<GenericType>(result))
+                {
+                    genericty->scope = nullptr;
+                }
             }
-            else if (auto genericty = getMutable<GenericType>(result))
+            else
             {
-                genericty->scope = nullptr;
+                if (auto freety = getMutable<FreeType>(result))
+                {
+                    module->errors.emplace_back(
+                        freety->scope->location,
+                        module->name,
+                        InternalError{"Free type is escaping its module; please report this bug at "
+                                      "https://github.com/luau-lang/luau/issues"}
+                    );
+                    result = builtinTypes->errorType;
+                }
+                else if (auto genericty = getMutable<GenericType>(result))
+                {
+                    genericty->scope = nullptr;
+                }
             }
         }
 
@@ -184,8 +224,22 @@ struct ClonePublicInterface : Substitution
 
     TypePackId clean(TypePackId tp) override
     {
-        if (FFlag::LuauSolverV2)
+        if (isNewSolver())
         {
+            if (FFlag::LuauLimitDynamicConstraintSolving3)
+            {
+                if (is<FreeTypePack, BlockedTypePack>(tp))
+                {
+                    internalTypeEscaped = true;
+                    return builtinTypes->errorTypePack;
+                }
+
+                auto clonedTp = clone(tp);
+                if (auto gtp = getMutable<GenericTypePack>(clonedTp))
+                    gtp->scope = nullptr;
+                return clonedTp;
+            }
+
             auto clonedTp = clone(tp);
             if (auto ftp = getMutable<FreeTypePack>(clonedTp))
             {
@@ -200,6 +254,7 @@ struct ClonePublicInterface : Substitution
             else if (auto gtp = getMutable<GenericTypePack>(clonedTp))
                 gtp->scope = nullptr;
             return clonedTp;
+
         }
         else
         {
@@ -216,7 +271,11 @@ struct ClonePublicInterface : Substitution
         }
         else
         {
-            module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
+
+            if (FFlag::LuauEmplaceNotPushBack)
+                module->errors.emplace_back(module->scopes[0].first, UnificationTooComplex{});
+            else
+                module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
             return builtinTypes->errorType;
         }
     }
@@ -230,7 +289,10 @@ struct ClonePublicInterface : Substitution
         }
         else
         {
-            module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
+            if (FFlag::LuauEmplaceNotPushBack)
+                module->errors.emplace_back(module->scopes[0].first, UnificationTooComplex{});
+            else
+                module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
             return builtinTypes->errorTypePack;
         }
     }
@@ -310,6 +372,16 @@ void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes,
         *tf = clonePublicInterface.cloneTypeFun(*tf);
     }
 
+    if (FFlag::LuauLimitDynamicConstraintSolving3 && clonePublicInterface.internalTypeEscaped)
+    {
+        errors.emplace_back(
+            Location{}, // Not amazing but the best we can do.
+            name,
+            InternalError{"An internal type is escaping this module; please report this bug at "
+                "https://github.com/luau-lang/luau/issues"}
+        );
+    }
+
     // Copy external stuff over to Module itself
     this->returnType = moduleScope->returnType;
     this->exportedTypeBindings = moduleScope->exportedTypeBindings;
@@ -325,7 +397,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     std::optional<TypePackId> varargPack = mode == SolverMode::New ? std::nullopt : moduleScope->varargPack;
 
     TxnLog log;
-    ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
+    ClonePublicInterface clonePublicInterface{&log, builtinTypes, this, mode};
 
     returnType = clonePublicInterface.cloneTypePack(returnType);
 
@@ -349,6 +421,16 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     for (auto& tf : typeFunctionAliases)
     {
         *tf = clonePublicInterface.cloneTypeFun(*tf);
+    }
+
+    if (FFlag::LuauLimitDynamicConstraintSolving3 && clonePublicInterface.internalTypeEscaped)
+    {
+        errors.emplace_back(
+            Location{}, // Not amazing but the best we can do.
+            name,
+            InternalError{"An internal type is escaping this module; please report this bug at "
+                "https://github.com/luau-lang/luau/issues"}
+        );
     }
 
     // Copy external stuff over to Module itself

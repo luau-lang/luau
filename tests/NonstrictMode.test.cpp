@@ -206,7 +206,9 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 
     CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type_DEPRECATED());
     CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type_DEPRECATED());
-    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED());
+    CHECK_MESSAGE(
+        get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED()
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
@@ -325,6 +327,9 @@ TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_n
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
         {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
+        // This debug flag is normally on, but we turn it off as we're testing
+        // the exact behavior it enables.
+        {FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, false},
     };
 
     CheckResult results = check(R"(

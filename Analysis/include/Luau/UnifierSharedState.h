@@ -34,7 +34,7 @@ struct UnifierCounters
 
 struct UnifierSharedState
 {
-    UnifierSharedState(InternalErrorReporter* iceHandler)
+    explicit UnifierSharedState(InternalErrorReporter* iceHandler)
         : iceHandler(iceHandler)
     {
     }

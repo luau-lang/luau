@@ -13,6 +13,7 @@
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
@@ -21,10 +22,10 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationIntersectTablesPreservesExternTypes)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAGVARIABLE(LuauNormalizationLimitTyvarUnionSize)
+LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 namespace Luau
 {
@@ -1528,6 +1529,12 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
         clearNormal(here);
         here.tops = tops;
         return NormalizationResult::True;
+    }
+
+    if (FFlag::LuauNormalizationLimitTyvarUnionSize)
+    {
+        if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+            return NormalizationResult::HitLimits;
     }
 
     for (auto it = there.tyvars.begin(); it != there.tyvars.end(); it++)
@@ -3054,7 +3061,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     }
     else if (get<TableType>(there) || get<MetatableType>(there))
     {
-        if (useNewLuauSolver() && FFlag::LuauNormalizationIntersectTablesPreservesExternTypes)
+        if (useNewLuauSolver())
         {
             NormalizedExternType externTypes = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);
@@ -3340,11 +3347,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     {
         result.reserve(result.size() + norm.tables.size());
         for (auto table : norm.tables)
-        {
-            if (!FFlag::LuauRefineTablesWithReadType)
-                makeTableShared(table);
             result.push_back(table);
-        }
     }
     else
         result.insert(result.end(), norm.tables.begin(), norm.tables.end());
@@ -3354,7 +3357,10 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         if (get<NeverType>(intersect->tops))
         {
             TypeId ty = typeFromNormal(*intersect);
-            result.push_back(arena->addType(IntersectionType{{tyvar, ty}}));
+            if (FFlag::LuauReduceSetTypeStackPressure)
+                result.push_back(addIntersection(NotNull{arena}, builtinTypes, {tyvar, ty}));
+            else
+                result.push_back(arena->addType(IntersectionType{{tyvar, ty}}));
         }
         else
             result.push_back(tyvar);

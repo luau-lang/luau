@@ -17,15 +17,12 @@ namespace Luau
 std::string rep(const std::string& s, size_t n);
 }
 
-LUAU_FASTFLAG(LuauCompileInlineNonConstInit)
 LUAU_FASTINT(LuauCompileInlineDepth)
 LUAU_FASTINT(LuauCompileInlineThreshold)
 LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileFixTypeFunctionSkip)
-LUAU_FASTFLAG(LuauCompileCostModelConstants)
 
 using namespace Luau;
 
@@ -2990,8 +2987,6 @@ TEST_CASE("TypeFunction")
 
 TEST_CASE("NoTypeFunctionsInBytecode")
 {
-    ScopedFastFlag luauCompileFixTypeFunctionSkip{FFlag::LuauCompileFixTypeFunctionSkip, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::compileOrThrow(bcb, R"(
@@ -3616,8 +3611,6 @@ RETURN R4 1
 
 TEST_CASE("CostModelRemarks")
 {
-    ScopedFastFlag luauCompileCostModelConstants{FFlag::LuauCompileCostModelConstants, true};
-
     CHECK_EQ(
         compileWithRemarks(R"(
 local a, b = ...
@@ -7624,8 +7617,6 @@ RETURN R1 1
 
 TEST_CASE("InlineNonConstInitializers")
 {
-    ScopedFastFlag luauCompileInlineNonConstInit{FFlag::LuauCompileInlineNonConstInit, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7655,8 +7646,6 @@ RETURN R0 0
 
 TEST_CASE("InlineNonConstInitializers2")
 {
-    ScopedFastFlag luauCompileInlineNonConstInit{FFlag::LuauCompileInlineNonConstInit, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(

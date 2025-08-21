@@ -4,7 +4,7 @@
 #include "Luau/Error.h"
 #include "Luau/TxnLog.h"
 
-#include <stdexcept>
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 
 namespace Luau
 {
@@ -455,10 +455,13 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp,
 
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks)
 {
+    LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping2);
+
     tp = mappedGenericPacks.contains(tp) ? *mappedGenericPacks.find(tp) : tp;
 
     std::vector<TypeId> flattened;
     std::optional<TypePackId> tail = std::nullopt;
+    DenseHashSet<TypePackId> seenGenericPacks{nullptr};
 
     while (tp)
     {
@@ -467,9 +470,10 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp,
         for (; it != end(tp); ++it)
             flattened.push_back(*it);
 
-        if (const auto tpTail = it.tail(); tpTail && mappedGenericPacks.contains(*tpTail))
+        if (const auto tpTail = it.tail(); tpTail && !seenGenericPacks.contains(*tpTail) && mappedGenericPacks.contains(*tpTail))
         {
             tp = *mappedGenericPacks.find(*tpTail);
+            seenGenericPacks.insert(*tpTail);
             continue;
         }
 

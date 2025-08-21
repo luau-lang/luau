@@ -26,10 +26,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileInlineNonConstInit)
 LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
-
-LUAU_FASTFLAGVARIABLE(LuauCompileFixTypeFunctionSkip)
 
 namespace Luau
 {
@@ -696,10 +693,7 @@ struct Compiler
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
                 if (int reg = le ? getExprLocalReg(le) : -1; reg >= 0 && (!lv || !lv->written))
                 {
-                    if (FFlag::LuauCompileInlineNonConstInit)
-                        args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc, lv ? lv->init : nullptr});
-                    else
-                        args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc});
+                    args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc, lv ? lv->init : nullptr});
                 }
                 else
                 {
@@ -725,7 +719,7 @@ struct Compiler
             {
                 pushLocal(arg.local, arg.reg, arg.allocpc);
 
-                if (FFlag::LuauCompileInlineNonConstInit && arg.init)
+                if (arg.init)
                 {
                     if (Variable* lv = variables.find(arg.local))
                         lv->init = arg.init;
@@ -785,11 +779,8 @@ struct Compiler
             if (Constant* var = locstants.find(local))
                 var->type = Constant::Type_Unknown;
 
-            if (FFlag::LuauCompileInlineNonConstInit)
-            {
-                if (Variable* lv = variables.find(local))
-                    lv->init = nullptr;
-            }
+            if (Variable* lv = variables.find(local))
+                lv->init = nullptr;
         }
 
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body);
@@ -1936,7 +1927,8 @@ struct Compiler
                     CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
                 LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
-                shape.keys[shape.length++] = int16_t(cid);
+
+                shape.keys[shape.length++] = cid;
             }
 
             int32_t tid = bytecode.addConstantTable(shape);
@@ -3956,7 +3948,7 @@ struct Compiler
 
         bool visit(AstStatTypeFunction* node) override
         {
-            return !FFlag::LuauCompileFixTypeFunctionSkip;
+            return false;
         }
     };
 

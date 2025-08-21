@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
@@ -62,6 +63,7 @@ struct SimplifyFixture : Fixture
     TypeId anotherChildClassTy = nullptr;
     TypeId unrelatedClassTy = nullptr;
 
+    // This only affects type stringification.
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     SimplifyFixture()
@@ -617,6 +619,28 @@ TEST_CASE_FIXTURE(SimplifyFixture, "cyclic_never_union_and_string")
     leftUnion->options[0] = leftType;
 
     CHECK(getBuiltins()->stringType == union_(leftType, getBuiltins()->stringType));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "any & (error | string)")
+{
+    ScopedFastFlag sff{FFlag::LuauSimplifyAnyAndUnion, true};
+
+    TypeId errStringTy = arena->addType(UnionType{{getBuiltins()->errorType, getBuiltins()->stringType}});
+
+    auto res = intersect(builtinTypes->anyType, errStringTy);
+
+    CHECK("*error-type* | string" == toString(res));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "(error | string) & any")
+{
+    ScopedFastFlag sff{FFlag::LuauSimplifyAnyAndUnion, true};
+
+    TypeId errStringTy = arena->addType(UnionType{{getBuiltins()->errorType, getBuiltins()->stringType}});
+
+    auto res = intersect(errStringTy, builtinTypes->anyType);
+
+    CHECK("*error-type* | string" == toString(res));
 }
 
 TEST_SUITE_END();

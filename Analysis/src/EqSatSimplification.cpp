@@ -12,7 +12,6 @@
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFunction.h"
-#include "Luau/VisitType.h"
 
 #include <fstream>
 #include <iomanip>
@@ -25,7 +24,6 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSimplification)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSimplificationToDot)
 LUAU_FASTFLAGVARIABLE(DebugLuauExtraEqSatSanityChecks)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau::EqSatSimplification
 {
@@ -2371,15 +2369,10 @@ void Simplifier::intersectTableProperty(Id id)
                             }
 
                             Id newTableProp =
-                                FFlag::LuauRemoveTypeCallsForReadWriteProps
-                                    ? egraph.add(Intersection{
-                                          toId(egraph, builtinTypes, mappingIdToClass, stringCache, *it->second.readTy),
-                                          toId(egraph, builtinTypes, mappingIdToClass, stringCache, *table1Ty->props.begin()->second.readTy)
-                                      })
-                                    : egraph.add(Intersection{
-                                          toId(egraph, builtinTypes, mappingIdToClass, stringCache, it->second.type_DEPRECATED()),
-                                          toId(egraph, builtinTypes, mappingIdToClass, stringCache, table1Ty->props.begin()->second.type_DEPRECATED())
-                                      });
+                                egraph.add(Intersection{
+                                    toId(egraph, builtinTypes, mappingIdToClass, stringCache, *it->second.readTy),
+                                    toId(egraph, builtinTypes, mappingIdToClass, stringCache, *table1Ty->props.begin()->second.readTy)
+                                });
 
                             newIntersectionParts.push_back(egraph.add(TTable{jId, {stringCache.add(it->first)}, {newTableProp}}));
 
@@ -2451,10 +2444,7 @@ void Simplifier::unneededTableModification(Id id)
                 StringId propName = tbl->propNames[i];
                 const Id propType = tbl->propTypes()[i];
 
-                Id importedProp =
-                    FFlag::LuauRemoveTypeCallsForReadWriteProps
-                        ? toId(egraph, builtinTypes, mappingIdToClass, stringCache, *tt->props.at(stringCache.asString(propName)).readTy)
-                        : toId(egraph, builtinTypes, mappingIdToClass, stringCache, tt->props.at(stringCache.asString(propName)).type_DEPRECATED());
+                Id importedProp = toId(egraph, builtinTypes, mappingIdToClass, stringCache, *tt->props.at(stringCache.asString(propName)).readTy);
 
                 if (find(importedProp) != find(propType))
                 {

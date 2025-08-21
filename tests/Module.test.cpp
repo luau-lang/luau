@@ -14,7 +14,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINT(LuauTypeCloneIterationLimit)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -138,8 +137,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 
     CHECK_EQ(std::optional<std::string>{"Cyclic"}, ttv->syntheticName);
 
-
-    TypeId methodType = FFlag::LuauRemoveTypeCallsForReadWriteProps ? *ttv->props["get"].readTy : ttv->props["get"].type_DEPRECATED();
+    TypeId methodType = *ttv->props["get"].readTy;
     REQUIRE(methodType != nullptr);
 
     const FunctionType* ftv = get<FunctionType>(methodType);
@@ -172,7 +170,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
     TableType* ctt = getMutable<TableType>(cloneTy);
     REQUIRE(ctt);
 
-    TypeId clonedMethodType = FFlag::LuauRemoveTypeCallsForReadWriteProps ? *ctt->props["get"].readTy : ctt->props["get"].type_DEPRECATED();
+    TypeId clonedMethodType = *ctt->props["get"].readTy;
     REQUIRE(clonedMethodType);
 
     const FunctionType* cmf = get<FunctionType>(clonedMethodType);
@@ -201,7 +199,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     TableType* exportsTable = getMutable<TableType>(*exports);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId signType = FFlag::LuauRemoveTypeCallsForReadWriteProps ? *exportsTable->props["sign"].readTy : exportsTable->props["sign"].type_DEPRECATED();
+    TypeId signType = *exportsTable->props["sign"].readTy;
     REQUIRE(signType != nullptr);
 
     CHECK(!isInArena(signType, module->interfaceTypes));
@@ -355,17 +353,9 @@ TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
     for (int i = 0; i < nesting; i++)
     {
         TableType* ttv = getMutable<TableType>(nested);
-        if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-        {
-            ttv->props["a"].readTy = src.addType(TableType{});
-            ttv->props["a"].writeTy = ttv->props["a"].readTy;
-            nested = *ttv->props["a"].readTy;
-        }
-        else
-        {
-            ttv->props["a"].setType(src.addType(TableType{}));
-            nested = ttv->props["a"].type_DEPRECATED();
-        }
+        ttv->props["a"].readTy = src.addType(TableType{});
+        ttv->props["a"].writeTy = ttv->props["a"].readTy;
+        nested = *ttv->props["a"].readTy;
     }
 
     TypeArena dest;
@@ -456,10 +446,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
     TypeId typeB = modBiter->second.type;
     TableType* tableB = getMutable<TableType>(typeB);
     REQUIRE(tableB);
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-        CHECK(typeA == tableB->props["q"].readTy);
-    else
-        CHECK(typeA == tableB->props["q"].type_DEPRECATED());
+    CHECK(typeA == tableB->props["q"].readTy);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
@@ -493,13 +480,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
     TableType* tableB = getMutable<TableType>(*typeB);
     REQUIRE_MESSAGE(tableB, "Expected a table, but got " << toString(*typeB));
 
-    if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
-    {
-        CHECK(tableA->props["a"].readTy == tableB->props["b"].readTy);
-        CHECK(tableA->props["a"].writeTy == tableB->props["b"].writeTy);
-    }
-    else
-        CHECK(tableA->props["a"].type_DEPRECATED() == tableB->props["b"].type_DEPRECATED());
+    CHECK(tableA->props["a"].readTy == tableB->props["b"].readTy);
+    CHECK(tableA->props["a"].writeTy == tableB->props["b"].writeTy);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_table_bound_to_table_bound_to_table")

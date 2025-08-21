@@ -13,8 +13,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauWriteOnlyPropertyMangling)
-
 namespace Luau
 {
 
@@ -195,20 +193,10 @@ TypeId matchLiteralType(
 
                 Property& prop = it->second;
 
-                if (FFlag::LuauWriteOnlyPropertyMangling)
-                {
-                    // If the property is write-only, do nothing.
-                    if (prop.isWriteOnly())
-                        continue;
-                }
-                else
-                {
-                    // If we encounter a duplcate property, we may have already
-                    // set it to be read-only. If that's the case, the only thing
-                    // that will definitely crash is trying to access a write
-                    // only property.
-                    LUAU_ASSERT(!prop.isWriteOnly());
-                }
+                // If the property is write-only, do nothing.
+                if (prop.isWriteOnly())
+                    continue;
+
                 TypeId propTy = *prop.readTy;
 
                 auto it2 = expectedTableTy->props.find(keyStr);

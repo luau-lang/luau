@@ -12,7 +12,6 @@
 #include "Luau/TypeFunction.h"
 
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <unordered_set>
@@ -20,9 +19,8 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_FASTFLAGVARIABLE(LuauBetterCannotCallFunctionPrimitive)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -427,7 +425,7 @@ struct ErrorConverter
             }
             else
             {
-                if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                if (FFlag::LuauSolverV2)
                     return it->second.readTy;
                 else
                     return it->second.type_DEPRECATED();
@@ -462,11 +460,8 @@ struct ErrorConverter
             return err;
         }
 
-        if (FFlag::LuauBetterCannotCallFunctionPrimitive)
-        {
-            if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
-                return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
-        }
+        if (auto primitiveTy = get<PrimitiveType>(follow(e.ty)); primitiveTy && primitiveTy->type == PrimitiveType::Function)
+            return "The type " + toString(e.ty) + " is not precise enough for us to determine the appropriate result type of this call.";
 
         return "Cannot call a value of type " + toString(e.ty);
     }
@@ -785,8 +780,12 @@ struct ErrorConverter
     std::string operator()(const CheckedFunctionCallError& e) const
     {
         // TODO: What happens if checkedFunctionName cannot be found??
-        return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
-               ", but got '" + Luau::toString(e.passed) + "'";
+        if (FFlag::LuauNewNonStrictReportsOneIndexedErrors)
+            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
+                   std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
+        else
+            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
+                   ", but got '" + Luau::toString(e.passed) + "'";
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
@@ -870,7 +869,7 @@ struct ErrorConverter
     std::string operator()(const CannotCheckDynamicStringFormatCalls& e) const
     {
         return "We cannot statically check the type of `string.format` when called with a format string that is not statically known.\n"
-            "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.";
+               "If you'd like to use an unchecked `string.format` call, you can cast the format string to `any` using `:: any`.";
     }
 
 
@@ -889,6 +888,11 @@ struct ErrorConverter
     std::string operator()(const MultipleNonviableOverloads& e) const
     {
         return "None of the overloads for function that accept " + std::to_string(e.attemptedArgCount) + " arguments are compatible.";
+    }
+
+    std::string operator()(const RecursiveRestraintViolation& e) const
+    {
+        return "Recursive type being used with different parameters.";
     }
 };
 
@@ -1514,6 +1518,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, MultipleNonviableOverloads>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, RecursiveRestraintViolation>)
     {
     }
     else

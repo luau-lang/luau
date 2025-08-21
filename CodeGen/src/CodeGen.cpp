@@ -41,7 +41,6 @@
 #endif
 #endif
 
-LUAU_FASTFLAGVARIABLE(DebugCodegenNoOpt)
 LUAU_FASTFLAGVARIABLE(DebugCodegenOptSize)
 LUAU_FASTFLAGVARIABLE(DebugCodegenSkipNumbering)
 

@@ -10,8 +10,9 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauArityMismatchOnUndersaturatedUnknownArguments)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping)
+LUAU_FASTFLAG(LuauLimitUnification)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 namespace Luau
 {
@@ -48,7 +49,23 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(T
         {
             Subtyping::Variance variance = subtyping.variance;
             subtyping.variance = Subtyping::Variance::Contravariant;
-            SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
+            SubtypingResult r;
+            if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
+            {
+                std::vector<TypeId> generics;
+                generics.reserve(ftv->generics.size());
+                for (TypeId g : ftv->generics)
+                {
+                    g = follow(g);
+                    if (get<GenericType>(g))
+                        generics.emplace_back(g);
+                }
+                r = subtyping.isSubtype(
+                    argsPack, ftv->argTypes, scope, !generics.empty() ? std::optional<std::vector<TypeId>>{generics} : std::nullopt
+                );
+            }
+            else
+                r = subtyping.isSubtype(argsPack, ftv->argTypes, scope);
             subtyping.variance = variance;
 
             if (!useFreeTypeBounds && !r.assumedConstraints.empty())
@@ -247,9 +264,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 )
 {
     TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, ice, limits};
-    FunctionGraphReductionResult result = reduceTypeFunctions(
-        fnTy, callLoc, NotNull{&context}, /*force=*/true
-    );
+    FunctionGraphReductionResult result = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!result.errors.empty())
         return {OverloadIsNonviable, result.errors};
 
@@ -301,36 +316,23 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             // nil or are `unknown`, then this overload does not match.
             for (size_t i = firstUnsatisfiedArgument; i < requiredHead.size(); ++i)
             {
-                if (FFlag::LuauArityMismatchOnUndersaturatedUnknownArguments)
+                if (get<UnknownType>(follow(requiredHead[i])) || !subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
                 {
-                    if (get<UnknownType>(follow(requiredHead[i])) || !subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
-                    {
-                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                        for (auto arg : fn->argTypes)
-                            if (get<UnknownType>(follow(arg)))
-                                minParams += 1;
+                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                    for (auto arg : fn->argTypes)
+                        if (get<UnknownType>(follow(arg)))
+                            minParams += 1;
 
-                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
+                    TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
 
-                        return {Analysis::ArityMismatch, {std::move(error)}};
-                    }
-                }
-                else
-                {
-                    if (!subtyping.isSubtype(builtinTypes->nilType, requiredHead[i], scope).isSubtype)
-                    {
-                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, isVariadic}};
-
-                        return {Analysis::ArityMismatch, {std::move(error)}};
-                    }
+                    return {Analysis::ArityMismatch, {std::move(error)}};
                 }
             }
 
             return {Analysis::Ok, {}};
         }
 
-        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
         {
             // If we have an arity mismatch with generic type pack parameters, then subPath matches Args :: Tail :: ...
             // and superPath matches Args :: ...
@@ -405,15 +407,15 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                           : argExprs->size() != 0        ? argExprs->back()->location
                                                          : fnExpr->location;
 
-            std::optional<TypeId> failedSubTy = FFlag::LuauReturnMappedGenericPacksFromSubtyping
+            std::optional<TypeId> failedSubTy = FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                                                     ? traverseForType(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                                                     : traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes);
             std::optional<TypeId> failedSuperTy =
-                FFlag::LuauReturnMappedGenericPacksFromSubtyping
+                FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                     ? traverseForType(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                     : traverseForType_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
                 maybeEmplaceError(&errors, argLocation, &reason, failedSubTy, failedSuperTy);
             else if (failedSubTy && failedSuperTy)
             {
@@ -443,7 +445,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 }
             }
         }
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping && reason.superPath.components.size() > 1)
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2 && reason.superPath.components.size() > 1)
         {
             // traverseForIndex only has a value if path is of form [...PackSlice, Index]
             if (const auto index =
@@ -466,11 +468,11 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             }
         }
 
-        std::optional<TypePackId> failedSubPack = FFlag::LuauReturnMappedGenericPacksFromSubtyping
+        std::optional<TypePackId> failedSubPack = FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                                                       ? traverseForPack(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                                                       : traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes);
         std::optional<TypePackId> failedSuperPack =
-            FFlag::LuauReturnMappedGenericPacksFromSubtyping
+            FFlag::LuauReturnMappedGenericPacksFromSubtyping2
                 ? traverseForPack(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks}, arena)
                 : traverseForPack_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 
@@ -600,7 +602,7 @@ SolveResult solveFunctionCall(
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, resultPack});
     Unifier2 u2{NotNull{arena}, builtinTypes, scope, iceReporter};
 
-    const bool occursCheckPassed = u2.unify(*overloadToUse, inferredTy);
+    const UnifyResult unifyResult = u2.unify(*overloadToUse, inferredTy);
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
@@ -614,8 +616,23 @@ SolveResult solveFunctionCall(
             resultPack = *subst;
     }
 
-    if (!occursCheckPassed)
-        return {SolveResult::OccursCheckFailed};
+    if (FFlag::LuauLimitUnification)
+    {
+        switch (unifyResult)
+        {
+            case Luau::UnifyResult::Ok:
+                break;
+            case Luau::UnifyResult::OccursCheckFailed:
+                return {SolveResult::CodeTooComplex};
+            case Luau::UnifyResult::TooComplex:
+                return {SolveResult::OccursCheckFailed};
+        }
+    }
+    else
+    {
+        if (unifyResult != UnifyResult::Ok)
+            return {SolveResult::OccursCheckFailed};
+    }
 
     SolveResult result;
     result.result = SolveResult::Ok;

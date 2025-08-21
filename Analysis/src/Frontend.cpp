@@ -16,12 +16,10 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
-#include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/Variant.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -29,7 +27,6 @@
 #include <condition_variable>
 #include <exception>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 
 LUAU_FASTINT(LuauTypeInferIterationLimit)
@@ -44,11 +41,12 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_FASTFLAGVARIABLE(LuauExpectedTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauTrackTypeAllocations)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
+LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -127,14 +125,24 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
     {
         for (auto& [name, prop] : ttv->props)
         {
-            prop.documentationSymbol = rootName + "." + name;
+            std::string n;
+            n.reserve(rootName.size() + 1 + name.size());
+            n += rootName;
+            n += ".";
+            n += name;
+            prop.documentationSymbol = std::move(n);
         }
     }
     else if (ExternType* etv = getMutable<ExternType>(ty))
     {
         for (auto& [name, prop] : etv->props)
         {
-            prop.documentationSymbol = rootName + "." + name;
+            std::string n;
+            n.reserve(rootName.size() + 1 + name.size());
+            n += rootName;
+            n += ".";
+            n += name;
+            prop.documentationSymbol = std::move(n);
         }
     }
 }
@@ -168,7 +176,15 @@ static void persistCheckedTypes(ModulePtr checkedModule, GlobalTypes& globals, S
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
         TypeId globalTy = clone(ty, globals.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/global/" + name;
+
+        static constexpr const char infix[] = "/global/";
+        constexpr int infixLength = sizeof(infix) - 1; // exclude the null terminator
+        std::string documentationSymbol;
+        documentationSymbol.reserve(packageName.size() + infixLength + name.size());
+        documentationSymbol += packageName;
+        documentationSymbol += infix;
+        documentationSymbol += name;
+
         generateDocumentationSymbols(globalTy, documentationSymbol);
         targetScope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
 
@@ -178,7 +194,15 @@ static void persistCheckedTypes(ModulePtr checkedModule, GlobalTypes& globals, S
     for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
     {
         TypeFun globalTy = clone(ty, globals.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/globaltype/" + name;
+
+        static constexpr const char infix[] = "/globaltype/";
+        constexpr int infixLength = sizeof(infix) - 1; // exclude the null terminator
+        std::string documentationSymbol;
+        documentationSymbol.reserve(packageName.size() + infixLength + name.size());
+        documentationSymbol += packageName;
+        documentationSymbol += infix;
+        documentationSymbol += name;
+
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
         targetScope->exportedTypeBindings[name] = globalTy;
 
@@ -210,7 +234,8 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(
     if (parseResult.errors.size() > 0)
         return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), nullptr};
 
-    ModulePtr checkedModule = check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, {});
+    Frontend::Stats dummyStats;
+    ModulePtr checkedModule = check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, dummyStats, {});
 
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), std::move(checkedModule)};
@@ -223,7 +248,7 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(
 namespace
 {
 
-static ErrorVec accumulateErrors(
+ErrorVec accumulateErrors(
     const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes,
     ModuleResolver& moduleResolver,
     const ModuleName& name
@@ -276,7 +301,7 @@ static ErrorVec accumulateErrors(
     return result;
 }
 
-static void filterLintOptions(LintOptions& lintOptions, const std::vector<HotComment>& hotcomments, Mode mode)
+void filterLintOptions(LintOptions& lintOptions, const std::vector<HotComment>& hotcomments, Mode mode)
 {
     uint64_t ignoreLints = LintWarning::parseMask(hotcomments);
 
@@ -368,7 +393,10 @@ std::vector<RequireCycle> getRequireCycles(
 
         if (!cycle.empty())
         {
-            result.push_back({depLocation, std::move(cycle)});
+            if (FFlag::LuauEmplaceNotPushBack)
+                result.emplace_back(RequireCycle{depLocation, std::move(cycle)});
+            else
+                result.push_back({depLocation, std::move(cycle)});
 
             // note: if we didn't find a cycle, all nodes that we've seen don't depend [transitively] on start
             // so it's safe to *only* clear seen vector when we find a cycle
@@ -401,7 +429,7 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
 {
 }
 
-void Frontend::setLuauSolverSelectionFromWorkspace(SolverMode mode)
+void Frontend::setLuauSolverMode(SolverMode mode)
 {
     useNewLuauSolver.store(mode);
 }
@@ -987,6 +1015,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
             environmentScope,
             /*forAutocomplete*/ true,
             /*recordJsonLog*/ false,
+            item.stats,
             std::move(typeCheckLimits)
         );
 
@@ -1016,7 +1045,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         return;
     }
 
-    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, std::move(typeCheckLimits));
+    ModulePtr module =
+        check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, item.stats, std::move(typeCheckLimits));
 
     double duration = getTimestamp() - timestamp;
 
@@ -1026,8 +1056,8 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         applyInternalLimitScaling(sourceNode, module, *item.options.moduleTimeLimitSec);
 
     item.stats.timeCheck += duration;
-    item.stats.filesStrict += mode == Mode::Strict;
-    item.stats.filesNonstrict += mode == Mode::Nonstrict;
+    item.stats.filesStrict += (mode == Mode::Strict) ? 1 : 0;
+    item.stats.filesNonstrict += (mode == Mode::Nonstrict) ? 1 : 0;
 
     if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
     {
@@ -1100,7 +1130,10 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     ErrorVec parseErrors;
 
     for (const ParseError& pe : sourceModule.parseErrors)
-        parseErrors.push_back(TypeError{pe.getLocation(), item.name, SyntaxError{pe.what()}});
+        if (FFlag::LuauEmplaceNotPushBack)
+            parseErrors.emplace_back(pe.getLocation(), item.name, SyntaxError{pe.what()});
+        else
+            parseErrors.push_back(TypeError{pe.getLocation(), item.name, SyntaxError{pe.what()}});
 
     module->errors.insert(module->errors.begin(), parseErrors.begin(), parseErrors.end());
 
@@ -1169,6 +1202,8 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
         stats.strSingletonsMinted += item.stats.strSingletonsMinted;
         stats.uniqueStrSingletonsMinted += item.stats.uniqueStrSingletonsMinted;
     }
+
+    stats.dynamicConstraintsCreated += item.stats.dynamicConstraintsCreated;
 }
 
 void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
@@ -1328,46 +1363,16 @@ SourceModule* Frontend::getSourceModule(const ModuleName& moduleName)
 
 const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) const
 {
-    return const_cast<Frontend*>(this)->getSourceModule(moduleName);
-}
-
-ModulePtr check(
-    const SourceModule& sourceModule,
-    Mode mode,
-    const std::vector<RequireCycle>& requireCycles,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler,
-    NotNull<ModuleResolver> moduleResolver,
-    NotNull<FileResolver> fileResolver,
-    const ScopePtr& parentScope,
-    const ScopePtr& typeFunctionScope,
-    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
-    FrontendOptions options,
-    TypeCheckLimits limits,
-    std::function<void(const ModuleName&, std::string)> writeJsonLog
-)
-{
-    const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson;
-    return check(
-        sourceModule,
-        mode,
-        requireCycles,
-        builtinTypes,
-        iceHandler,
-        moduleResolver,
-        fileResolver,
-        parentScope,
-        typeFunctionScope,
-        std::move(prepareModuleScope),
-        std::move(options),
-        std::move(limits),
-        recordJsonLog,
-        std::move(writeJsonLog)
-    );
+    return const_cast<Frontend*>(this)->getSourceModule(moduleName); // NOLINT(cppcoreguidelines-pro-type-const-cast)
 }
 
 struct InternalTypeFinder : TypeOnceVisitor
 {
+    InternalTypeFinder()
+        : TypeOnceVisitor("InternalTypeFinder")
+    {
+    }
+
     bool visit(TypeId, const ExternType&) override
     {
         return false;
@@ -1424,6 +1429,7 @@ ModulePtr check(
     FrontendOptions options,
     TypeCheckLimits limits,
     bool recordJsonLog,
+    Frontend::Stats& stats,
     std::function<void(const ModuleName&, std::string)> writeJsonLog
 )
 {
@@ -1548,6 +1554,8 @@ ModulePtr check(
         result->cancelled = true;
     }
 
+    stats.dynamicConstraintsCreated += cs->solverConstraints.size();
+
     if (recordJsonLog)
     {
         std::string output = logger->compileOutput();
@@ -1634,18 +1642,51 @@ ModulePtr check(
             result->errors.clear();
     }
 
-    if (FFlag::LuauExpectedTypeVisitor)
+    ExpectedTypeVisitor etv{
+        NotNull{&result->astTypes},
+        NotNull{&result->astExpectedTypes},
+        NotNull{&result->astResolvedTypes},
+        NotNull{&result->internalTypes},
+        builtinTypes,
+        NotNull{parentScope.get()}
+    };
+    sourceModule.root->visit(&etv);
+
+    // NOTE: This used to be done prior to cloning the public interface, but
+    // we now replace "internal" types with `*error-type*`.
+    if (FFlag::LuauLimitDynamicConstraintSolving3)
     {
-        ExpectedTypeVisitor etv{
-            NotNull{&result->astTypes},
-            NotNull{&result->astExpectedTypes},
-            NotNull{&result->astResolvedTypes},
-            NotNull{&result->internalTypes},
-            builtinTypes,
-            NotNull{parentScope.get()}
-        };
-        sourceModule.root->visit(&etv);
+        if (FFlag::DebugLuauForbidInternalTypes)
+        {
+            InternalTypeFinder finder;
+
+            // `result->returnType` is not filled in yet, so we
+            // traverse the return type of the root module.
+            finder.traverse(result->getModuleScope()->returnType);
+
+            for (const auto& [_, binding] : result->exportedTypeBindings)
+                finder.traverse(binding.type);
+
+            for (const auto& [_, ty] : result->astTypes)
+                finder.traverse(ty);
+
+            for (const auto& [_, ty] : result->astExpectedTypes)
+                finder.traverse(ty);
+
+            for (const auto& [_, tp] : result->astTypePacks)
+                finder.traverse(tp);
+
+            for (const auto& [_, ty] : result->astResolvedTypes)
+                finder.traverse(ty);
+
+            for (const auto& [_, ty] : result->astOverloadResolvedTypes)
+                finder.traverse(ty);
+
+            for (const auto& [_, tp] : result->astResolvedTypePacks)
+                finder.traverse(tp);
+        }
     }
+
 
     unfreeze(result->interfaceTypes);
     if (FFlag::LuauUseWorkspacePropToChooseSolver)
@@ -1653,32 +1694,35 @@ ModulePtr check(
     else
         result->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
 
-    if (FFlag::DebugLuauForbidInternalTypes)
+    if (!FFlag::LuauLimitDynamicConstraintSolving3)
     {
-        InternalTypeFinder finder;
+        if (FFlag::DebugLuauForbidInternalTypes)
+        {
+            InternalTypeFinder finder;
 
-        finder.traverse(result->returnType);
+            finder.traverse(result->returnType);
 
-        for (const auto& [_, binding] : result->exportedTypeBindings)
-            finder.traverse(binding.type);
+            for (const auto& [_, binding] : result->exportedTypeBindings)
+                finder.traverse(binding.type);
 
-        for (const auto& [_, ty] : result->astTypes)
-            finder.traverse(ty);
+            for (const auto& [_, ty] : result->astTypes)
+                finder.traverse(ty);
 
-        for (const auto& [_, ty] : result->astExpectedTypes)
-            finder.traverse(ty);
+            for (const auto& [_, ty] : result->astExpectedTypes)
+                finder.traverse(ty);
 
-        for (const auto& [_, tp] : result->astTypePacks)
-            finder.traverse(tp);
+            for (const auto& [_, tp] : result->astTypePacks)
+                finder.traverse(tp);
 
-        for (const auto& [_, ty] : result->astResolvedTypes)
-            finder.traverse(ty);
+            for (const auto& [_, ty] : result->astResolvedTypes)
+                finder.traverse(ty);
 
-        for (const auto& [_, ty] : result->astOverloadResolvedTypes)
-            finder.traverse(ty);
+            for (const auto& [_, ty] : result->astOverloadResolvedTypes)
+                finder.traverse(ty);
 
-        for (const auto& [_, tp] : result->astResolvedTypePacks)
-            finder.traverse(tp);
+            for (const auto& [_, tp] : result->astResolvedTypePacks)
+                finder.traverse(tp);
+        }
     }
 
     // It would be nice if we could freeze the arenas before doing type
@@ -1705,6 +1749,7 @@ ModulePtr Frontend::check(
     std::optional<ScopePtr> environmentScope,
     bool forAutocomplete,
     bool recordJsonLog,
+    Frontend::Stats& stats,
     TypeCheckLimits typeCheckLimits
 )
 {
@@ -1732,6 +1777,7 @@ ModulePtr Frontend::check(
                 options,
                 std::move(typeCheckLimits),
                 recordJsonLog,
+                stats,
                 writeJsonLog
             );
         }

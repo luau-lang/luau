@@ -11,7 +11,6 @@
 #include <unordered_set>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 namespace Luau
 {
@@ -190,27 +189,22 @@ void StateDot::visitChildren(TypeId ty, int index)
 
             for (const auto& [name, prop] : t.props)
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                if (prop.isShared())
+                    visitChild(*prop.readTy, index, name.c_str());
+                else
                 {
-                    if (prop.isShared())
-                        visitChild(*prop.readTy, index, name.c_str());
-                    else
+                    if (prop.readTy)
                     {
-                        if (prop.readTy)
-                        {
-                            std::string readName = "read " + name;
-                            visitChild(*prop.readTy, index, readName.c_str());
-                        }
+                        std::string readName = "read " + name;
+                        visitChild(*prop.readTy, index, readName.c_str());
+                    }
 
-                        if (prop.writeTy)
-                        {
-                            std::string writeName = "write " + name;
-                            visitChild(*prop.writeTy, index, writeName.c_str());
-                        }
+                    if (prop.writeTy)
+                    {
+                        std::string writeName = "write " + name;
+                        visitChild(*prop.writeTy, index, writeName.c_str());
                     }
                 }
-                else
-                    visitChild(prop.type_DEPRECATED(), index, name.c_str());
             }
             if (t.indexer)
             {
@@ -330,27 +324,22 @@ void StateDot::visitChildren(TypeId ty, int index)
 
             for (const auto& [name, prop] : t.props)
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+                if (prop.isShared())
+                    visitChild(*prop.readTy, index, name.c_str());
+                else
                 {
-                    if (prop.isShared())
-                        visitChild(*prop.readTy, index, name.c_str());
-                    else
+                    if (prop.readTy)
                     {
-                        if (prop.readTy)
-                        {
-                            std::string readName = "read " + name;
-                            visitChild(*prop.readTy, index, readName.c_str());
-                        }
+                        std::string readName = "read " + name;
+                        visitChild(*prop.readTy, index, readName.c_str());
+                    }
 
-                        if (prop.writeTy)
-                        {
-                            std::string writeName = "write " + name;
-                            visitChild(*prop.writeTy, index, writeName.c_str());
-                        }
+                    if (prop.writeTy)
+                    {
+                        std::string writeName = "write " + name;
+                        visitChild(*prop.writeTy, index, writeName.c_str());
                     }
                 }
-                else
-                    visitChild(prop.type_DEPRECATED(), index, name.c_str());
             }
 
             if (t.parent)

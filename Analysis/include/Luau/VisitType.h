@@ -12,6 +12,7 @@
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSolverAgnosticVisitType)
+LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 namespace Luau
 {
@@ -73,6 +74,8 @@ struct GenericTypeVisitor
 {
     using Set = S;
 
+    const std::string visitorName;
+
     Set seen;
     bool skipBoundTypes = false;
     int recursionCounter = 0;
@@ -80,8 +83,9 @@ struct GenericTypeVisitor
 
     GenericTypeVisitor() = default;
 
-    explicit GenericTypeVisitor(Set seen, bool skipBoundTypes = false)
-        : seen(std::move(seen))
+    explicit GenericTypeVisitor(const std::string visitorName, Set seen, bool skipBoundTypes = false)
+        : visitorName(visitorName)
+        , seen(std::move(seen))
         , skipBoundTypes(skipBoundTypes)
     {
     }
@@ -215,7 +219,21 @@ struct GenericTypeVisitor
 
     void traverse(TypeId ty)
     {
-        RecursionLimiter limiter{&recursionCounter, FInt::LuauVisitRecursionLimit};
+        // Morally, if `skipBoundTypes` is set, then whenever we
+        // encounter a bound type we should "skip" ahead to the first
+        // non-bound type. This helps keep stack pressure in check
+        // while using bound types instead of mutating types in place
+        // elsewhere (such as in generalization).
+        //
+        // We do this check here such that we now will now treat all
+        // bound types as if they're direct pointers to some final
+        // non-bound type. If we do the check later, then we might
+        // get slightly different behavior depending on the exact
+        // entry point for cyclic types.
+        if (FFlag::LuauReduceSetTypeStackPressure && is<BoundType>(ty) && skipBoundTypes)
+            ty = follow(ty);
+
+        RecursionLimiter limiter{visitorName, &recursionCounter, FInt::LuauVisitRecursionLimit};
 
         if (visit_detail::hasSeen(seen, ty))
         {
@@ -225,10 +243,21 @@ struct GenericTypeVisitor
 
         if (auto btv = get<BoundType>(ty))
         {
-            if (skipBoundTypes)
-                traverse(btv->boundTo);
-            else if (visit(ty, *btv))
-                traverse(btv->boundTo);
+            if (FFlag::LuauReduceSetTypeStackPressure)
+            {
+                // At this point, we know that `skipBoundTypes` is false, as
+                // otherwise we would have hit the above branch.
+                LUAU_ASSERT(!skipBoundTypes);
+                if (visit(ty, *btv))
+                    traverse(btv->boundTo);
+            }
+            else
+            {
+                if (skipBoundTypes)
+                    traverse(btv->boundTo);
+                else if (visit(ty, *btv))
+                    traverse(btv->boundTo);
+            }
         }
         else if (auto ftv = get<FreeType>(ty))
         {
@@ -527,8 +556,8 @@ struct GenericTypeVisitor
  */
 struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 {
-    explicit TypeVisitor(bool skipBoundTypes = false)
-        : GenericTypeVisitor{{}, skipBoundTypes}
+    explicit TypeVisitor(const std::string visitorName, bool skipBoundTypes = false)
+        : GenericTypeVisitor{visitorName, {}, skipBoundTypes}
     {
     }
 };
@@ -536,8 +565,8 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
 struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
-    explicit TypeOnceVisitor(bool skipBoundTypes = false)
-        : GenericTypeVisitor{DenseHashSet<void*>{nullptr}, skipBoundTypes}
+    explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes = false)
+        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{nullptr}, skipBoundTypes}
     {
     }
 };

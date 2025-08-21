@@ -231,7 +231,7 @@ std::string toString(const TypePath::Path& path, bool prefixDot = false);
 /// Converts a Path to a human readable string for error reporting.
 std::string toStringHuman(const TypePath::Path& path);
 
-// TODO: clip traverse_DEPRECATED along with `LuauReturnMappedGenericPacksFromSubtyping`
+// TODO: clip traverse_DEPRECATED along with `LuauReturnMappedGenericPacksFromSubtyping2`
 std::optional<TypeOrPack> traverse_DEPRECATED(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse_DEPRECATED(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse(

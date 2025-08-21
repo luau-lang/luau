@@ -33,17 +33,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAGVARIABLE(LuauNotAllBinaryTypeFunsHaveDefaults)
-LUAU_FASTFLAG(LuauUpdateGetMetatableTypeSignature)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_FASTFLAGVARIABLE(LuauOccursCheckForRefinement)
-LUAU_FASTFLAGVARIABLE(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAG(LuauRefineTablesWithReadType)
-LUAU_FASTFLAGVARIABLE(LuauEmptyStringInKeyOf)
-LUAU_FASTFLAGVARIABLE(LuauAvoidExcessiveTypeCopying)
 
 namespace Luau
 {
@@ -59,6 +50,12 @@ struct InstanceCollector : TypeOnceVisitor
     TypeOrTypePackIdSet shouldGuess{nullptr};
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
+
+
+    InstanceCollector()
+        : TypeOnceVisitor("InstanceCollector")
+    {
+    }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
     {
@@ -145,6 +142,11 @@ struct UnscopedGenericFinder : TypeOnceVisitor
     std::vector<TypeId> scopeGenTys;
     std::vector<TypePackId> scopeGenTps;
     bool foundUnscoped = false;
+
+    UnscopedGenericFinder()
+        : TypeOnceVisitor("UnscopedGenericFinder")
+    {
+    }
 
     bool visit(TypeId ty) override
     {
@@ -304,7 +306,7 @@ struct TypeFunctionReducer
 
             if (auto tfit = get<TypeFunctionInstanceType>(t))
             {
-                if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+                if (FFlag::LuauEagerGeneralization4)
                 {
                     if (tfit->state == TypeFunctionInstanceState::Stuck)
                         return SkipTestResult::Stuck;
@@ -427,7 +429,7 @@ struct TypeFunctionReducer
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is uninhabited\n", toString(subject, {true}).c_str());
 
-                if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+                if (FFlag::LuauEagerGeneralization4)
                 {
                     if (getState(subject) == TypeFunctionInstanceState::Unsolved)
                     {
@@ -489,7 +491,7 @@ struct TypeFunctionReducer
             if (skip == SkipTestResult::Stuck)
             {
                 // SkipTestResult::Stuck cannot happen when this flag is unset.
-                LUAU_ASSERT(FFlag::LuauStuckTypeFunctionsStillDispatch);
+                LUAU_ASSERT(FFlag::LuauEagerGeneralization4);
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is stuck!\n", toString(subject, {true}).c_str());
 
@@ -660,8 +662,7 @@ struct TypeFunctionReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFunctionReductionResult<TypePackId> result =
-                tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
+            TypeFunctionReductionResult<TypePackId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
             handleTypeFunctionReduction(subject, std::move(result));
         }
     }
@@ -769,7 +770,7 @@ FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
 {
-    if (FFlag::LuauStuckTypeFunctionsStillDispatch)
+    if (FFlag::LuauEagerGeneralization4)
     {
         if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
             return true;

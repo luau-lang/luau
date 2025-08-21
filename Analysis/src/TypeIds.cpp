@@ -157,4 +157,10 @@ std::vector<TypeId> TypeIds::take()
     return std::move(order);
 }
 
+void TypeIds::reserve(size_t n)
+{
+    order.reserve(n);
 }
+
+
+} // namespace Luau
