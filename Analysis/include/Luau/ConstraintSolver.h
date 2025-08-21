@@ -251,7 +251,7 @@ public:
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const TableCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
 
 
