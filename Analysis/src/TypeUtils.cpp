@@ -8,6 +8,7 @@
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypePack.h"
 
 #include <algorithm>
 
@@ -15,6 +16,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAGVARIABLE(LuauVariadicAnyPackShouldBeErrorSuppressing)
 
 namespace Luau
 {
@@ -502,6 +504,17 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp)
 {
+    // Flatten t where t = ...any will produce a type pack [ {}, t]
+    // which trivially fails the tail check below, which is why we need to special case here
+    if (FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing)
+    {
+        if (auto tpId = get<VariadicTypePack>(follow(tp)))
+        {
+            if (get<AnyType>(follow(tpId->ty)))
+                return ErrorSuppression::Suppress;
+        }
+    }
+
     auto [tys, tail] = flatten(tp);
 
     // check the head, one type at a time

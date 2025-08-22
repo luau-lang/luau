@@ -36,9 +36,13 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(LuauHeapDumpStringSizeOverhead)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauErrorYield)
 LUAU_DYNAMIC_FASTFLAG(LuauSafeStackCheck)
+LUAU_FASTFLAG(LuauVectorLerp)
+LUAU_FASTFLAG(LuauCompileVectorLerp)
+LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -1130,6 +1134,8 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
+    ScopedFastFlag _[]{{FFlag::LuauCompileVectorLerp, true}, {FFlag::LuauTypeCheckerVectorLerp, true}, {FFlag::LuauVectorLerp, true}};
+
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -3112,6 +3118,8 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauCodeGenDirectBtest{FFlag::LuauCodeGenDirectBtest, true};
+
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;

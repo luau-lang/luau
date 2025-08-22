@@ -112,6 +112,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::UNM_VEC:
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
+    case IrCmd::CMP_INT:
     case IrCmd::TABLE_LEN:
     case IrCmd::TABLE_SETNUM:
     case IrCmd::STRING_LEN:

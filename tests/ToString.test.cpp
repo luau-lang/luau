@@ -15,6 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -693,6 +695,11 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_intersection")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExplicitSkipBoundTypes, true},
+        {FFlag::LuauReduceSetTypeStackPressure, true},
+    };
+
     CheckResult result = check(R"(
         function f() return f end
         local a: ((number) -> ()) & typeof(f)
@@ -700,10 +707,7 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_inters
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
-        CHECK("(() -> t1) & ((number) -> ()) where t1 = () -> t1" == toString(requireType("a")));
-    else
-        CHECK_EQ("((number) -> ()) & t1 where t1 = () -> t1", toString(requireType("a")));
+    CHECK_EQ("((number) -> ()) & t1 where t1 = () -> t1", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")

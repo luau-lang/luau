@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauIceLess)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
@@ -302,7 +301,6 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
         {FFlag::LuauResetConditionalContextProperly, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
 
         // And this flag is the one that fixes it.
         {FFlag::LuauSimplifyAnyAndUnion, true},
@@ -387,7 +385,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
         {FFlag::LuauResetConditionalContextProperly, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
         {FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints, true},
     };
 

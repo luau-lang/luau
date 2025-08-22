@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(LuauOccursCheckInCommit)
+
 namespace Luau
 {
 
@@ -84,29 +86,6 @@ void TxnLog::concat(TxnLog rhs)
     radioactive |= rhs.radioactive;
 }
 
-void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
-{
-    for (auto& [ty, rightRep] : rhs.typeVarChanges)
-    {
-        if (rightRep->dead)
-            continue;
-
-        if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
-        {
-            TypeId leftTy = arena->addType((*leftRep)->pending.clone());
-            TypeId rightTy = arena->addType(rightRep->pending.clone());
-            typeVarChanges[ty]->pending.ty = IntersectionType{{leftTy, rightTy}};
-        }
-        else
-            typeVarChanges[ty] = std::move(rightRep);
-    }
-
-    for (auto& [tp, rep] : rhs.typePackChanges)
-        typePackChanges[tp] = std::move(rep);
-
-    radioactive |= rhs.radioactive;
-}
-
 void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 {
     /*
@@ -154,7 +133,7 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
             // leftTy has been bound to rightTy, but rightTy has also been bound
             // to leftTy. We find the one that belongs to the more deeply nested
             // scope and remove it from the log.
-            const bool discardLeft = useScopes ? subsumes(lf->scope, rf->scope) : lf->level.subsumes(rf->level);
+            const bool discardLeft = lf->level.subsumes(rf->level);
 
             if (discardLeft)
                 (*leftRep)->dead = true;
@@ -188,6 +167,57 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
     radioactive |= rhs.radioactive;
 }
 
+// Like follow(), but only takes a single step.
+//
+// This is potentailly performance sensitive, so we use nullptr rather than an
+// optional<TypeId> for the return type here.
+static TypeId followOnce(TxnLog& log, TypeId ty)
+{
+    if (auto bound = log.get<BoundType>(ty))
+        return bound->boundTo;
+    if (auto tt = log.get<TableType>(ty))
+        return tt->boundTo.value_or(nullptr);
+
+    return nullptr;
+}
+
+// We must take extra care not to replace a type with a BoundType to itself. We
+// check each BoundType along the chain
+//
+// This function returns true if any of the bound types pointed at by 'needle'
+// point at 'haystack'.
+static bool occurs(TxnLog& log, TypeId needle, TypeId haystack)
+{
+    TypeId tortoise = needle;
+    TypeId hare = needle;
+
+    while (true)
+    {
+        if (tortoise == haystack)
+            return true;
+
+        TypeId g = followOnce(log, tortoise);
+        if (!g)
+            return false;
+        tortoise = g;
+
+        // Cycle detection: The hare steps twice for each step that the tortoise takes.
+        // If ever the two meet, it can only be because the track is cyclic.
+        // When we hit the end of the chain, hare becomes nullptr.
+        if (hare)
+        {
+            hare = followOnce(log, hare);
+            if (hare)
+            {
+                hare = followOnce(log, hare);
+
+                if (hare == tortoise)
+                    return true;
+            }
+        }
+    }
+}
+
 void TxnLog::commit()
 {
     LUAU_ASSERT(!radioactive);
@@ -195,7 +225,17 @@ void TxnLog::commit()
     for (auto& [ty, rep] : typeVarChanges)
     {
         if (!rep->dead)
-            asMutable(ty)->reassign(rep.get()->pending);
+        {
+            const TypeId unfollowed = &rep.get()->pending;
+
+            if (FFlag::LuauOccursCheckInCommit)
+            {
+                if (!occurs(*this, unfollowed, ty))
+                    asMutable(ty)->reassign(*unfollowed);
+            }
+            else
+                asMutable(ty)->reassign(*unfollowed);
+        }
     }
 
     for (auto& [tp, rep] : typePackChanges)
@@ -472,18 +512,6 @@ TypePackId TxnLog::follow(TypePackId tp) const
             return const_cast<const TypePackVar*>(&state->pending);
         }
     );
-}
-
-std::pair<std::vector<TypeId>, std::vector<TypePackId>> TxnLog::getChanges() const
-{
-    std::pair<std::vector<TypeId>, std::vector<TypePackId>> result;
-
-    for (const auto& [typeId, _newState] : typeVarChanges)
-        result.first.push_back(typeId);
-    for (const auto& [typePackId, _newState] : typePackChanges)
-        result.second.push_back(typePackId);
-
-    return result;
 }
 
 } // namespace Luau

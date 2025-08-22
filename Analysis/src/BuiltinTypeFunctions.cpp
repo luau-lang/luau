@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -1063,7 +1064,7 @@ struct FindRefinementBlockers : TypeOnceVisitor
     DenseHashSet<TypeId> found{nullptr};
 
     FindRefinementBlockers()
-        : TypeOnceVisitor("FindRefinementBlockers")
+        : TypeOnceVisitor("FindRefinementBlockers", FFlag::LuauExplicitSkipBoundTypes)
     {
     }
 

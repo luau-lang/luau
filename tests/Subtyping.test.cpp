@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
+LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
 
 using namespace Luau;
 
@@ -1760,6 +1761,21 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
     SubtypingResult result = isSubtype(getBuiltins()->stringType, argTy);
     CHECK(result.isSubtype);
     REQUIRE(1 == result.assumedConstraints.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "variadic_any_pack_should_suppress_errors_during_overload_resolution")
+{
+    ScopedFastFlag sff{FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing, true};
+    auto res = check(R"(
+type ActionCallback = (string) -> ...any
+
+function bindAction(callback: ActionCallback)
+  local _ = function(...)
+    callback(...)
+  end
+end
+)");
+    LUAU_REQUIRE_NO_ERRORS(res);
 }
 
 TEST_SUITE_END();
