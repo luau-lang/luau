@@ -237,6 +237,17 @@ end
 
 assert(pcall(fuzzfail23) == false)
 
+local function fuzzfail24(...)
+  local _ = l4
+  repeat
+  local function l0()
+  end
+  until (...)[_][_]:n16((_),_,l4,bit32.btest(0,_,_,_) / bit32.btest(0,_,_,_)(_,_,_,0,((_)),_))
+  do end
+end
+
+assert(pcall(fuzzfail24) == false)
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 

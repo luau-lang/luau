@@ -366,7 +366,7 @@ struct VisitCountTracker final : TypeOnceVisitor
     std::unordered_map<TypePackId, unsigned> tpVisits;
 
     VisitCountTracker()
-        : TypeOnceVisitor("VisitCountTracker")
+        : TypeOnceVisitor("VisitCountTracker", /* skipBoundTypes */ true)
     {
     }
 

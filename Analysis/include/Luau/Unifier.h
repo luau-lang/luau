@@ -80,9 +80,6 @@ struct Unifier
     bool checkInhabited = true; // Normalize types to check if they are inhabited
     CountMismatch::Context ctx = CountMismatch::Arg;
 
-    // If true, generics act as free types when unifying.
-    bool hideousFixMeGenericsAreActuallyFree = false;
-
     UnifierSharedState& sharedState;
 
     // When the Unifier is forced to unify two blocked types (or packs), they

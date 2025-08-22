@@ -6,6 +6,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauVectorLerp)
+
 static int vector_create(lua_State* L)
 {
     // checking argument count to avoid accepting 'nil' as a valid value
@@ -283,6 +285,21 @@ static int vector_index(lua_State* L)
     luaL_error(L, "attempt to index vector with '%s'", name);
 }
 
+static int vector_lerp(lua_State* L)
+{
+    const float* a = luaL_checkvector(L, 1);
+    const float* b = luaL_checkvector(L, 2);
+    const float t = static_cast<float>(luaL_checknumber(L, 3));
+
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, luai_lerpf(a[0], b[0], t), luai_lerpf(a[1], b[1], t), luai_lerpf(a[2], b[2], t), luai_lerpf(a[3], b[3], t));
+#else
+    lua_pushvector(L, luai_lerpf(a[0], b[0], t), luai_lerpf(a[1], b[1], t), luai_lerpf(a[2], b[2], t));
+#endif
+
+    return 1;
+}
+
 static const luaL_Reg vectorlib[] = {
     {"create", vector_create},
     {"magnitude", vector_magnitude},
@@ -325,6 +342,13 @@ static void createmetatable(lua_State* L)
 int luaopen_vector(lua_State* L)
 {
     luaL_register(L, LUA_VECLIBNAME, vectorlib);
+
+    if (FFlag::LuauVectorLerp)
+    {
+        // To unflag put {"lerp", vector_lerp} in the `vectorlib` table
+        lua_pushcfunction(L, vector_lerp, "lerp");
+        lua_setfield(L, -2, "lerp");
+    }
 
 #if LUA_VECTOR_SIZE == 4
     lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);

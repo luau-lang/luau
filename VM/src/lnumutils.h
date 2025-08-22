@@ -58,6 +58,11 @@ inline double luai_numidiv(double a, double b)
 }
 LUAU_FASTMATH_END
 
+inline float luai_lerpf(float a, float b, float t)
+{
+    return (t == 1.0) ? b : a + (b - a) * t;
+}
+
 #define luai_num2int(i, d) ((i) = (int)(d))
 
 // On MSVC in 32-bit, double to unsigned cast compiles into a call to __dtoui3, so we invoke x87->int64 conversion path manually

@@ -6,6 +6,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -21,7 +22,7 @@ struct InferPolarity : TypeVisitor
     Polarity polarity = Polarity::Positive;
 
     explicit InferPolarity(NotNull<TypeArena> arena, NotNull<Scope> scope)
-        : TypeVisitor("InferPolarity")
+        : TypeVisitor("InferPolarity", FFlag::LuauExplicitSkipBoundTypes)
         , arena(arena)
         , scope(scope)
     {
