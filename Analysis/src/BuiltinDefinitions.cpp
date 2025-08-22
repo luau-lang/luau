@@ -34,7 +34,6 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
-LUAU_FASTFLAGVARIABLE(LuauUpdateSetMetatableTypeSignature)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
@@ -409,32 +408,14 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
-        TypeId tMetaMT = arena.addType(MetatableType{genericT, genericMT});
-
-        if (FFlag::LuauUpdateSetMetatableTypeSignature)
-        {
-            // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
-            TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().setmetatableFunc, {genericT, genericMT}});
-            addGlobalBinding(
-                globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
-            );
-        }
-        else
-        {
-            // clang-format off
-            // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
-            addGlobalBinding(globals, "setmetatable",
-                arena.addType(
-                    FunctionType{
-                        {genericT, genericMT},
-                        {},
-                        arena.addTypePack(TypePack{{genericT, genericMT}}),
-                        arena.addTypePack(TypePack{{tMetaMT}})
-                    }
-                ), "@luau"
-            );
-            // clang-format on
-        }
+        // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
+        TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().setmetatableFunc, {genericT, genericMT}});
+        addGlobalBinding(
+            globals,
+            "setmetatable",
+            makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}),
+            "@luau"
+        );
     }
     else
     {

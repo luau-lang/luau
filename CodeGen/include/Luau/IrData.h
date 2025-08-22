@@ -217,6 +217,11 @@ enum class IrCmd : uint8_t
     // C: condition
     CMP_ANY,
 
+    // Perform a comparison of two integer numbers. Result is an integer register containing 0 or 1
+    // A, B: int
+    // C: condition
+    CMP_INT,
+
     // Unconditional jump
     // A: block/vmexit/undef
     JUMP,

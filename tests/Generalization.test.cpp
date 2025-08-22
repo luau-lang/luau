@@ -19,6 +19,9 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
+
+LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -404,16 +407,27 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
+    };
 
-    // FIXME: CLI-156389: this is clearly wrong, but also predates this PR.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local func: <T>(T, (T) -> ()) -> () = nil :: any
-        local foobar: (number) -> () = nil :: any
-        func({}, function(obj)
-            foobar(obj)
-        end)
-    )"));
+    CheckResult result = check(R"(
+local func: <T>(T, (T) -> ()) -> () = nil :: any
+local foobar: (number) -> () = nil :: any
+func({}, function(obj)
+    foobar(obj)
+end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const GenericBoundsMismatch* gbm = get<GenericBoundsMismatch>(result.errors[0]);
+    REQUIRE_MESSAGE(gbm, "Expected GenericBoundsMismatch but got: " << toString(result.errors[0]));
+    CHECK_EQ(gbm->genericName, "T");
+    CHECK_EQ(gbm->lowerBounds.size(), 1);
+    CHECK_EQ(toString(gbm->lowerBounds[0]), "{  }");
+    CHECK_EQ(gbm->upperBounds.size(), 1);
+    CHECK_EQ(toString(gbm->upperBounds[0]), "number");
+    CHECK_EQ(result.errors[0].location, Location{Position{3, 0}, Position{3, 4}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")

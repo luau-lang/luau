@@ -16,6 +16,8 @@
 #include <limits.h>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+
 namespace Luau
 {
 namespace CodeGen
@@ -193,6 +195,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Double;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
+    case IrCmd::CMP_INT:
         return IrValueKind::Int;
     case IrCmd::JUMP:
     case IrCmd::JUMP_IF_TRUTHY:
@@ -788,6 +791,17 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 substitute(function, inst, build.constInt(0));
             else if (inst.b.kind == IrOpKind::Constant)
                 substitute(function, inst, build.constInt(function.intOp(inst.b) == 1 ? 0 : 1));
+        }
+        break;
+    case IrCmd::CMP_INT:
+        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
+
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            if (compare(function.intOp(inst.a), function.intOp(inst.b), conditionOp(inst.c)))
+                substitute(function, inst, build.constInt(1));
+            else
+                substitute(function, inst, build.constInt(0));
         }
         break;
     case IrCmd::JUMP_EQ_TAG:

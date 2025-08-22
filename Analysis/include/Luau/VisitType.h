@@ -556,7 +556,7 @@ struct GenericTypeVisitor
  */
 struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 {
-    explicit TypeVisitor(const std::string visitorName, bool skipBoundTypes = false)
+    explicit TypeVisitor(const std::string visitorName, bool skipBoundTypes)
         : GenericTypeVisitor{visitorName, {}, skipBoundTypes}
     {
     }
@@ -565,7 +565,7 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
 struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
-    explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes = false)
+    explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes)
         : GenericTypeVisitor{visitorName, DenseHashSet<void*>{nullptr}, skipBoundTypes}
     {
     }

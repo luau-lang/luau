@@ -26,6 +26,7 @@ LUAU_FASTFLAGVARIABLE(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingNegationsChecksNormalizationComplexity)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingReportGenericBoundMismatches)
 
 namespace Luau
 {
@@ -174,6 +175,8 @@ SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
     errors.insert(errors.end(), other.errors.begin(), other.errors.end());
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+        genericBoundsMismatches.insert(genericBoundsMismatches.end(), other.genericBoundsMismatches.begin(), other.genericBoundsMismatches.end());
 
     return *this;
 }
@@ -196,6 +199,8 @@ SubtypingResult& SubtypingResult::orElse(const SubtypingResult& other)
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
     errors.insert(errors.end(), other.errors.begin(), other.errors.end());
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+        genericBoundsMismatches.insert(genericBoundsMismatches.end(), other.genericBoundsMismatches.begin(), other.genericBoundsMismatches.end());
 
     return *this;
 }
@@ -710,8 +715,15 @@ SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNu
             {
                 // Bounds should have exactly one entry
                 LUAU_ASSERT(bounds->size() == 1);
-                if (!bounds->empty())
-                    result.andAlso(checkGenericBounds(bounds->back(), env, scope));
+                if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+                {
+                    if (bounds->empty())
+                        continue;
+                    if (const GenericType* gen = get<GenericType>(bg))
+                        result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
+                }
+                else if (!bounds->empty())
+                    result.andAlso(checkGenericBounds_DEPRECATED(bounds->back(), env, scope));
             }
         }
     }
@@ -2034,12 +2046,15 @@ SubtypingResult Subtyping::isCovariantWith(
         for (TypeId g : subFunction->generics)
         {
             g = follow(g);
-            if (get<GenericType>(g))
+            if (const GenericType* gen = get<GenericType>(g))
             {
                 auto bounds = env.mappedGenerics.find(g);
                 LUAU_ASSERT(bounds && !bounds->empty());
                 // Check the bounds are valid
-                result.andAlso(checkGenericBounds(bounds->back(), env, scope));
+                if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+                    result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
+                else
+                    result.andAlso(checkGenericBounds_DEPRECATED(bounds->back(), env, scope));
 
                 bounds->pop_back();
             }
@@ -2524,9 +2539,16 @@ SubtypingResult Subtyping::trySemanticSubtyping(SubtypingEnvironment& env,
     return original;
 }
 
-SubtypingResult Subtyping::checkGenericBounds(const SubtypingEnvironment::GenericBounds& bounds, SubtypingEnvironment& env, NotNull<Scope> scope)
+
+SubtypingResult Subtyping::checkGenericBounds(
+    const SubtypingEnvironment::GenericBounds& bounds,
+    SubtypingEnvironment& env,
+    NotNull<Scope> scope,
+    std::string_view genericName
+)
 {
     LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
+    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches);
 
     SubtypingResult result{true};
 
@@ -2607,6 +2629,101 @@ SubtypingResult Subtyping::checkGenericBounds(const SubtypingEnvironment::Generi
     SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
     boundsResult.reasoning.clear();
 
+    if (res == NormalizationResult::False || !boundsResult.isSubtype)
+        result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+
+    result.andAlso(boundsResult);
+
+    return result;
+}
+
+SubtypingResult Subtyping::checkGenericBounds_DEPRECATED(
+    const SubtypingEnvironment::GenericBounds& bounds,
+    SubtypingEnvironment& env,
+    NotNull<Scope> scope
+)
+{
+    LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
+    LUAU_ASSERT(!FFlag::LuauSubtypingReportGenericBoundMismatches);
+
+    SubtypingResult result{true};
+
+    const auto& [lb, ub] = bounds;
+
+    TypeIds lbTypes;
+    for (TypeId t : lb)
+    {
+        t = follow(t);
+        if (const auto mappedBounds = env.mappedGenerics.find(t))
+        {
+            if (mappedBounds->empty()) // If the generic is no longer in scope, we don't have any info about it
+                continue;
+
+            auto& [lowerBound, upperBound] = mappedBounds->back();
+            // We're populating the lower bounds, so we prioritize the upper bounds of a mapped generic
+            if (!upperBound.empty())
+                lbTypes.insert(upperBound.begin(), upperBound.end());
+            else if (!lowerBound.empty())
+                lbTypes.insert(lowerBound.begin(), lowerBound.end());
+            else
+                lbTypes.insert(builtinTypes->unknownType);
+        }
+        else
+            lbTypes.insert(t);
+    }
+
+    TypeIds ubTypes;
+    for (TypeId t : ub)
+    {
+        t = follow(t);
+        if (const auto mappedBounds = env.mappedGenerics.find(t))
+        {
+            if (mappedBounds->empty()) // If the generic is no longer in scope, we don't have any info about it
+                continue;
+
+            auto& [lowerBound, upperBound] = mappedBounds->back();
+            // We're populating the upper bounds, so we prioritize the lower bounds of a mapped generic
+            if (!lowerBound.empty())
+                ubTypes.insert(lowerBound.begin(), lowerBound.end());
+            else if (!upperBound.empty())
+                ubTypes.insert(upperBound.begin(), upperBound.end());
+            else
+                ubTypes.insert(builtinTypes->unknownType);
+        }
+        else
+            ubTypes.insert(t);
+    }
+    TypeId lowerBound = makeAggregateType<UnionType>(lbTypes.take(), builtinTypes->neverType);
+    TypeId upperBound = makeAggregateType<IntersectionType>(ubTypes.take(), builtinTypes->unknownType);
+
+    std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
+    // we say that the result is true if normalization failed because complex types are likely to be inhabited.
+    NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
+
+    if (!nt || res == NormalizationResult::HitLimits)
+        result.normalizationTooComplex = true;
+    else if (res == NormalizationResult::False)
+    {
+        /* If the normalized upper bound we're mapping to a generic is
+         * uninhabited, then we must consider the subtyping relation not to
+         * hold.
+         *
+         * This happens eg in <T>() -> (T, T) <: () -> (string, number)
+         *
+         * T appears in covariant position and would have to be both string
+         * and number at once.
+         *
+         * No actual value is both a string and a number, so the test fails.
+         *
+         * TODO: We'll need to add explanitory context here.
+         */
+        result.isSubtype = false;
+    }
+
+    SubtypingEnvironment boundsEnv;
+    boundsEnv.parent = &env;
+    SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
+    boundsResult.reasoning.clear();
     result.andAlso(boundsResult);
 
     return result;

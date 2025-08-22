@@ -185,6 +185,8 @@ const char* getCmdName(IrCmd cmd)
         return "NOT_ANY";
     case IrCmd::CMP_ANY:
         return "CMP_ANY";
+    case IrCmd::CMP_INT:
+        return "CMP_INT";
     case IrCmd::JUMP:
         return "JUMP";
     case IrCmd::JUMP_IF_TRUTHY:

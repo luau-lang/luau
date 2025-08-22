@@ -548,6 +548,12 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
         types.b = LBC_TYPE_VECTOR;
         types.c = LBC_TYPE_VECTOR; // We can mark optional arguments
         break;
+    case LBF_VECTOR_LERP:
+        types.result = LBC_TYPE_VECTOR;
+        types.a = LBC_TYPE_VECTOR;
+        types.b = LBC_TYPE_VECTOR;
+        types.c = LBC_TYPE_NUMBER;
+        break;
     case LBF_MATH_LERP:
         types.result = LBC_TYPE_NUMBER;
         types.a = LBC_TYPE_NUMBER;
