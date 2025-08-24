@@ -21,6 +21,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAGVARIABLE(DebugLuauTypeFunExternNameMethod)
 
 namespace Luau
 {
@@ -1312,6 +1313,24 @@ static int getWriteParent(lua_State* L)
     return 1;
 }
 
+// Luau: `self:externname() -> string?`
+// Returns the name of a class or 'nil' if there's no name.
+static int getExternTypeName(lua_State* L) {
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tfEx = get<TypeFunctionExternType>(self);
+    if (!tfEx)
+        luaL_error(L, "type.externname: expected self to be an extern type, but got %s instead", getTag(L, self).c_str());
+
+    if (auto exTy = get<ExternType>(tfEx->externTy))
+    {
+        lua_pushstring(L, exTy->name.c_str());
+    }
+    else
+        lua_pushnil(L);
+
+    return 1;
+}
+
 // Luau: `self:name() -> string?`
 // Returns the name of the generic or 'nil' if the generic is unnamed
 static int getGenericName(lua_State* L)
@@ -1747,6 +1766,7 @@ void registerTypeUserData(lua_State* L)
         {"name", getGenericName},
         {"ispack", getGenericIsPack},
 
+        {(FFlag::DebugLuauTypeFunExternNameMethod) ? "externname" : nullptr, (FFlag::DebugLuauTypeFunExternNameMethod) ? getExternTypeName : nullptr},
         {nullptr, nullptr}
     };
 

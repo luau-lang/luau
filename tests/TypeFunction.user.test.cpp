@@ -13,6 +13,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauTypeFunNoScopeMapRef)
+LUAU_FASTFLAG(DebugLuauTypeFunExternNameMethod)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2450,6 +2451,35 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == R"(Redefinition of type 't0', previously defined at line 2)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_externtype_externname_api")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauTypeFunExternNameMethod, true}
+    };
+
+    loadDefinition(R"(
+        declare class CustomClass
+            function testFunc(self): number
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type function pass(arg, compare)
+            if (arg:is("class")) then
+                assert(arg:externname() == compare:value())
+            end
+
+            return types.unknown
+        end
+        
+        type a = pass<CustomClass, "CustomClass">
+        type b = pass<vector, "vector">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_fuzz_environment_scope_crash")
