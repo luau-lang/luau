@@ -50,6 +50,7 @@ LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
+LUAU_FASTFLAGVARIABLE(LuauFixPrepopulateGlobalOnSameGlobal)
 
 namespace Luau
 {
@@ -4427,6 +4428,7 @@ struct GlobalPrepopulator : AstVisitor
     const NotNull<Scope> globalScope;
     const NotNull<TypeArena> arena;
     const NotNull<const DataFlowGraph> dfg;
+    DenseHashSet<const Def*> disallowedDefIds{nullptr};
 
     GlobalPrepopulator(NotNull<Scope> globalScope, NotNull<TypeArena> arena, NotNull<const DataFlowGraph> dfg)
         : globalScope(globalScope)
@@ -4437,6 +4439,21 @@ struct GlobalPrepopulator : AstVisitor
 
     bool visit(AstExprGlobal* global) override
     {
+        if (FFlag::LuauFixPrepopulateGlobalOnSameGlobal)
+        {
+            if (auto ty = globalScope->lookup(global->name))
+            {
+                DefId def = dfg->getDef(global);
+                // Skip if disallowed
+                if (disallowedDefIds.contains(def.get()))
+                    return true;
+
+                globalScope->lvalueTypes[def] = *ty;
+            }
+
+            return true;
+        }
+
         if (auto ty = globalScope->lookup(global->name))
         {
             DefId def = dfg->getDef(global);
@@ -4448,6 +4465,41 @@ struct GlobalPrepopulator : AstVisitor
 
     bool visit(AstStatAssign* assign) override
     {
+        if (FFlag::LuauFixPrepopulateGlobalOnSameGlobal)
+        {
+            for (size_t i = 0; i < assign->vars.size; i++)
+            {
+                auto lhsExpr = assign->vars.data[i];
+                auto rhsExpr = i < assign->values.size ? assign->values.data[i] : nullptr;
+
+                if (lhsExpr)
+                {
+                    if (rhsExpr)
+                        if (auto lhs = lhsExpr->as<AstExprGlobal>())
+                            if (auto rhs = rhsExpr->as<AstExprGlobal>()) 
+                            {
+                                // `a = a` case
+                                if (lhs->name == rhs->name)
+                                {
+                                    DefId def = dfg->getDef(rhs);
+                                    disallowedDefIds.insert(def.get());
+                                }
+                            }
+
+                    if (const AstExprGlobal* g = lhsExpr->as<AstExprGlobal>())
+                    {
+                        if (!globalScope->lookup(g->name))
+                            globalScope->globalsToWarn.insert(g->name.value);
+
+                        TypeId bt = arena->addType(BlockedType{});
+                        globalScope->bindings[g->name] = Binding{bt, g->location};
+                    }
+                }
+            }
+
+            return true;
+        }
+
         for (const Luau::AstExpr* expr : assign->vars)
         {
             if (const AstExprGlobal* g = expr->as<AstExprGlobal>())
