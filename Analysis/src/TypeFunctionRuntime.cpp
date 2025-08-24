@@ -1316,13 +1316,13 @@ static int getWriteParent(lua_State* L)
     return 1;
 }
 
-// Luau: `self:classname() -> string?`
+// Luau: `self:externname() -> string?`
 // Returns the name of a class or 'nil' if there's no name.
 static int getExternTypeName(lua_State* L) {
     TypeFunctionTypeId self = getTypeUserData(L, 1);
     auto tfEx = get<TypeFunctionExternType>(self);
     if (!tfEx)
-        luaL_error(L, "type.classname: expected self to be a class, but got %s instead", getTag(L, self).c_str());
+        luaL_error(L, "type.externname: expected self to be an extern type, but got %s instead", getTag(L, self).c_str());
 
     if (auto exTy = get<ExternType>(tfEx->externTy))
     {
