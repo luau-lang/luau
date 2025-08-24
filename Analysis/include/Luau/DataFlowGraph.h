@@ -93,9 +93,6 @@ struct DfgScope
     std::optional<DefId> lookup(DefId def, const std::string& key) const;
 
     void inherit(const DfgScope* childScope);
-
-    bool canUpdateDefinition(Symbol symbol) const;
-    bool canUpdateDefinition(DefId def, const std::string& key) const;
 };
 
 struct DataFlowResult
@@ -133,7 +130,6 @@ private:
     /// A stack of scopes used by the visitor to see where we are.
     ScopeStack scopeStack;
     NotNull<DfgScope> currentScope();
-    DfgScope* currentScope_DEPRECATED();
 
     struct FunctionCapture
     {

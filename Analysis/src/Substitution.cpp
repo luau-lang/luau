@@ -10,8 +10,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_FASTFLAG(LuauSolverAgnosticClone)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -94,6 +93,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
             clone.argNames = a.argNames;
             clone.isCheckedFunction = a.isCheckedFunction;
             clone.isDeprecatedFunction = a.isDeprecatedFunction;
+            clone.deprecatedInfo = a.deprecatedInfo;
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, TableType>)
@@ -191,13 +191,8 @@ void Tarjan::visitChildren(TypeId ty, int index)
         LUAU_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
         {
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticClone)
-            {
-                visitChild(prop.readTy);
-                visitChild(prop.writeTy);
-            }
-            else
-                visitChild(prop.type_DEPRECATED());
+            visitChild(prop.readTy);
+            visitChild(prop.writeTy);
         }
 
         if (ttv->indexer)
@@ -247,7 +242,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     {
         for (const auto& [name, prop] : etv->props)
         {
-            if (FFlag::LuauSolverV2 && FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            if (FFlag::LuauSolverV2)
             {
                 visitChild(prop.readTy);
                 visitChild(prop.writeTy);
@@ -306,7 +301,10 @@ std::pair<int, bool> Tarjan::indexify(TypeId ty)
     if (fresh)
     {
         index = int(nodes.size());
-        nodes.push_back({ty, nullptr, false, false, index});
+        if (FFlag::LuauEmplaceNotPushBack)
+            nodes.emplace_back(ty, nullptr, false, false, index);
+        else
+            nodes.push_back({ty, nullptr, false, false, index});
     }
 
     return {index, fresh};
@@ -321,7 +319,10 @@ std::pair<int, bool> Tarjan::indexify(TypePackId tp)
     if (fresh)
     {
         index = int(nodes.size());
-        nodes.push_back({nullptr, tp, false, false, index});
+        if (FFlag::LuauEmplaceNotPushBack)
+            nodes.emplace_back(nullptr, tp, false, false, index);
+        else
+            nodes.push_back({nullptr, tp, false, false, index});
     }
 
     return {index, fresh};
@@ -391,7 +392,10 @@ TarjanResult Tarjan::loop()
             {
                 // Original recursion point, update the parent continuation point and start the new element
                 worklist.back() = {index, currEdge + 1, lastEdge};
-                worklist.push_back({childIndex, -1, -1});
+                if (FFlag::LuauEmplaceNotPushBack)
+                    worklist.emplace_back(childIndex, -1, -1);
+                else
+                    worklist.push_back({childIndex, -1, -1});
 
                 // We need to continue the top-level loop from the start with the new worklist element
                 foundFresh = true;
@@ -449,7 +453,10 @@ TarjanResult Tarjan::visitRoot(TypeId ty)
     ty = log->follow(ty);
 
     auto [index, fresh] = indexify(ty);
-    worklist.push_back({index, -1, -1});
+    if (FFlag::LuauEmplaceNotPushBack)
+        worklist.emplace_back(index, -1, -1);
+    else
+        worklist.push_back({index, -1, -1});
     return loop();
 }
 
@@ -462,7 +469,10 @@ TarjanResult Tarjan::visitRoot(TypePackId tp)
     tp = log->follow(tp);
 
     auto [index, fresh] = indexify(tp);
-    worklist.push_back({index, -1, -1});
+    if (FFlag::LuauEmplaceNotPushBack)
+        worklist.emplace_back(index, -1, -1);
+    else
+        worklist.push_back({index, -1, -1});
     return loop();
 }
 
@@ -783,15 +793,10 @@ void Substitution::replaceChildren(TypeId ty)
         LUAU_ASSERT(!ttv->boundTo);
         for (auto& [name, prop] : ttv->props)
         {
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticClone)
-            {
-                if (prop.readTy)
-                    prop.readTy = replace(prop.readTy);
-                if (prop.writeTy)
-                    prop.writeTy = replace(prop.writeTy);
-            }
-            else
-                prop.setType(replace(prop.type_DEPRECATED()));
+            if (prop.readTy)
+                prop.readTy = replace(prop.readTy);
+            if (prop.writeTy)
+                prop.writeTy = replace(prop.writeTy);
         }
 
         if (ttv->indexer)
@@ -841,7 +846,7 @@ void Substitution::replaceChildren(TypeId ty)
     {
         for (auto& [name, prop] : etv->props)
         {
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2)
             {
                 if (prop.readTy)
                     prop.readTy = replace(prop.readTy);

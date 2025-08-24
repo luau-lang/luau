@@ -8,13 +8,15 @@
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypePack.h"
 
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAGVARIABLE(LuauErrorSuppressionTypeFunctionArgs)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
+LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAGVARIABLE(LuauVariadicAnyPackShouldBeErrorSuppressing)
 
 namespace Luau
 {
@@ -77,7 +79,7 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                if (FFlag::LuauSolverV2)
                 {
                     if (fit->second.readTy)
                         return fit->second.readTy;
@@ -98,6 +100,8 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
+        else if (FFlag::LuauEmplaceNotPushBack)
+            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
         else
             errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
 
@@ -129,14 +133,17 @@ std::optional<TypeId> findMetatableEntry(
     const TableType* mtt = getTableType(unwrapped);
     if (!mtt)
     {
-        errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
+        if (FFlag::LuauEmplaceNotPushBack)
+            errors.emplace_back(location, GenericError{"Metatable was not a table"});
+        else
+            errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
         return std::nullopt;
     }
 
     auto it = mtt->props.find(entry);
     if (it != mtt->props.end())
     {
-        if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+        if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
         {
             if (it->second.readTy)
                 return it->second.readTy;
@@ -178,7 +185,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         const auto& it = tableType->props.find(name);
         if (it != tableType->props.end())
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
             {
                 switch (context)
                 {
@@ -209,7 +216,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                if (FFlag::LuauRemoveTypeCallsForReadWriteProps && FFlag::LuauSolverV2)
+                if (FFlag::LuauSolverV2)
                 {
                     switch (context)
                     {
@@ -233,6 +240,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
+        else if (FFlag::LuauEmplaceNotPushBack)
+            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
         else
             errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
 
@@ -340,10 +349,10 @@ TypePack extendTypePack(
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope, ftp->polarity);
 
-            if (FFlag::LuauEagerGeneralization4)
+            if (FFlag::LuauTidyTypeUtils)
                 trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
 
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
                 result.tail = newPack.tail;
             size_t overridesIndex = 0;
             while (result.head.size() < length)
@@ -355,7 +364,7 @@ TypePack extendTypePack(
                 }
                 else
                 {
-                    if (FFlag::LuauSolverV2)
+                    if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
                     {
                         FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType, ftp->polarity};
                         t = arena.addType(ft);
@@ -469,23 +478,20 @@ TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 {
-    if (FFlag::LuauErrorSuppressionTypeFunctionArgs)
+    if (auto tfit = get<TypeFunctionInstanceType>(follow(ty)))
     {
-        if (auto tfit = get<TypeFunctionInstanceType>(follow(ty)))
+        for (auto ty : tfit->typeArguments)
         {
-            for (auto ty : tfit->typeArguments)
-            {
-                std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
+            std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
 
-                if (!normType)
-                    return ErrorSuppression::NormalizationFailed;
+            if (!normType)
+                return ErrorSuppression::NormalizationFailed;
 
-                if (normType->shouldSuppressErrors())
-                    return ErrorSuppression::Suppress;
-            }
-
-            return ErrorSuppression::DoNotSuppress;
+            if (normType->shouldSuppressErrors())
+                return ErrorSuppression::Suppress;
         }
+
+        return ErrorSuppression::DoNotSuppress;
     }
 
     std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
@@ -498,6 +504,17 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp)
 {
+    // Flatten t where t = ...any will produce a type pack [ {}, t]
+    // which trivially fails the tail check below, which is why we need to special case here
+    if (FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing)
+    {
+        if (auto tpId = get<VariadicTypePack>(follow(tp)))
+        {
+            if (get<AnyType>(follow(tpId->ty)))
+                return ErrorSuppression::Suppress;
+        }
+    }
+
     auto [tys, tail] = flatten(tp);
 
     // check the head, one type at a time
@@ -764,6 +781,131 @@ bool isApproximatelyTruthyType(TypeId ty)
         return isApproximatelyFalsyType(nt->ty);
     return false;
 }
+
+UnionBuilder::UnionBuilder(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes)
+    : arena(arena)
+    , builtinTypes(builtinTypes)
+{
+}
+
+void UnionBuilder::add(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (is<NeverType>(ty) || isTop)
+        return;
+
+    if (is<UnknownType>(ty))
+    {
+        isTop = true;
+        return;
+    }
+
+    if (auto utv = get<UnionType>(ty))
+    {
+        for (auto option : utv)
+            options.insert(option);
+    }
+    else
+        options.insert(ty);
+}
+
+TypeId UnionBuilder::build()
+{
+    if (isTop)
+        return builtinTypes->unknownType;
+
+    if (options.empty())
+        return builtinTypes->neverType;
+
+    if (options.size() == 1)
+        return options.front();
+
+    return arena->addType(UnionType{options.take()});
+}
+
+size_t UnionBuilder::size() const
+{
+    return options.size();
+}
+
+void UnionBuilder::reserve(size_t size)
+{
+    options.reserve(size);
+}
+
+IntersectionBuilder::IntersectionBuilder(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes)
+    : arena(arena)
+    , builtinTypes(builtinTypes)
+{
+}
+
+void IntersectionBuilder::add(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (is<NeverType>(ty))
+    {
+        isBottom = true;
+        return;
+    }
+
+    if (is<UnknownType>(ty))
+        return;
+
+    if (auto itv = get<IntersectionType>(ty))
+    {
+        for (auto part : itv)
+            parts.insert(part);
+    }
+    else
+        parts.insert(ty);
+}
+
+TypeId IntersectionBuilder::build()
+{
+    if (isBottom)
+        return builtinTypes->neverType;
+
+    if (parts.empty())
+        return builtinTypes->unknownType;
+
+    if (parts.size() == 1)
+        return parts.front();
+
+    return arena->addType(IntersectionType{parts.take()});
+}
+
+size_t IntersectionBuilder::size() const
+{
+    return parts.size();
+}
+
+void IntersectionBuilder::reserve(size_t size)
+{
+    parts.reserve(size);
+}
+
+
+TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list)
+{
+    IntersectionBuilder ib(arena, builtinTypes);
+    ib.reserve(list.size());
+    for (TypeId part : list)
+        ib.add(part);
+
+    return ib.build();
+}
+
+TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list)
+{
+    UnionBuilder ub(arena, builtinTypes);
+    ub.reserve(list.size());
+    for (TypeId option : list)
+        ub.add(option);
+    return ub.build();
+}
+
 
 
 

@@ -53,7 +53,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "T <: number")
 {
     auto [left, freeLeft] = freshType();
 
-    CHECK(u2.unify(left, builtinTypes.numberType));
+    CHECK(UnifyResult::Ok == u2.unify(left, builtinTypes.numberType));
 
     CHECK("never" == toString(freeLeft->lowerBound));
     CHECK("number" == toString(freeLeft->upperBound));
@@ -63,7 +63,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "number <: T")
 {
     auto [right, freeRight] = freshType();
 
-    CHECK(u2.unify(builtinTypes.numberType, right));
+    CHECK(UnifyResult::Ok == u2.unify(builtinTypes.numberType, right));
 
     CHECK("number" == toString(freeRight->lowerBound));
     CHECK("unknown" == toString(freeRight->upperBound));
@@ -74,7 +74,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "T <: U")
     auto [left, freeLeft] = freshType();
     auto [right, freeRight] = freshType();
 
-    CHECK(u2.unify(left, right));
+    CHECK(UnifyResult::Ok == u2.unify(left, right));
 
     CHECK("t1 where t1 = ('a <: (t1 <: 'b))" == toString(left));
     CHECK("t1 where t1 = (('a <: t1) <: 'b)" == toString(right));

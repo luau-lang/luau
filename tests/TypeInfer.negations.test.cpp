@@ -10,6 +10,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 
 namespace
 {
@@ -52,7 +54,11 @@ TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 
 TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
 {
-    ScopedFastFlag sff{FFlag::LuauEagerGeneralization4, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
+    };
 
     CheckResult result = check(R"(
         function f(e)

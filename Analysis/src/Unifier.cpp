@@ -33,7 +33,8 @@ struct PromoteTypeLevels final : TypeOnceVisitor
     TypeLevel minLevel;
 
     PromoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel)
-        : log(log)
+        : TypeOnceVisitor("PromoteTypeLevels", /* skipBoundTypes */ false)
+        , log(log)
         , typeArena(typeArena)
         , minLevel(minLevel)
     {
@@ -145,7 +146,8 @@ void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLev
 struct SkipCacheForType final : TypeOnceVisitor
 {
     SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType, const TypeArena* typeArena)
-        : skipCacheForType(skipCacheForType)
+        : TypeOnceVisitor("SkipCacheForType", /* skipBoundTypes */ false)
+        , skipCacheForType(skipCacheForType)
         , typeArena(typeArena)
     {
     }
@@ -404,7 +406,7 @@ static bool isBlocked(const TxnLog& log, TypePackId tp)
 
 void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection, const LiteralProperties* literalProperties)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::tryUnify_", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     ++sharedState.counters.iterationCount;
 
@@ -504,49 +506,6 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         }
 
         return;
-    }
-
-    if (hideousFixMeGenericsAreActuallyFree)
-    {
-        auto superGeneric = log.getMutable<GenericType>(superTy);
-        auto subGeneric = log.getMutable<GenericType>(subTy);
-
-        if (superGeneric && subGeneric && subsumes(superGeneric, subGeneric))
-        {
-            if (!occursCheck(subTy, superTy, /* reversed = */ false))
-                log.replace(subTy, BoundType(superTy));
-
-            return;
-        }
-        else if (superGeneric && subGeneric)
-        {
-            if (!occursCheck(superTy, subTy, /* reversed = */ true))
-                log.replace(superTy, BoundType(subTy));
-
-            return;
-        }
-        else if (superGeneric)
-        {
-            if (!occursCheck(superTy, subTy, /* reversed = */ true))
-            {
-                Widen widen{types, builtinTypes};
-                log.replace(superTy, BoundType(widen(subTy)));
-            }
-
-            return;
-        }
-        else if (subGeneric)
-        {
-            // Normally, if the subtype is free, it should not be bound to any, unknown, or error types.
-            // But for bug compatibility, we'll only apply this rule to unknown. Doing this will silence cascading type errors.
-            if (log.get<UnknownType>(superTy))
-                return;
-
-            if (!occursCheck(subTy, superTy, /* reversed = */ false))
-                log.replace(subTy, BoundType(superTy));
-
-            return;
-        }
     }
 
     if (log.get<AnyType>(superTy))
@@ -1448,7 +1407,7 @@ void Unifier::tryUnify(TypePackId subTp, TypePackId superTp, bool isFunctionCall
  */
 void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCall)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::tryUnify_", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     ++sharedState.counters.iterationCount;
 
@@ -1502,21 +1461,6 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         }
     }
     else if (auto subFree = log.getMutable<FreeTypePack>(subTp))
-    {
-        if (!occursCheck(subTp, superTp, /* reversed = */ false))
-        {
-            log.replace(subTp, Unifiable::Bound<TypePackId>(superTp));
-        }
-    }
-    else if (hideousFixMeGenericsAreActuallyFree && log.getMutable<GenericTypePack>(superTp))
-    {
-        if (!occursCheck(superTp, subTp, /* reversed = */ true))
-        {
-            Widen widen{types, builtinTypes};
-            log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
-        }
-    }
-    else if (hideousFixMeGenericsAreActuallyFree && log.getMutable<GenericTypePack>(subTp))
     {
         if (!occursCheck(subTp, superTp, /* reversed = */ false))
         {
@@ -2030,7 +1974,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (FFlag::LuauUnifierRecursionOnRestart)
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnify(subTy, superTy, false, isIntersection);
                 return;
             }
@@ -2048,7 +1992,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (errors.empty())
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnifyTables(subTy, superTy, isIntersection);
             }
 
@@ -2120,7 +2064,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (FFlag::LuauUnifierRecursionOnRestart)
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnify(subTy, superTy, false, isIntersection);
                 return;
             }
@@ -2140,7 +2084,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
         {
             if (errors.empty())
             {
-                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                RecursionLimiter _ra("Unifier::tryUnifyTables", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
                 tryUnifyTables(subTy, superTy, isIntersection);
             }
 
@@ -2555,12 +2499,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
                 tryUnify_(vtp->ty, variadicTy);
             }
             else if (get<GenericTypePack>(tail))
-            {
-                if (!hideousFixMeGenericsAreActuallyFree)
-                    reportError(location, GenericError{"Cannot unify variadic and generic packs"});
-                else
-                    log.replace(tail, BoundTypePack{superTp});
-            }
+                reportError(location, GenericError{"Cannot unify variadic and generic packs"});
             else if (get<ErrorTypePack>(tail))
             {
                 // Nothing to do here.
@@ -2732,7 +2671,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack, bool reversed)
 
 bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::occursCheck", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     bool occurrence = false;
 
@@ -2753,13 +2692,13 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
     if (log.getMutable<ErrorType>(needle))
         return false;
 
-    if (!log.getMutable<FreeType>(needle) && !(hideousFixMeGenericsAreActuallyFree && log.is<GenericType>(needle)))
+    if (!log.getMutable<FreeType>(needle))
         ice("Expected needle to be free");
 
     if (needle == haystack)
         return true;
 
-    if (log.getMutable<FreeType>(haystack) || (hideousFixMeGenericsAreActuallyFree && log.is<GenericType>(haystack)))
+    if (log.getMutable<FreeType>(haystack))
         return false;
     else if (auto a = log.getMutable<UnionType>(haystack))
     {
@@ -2803,10 +2742,10 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
     if (log.getMutable<ErrorTypePack>(needle))
         return false;
 
-    if (!log.getMutable<FreeTypePack>(needle) && !(hideousFixMeGenericsAreActuallyFree && log.is<GenericTypePack>(needle)))
+    if (!log.getMutable<FreeTypePack>(needle))
         ice("Expected needle pack to be free");
 
-    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+    RecursionLimiter _ra("Unifier::occursCheck", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     while (!log.getMutable<ErrorTypePack>(haystack))
     {

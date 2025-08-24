@@ -61,7 +61,8 @@ void ConstraintGeneratorFixture::solve(const std::string& code)
         {},
         &logger,
         NotNull{dfg.get()},
-        {}};
+        {}
+    };
 
     cs.run();
 }

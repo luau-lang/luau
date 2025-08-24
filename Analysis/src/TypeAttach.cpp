@@ -2,7 +2,6 @@
 #include "Luau/TypeAttach.h"
 
 #include "Luau/Ast.h"
-#include "Luau/Error.h"
 #include "Luau/Module.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
@@ -13,8 +12,6 @@
 #include "Luau/TypeFunction.h"
 
 #include <string>
-
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
@@ -197,43 +194,33 @@ public:
 
             char* name = allocateString(*allocator, propName);
 
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            if (prop.isShared())
             {
-                if (prop.isShared())
-                {
-                    props.data[idx].name = AstName(name);
-                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
-                    props.data[idx].access = AstTableAccess::ReadWrite;
-                    props.data[idx].location = Location();
-                    idx++;
-                }
-                else
-                {
-                    if (prop.readTy)
-                    {
-                        props.data[idx].name = AstName(name);
-                        props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
-                        props.data[idx].access = AstTableAccess::Read;
-                        props.data[idx].location = Location();
-                        idx++;
-                    }
-
-                    if (prop.writeTy)
-                    {
-                        props.data[idx].name = AstName(name);
-                        props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
-                        props.data[idx].access = AstTableAccess::Write;
-                        props.data[idx].location = Location();
-                        idx++;
-                    }
-                }
+                props.data[idx].name = AstName(name);
+                props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                props.data[idx].access = AstTableAccess::ReadWrite;
+                props.data[idx].location = Location();
+                idx++;
             }
             else
             {
-                props.data[idx].name = AstName(name);
-                props.data[idx].type = Luau::visit(*this, prop.type_DEPRECATED()->ty);
-                props.data[idx].location = Location();
-                idx++;
+                if (prop.readTy)
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                    props.data[idx].access = AstTableAccess::Read;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
+
+                if (prop.writeTy)
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
+                    props.data[idx].access = AstTableAccess::Write;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
             }
         }
 
@@ -272,43 +259,33 @@ public:
         {
             char* name = allocateString(*allocator, propName);
 
-            if (FFlag::LuauRemoveTypeCallsForReadWriteProps)
+            if (prop.isShared())
             {
-                if (prop.isShared())
-                {
-                    props.data[idx].name = AstName(name);
-                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
-                    props.data[idx].access = AstTableAccess::ReadWrite;
-                    props.data[idx].location = Location();
-                    idx++;
-                }
-                else
-                {
-                    if (prop.readTy)
-                    {
-                        props.data[idx].name = AstName(name);
-                        props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
-                        props.data[idx].access = AstTableAccess::Read;
-                        props.data[idx].location = Location();
-                        idx++;
-                    }
-
-                    if (prop.writeTy)
-                    {
-                        props.data[idx].name = AstName(name);
-                        props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
-                        props.data[idx].access = AstTableAccess::Write;
-                        props.data[idx].location = Location();
-                        idx++;
-                    }
-                }
+                props.data[idx].name = AstName(name);
+                props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                props.data[idx].access = AstTableAccess::ReadWrite;
+                props.data[idx].location = Location();
+                idx++;
             }
             else
             {
-                props.data[idx].name = AstName{name};
-                props.data[idx].type = Luau::visit(*this, prop.type_DEPRECATED()->ty);
-                props.data[idx].location = Location();
-                idx++;
+                if (prop.readTy)
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.readTy)->ty);
+                    props.data[idx].access = AstTableAccess::Read;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
+
+                if (prop.writeTy)
+                {
+                    props.data[idx].name = AstName(name);
+                    props.data[idx].type = Luau::visit(*this, (*prop.writeTy)->ty);
+                    props.data[idx].access = AstTableAccess::Write;
+                    props.data[idx].location = Location();
+                    idx++;
+                }
             }
         }
 

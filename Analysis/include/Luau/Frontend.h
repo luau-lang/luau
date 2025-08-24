@@ -113,7 +113,8 @@ struct FrontendOptions
     bool applyInternalLimitScaling = false;
 
     // An optional callback which is called for every *dirty* module was checked
-    // Is multi-threaded typechecking is used, this callback might be called from multiple threads and has to be thread-safe
+    // If multi-threaded typechecking is used, this callback might be called
+    // from multiple threads and has to be thread-safe
     std::function<void(const SourceModule& sourceModule, const Luau::Module& module)> customModuleCheck;
 
     bool collectTypeAllocationStats = false;
@@ -169,11 +170,13 @@ struct Frontend
         double timeParse = 0;
         double timeCheck = 0;
         double timeLint = 0;
+
+        size_t dynamicConstraintsCreated = 0;
     };
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
-    void setLuauSolverSelectionFromWorkspace(SolverMode mode);
+    void setLuauSolverMode(SolverMode mode);
     SolverMode getLuauSolverMode() const;
     // The default value assuming there is no workspace setup yet
     std::atomic<SolverMode> useNewLuauSolver{FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
@@ -242,6 +245,7 @@ private:
         std::optional<ScopePtr> environmentScope,
         bool forAutocomplete,
         bool recordJsonLog,
+        Frontend::Stats& stats,
         TypeCheckLimits typeCheckLimits
     );
 
@@ -326,12 +330,13 @@ ModulePtr check(
     NotNull<InternalErrorReporter> iceHandler,
     NotNull<ModuleResolver> moduleResolver,
     NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope,
+    const ScopePtr& parentScope,
     const ScopePtr& typeFunctionScope,
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
     FrontendOptions options,
     TypeCheckLimits limits,
     bool recordJsonLog,
+    Frontend::Stats& stats,
     std::function<void(const ModuleName&, std::string)> writeJsonLog
 );
 

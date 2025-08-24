@@ -15,7 +15,7 @@
 
 #include <string.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauUnrefExisting, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauSafeStackCheck, false)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -141,7 +141,36 @@ int lua_checkstack(lua_State* L, int size)
         res = 0; // stack overflow
     else if (size > 0)
     {
-        luaD_checkstack(L, size);
+        if (DFFlag::LuauSafeStackCheck)
+        {
+            if (stacklimitreached(L, size))
+            {
+                struct CallContext
+                {
+                    int size;
+
+                    static void run(lua_State* L, void* ud)
+                    {
+                        CallContext* ctx = (CallContext*)ud;
+
+                        luaD_growstack(L, ctx->size);
+                    }
+                } ctx = {size};
+
+                // there could be no memory to extend the stack
+                if (luaD_rawrunprotected(L, &CallContext::run, &ctx) != LUA_OK)
+                    return 0;
+            }
+            else
+            {
+                condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 0));
+            }
+        }
+        else
+        {
+            luaD_checkstack(L, size);
+        }
+
         expandstacklimit(L, L->top + size);
     }
     return res;
@@ -1008,8 +1037,9 @@ void lua_call(lua_State* L, int nargs, int nresults)
 /*
 ** Execute a protected call.
 */
+// data to `f_call'
 struct CallS
-{ // data to `f_call'
+{
     StkId func;
     int nresults;
 };
@@ -1039,6 +1069,42 @@ int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
     int status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
 
     adjustresults(L, nresults);
+    return status;
+}
+
+/*
+** Execute a protected C call.
+*/
+// data to `f_Ccall'
+struct CCallS
+{
+    lua_CFunction func;
+    void* ud;
+};
+
+static void f_Ccall(lua_State* L, void* ud)
+{
+    struct CCallS* c = cast_to(struct CCallS*, ud);
+
+    if (!lua_checkstack(L, 2))
+        luaG_runerror(L, "stack limit");
+
+    lua_pushcclosurek(L, c->func, nullptr, 0, nullptr);
+    lua_pushlightuserdata(L, c->ud);
+    luaD_call(L, L->top - 2, 0);
+}
+
+int lua_cpcall(lua_State* L, lua_CFunction func, void* ud)
+{
+    api_check(L, L->status == 0);
+
+    struct CCallS c;
+    c.func = func;
+    c.ud = ud;
+
+    int status = luaD_pcall(L, f_Ccall, &c, savestack(L, L->top), 0);
+
+    adjustresults(L, 0);
     return status;
 }
 
@@ -1448,25 +1514,16 @@ void lua_unref(lua_State* L, int ref)
     global_State* g = L->global;
     LuaTable* reg = hvalue(registry(L));
 
-    if (DFFlag::LuauUnrefExisting)
-    {
-        const TValue* slot = luaH_getnum(reg, ref);
-        api_check(L, slot != luaO_nilobject);
+    const TValue* slot = luaH_getnum(reg, ref);
+    api_check(L, slot != luaO_nilobject);
 
-        // similar to how 'luaH_setnum' makes non-nil slot value mutable
-        TValue* mutableSlot = (TValue*)slot;
+    // similar to how 'luaH_setnum' makes non-nil slot value mutable
+    TValue* mutableSlot = (TValue*)slot;
 
-        // NB: no barrier needed because value isn't collectable
-        setnvalue(mutableSlot, g->registryfree);
+    // NB: no barrier needed because value isn't collectable
+    setnvalue(mutableSlot, g->registryfree);
 
-        g->registryfree = ref;
-    }
-    else
-    {
-        TValue* slot = luaH_setnum(L, reg, ref);
-        setnvalue(slot, g->registryfree); // NB: no barrier needed because value isn't collectable
-        g->registryfree = ref;
-    }
+    g->registryfree = ref;
 }
 
 void lua_setuserdatatag(lua_State* L, int idx, int tag)

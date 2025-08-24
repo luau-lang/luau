@@ -2,19 +2,40 @@
 #include "Luau/Ast.h"
 
 #include "Luau/Common.h"
+#include "Luau/StringUtils.h"
+
+LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 namespace Luau
 {
 
-static bool hasAttributeInArray(const AstArray<AstAttr*> attributes, AstAttr::Type attributeType)
+static AstAttr* findAttributeInArray(const AstArray<AstAttr*> attributes, AstAttr::Type attributeType)
 {
     for (const auto attribute : attributes)
     {
         if (attribute->type == attributeType)
-            return true;
+            return attribute;
     }
 
-    return false;
+    return nullptr;
+}
+
+static bool hasAttributeInArray(const AstArray<AstAttr*> attributes, AstAttr::Type attributeType)
+{
+    if (FFlag::LuauParametrizedAttributeSyntax)
+    {
+        return findAttributeInArray(attributes, attributeType) != nullptr;
+    }
+    else
+    {
+        for (const auto attribute : attributes)
+        {
+            if (attribute->type == attributeType)
+                return true;
+        }
+
+        return false;
+    }
 }
 
 static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
@@ -26,15 +47,39 @@ static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
         list.tailType->visit(visitor);
 }
 
-AstAttr::AstAttr(const Location& location, Type type)
+AstAttr::AstAttr(const Location& location, Type type, AstArray<AstExpr*> args)
     : AstNode(ClassIndex(), location)
     , type(type)
+    , args(args)
 {
 }
 
 void AstAttr::visit(AstVisitor* visitor)
 {
     visitor->visit(this);
+}
+
+AstAttr::DeprecatedInfo AstAttr::deprecatedInfo() const
+{
+    AstAttr::DeprecatedInfo info;
+    info.deprecated = type == AstAttr::Type::Deprecated;
+
+    if (info.deprecated && args.size > 0)
+    {
+        AstExprTable* table = args.data[0]->as<AstExprTable>();
+        if (auto useValue = table->getRecord("use"))
+        {
+            AstArray<char> use = (*useValue)->as<AstExprConstantString>()->value;
+            info.use = {{use.data, use.size}};
+        }
+        if (auto reasonValue = table->getRecord("reason"))
+        {
+            AstArray<char> reason = (*reasonValue)->as<AstExprConstantString>()->value;
+            info.reason = {{reason.data, reason.size}};
+        }
+    }
+
+    return info;
 }
 
 int gAstRttiIndex = 0;
@@ -293,6 +338,11 @@ bool AstExprFunction::hasAttribute(const AstAttr::Type attributeType) const
     return hasAttributeInArray(attributes, attributeType);
 }
 
+AstAttr* AstExprFunction::getAttribute(const AstAttr::Type attributeType) const
+{
+    return findAttributeInArray(attributes, attributeType);
+}
+
 AstExprTable::AstExprTable(const Location& location, const AstArray<Item>& items)
     : AstExpr(ClassIndex(), location)
     , items(items)
@@ -311,6 +361,19 @@ void AstExprTable::visit(AstVisitor* visitor)
             item.value->visit(visitor);
         }
     }
+}
+
+std::optional<AstExpr*> AstExprTable::getRecord(const char* key) const
+{
+    for (const AstExprTable::Item& item : items)
+    {
+        if (item.kind == AstExprTable::Item::Kind::Record)
+        {
+            if (strcmp(item.key->as<AstExprConstantString>()->value.data, key) == 0)
+                return item.value;
+        }
+    }
+    return {};
 }
 
 AstExprUnary::AstExprUnary(const Location& location, Op op, AstExpr* expr)
@@ -917,6 +980,11 @@ bool AstStatDeclareFunction::hasAttribute(AstAttr::Type attributeType) const
     return hasAttributeInArray(attributes, attributeType);
 }
 
+AstAttr* AstStatDeclareFunction::getAttribute(const AstAttr::Type attributeType) const
+{
+    return findAttributeInArray(attributes, attributeType);
+}
+
 AstStatDeclareExternType::AstStatDeclareExternType(
     const Location& location,
     const AstName& name,
@@ -1085,6 +1153,11 @@ bool AstTypeFunction::hasAttribute(AstAttr::Type attributeType) const
     return hasAttributeInArray(attributes, attributeType);
 }
 
+AstAttr* AstTypeFunction::getAttribute(AstAttr::Type attributeType) const
+{
+    return findAttributeInArray(attributes, attributeType);
+}
+
 AstTypeTypeof::AstTypeTypeof(const Location& location, AstExpr* expr)
     : AstType(ClassIndex(), location)
     , expr(expr)
@@ -1232,6 +1305,34 @@ void AstTypePackGeneric::visit(AstVisitor* visitor)
 bool isLValue(const AstExpr* expr)
 {
     return expr->is<AstExprLocal>() || expr->is<AstExprGlobal>() || expr->is<AstExprIndexName>() || expr->is<AstExprIndexExpr>();
+}
+
+bool isConstantLiteral(const AstExpr* expr)
+{
+    return expr->is<AstExprConstantNil>() || expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNumber>() ||
+           expr->is<AstExprConstantString>();
+}
+
+bool isLiteralTable(const AstExpr* expr)
+{
+    if (!expr->is<AstExprTable>())
+        return false;
+
+    for (const AstExprTable::Item& item : expr->as<AstExprTable>()->items)
+    {
+        switch (item.kind)
+        {
+        case AstExprTable::Item::Kind::General:
+            return false;
+            break;
+        case AstExprTable::Item::Kind::Record:
+        case AstExprTable::Item::Kind::List:
+            if (!isConstantLiteral(item.value) && !isLiteralTable(item.value))
+                return false;
+            break;
+        }
+    }
+    return true;
 }
 
 AstName getIdentifier(AstExpr* node)

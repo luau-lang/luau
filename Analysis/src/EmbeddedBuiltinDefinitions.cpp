@@ -1,8 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(LuauDeclareExternType)
-LUAU_FASTFLAG(LuauTypeFunOptional)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorLerp)
 
 namespace Luau
 {
@@ -262,8 +261,7 @@ declare buffer: {
 
 )BUILTIN_SRC";
 
-static const char* const kBuiltinDefinitionVectorSrc = (FFlag::LuauDeclareExternType)
-    ? R"BUILTIN_SRC(
+static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
 declare extern type vector with
@@ -286,16 +284,18 @@ declare vector: {
     clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
     max: @checked (vector, ...vector) -> vector,
     min: @checked (vector, ...vector) -> vector,
+    lerp: @checked (vec1: vector, vec2: vector, t: number) -> number,
 
     zero: vector,
     one: vector,
 }
 
-)BUILTIN_SRC"
-    : R"BUILTIN_SRC(
+)BUILTIN_SRC";
 
--- While vector would have been better represented as a built-in primitive type, type solver class handling covers most of the properties
-declare class vector
+static const char* const kBuiltinDefinitionVectorSrc_DEPRECATED = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
     x: number
     y: number
     z: number
@@ -334,7 +334,14 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     result += kBuiltinDefinitionBufferSrc;
-    result += kBuiltinDefinitionVectorSrc;
+    if (FFlag::LuauTypeCheckerVectorLerp)
+    {
+        result += kBuiltinDefinitionVectorSrc;
+    }
+    else
+    {
+        result += kBuiltinDefinitionVectorSrc_DEPRECATED;
+    }
 
     return result;
 }
@@ -406,29 +413,6 @@ declare types: {
     buffer: type,
 
     singleton: @checked (arg: string | boolean | nil) -> type,
-    generic: @checked (name: string, ispack: boolean?) -> type,
-    negationof: @checked (arg: type) -> type,
-    unionof: @checked (...type) -> type,
-    intersectionof: @checked (...type) -> type,
-    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
-    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
-    copy: @checked (arg: type) -> type,
-}
-)BUILTIN_SRC";
-
-static constexpr const char* kBuiltinDefinitionTypesLibWithOptionalSrc = R"BUILTIN_SRC(
-
-declare types: {
-    unknown: type,
-    never: type,
-    any: type,
-    boolean: type,
-    number: type,
-    string: type,
-    thread: type,
-    buffer: type,
-
-    singleton: @checked (arg: string | boolean | nil) -> type,
     optional: @checked (arg: type) -> type,
     generic: @checked (name: string, ispack: boolean?) -> type,
     negationof: @checked (arg: type) -> type,
@@ -446,10 +430,7 @@ std::string getTypeFunctionDefinitionSource()
 
     std::string result = kBuiltinDefinitionTypeMethodSrc;
 
-    if (FFlag::LuauTypeFunOptional)
-        result += kBuiltinDefinitionTypesLibWithOptionalSrc;
-    else
-        result += kBuiltinDefinitionTypesLibSrc;
+    result += kBuiltinDefinitionTypesLibSrc;
 
     return result;
 }

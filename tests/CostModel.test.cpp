@@ -5,8 +5,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauCompileCostModelConstants)
-
 using namespace Luau;
 
 namespace Luau
@@ -131,37 +129,6 @@ end
     // note: we currently don't treat fast calls differently from cost model perspective
     CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
     CHECK_EQ(5, Luau::Compile::computeCost(model, args2, 1));
-}
-
-TEST_CASE("ControlFlow")
-{
-    ScopedFastFlag luauCompileCostModelConstants{FFlag::LuauCompileCostModelConstants, false};
-
-    uint64_t model = modelFunction(R"(
-function test(a)
-    while a < 0 do
-        a += 1
-    end
-    for i=10,1,-1 do
-        a += 1
-    end
-    for i in pairs({}) do
-        a += 1
-        if a % 2 == 0 then continue end
-    end
-    repeat
-        a += 1
-        if a % 2 == 0 then break end
-    until a > 10
-    return a
-end
-)");
-
-    const bool args1[] = {false};
-    const bool args2[] = {true};
-
-    CHECK_EQ(76, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(73, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("Conditional")

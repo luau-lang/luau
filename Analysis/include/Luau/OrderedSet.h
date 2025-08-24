@@ -65,4 +65,4 @@ private:
     DenseHashSet<T> elementSet{nullptr};
 };
 
-}
+} // namespace Luau

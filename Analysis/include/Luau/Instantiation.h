@@ -7,6 +7,8 @@
 #include "Luau/Unifiable.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+
 namespace Luau
 {
 
@@ -91,6 +93,11 @@ struct Instantiation final : Substitution
 struct GenericTypeFinder : TypeOnceVisitor
 {
     bool found = false;
+
+    GenericTypeFinder()
+        : TypeOnceVisitor("GenericTypeFinder", FFlag::LuauExplicitSkipBoundTypes)
+    {
+    }
 
     bool visit(TypeId ty) override
     {

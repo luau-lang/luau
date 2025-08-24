@@ -1465,6 +1465,12 @@ struct AstJsonEncoder : public AstVisitor
         return false;
     }
 
+    bool visit(class AstTypeOptional* node) override
+    {
+        write(node);
+        return false;
+    }
+
     bool visit(class AstTypeUnion* node) override
     {
         write(node);

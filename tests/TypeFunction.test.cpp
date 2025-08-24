@@ -15,11 +15,13 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauSimplifyOutOfLine2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
-LUAU_FASTFLAG(LuauErrorSuppressionTypeFunctionArgs)
-LUAU_FASTFLAG(LuauStuckTypeFunctionsStillDispatch)
-LUAU_FASTFLAG(LuauEmptyStringInKeyOf)
+LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauDoNotBlockOnStuckTypeFunctions)
+LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
+LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauRefineOccursCheckDirectRecursion)
+LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -160,8 +162,6 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyOutOfLine2, true};
-
     if (!FFlag::LuauSolverV2)
         return;
 
@@ -351,8 +351,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
         type KeysOfMyObject = keyof<MyObject>
@@ -373,8 +371,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local metatable = { __index = {w = 1} }
@@ -433,8 +429,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     if (!FFlag::LuauSolverV2)
         return;
 
@@ -465,8 +459,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_o
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
@@ -504,8 +496,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
         type KeysOfMyObject = rawkeyof<MyObject>
@@ -526,8 +516,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         local metatable = { __index = {w = 1} }
@@ -570,8 +558,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_unio
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         type MyObject = { x: number, y: number, z: number }
         type MyOtherObject = { w: number, y: number, z: number }
@@ -607,8 +593,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_on_extern_types"
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
 
     CheckResult result = check(R"(
         type KeysOfMyObject = keyof<BaseClass>
@@ -746,7 +730,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauStuckTypeFunctionsStillDispatch, true}
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -1011,8 +996,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
         type IdxAType = index<MyObject, "a">
@@ -1185,17 +1168,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_var_indexer")
         type errType1 = index<MyObject, key>
     )");
 
-    if (FFlag::LuauErrorSuppressionTypeFunctionArgs)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(toString(result.errors[0]) == "Unknown type 'key'");
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK(toString(result.errors[0]) == "Second argument to index<MyObject, _> is not a valid index type");
-        CHECK(toString(result.errors[1]) == "Unknown type 'key'");
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Unknown type 'key'");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_union_type_indexer")
@@ -1312,8 +1286,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
         type RawAType = rawget<MyObject, "a">
@@ -1357,17 +1329,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_errors_w_var_indexer")
     )");
 
 
-    if (FFlag::LuauErrorSuppressionTypeFunctionArgs)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(toString(result.errors[0]) == "Unknown type 'key'");
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK(toString(result.errors[0]) == "Second argument to rawget<MyObject, _> is not a valid index type");
-        CHECK(toString(result.errors[1]) == "Unknown type 'key'");
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Unknown type 'key'");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexer")
@@ -1694,8 +1657,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_suppression_should_work_on_type_functi
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag errorSuppressionTypeFunctionArgs{FFlag::LuauErrorSuppressionTypeFunctionArgs, true};
-
     CheckResult result = check(R"(
         local Colours = {
             Red = 1,
@@ -1723,7 +1684,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fully_dispatch_type_function_that_is_paramet
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -1750,7 +1712,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "undefined_add_application")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauStuckTypeFunctionsStillDispatch, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -1770,8 +1733,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_prop
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag _{FFlag::LuauEmptyStringInKeyOf, true};
-
     loadDefinition(R"(
         declare class Foobar
             one: boolean
@@ -1787,7 +1748,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_prop
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ(R"("" | "one")", toString(requireTypeAlias("FoobarKeys")));
     CHECK_EQ(R"("" | "two")", toString(requireTypeAlias("TableKeys")));
-
 }
 
 struct TFFixture
@@ -1796,7 +1756,10 @@ struct TFFixture
     NotNull<TypeArena> arena{&arena_};
 
     BuiltinTypes builtinTypes_;
-    NotNull<BuiltinTypes> getBuiltins(){ return NotNull{&builtinTypes_};}
+    NotNull<BuiltinTypes> getBuiltins()
+    {
+        return NotNull{&builtinTypes_};
+    }
 
     ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
 
@@ -1807,8 +1770,10 @@ struct TFFixture
     TypeCheckLimits limits;
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
 
-    const ScopedFastFlag sff[1] = {
+    const ScopedFastFlag sff[3] = {
         {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     BuiltinTypeFunctions builtinTypeFunctions;
@@ -1871,7 +1836,11 @@ TEST_CASE_FIXTURE(TFFixture, "a_type_function_parameterized_on_generics_is_solve
 
 TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_solved_tf_is_solved")
 {
-    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
+    };
 
     TypeId a = arena->addType(GenericType{"A"});
     TypeId b = arena->addType(GenericType{"B"});
@@ -1890,7 +1859,11 @@ TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_solved_tf_is_solved")
 
 TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_stuck_tf_is_stuck")
 {
-    ScopedFastFlag sff{FFlag::LuauStuckTypeFunctionsStillDispatch, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true}
+    };
 
     TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{builtinTypeFunctions.addFunc, {builtinTypes_.bufferType, builtinTypes_.booleanType}});
 
@@ -1902,6 +1875,96 @@ TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_stuck_tf_is_stuck")
     REQUIRE(tfit);
 
     CHECK(tfit->state == TypeFunctionInstanceState::Stuck);
+}
+
+// We want to make sure that `t1 where t1 = refine<t1, unknown>` becomes `unknown`, not a cyclic type.
+TEST_CASE_FIXTURE(TFFixture, "reduce_degenerate_refinement")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineOccursCheckDirectRecursion, true},
+    };
+
+    TypeId root = arena->addType(BlockedType{});
+    TypeId refinement = arena->addType(TypeFunctionInstanceType{
+        builtinTypeFunctions.refineFunc,
+        {
+            root,
+            builtinTypes_.unknownType,
+        }
+    });
+
+    emplaceType<BoundType>(asMutable(root), refinement);
+    reduceTypeFunctions(refinement, Location{}, tfc, true);
+    CHECK_EQ("unknown", toString(refinement));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_type_functions_should_not_get_stuck_or")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauEagerGeneralization4, true},
+        {FFlag::LuauTrackFreeInteriorTypePacks, true},
+        {FFlag::LuauResetConditionalContextProperly, true},
+        {FFlag::LuauForceSimplifyConstraint2, true},
+        {FFlag::LuauDoNotBlockOnStuckTypeFunctions, true},
+    };
+
+    CheckResult result = check(R"(
+        local function init(data)
+          return not data or data == ''
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation")
+{
+    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
+
+    CheckResult result = check(R"(
+        type a<T> = {a<{T}>}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation1")
+{
+    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
+
+    CheckResult result = check(R"(
+        type b<T> = {b<T | string>}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation2")
+{
+    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
+
+    CheckResult result = check(R"(
+        type c<T> = {c<T & string>}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation3")
+{
+    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
+
+    CheckResult result = check(R"(
+        type d<T> = (d<T | string>) -> ()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
 }
 
 TEST_SUITE_END();

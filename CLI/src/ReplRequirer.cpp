@@ -168,8 +168,6 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
         {
             if (lua_gettop(ML) == 0)
                 lua_pushstring(ML, "module must return a value");
-            else if (!lua_istable(ML, -1) && !lua_isfunction(ML, -1))
-                lua_pushstring(ML, "module must return a table or function");
         }
         else if (status == LUA_YIELD)
         {

@@ -13,10 +13,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauDfgScopeStackNotNull)
-LUAU_FASTFLAGVARIABLE(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
-LUAU_FASTFLAGVARIABLE(LuauDfgForwardNilFromAndOr)
 
 namespace Luau
 {
@@ -155,38 +152,6 @@ void DfgScope::inherit(const DfgScope* childScope)
     }
 }
 
-bool DfgScope::canUpdateDefinition(Symbol symbol) const
-{
-    if (FFlag::LuauDfgAllowUpdatesInLoops)
-        return true;
-
-    for (const DfgScope* current = this; current; current = current->parent)
-    {
-        if (current->bindings.find(symbol))
-            return true;
-        else if (current->scopeType == DfgScope::Loop)
-            return false;
-    }
-
-    return true;
-}
-
-bool DfgScope::canUpdateDefinition(DefId def, const std::string& key) const
-{
-    if (FFlag::LuauDfgAllowUpdatesInLoops)
-        return true;
-
-    for (const DfgScope* current = this; current; current = current->parent)
-    {
-        if (auto props = current->props.find(def))
-            return true;
-        else if (current->scopeType == DfgScope::Loop)
-            return false;
-    }
-
-    return true;
-}
-
 DataFlowGraphBuilder::DataFlowGraphBuilder(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena)
     : graph{defArena, keyArena}
     , defArena{defArena}
@@ -206,14 +171,7 @@ DataFlowGraph DataFlowGraphBuilder::build(
     DataFlowGraphBuilder builder(defArena, keyArena);
     builder.handle = handle;
 
-    DfgScope* moduleScope;
-    // We're not explicitly calling makeChildScope here because that function relies on currentScope
-    // which guarantees that the scope being returned is NotNull
-    // This means that while the scope stack is empty, we'll have to manually initialize the global scope
-    if (FFlag::LuauDfgScopeStackNotNull)
-        moduleScope = builder.scopes.emplace_back(new DfgScope{nullptr, DfgScope::ScopeType::Linear}).get();
-    else
-        moduleScope = builder.makeChildScope();
+    DfgScope* moduleScope = builder.scopes.emplace_back(new DfgScope{nullptr, DfgScope::ScopeType::Linear}).get();
     PushScope ps{builder.scopeStack, moduleScope};
     builder.visitBlockWithoutChildScope(block);
     builder.resolveCaptures();
@@ -251,19 +209,9 @@ NotNull<DfgScope> DataFlowGraphBuilder::currentScope()
     return NotNull{scopeStack.back()};
 }
 
-DfgScope* DataFlowGraphBuilder::currentScope_DEPRECATED()
-{
-    if (scopeStack.empty())
-        return nullptr; // nullptr is the root DFG scope.
-    return scopeStack.back();
-}
-
 DfgScope* DataFlowGraphBuilder::makeChildScope(DfgScope::ScopeType scopeType)
 {
-    if (FFlag::LuauDfgScopeStackNotNull)
-        return scopes.emplace_back(new DfgScope{currentScope(), scopeType}).get();
-    else
-        return scopes.emplace_back(new DfgScope{currentScope_DEPRECATED(), scopeType}).get();
+    return scopes.emplace_back(new DfgScope{currentScope(), scopeType}).get();
 }
 
 void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b)
@@ -340,7 +288,7 @@ void DataFlowGraphBuilder::joinProps(DfgScope* result, const DfgScope& a, const 
 
 DefId DataFlowGraphBuilder::lookup(Symbol symbol, Location location)
 {
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
+    DfgScope* scope = currentScope();
 
     // true if any of the considered scopes are a loop.
     bool outsideLoopScope = false;
@@ -373,7 +321,7 @@ DefId DataFlowGraphBuilder::lookup(Symbol symbol, Location location)
 
 DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key, Location location)
 {
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
+    DfgScope* scope = currentScope();
     for (DfgScope* current = scope; current; current = current->parent)
     {
         if (auto props = current->props.find(def))
@@ -419,10 +367,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatBlock* b)
         cf = visitBlockWithoutChildScope(b);
     }
 
-    if (FFlag::LuauDfgScopeStackNotNull)
-        currentScope()->inherit(child);
-    else
-        currentScope_DEPRECATED()->inherit(child);
+    currentScope()->inherit(child);
     return cf;
 }
 
@@ -507,7 +452,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
         elsecf = visit(i->elsebody);
     }
 
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
+    DfgScope* scope = currentScope();
     // If the control flow from the `if` or `else` block is non-linear,
     // then we should assume that the _other_ branch is the one taken.
     if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
@@ -541,39 +486,20 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatWhile* w)
     // allow a string to flow into a position that expects.
     DfgScope* whileScope = makeChildScope(DfgScope::Loop);
 
-    if (FFlag::LuauDfgAllowUpdatesInLoops)
+    ControlFlow cf;
     {
-
-        ControlFlow cf;
-        {
-            PushScope ps{scopeStack, whileScope};
-            visitExpr(w->condition);
-            cf = visit(w->body);
-        }
-
-        auto scope = currentScope();
-        // If the inner loop unconditioanlly returns or throws we shouldn't
-        // consume any type state from the loop body.
-        if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
-            join(scope, scope, whileScope);
-
-        return ControlFlow::None;
+        PushScope ps{scopeStack, whileScope};
+        visitExpr(w->condition);
+        cf = visit(w->body);
     }
-    else
-    {
-        {
-            PushScope ps{scopeStack, whileScope};
-            visitExpr(w->condition);
-            visit(w->body);
-        }
 
-        if (FFlag::LuauDfgScopeStackNotNull)
-            currentScope()->inherit(whileScope);
-        else
-            currentScope_DEPRECATED()->inherit(whileScope);
+    auto scope = currentScope();
+    // If the inner loop unconditioanlly returns or throws we shouldn't
+    // consume any type state from the loop body.
+    if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
+        join(scope, scope, whileScope);
 
-        return ControlFlow::None;
-    }
+    return ControlFlow::None;
 }
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatRepeat* r)
@@ -582,41 +508,23 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatRepeat* r)
     // does not consider the _second_ loop iteration.
     DfgScope* repeatScope = makeChildScope(DfgScope::Loop);
 
-    if (FFlag::LuauDfgAllowUpdatesInLoops)
+    ControlFlow cf;
+
     {
-        ControlFlow cf;
-
-        {
-            PushScope ps{scopeStack, repeatScope};
-            cf = visitBlockWithoutChildScope(r->body);
-            visitExpr(r->condition);
-        }
-
-        // Ultimately: the options for a repeat-until loop are more
-        // straightforward.
-        currentScope()->inherit(repeatScope);
-
-        // `repeat` loops will unconditionally fire: if the internal control
-        // flow is unconditionally a break or continue, then we have linear
-        // control flow, but if it's throws or returns, then we need to
-        // return _that_ to the parent.
-        return matches(cf, ControlFlow::Breaks | ControlFlow::Continues) ? ControlFlow::None : cf;
+        PushScope ps{scopeStack, repeatScope};
+        cf = visitBlockWithoutChildScope(r->body);
+        visitExpr(r->condition);
     }
-    else
-    {
-        {
-            PushScope ps{scopeStack, repeatScope};
-            visitBlockWithoutChildScope(r->body);
-            visitExpr(r->condition);
-        }
 
-        if (FFlag::LuauDfgScopeStackNotNull)
-            currentScope()->inherit(repeatScope);
-        else
-            currentScope_DEPRECATED()->inherit(repeatScope);
+    // Ultimately: the options for a repeat-until loop are more
+    // straightforward.
+    currentScope()->inherit(repeatScope);
 
-        return ControlFlow::None;
-    }
+    // `repeat` loops will unconditionally fire: if the internal control
+    // flow is unconditionally a break or continue, then we have linear
+    // control flow, but if it's throws or returns, then we need to
+    // return _that_ to the parent.
+    return matches(cf, ControlFlow::Breaks | ControlFlow::Continues) ? ControlFlow::None : cf;
 }
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatBreak* b)
@@ -673,10 +581,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatLocal* l)
             }
         }
         graph.localDefs[local] = def;
-        if (FFlag::LuauDfgScopeStackNotNull)
-            currentScope()->bindings[local] = def;
-        else
-            currentScope_DEPRECATED()->bindings[local] = def;
+        currentScope()->bindings[local] = def;
         captures[local].allVersions.push_back(def);
     }
 
@@ -694,135 +599,64 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFor* f)
     if (f->step)
         visitExpr(f->step);
 
-    if (FFlag::LuauDfgAllowUpdatesInLoops)
+    ControlFlow cf;
     {
+        PushScope ps{scopeStack, forScope};
 
-        ControlFlow cf;
-        {
-            PushScope ps{scopeStack, forScope};
+        if (f->var->annotation)
+            visitType(f->var->annotation);
 
-            if (f->var->annotation)
-                visitType(f->var->annotation);
+        DefId def = defArena->freshCell(f->var, f->var->location);
+        graph.localDefs[f->var] = def;
+        currentScope()->bindings[f->var] = def;
+        captures[f->var].allVersions.push_back(def);
 
-            DefId def = defArena->freshCell(f->var, f->var->location);
-            graph.localDefs[f->var] = def;
-            currentScope()->bindings[f->var] = def;
-            captures[f->var].allVersions.push_back(def);
-
-            cf = visit(f->body);
-        }
-
-        auto scope = currentScope();
-        // If the inner loop unconditioanlly returns or throws we shouldn't
-        // consume any type state from the loop body.
-        if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
-            join(scope, scope, forScope);
-
-        return ControlFlow::None;
+        cf = visit(f->body);
     }
-    else
-    {
-        {
-            PushScope ps{scopeStack, forScope};
 
-            if (f->var->annotation)
-                visitType(f->var->annotation);
+    auto scope = currentScope();
+    // If the inner loop unconditioanlly returns or throws we shouldn't
+    // consume any type state from the loop body.
+    if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
+        join(scope, scope, forScope);
 
-            DefId def = defArena->freshCell(f->var, f->var->location);
-            graph.localDefs[f->var] = def;
-            if (FFlag::LuauDfgScopeStackNotNull)
-                currentScope()->bindings[f->var] = def;
-            else
-                currentScope_DEPRECATED()->bindings[f->var] = def;
-            captures[f->var].allVersions.push_back(def);
-
-            // TODO(controlflow): entry point has a back edge from exit point
-            visit(f->body);
-        }
-
-        if (FFlag::LuauDfgScopeStackNotNull)
-            currentScope()->inherit(forScope);
-        else
-            currentScope_DEPRECATED()->inherit(forScope);
-
-        return ControlFlow::None;
-    }
+    return ControlFlow::None;
 }
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatForIn* f)
 {
     DfgScope* forScope = makeChildScope(DfgScope::Loop);
 
-    if (FFlag::LuauDfgAllowUpdatesInLoops)
+    ControlFlow cf;
     {
+        PushScope ps{scopeStack, forScope};
 
-        ControlFlow cf;
+        for (AstLocal* local : f->vars)
         {
-            PushScope ps{scopeStack, forScope};
+            if (local->annotation)
+                visitType(local->annotation);
 
-            for (AstLocal* local : f->vars)
-            {
-                if (local->annotation)
-                    visitType(local->annotation);
-
-                DefId def = defArena->freshCell(local, local->location);
-                graph.localDefs[local] = def;
-                if (FFlag::LuauDfgScopeStackNotNull)
-                    currentScope()->bindings[local] = def;
-                else
-                    currentScope_DEPRECATED()->bindings[local] = def;
-                captures[local].allVersions.push_back(def);
-            }
-
-            // TODO(controlflow): entry point has a back edge from exit point
-            // We're gonna need a `visitExprList` and `visitVariadicExpr` (function calls and `...`)
-            for (AstExpr* e : f->values)
-                visitExpr(e);
-
-            cf = visit(f->body);
+            DefId def = defArena->freshCell(local, local->location);
+            graph.localDefs[local] = def;
+            currentScope()->bindings[local] = def;
+            captures[local].allVersions.push_back(def);
         }
 
-        auto scope = currentScope();
-        // If the inner loop unconditioanlly returns or throws we shouldn't
-        // consume any type state from the loop body.
-        if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
-            join(scope, scope, forScope);
+        // TODO(controlflow): entry point has a back edge from exit point
+        // We're gonna need a `visitExprList` and `visitVariadicExpr` (function calls and `...`)
+        for (AstExpr* e : f->values)
+            visitExpr(e);
 
-        return ControlFlow::None;
+        cf = visit(f->body);
     }
-    else
-    {
-        {
-            PushScope ps{scopeStack, forScope};
 
-            for (AstLocal* local : f->vars)
-            {
-                if (local->annotation)
-                    visitType(local->annotation);
+    auto scope = currentScope();
+    // If the inner loop unconditioanlly returns or throws we shouldn't
+    // consume any type state from the loop body.
+    if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
+        join(scope, scope, forScope);
 
-                DefId def = defArena->freshCell(local, local->location);
-                graph.localDefs[local] = def;
-                if (FFlag::LuauDfgScopeStackNotNull)
-                    currentScope()->bindings[local] = def;
-                else
-                    currentScope_DEPRECATED()->bindings[local] = def;
-                captures[local].allVersions.push_back(def);
-            }
-
-            // TODO(controlflow): entry point has a back edge from exit point
-            // We're gonna need a `visitExprList` and `visitVariadicExpr` (function calls and `...`)
-            for (AstExpr* e : f->values)
-                visitExpr(e);
-
-            visit(f->body);
-        }
-        if (FFlag::LuauDfgScopeStackNotNull)
-            currentScope()->inherit(forScope);
-        else
-            currentScope_DEPRECATED()->inherit(forScope);
-
-        return ControlFlow::None;
-    }
+    return ControlFlow::None;
 }
 
 ControlFlow DataFlowGraphBuilder::visit(AstStatAssign* a)
@@ -883,10 +717,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatLocalFunction* l)
 {
     DefId def = defArena->freshCell(l->name, l->location);
     graph.localDefs[l->name] = def;
-    if (FFlag::LuauDfgScopeStackNotNull)
-        currentScope()->bindings[l->name] = def;
-    else
-        currentScope_DEPRECATED()->bindings[l->name] = def;
+    currentScope()->bindings[l->name] = def;
     captures[l->name].allVersions.push_back(def);
     visitExpr(l->func);
 
@@ -919,10 +750,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareGlobal* d)
 {
     DefId def = defArena->freshCell(d->name, d->nameLocation);
     graph.declaredDefs[d] = def;
-    if (FFlag::LuauDfgScopeStackNotNull)
-        currentScope()->bindings[d->name] = def;
-    else
-        currentScope_DEPRECATED()->bindings[d->name] = def;
+    currentScope()->bindings[d->name] = def;
     captures[d->name].allVersions.push_back(def);
 
     visitType(d->type);
@@ -934,10 +762,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareFunction* d)
 {
     DefId def = defArena->freshCell(d->name, d->nameLocation);
     graph.declaredDefs[d] = def;
-    if (FFlag::LuauDfgScopeStackNotNull)
-        currentScope()->bindings[d->name] = def;
-    else
-        currentScope_DEPRECATED()->bindings[d->name] = def;
+    currentScope()->bindings[d->name] = def;
     captures[d->name].allVersions.push_back(def);
 
     DfgScope* unreachable = makeChildScope();
@@ -1184,10 +1009,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTable* t)
 {
     DefId tableCell = defArena->freshCell(Symbol{}, t->location);
-    if (FFlag::LuauDfgScopeStackNotNull)
-        currentScope()->props[tableCell] = {};
-    else
-        currentScope_DEPRECATED()->props[tableCell] = {};
+    currentScope()->props[tableCell] = {};
     for (AstExprTable::Item item : t->items)
     {
         DataFlowResult result = visitExpr(item.value);
@@ -1196,10 +1018,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTable* t)
             visitExpr(item.key);
             if (auto string = item.key->as<AstExprConstantString>())
             {
-                if (FFlag::LuauDfgScopeStackNotNull)
-                    currentScope()->props[tableCell][string->value.data] = result.def;
-                else
-                    currentScope_DEPRECATED()->props[tableCell][string->value.data] = result.def;
+                currentScope()->props[tableCell][string->value.data] = result.def;
             }
         }
     }
@@ -1216,23 +1035,13 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprUnary* u)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprBinary* b)
 {
-    if (FFlag::LuauDfgForwardNilFromAndOr)
-    {
-        auto left = visitExpr(b->left);
-        auto right = visitExpr(b->right);
-        // I think there's some subtlety here. There are probably cases where
-        // X or Y / X and Y can _never_ "be subscripted."
-        auto subscripted = (b->op == AstExprBinary::And || b->op == AstExprBinary::Or) &&
-                           (containsSubscriptedDefinition(left.def) || containsSubscriptedDefinition(right.def));
-        return {defArena->freshCell(Symbol{}, b->location, subscripted), nullptr};
-    }
-    else
-    {
-        visitExpr(b->left);
-        visitExpr(b->right);
-
-        return {defArena->freshCell(Symbol{}, b->location), nullptr};
-    }
+    auto left = visitExpr(b->left);
+    auto right = visitExpr(b->right);
+    // I think there's some subtlety here. There are probably cases where
+    // X or Y / X and Y can _never_ "be subscripted."
+    auto subscripted = (b->op == AstExprBinary::And || b->op == AstExprBinary::Or) &&
+                       (containsSubscriptedDefinition(left.def) || containsSubscriptedDefinition(right.def));
+    return {defArena->freshCell(Symbol{}, b->location, subscripted), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprTypeAssertion* t)
@@ -1294,10 +1103,10 @@ void DataFlowGraphBuilder::visitLValue(AstExpr* e, DefId incomingDef)
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)
 {
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
+    DfgScope* scope = currentScope();
 
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
-    if (scope->canUpdateDefinition(l->local) && !l->upvalue)
+    if (!l->upvalue)
     {
         DefId updated = defArena->freshCell(l->local, l->location, containsSubscriptedDefinition(incomingDef));
         scope->bindings[l->local] = updated;
@@ -1310,33 +1119,22 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprGlobal* g, DefId incomingDef)
 {
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
+    DfgScope* scope = currentScope();
 
-    // In order to avoid alias tracking, we need to clip the reference to the parent def.
-    if (scope->canUpdateDefinition(g->name))
-    {
-        DefId updated = defArena->freshCell(g->name, g->location, containsSubscriptedDefinition(incomingDef));
-        scope->bindings[g->name] = updated;
-        captures[g->name].allVersions.push_back(updated);
-        return updated;
-    }
-    else
-        return visitExpr(static_cast<AstExpr*>(g)).def;
+    DefId updated = defArena->freshCell(g->name, g->location, containsSubscriptedDefinition(incomingDef));
+    scope->bindings[g->name] = updated;
+    captures[g->name].allVersions.push_back(updated);
+    return updated;
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprIndexName* i, DefId incomingDef)
 {
     DefId parentDef = visitExpr(i->expr).def;
 
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
-    if (scope->canUpdateDefinition(parentDef, i->index.value))
-    {
-        DefId updated = defArena->freshCell(i->index, i->location, containsSubscriptedDefinition(incomingDef));
-        scope->props[parentDef][i->index.value] = updated;
-        return updated;
-    }
-    else
-        return visitExpr(static_cast<AstExpr*>(i)).def;
+    DfgScope* scope = currentScope();
+    DefId updated = defArena->freshCell(i->index, i->location, containsSubscriptedDefinition(incomingDef));
+    scope->props[parentDef][i->index.value] = updated;
+    return updated;
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprIndexExpr* i, DefId incomingDef)
@@ -1344,17 +1142,12 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprIndexExpr* i, DefId incomingDef)
     DefId parentDef = visitExpr(i->expr).def;
     visitExpr(i->index);
 
-    DfgScope* scope = FFlag::LuauDfgScopeStackNotNull ? currentScope() : currentScope_DEPRECATED();
+    DfgScope* scope = currentScope();
     if (auto string = i->index->as<AstExprConstantString>())
     {
-        if (scope->canUpdateDefinition(parentDef, string->value.data))
-        {
-            DefId updated = defArena->freshCell(Symbol{}, i->location, containsSubscriptedDefinition(incomingDef));
-            scope->props[parentDef][string->value.data] = updated;
-            return updated;
-        }
-        else
-            return visitExpr(static_cast<AstExpr*>(i)).def;
+        DefId updated = defArena->freshCell(Symbol{}, i->location, containsSubscriptedDefinition(incomingDef));
+        scope->props[parentDef][string->value.data] = updated;
+        return updated;
     }
     else
         return defArena->freshCell(Symbol{}, i->location, /*subscripted=*/true);

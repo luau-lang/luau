@@ -32,8 +32,8 @@ public:
     TypeIds(const TypeIds&) = default;
     TypeIds& operator=(const TypeIds&) = default;
 
-    TypeIds(TypeIds&&) = default;
-    TypeIds& operator=(TypeIds&&) = default;
+    TypeIds(TypeIds&&) noexcept = default;
+    TypeIds& operator=(TypeIds&&) noexcept = default;
 
     void insert(TypeId ty);
     /// Erase every element that does not also occur in tys
@@ -51,6 +51,8 @@ public:
     size_t size() const;
     bool empty() const;
     size_t count(TypeId ty) const;
+
+    void reserve(size_t n);
 
     template<class Iterator>
     void insert(Iterator begin, Iterator end)

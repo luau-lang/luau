@@ -8,6 +8,8 @@
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+
 namespace Luau
 {
 
@@ -21,7 +23,8 @@ struct Quantifier final : TypeOnceVisitor
     bool seenMutableType = false;
 
     explicit Quantifier(TypeLevel level)
-        : level(level)
+        : TypeOnceVisitor("Quantifier", /* skipBoundTypes */ false)
+        , level(level)
     {
     }
 

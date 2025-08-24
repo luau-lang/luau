@@ -6,8 +6,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauRemoveTypeCallsForReadWriteProps)
-LUAU_FASTFLAGVARIABLE(LuauInferPolarityOfReadWriteProperties)
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -23,7 +22,8 @@ struct InferPolarity : TypeVisitor
     Polarity polarity = Polarity::Positive;
 
     explicit InferPolarity(NotNull<TypeArena> arena, NotNull<Scope> scope)
-        : arena(arena)
+        : TypeVisitor("InferPolarity", FFlag::LuauExplicitSkipBoundTypes)
+        , arena(arena)
         , scope(scope)
     {
     }
@@ -50,51 +50,25 @@ struct InferPolarity : TypeVisitor
             return false;
 
         const Polarity p = polarity;
-        if (FFlag::LuauInferPolarityOfReadWriteProperties || FFlag::LuauRemoveTypeCallsForReadWriteProps)
+        for (const auto& [name, prop] : tt.props)
         {
-            for (const auto& [name, prop] : tt.props)
+            if (prop.isShared())
             {
-                if (prop.isShared())
-                {
-                    polarity = Polarity::Mixed;
-                    traverse(*prop.readTy);
-                    continue;
-                }
-
-                if (prop.readTy)
-                {
-                    polarity = p;
-                    traverse(*prop.readTy);
-                }
-
-                if (prop.writeTy)
-                {
-                    polarity = invert(p);
-                    traverse(*prop.writeTy);
-                }
+                polarity = Polarity::Mixed;
+                traverse(*prop.readTy);
+                continue;
             }
-        }
-        else
-        {
-            for (const auto& [name, prop] : tt.props)
+
+            if (prop.readTy)
             {
-                if (prop.isShared())
-                {
-                    polarity = Polarity::Mixed;
-                    traverse(prop.type_DEPRECATED());
-                }
-                else if (prop.isReadOnly())
-                {
-                    polarity = p;
-                    traverse(*prop.readTy);
-                }
-                else if (prop.isWriteOnly())
-                {
-                    polarity = invert(p);
-                    traverse(*prop.writeTy);
-                }
-                else
-                    LUAU_ASSERT(!"Unreachable");
+                polarity = p;
+                traverse(*prop.readTy);
+            }
+
+            if (prop.writeTy)
+            {
+                polarity = invert(p);
+                traverse(*prop.writeTy);
             }
         }
 
