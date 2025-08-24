@@ -2530,36 +2530,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prepopulate_globals_global_on_same_global_na
     LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
 }
 
-TEST_CASE_FIXTURE(Fixture, "simplify_constraint_can_force")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauForceSimplifyConstraint2, true},
-        // NOTE: Feel free to clip this test when this flag is clipped.
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, false},
-    };
-
-    CheckResult result = check(R"(
-        --!strict
-
-        local foo = nil
-
-        bar(function()
-            if foo then
-                foo.baz()
-            end
-        end)
-
-        foo = {}
-
-        foo.a = {
-            foo.b
-        }
-    )");
-
-    LUAU_CHECK_NO_ERROR(result, ConstraintSolvingIncompleteError);
-}
-
 TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden")
 {
     ScopedFastFlag sffs[] = {
