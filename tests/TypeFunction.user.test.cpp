@@ -2453,7 +2453,7 @@ end
     CHECK(toString(result.errors[0]) == R"(Redefinition of type 't0', previously defined at line 2)");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_externtype_classname_api")
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_externtype_externname_api")
 {
     ScopedFastFlag sff[]{
         {FFlag::LuauSolverV2, true},
