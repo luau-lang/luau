@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -1369,7 +1370,7 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
 struct InternalTypeFinder : TypeOnceVisitor
 {
     InternalTypeFinder()
-        : TypeOnceVisitor("InternalTypeFinder")
+        : TypeOnceVisitor("InternalTypeFinder", FFlag::LuauExplicitSkipBoundTypes)
     {
     }
 

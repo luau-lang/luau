@@ -269,6 +269,24 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "MultipleNonviableOverloads { attemptedArgCount = " << err.attemptedArgCount << " }";
     else if constexpr (std::is_same_v<T, RecursiveRestraintViolation>)
         stream << "RecursiveRestraintViolation";
+    else if constexpr (std::is_same_v<T, GenericBoundsMismatch>)
+    {
+        stream << "GenericBoundsMismatch { genericName = " << std::string{err.genericName} << ", lowerBounds = [";
+        for (size_t i = 0; i < err.lowerBounds.size(); ++i)
+        {
+            if (i > 0)
+                stream << ", ";
+            stream << toString(err.lowerBounds[i]);
+        }
+        stream << "], upperBounds = [";
+        for (size_t i = 0; i < err.upperBounds.size(); ++i)
+        {
+            if (i > 0)
+                stream << ", ";
+            stream << toString(err.upperBounds[i]);
+        }
+        stream << "] }";
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

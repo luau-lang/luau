@@ -28,11 +28,11 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
+LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauFixPrepopulateGlobalOnSameGlobal)
@@ -2638,6 +2638,52 @@ _()(_())("",_.n0,_,_(_,true,(_)))
 do end
     )"));
 
+}
+
+TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_type")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, false},
+        {FFlag::LuauOccursCheckInCommit, true}
+    };
+    
+
+    CheckResult result = check(R"(
+        local any = nil :: any
+
+        function f1(x)
+            x:m()
+            local _ = x.A.p.a
+        end
+
+        function f2(x)
+            local _ = x.d
+        end
+
+        function f3(x)
+            local a = ""
+            a = x.d.p
+            local _ = undef[x.a]
+        end
+
+        function f4(x)
+            f2(x)
+            if undef and x and x:m() then
+                any(x)
+                return
+            end
+            f3(x)
+            for _, v in any.x do
+                local a = x[v].p
+            end
+            a.b = x
+            if x.q ~= nil then
+                f1(x) -- things go bad here
+            end
+        end
+
+        return f4
+    )");
 }
 
 TEST_SUITE_END();

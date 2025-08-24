@@ -39,15 +39,17 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauEnableWriteOnlyProperties)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTracksRValueRefinements)
-LUAU_FASTFLAGVARIABLE(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAGVARIABLE(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAGVARIABLE(LuauDoNotPrototypeTableIndex)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunNoScopeMapRef)
 LUAU_FASTFLAGVARIABLE(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauFixPrepopulateGlobalOnSameGlobal)
 
 namespace Luau
@@ -138,7 +140,7 @@ struct HasFreeType : TypeOnceVisitor
     bool result = false;
 
     HasFreeType()
-        : TypeOnceVisitor("TypeOnceVisitor")
+        : TypeOnceVisitor("TypeOnceVisitor", FFlag::LuauExplicitSkipBoundTypes)
     {
     }
 
@@ -644,7 +646,7 @@ struct FindSimplificationBlockers : TypeOnceVisitor
     bool found = false;
 
     FindSimplificationBlockers()
-        : TypeOnceVisitor("FindSimplificationBlockers")
+        : TypeOnceVisitor("FindSimplificationBlockers", FFlag::LuauExplicitSkipBoundTypes)
     {
     }
 
@@ -1566,49 +1568,42 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
             sig.bodyScope->rvalueRefinements[def] = sig.signature;
     }
 
-    if (FFlag::LuauPushFunctionTypesInFunctionStatement)
+    if (auto indexName = function->name->as<AstExprIndexName>())
     {
-        if (auto indexName = function->name->as<AstExprIndexName>())
-        {
-            auto beginProp = checkpoint(this);
-            auto [fn, _] = check(scope, indexName);
-            auto endProp = checkpoint(this);
-            auto pftc = addConstraint(
-                sig.signatureScope,
-                function->func->location,
-                PushFunctionTypeConstraint{
-                    fn,
-                    sig.signature,
-                    NotNull{function->func},
-                    /* isSelf */ indexName->op == ':',
-                }
-            );
-            forEachConstraint(
-                beginProp,
-                endProp,
-                this,
-                [pftc](const ConstraintPtr& c)
-                {
-                    pftc->dependencies.emplace_back(c.get());
-                }
-            );
-            auto beginBody = checkpoint(this);
-            checkFunctionBody(sig.bodyScope, function->func);
-            auto endBody = checkpoint(this);
-            forEachConstraint(
-                beginBody,
-                endBody,
-                this,
-                [pftc](const ConstraintPtr& c)
-                {
-                    c->dependencies.push_back(pftc);
-                }
-            );
-        }
-        else
-        {
-            checkFunctionBody(sig.bodyScope, function->func);
-        }
+        auto beginProp = checkpoint(this);
+        auto [fn, _] = check(scope, indexName);
+        auto endProp = checkpoint(this);
+        auto pftc = addConstraint(
+            sig.signatureScope,
+            function->func->location,
+            PushFunctionTypeConstraint{
+                fn,
+                sig.signature,
+                NotNull{function->func},
+                /* isSelf */ indexName->op == ':',
+            }
+        );
+        forEachConstraint(
+            beginProp,
+            endProp,
+            this,
+            [pftc](const ConstraintPtr& c)
+            {
+                pftc->dependencies.emplace_back(c.get());
+            }
+        );
+        auto beginBody = checkpoint(this);
+        checkFunctionBody(sig.bodyScope, function->func);
+        auto endBody = checkpoint(this);
+        forEachConstraint(
+            beginBody,
+            endBody,
+            this,
+            [pftc](const ConstraintPtr& c)
+            {
+                c->dependencies.push_back(pftc);
+            }
+        );
     }
     else
     {
@@ -1907,85 +1902,172 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
         reportError(function->location, ReservedIdentifier{"typeof"});
     }
 
-    auto scopePtr = astTypeFunctionEnvironmentScopes.find(function);
-    LUAU_ASSERT(scopePtr);
-
-    Checkpoint startCheckpoint = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(*scopePtr, function->body, /* expectedType */ std::nullopt);
-
-    // Place this function as a child of the non-type function scope
-    if (FFlag::LuauEmplaceNotPushBack)
-        scope->children.emplace_back(sig.signatureScope.get());
-    else
-        scope->children.push_back(NotNull{sig.signatureScope.get()});
-
-    if (FFlag::LuauTrackFreeInteriorTypePacks)
-        interiorFreeTypes.emplace_back();
-    else
-        DEPRECATED_interiorTypes.push_back(std::vector<TypeId>{});
-    checkFunctionBody(sig.bodyScope, function->body);
-    Checkpoint endCheckpoint = checkpoint(this);
-
-    TypeId generalizedTy = arena->addType(BlockedType{});
-    NotNull<Constraint> gc = addConstraint(
-        sig.signatureScope,
-        function->location,
-        GeneralizationConstraint{
-            generalizedTy,
-            sig.signature,
-            std::vector<TypeId>{},
-        }
-    );
-
-    if (FFlag::LuauTrackFreeInteriorTypePacks)
+    if (FFlag::LuauTypeFunNoScopeMapRef)
     {
-        sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
-        sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
+        auto scopeIt = astTypeFunctionEnvironmentScopes.find(function);
+        LUAU_ASSERT(scopeIt);
+
+        ScopePtr environmentScope = *scopeIt;
+
+        Checkpoint startCheckpoint = checkpoint(this);
+        FunctionSignature sig = checkFunctionSignature(environmentScope, function->body, /* expectedType */ std::nullopt);
+
+        // Place this function as a child of the non-type function scope
+        if (FFlag::LuauEmplaceNotPushBack)
+            scope->children.emplace_back(sig.signatureScope.get());
+        else
+            scope->children.push_back(NotNull{sig.signatureScope.get()});
+
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
+            interiorFreeTypes.emplace_back();
+        else
+            DEPRECATED_interiorTypes.push_back(std::vector<TypeId>{});
+        checkFunctionBody(sig.bodyScope, function->body);
+        Checkpoint endCheckpoint = checkpoint(this);
+
+        TypeId generalizedTy = arena->addType(BlockedType{});
+        NotNull<Constraint> gc = addConstraint(
+            sig.signatureScope,
+            function->location,
+            GeneralizationConstraint{
+                generalizedTy,
+                sig.signature,
+                std::vector<TypeId>{},
+            }
+        );
+
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
+        {
+            sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
+            sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
+        }
+        else
+            sig.signatureScope->interiorFreeTypes = std::move(DEPRECATED_interiorTypes.back());
+
+        getMutable<BlockedType>(generalizedTy)->setOwner(gc);
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
+            interiorFreeTypes.pop_back();
+        else
+            DEPRECATED_interiorTypes.pop_back();
+
+        Constraint* previous = nullptr;
+        forEachConstraint(
+            startCheckpoint,
+            endCheckpoint,
+            this,
+            [gc, &previous](const ConstraintPtr& constraint)
+            {
+                gc->dependencies.emplace_back(constraint.get());
+
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                {
+                    if (previous)
+                    {
+                        if (FFlag::LuauEmplaceNotPushBack)
+                            constraint->dependencies.emplace_back(previous);
+                        else
+                            constraint->dependencies.push_back(NotNull{previous});
+                    }
+
+                    previous = constraint.get();
+                }
+            }
+        );
+
+        std::optional<TypeId> existingFunctionTy = environmentScope->lookup(function->name);
+
+        if (!existingFunctionTy)
+            ice->ice("checkAliases did not populate type function name", function->nameLocation);
+
+        TypeId unpackedTy = follow(*existingFunctionTy);
+
+        if (auto bt = get<BlockedType>(unpackedTy); bt && nullptr == bt->getOwner())
+            emplaceType<BoundType>(asMutable(unpackedTy), generalizedTy);
+
+        return ControlFlow::None;
     }
     else
-        sig.signatureScope->interiorFreeTypes = std::move(DEPRECATED_interiorTypes.back());
+    {
+        auto scopePtr = astTypeFunctionEnvironmentScopes.find(function);
+        LUAU_ASSERT(scopePtr);
 
-    getMutable<BlockedType>(generalizedTy)->setOwner(gc);
-    if (FFlag::LuauTrackFreeInteriorTypePacks)
-        interiorFreeTypes.pop_back();
-    else
-        DEPRECATED_interiorTypes.pop_back();
+        Checkpoint startCheckpoint = checkpoint(this);
+        FunctionSignature sig = checkFunctionSignature(*scopePtr, function->body, /* expectedType */ std::nullopt);
 
-    Constraint* previous = nullptr;
-    forEachConstraint(
-        startCheckpoint,
-        endCheckpoint,
-        this,
-        [gc, &previous](const ConstraintPtr& constraint)
-        {
-            gc->dependencies.emplace_back(constraint.get());
+        // Place this function as a child of the non-type function scope
+        if (FFlag::LuauEmplaceNotPushBack)
+            scope->children.emplace_back(sig.signatureScope.get());
+        else
+            scope->children.push_back(NotNull{sig.signatureScope.get()});
 
-            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-            {
-                if (previous)
-                {
-                    if (FFlag::LuauEmplaceNotPushBack)
-                        constraint->dependencies.emplace_back(previous);
-                    else
-                        constraint->dependencies.push_back(NotNull{previous});
-                }
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
+            interiorFreeTypes.emplace_back();
+        else
+            DEPRECATED_interiorTypes.push_back(std::vector<TypeId>{});
+        checkFunctionBody(sig.bodyScope, function->body);
+        Checkpoint endCheckpoint = checkpoint(this);
 
-                previous = constraint.get();
+        TypeId generalizedTy = arena->addType(BlockedType{});
+        NotNull<Constraint> gc = addConstraint(
+            sig.signatureScope,
+            function->location,
+            GeneralizationConstraint{
+                generalizedTy,
+                sig.signature,
+                std::vector<TypeId>{},
             }
+        );
+
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
+        {
+            sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
+            sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
         }
-    );
+        else
+            sig.signatureScope->interiorFreeTypes = std::move(DEPRECATED_interiorTypes.back());
 
-    std::optional<TypeId> existingFunctionTy = (*scopePtr)->lookup(function->name);
+        getMutable<BlockedType>(generalizedTy)->setOwner(gc);
+        if (FFlag::LuauTrackFreeInteriorTypePacks)
+            interiorFreeTypes.pop_back();
+        else
+            DEPRECATED_interiorTypes.pop_back();
 
-    if (!existingFunctionTy)
-        ice->ice("checkAliases did not populate type function name", function->nameLocation);
+        Constraint* previous = nullptr;
+        forEachConstraint(
+            startCheckpoint,
+            endCheckpoint,
+            this,
+            [gc, &previous](const ConstraintPtr& constraint)
+            {
+                gc->dependencies.emplace_back(constraint.get());
 
-    TypeId unpackedTy = follow(*existingFunctionTy);
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                {
+                    if (previous)
+                    {
+                        if (FFlag::LuauEmplaceNotPushBack)
+                            constraint->dependencies.emplace_back(previous);
+                        else
+                            constraint->dependencies.push_back(NotNull{previous});
+                    }
 
-    if (auto bt = get<BlockedType>(unpackedTy); bt && nullptr == bt->getOwner())
-        emplaceType<BoundType>(asMutable(unpackedTy), generalizedTy);
+                    previous = constraint.get();
+                }
+            }
+        );
 
-    return ControlFlow::None;
+        std::optional<TypeId> existingFunctionTy = (*scopePtr)->lookup(function->name);
+
+        if (!existingFunctionTy)
+            ice->ice("checkAliases did not populate type function name", function->nameLocation);
+
+        TypeId unpackedTy = follow(*existingFunctionTy);
+
+        if (auto bt = get<BlockedType>(unpackedTy); bt && nullptr == bt->getOwner())
+            emplaceType<BoundType>(asMutable(unpackedTy), generalizedTy);
+
+        return ControlFlow::None;
+    }
 }
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareGlobal* global)
@@ -2691,6 +2773,15 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton)
 {
+
+    if (FFlag::DebugLuauStringSingletonBasedOnQuotes)
+    {
+        if (string->quoteStyle == AstExprConstantString::QuotedSingle || forceSingleton)
+            return Inference{arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}})};
+
+        return Inference{builtinTypes->stringType};
+    }
+
     if (forceSingleton)
         return Inference{arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}})};
 
@@ -2726,6 +2817,16 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool* boolExpr, std::optional<TypeId> expectedType, bool forceSingleton)
 {
+    if (FFlag::DebugLuauStringSingletonBasedOnQuotes)
+    {
+        const TypeId singletonType = boolExpr->value ? builtinTypes->trueType : builtinTypes->falseType;
+        if (forceSingleton)
+            return Inference{singletonType};
+
+        return Inference { builtinTypes->booleanType };
+    }
+
+
     const TypeId singletonType = boolExpr->value ? builtinTypes->trueType : builtinTypes->falseType;
     if (forceSingleton)
         return Inference{singletonType};
@@ -4321,65 +4422,6 @@ TypeId ConstraintGenerator::makeIntersect(const ScopePtr& scope, Location locati
 
     return resultType;
 }
-
-struct FragmentTypeCheckGlobalPrepopulator_DEPRECATED : AstVisitor
-{
-    const NotNull<Scope> globalScope;
-    const NotNull<Scope> currentScope;
-    const NotNull<const DataFlowGraph> dfg;
-    const NotNull<TypeArena> arena;
-
-    FragmentTypeCheckGlobalPrepopulator_DEPRECATED(
-        NotNull<Scope> globalScope,
-        NotNull<Scope> currentScope,
-        NotNull<const DataFlowGraph> dfg,
-        NotNull<TypeArena> arena
-    )
-        : globalScope(globalScope)
-        , currentScope(currentScope)
-        , dfg(dfg)
-        , arena(arena)
-    {
-    }
-
-    bool visit(AstExprGlobal* global) override
-    {
-        if (auto ty = globalScope->lookup(global->name))
-        {
-            DefId def = dfg->getDef(global);
-            // We only want to write into the current scope the type of the global
-            currentScope->lvalueTypes[def] = *ty;
-        }
-        else if (auto ty = currentScope->lookup(global->name))
-        {
-            // We are trying to create a binding for a brand new function, so we actually do have to write it into the scope.
-            DefId def = dfg->getDef(global);
-            // We only want to write into the current scope the type of the global
-            currentScope->lvalueTypes[def] = *ty;
-        }
-
-        return true;
-    }
-
-    bool visit(AstStatFunction* function) override
-    {
-        if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
-        {
-            if (auto ty = globalScope->lookup(g->name))
-            {
-                currentScope->bindings[g->name] = Binding{*ty};
-            }
-            else
-            {
-                // Hasn't existed since a previous typecheck
-                TypeId bt = arena->addType(BlockedType{});
-                currentScope->bindings[g->name] = Binding{bt};
-            }
-        }
-
-        return true;
-    }
-};
 
 struct GlobalPrepopulator : AstVisitor
 {

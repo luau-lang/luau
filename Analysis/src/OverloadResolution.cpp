@@ -13,6 +13,8 @@
 LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
+LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
 
 namespace Luau
 {
@@ -487,6 +489,13 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 argLocation = argExprs->at(argExprs->size() - 1)->location;
 
             // TODO extract location from the SubtypingResult path and argExprs
+            if (FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing)
+            {
+                auto errorSuppression = shouldSuppressErrors(normalizer, *failedSubPack).orElse(shouldSuppressErrors(normalizer, *failedSuperPack));
+                if (errorSuppression == ErrorSuppression::Suppress)
+                    break;
+            }
+
             switch (reason.variance)
             {
             case SubtypingVariance::Covariant:
@@ -503,6 +512,12 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 break;
             }
         }
+    }
+
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+    {
+        for (GenericBoundsMismatch& mismatch : sr.genericBoundsMismatches)
+            errors.emplace_back(fnExpr->location, std::move(mismatch));
     }
 
     return {Analysis::OverloadIsNonviable, std::move(errors)};
