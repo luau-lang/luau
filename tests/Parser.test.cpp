@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -2808,6 +2809,70 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size
 
     auto cstNode = (*baseCstNode)->as<CstStatForIn>();
     CHECK_EQ(cstNode->varsCommaPositions.size, 0);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression_call")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    AstStat* stat = parse("local x = f<<T, U>>()");
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    AstStat* stat = parse("local x = f<<T, U>>");
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_statement")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    AstStat* stat = parse("f<<T, U>>()");
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_indexing")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    AstStat* stat = parse(R"(
+        t.f<<T, U>>()
+        -- t:f<<T, U>>()
+        -- t["f"]<<T, U>>()
+    )");
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_empty_list")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    AstStat* stat = parse(R"(
+        f<<>>()
+    )");
+    REQUIRE(stat != nullptr);
+}
+
+// todo soon: f<<...T>>
+
+TEST_CASE_FIXTURE(Fixture, "two_left_and_right_arrows_but_no_explicit_type_instantiation")
+{
+    AstStat* stat = parse(R"(
+        type A = C<B<<T>() -> T>>
+    )");
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "basic_less_than_check_no_explicit_type_instantiaton")
+{
+    AstStat* stat = parse(R"(
+        local a = b.c < d
+    )");
+    REQUIRE(stat != nullptr);
 }
 
 TEST_SUITE_END();

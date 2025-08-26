@@ -1352,7 +1352,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
 
         Position start = firstValue->location.begin;
         Position end = values[forin.values.size - 1]->location.end;
-        AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
+        AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, AstArray<AstTypeOrPack>{}, Location()};
 
         retPack = checkExprPack(scope, exprCall).type;
     }

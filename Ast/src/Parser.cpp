@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, f
 LUAU_FASTFLAGVARIABLE(LuauParseIncompleteInterpStringsWithLocation)
 LUAU_FASTFLAGVARIABLE(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
+LUAU_FASTFLAGVARIABLE(LuauExplicitTypeExpressionInstantiation)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -3049,7 +3050,16 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
             Name index = parseIndexName("method name", opPosition);
             AstExpr* func = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, ':');
 
-            expr = parseFunctionArgs(func, true);
+            AstArray<AstTypeOrPack> explicitTypes;
+            if (FFlag::LuauExplicitTypeExpressionInstantiation)
+            {
+                if (lexer.current().type == '<' && lexer.lookahead().type == '<')
+                {
+                    explicitTypes = parseExplicitTypeInstantiation();
+                }
+            }
+
+            expr = parseFunctionArgs(func, true, explicitTypes);
         }
         else if (lexer.current().type == '(')
         {
@@ -3065,6 +3075,12 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         else if (lexer.current().type == '{' || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
         {
             expr = parseFunctionArgs(expr, false);
+        }
+        else if (FFlag::LuauExplicitTypeExpressionInstantiation && lexer.current().type == '<' && lexer.lookahead().type == '<')
+        {
+            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation();
+            // todo soon: i don't think the location.end here is correct
+            expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, lexer.current().location.end), typesOrPacks);
         }
         else
         {
@@ -3305,7 +3321,7 @@ std::tuple<AstArray<AstExpr*>, Location, Location> Parser::parseCallList(TempVec
 }
 
 // args ::=  `(' [explist] `)' | tableconstructor | String
-AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
+AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrPack> explicitTypes)
 {
     if (lexer.current().type == '(')
     {
@@ -3327,7 +3343,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
 
         expectMatchAndConsume(')', matchParen);
 
-        AstExprCall* node = allocator.alloc<AstExprCall>(Location(func->location, end), func, copy(args), self, Location(argStart, argEnd));
+        AstExprCall* node = allocator.alloc<AstExprCall>(Location(func->location, end), func, copy(args), self, explicitTypes, Location(argStart, argEnd));
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(matchParen.position, lexer.previousLocation().begin, copy(commaPositions));
         return node;
@@ -3339,7 +3355,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         Position argEnd = lexer.previousLocation().end;
 
         AstExprCall* node =
-            allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, Location(argStart, argEnd));
+            allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd));
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
         return node;
@@ -3349,7 +3365,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         Location argLocation = lexer.current().location;
         AstExpr* expr = parseString();
 
-        AstExprCall* node = allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, argLocation);
+        AstExprCall* node = allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, argLocation);
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
         return node;
@@ -4024,6 +4040,20 @@ AstExpr* Parser::parseInterpString()
         cstNodeMap[node] = allocator.alloc<CstExprInterpString>(copy(sourceStrings), copy(stringPositions));
     return node;
 }
+
+AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation()
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    LUAU_ASSERT(lexer.current().type == '<' && lexer.lookahead().type == '<');
+
+    Lexeme begin = lexer.current();
+    lexer.next();
+    AstArray<AstTypeOrPack> typeOrPacks = parseTypeParams();
+    expectMatchAndConsume('>', begin);
+    return typeOrPacks;
+}
+
 
 AstExpr* Parser::parseNumber()
 {

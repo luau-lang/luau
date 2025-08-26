@@ -118,6 +118,13 @@ struct AstTypeList
     AstTypePack* tailType = nullptr;
 };
 
+// Don't have Luau::Variant available, it's a bit of an overhead, but a plain struct is nice to use
+struct AstTypeOrPack
+{
+    AstType* type = nullptr;
+    AstTypePack* typePack = nullptr;
+};
+
 using AstArgumentName = std::pair<AstName, Location>; // TODO: remove and replace when we get a common struct for this pair instead of AstName
 
 extern int gAstRttiIndex;
@@ -412,11 +419,12 @@ class AstExprCall : public AstExpr
 public:
     LUAU_RTTI(AstExprCall)
 
-    AstExprCall(const Location& location, AstExpr* func, const AstArray<AstExpr*>& args, bool self, const Location& argLocation);
+    AstExprCall(const Location& location, AstExpr* func, const AstArray<AstExpr*>& args, bool self, const AstArray<AstTypeOrPack>& explicitTypes, const Location& argLocation);
 
     void visit(AstVisitor* visitor) override;
 
     AstExpr* func;
+    AstArray<AstTypeOrPack> explicitTypes;
     AstArray<AstExpr*> args;
     bool self;
     Location argLocation;
@@ -637,6 +645,19 @@ public:
     /// `strings` will always have one more element than `expressions`.
     AstArray<AstArray<char>> strings;
     AstArray<AstExpr*> expressions;
+};
+
+// f<<T>>
+class AstExprExplicitTypeInstantiation : public AstExpr
+{
+public:
+    LUAU_RTTI(AstExprExplicitTypeInstantiation)
+
+    AstExprExplicitTypeInstantiation(const Location& location, AstArray<AstTypeOrPack> typePack);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstArray<AstTypeOrPack> types;
 };
 
 class AstStatBlock : public AstStat
@@ -1066,13 +1087,6 @@ public:
     {
         return this;
     }
-};
-
-// Don't have Luau::Variant available, it's a bit of an overhead, but a plain struct is nice to use
-struct AstTypeOrPack
-{
-    AstType* type = nullptr;
-    AstTypePack* typePack = nullptr;
 };
 
 class AstTypeReference : public AstType

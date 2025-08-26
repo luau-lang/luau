@@ -284,7 +284,7 @@ private:
     // prefixexp -> NAME | '(' expr ')'
     AstExpr* parsePrefixExpr();
 
-    // primaryexp -> prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
+    // primaryexp -> prefixexp { `.' NAME | `[' exp `]' | ExplicitTypeInstantiation | `:' NAME [ExplicitTypeInstantiation] funcargs | funcargs }
     AstExpr* parsePrimaryExpr(bool asStatement);
 
     // asexp -> simpleexp [`::' Type]
@@ -295,7 +295,7 @@ private:
 
     std::tuple<AstArray<AstExpr*>, Location, Location> parseCallList(TempVector<Position>* commaPositions);
     // args ::=  `(' [explist] `)' | tableconstructor | String
-    AstExpr* parseFunctionArgs(AstExpr* func, bool self);
+    AstExpr* parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrPack> explicitTypes = {});
 
     std::optional<CstExprTable::Separator> tableSeparator();
 
@@ -310,6 +310,9 @@ private:
 
     // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
     AstExpr* parseInterpString();
+
+    // ExplicitTypeInstantiation ::= `<' `<' [TypeList] `>' `>'
+    AstArray<AstTypeOrPack> parseExplicitTypeInstantiation();
 
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);
