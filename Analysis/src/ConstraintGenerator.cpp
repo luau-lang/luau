@@ -49,6 +49,7 @@ LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 
 namespace Luau
@@ -2747,6 +2748,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
         result = check(scope, typeAssert);
     else if (auto interpString = expr->as<AstExprInterpString>())
         result = check(scope, interpString);
+    else if (auto explicitTypeInstantiation = expr->as<AstExprExplicitTypeInstantiation>())
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        result = check(scope, explicitTypeInstantiation);
+    }
     else if (auto err = expr->as<AstExprError>())
     {
         // Open question: Should we traverse into this?
@@ -3288,6 +3294,54 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInterpString*
         check(scope, expr);
 
     return Inference{builtinTypes->stringType};
+}
+
+Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprExplicitTypeInstantiation* explicitTypeInstantiation)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    TypeId functionType = check(scope, explicitTypeInstantiation->expr, std::nullopt).ty;
+
+    std::vector<TypeId> typeParameters;
+    std::vector<TypePackId> typePackParameters;
+
+    for (const AstTypeOrPack& typeOrPack : explicitTypeInstantiation->types)
+    {
+        if (typeOrPack.type)
+        {
+            typeParameters.push_back(resolveType(
+                scope,
+                typeOrPack.type,
+                true // todo soon: what does this (inTypeArguments) do?
+            ));
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            typePackParameters.push_back(resolveTypePack(
+                scope,
+                typeOrPack.typePack,
+                true // todo soon: what does this (inTypeArguments) do?
+            ));
+        }
+    }
+
+    TypeId placeholderType = arena->addType(BlockedType{});
+
+    NotNull<Constraint> constraint = addConstraint(
+        scope,
+        explicitTypeInstantiation->location,
+        ExplicitlySpecifiedGenericsConstraint{
+            functionType,
+            placeholderType,
+            std::move(typeParameters),
+            std::move(typePackParameters)
+        }
+    );
+
+    getMutable<BlockedType>(placeholderType)->setOwner(constraint);
+
+    return Inference{placeholderType};
 }
 
 std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(

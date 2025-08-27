@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
@@ -1930,6 +1931,11 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         result = checkExpr(scope, *a, expectedType);
     else if (auto a = expr.as<AstExprInterpString>())
         result = checkExpr(scope, *a);
+    else if (auto a = expr.as<AstExprExplicitTypeInstantiation>())
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        result = checkExpr(scope, *a);
+    }
     else
         ice("Unhandled AstExpr?");
 
@@ -3279,6 +3285,70 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     return WithPredicate{stringType};
 }
+
+WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprExplicitTypeInstantiation& explicitTypeInstantiation)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    WithPredicate<TypeId> baseType = checkExpr(scope, *explicitTypeInstantiation.expr);
+
+    // todo soon: this needs to work with __call too, maybe use astOriginalCallTypes?
+    // todo soon: do i need `checkArgumentList`?
+    if (const FunctionType* functionType = get<FunctionType>(baseType.type))
+    {
+        // TypeId appliedFunctionType = instantiate(scope, baseType.type, explicitTypeInstantiation.expr->location);
+
+        ScopePtr aliasScope = childScope(scope, explicitTypeInstantiation.location);
+        aliasScope->level = scope->level.incr();
+
+        std::vector<TypeId> typeParams;
+        std::vector<TypePackId> typePackParams;
+
+        for (const AstTypeOrPack& typeOrPack : explicitTypeInstantiation.types)
+        {
+            if (typeOrPack.type)
+            {
+                typeParams.push_back(resolveType(scope, *typeOrPack.type));
+            }
+            else
+            {
+                LUAU_ASSERT(typeOrPack.typePack);
+                typePackParams.push_back(resolveTypePack(scope, *typeOrPack.typePack));
+            }
+        }
+
+        // std::optional<TypeFun> baseFun = scope->lookupType(baseType.type->);
+
+        TypeFun baseFun;
+        baseFun.type = baseType.type;
+
+        baseFun.typeParams.reserve(functionType->generics.size());
+        for (TypeId genericId : functionType->generics)
+        {
+            baseFun.typeParams.push_back({genericId, std::nullopt});
+        }
+
+        baseFun.typePackParams.reserve(functionType->genericPacks.size());
+        for (TypePackId genericPackId : functionType->genericPacks)
+        {
+            baseFun.typePackParams.push_back({genericPackId, std::nullopt});
+        }
+
+        return WithPredicate{instantiateTypeFun(
+            scope,
+            baseFun,
+            typeParams,
+            typePackParams,
+            explicitTypeInstantiation.location
+        )};
+    }
+    else
+    {
+        LUAU_ASSERT(!"not provided function");
+        throw std::runtime_error("todo soon");
+    }
+}
+
 
 TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr, ValueContext ctx)
 {

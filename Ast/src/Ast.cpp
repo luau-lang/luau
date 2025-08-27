@@ -229,8 +229,8 @@ AstExprCall::AstExprCall(const Location& location, AstExpr* func, const AstArray
     : AstExpr(ClassIndex(), location)
     , func(func)
     , args(args)
-    , self(self)
     , explicitTypes(explicitTypes)
+    , self(self)
     , argLocation(argLocation)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation || explicitTypes.size == 0);
@@ -539,8 +539,9 @@ void AstExprInterpString::visit(AstVisitor* visitor)
     }
 }
 
-AstExprExplicitTypeInstantiation::AstExprExplicitTypeInstantiation(const Location& location, AstArray<AstTypeOrPack> types)
+AstExprExplicitTypeInstantiation::AstExprExplicitTypeInstantiation(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types)
     : AstExpr(ClassIndex(), location)
+    , expr(expr)
     , types(types)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);

@@ -303,6 +303,16 @@ struct PushFunctionTypeConstraint
     bool isSelf;
 };
 
+// Binds the function to a set of explicitly specified types,
+// for f<<T>>.
+struct ExplicitlySpecifiedGenericsConstraint
+{
+    TypeId functionType;
+    TypeId placeholderType;
+    std::vector<TypeId> typeParameters;
+    std::vector<TypePackId> typePackParameters;
+};
+
 using ConstraintV = Variant<
     SubtypeConstraint,
     PackSubtypeConstraint,
@@ -323,7 +333,8 @@ using ConstraintV = Variant<
     EqualityConstraint,
     TableCheckConstraint,
     SimplifyConstraint,
-    PushFunctionTypeConstraint>;
+    PushFunctionTypeConstraint,
+    ExplicitlySpecifiedGenericsConstraint>;
 
 struct Constraint
 {

@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
@@ -1375,6 +1376,11 @@ void TypeChecker2::visit(AstExpr* expr, ValueContext context)
         return visit(e);
     else if (auto e = expr->as<AstExprIfElse>())
         return visit(e);
+    else if (auto e = expr->as<AstExprExplicitTypeInstantiation>())
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        return visit(e);
+    }
     else if (auto e = expr->as<AstExprInterpString>())
         return visit(e);
     else if (auto e = expr->as<AstExprError>())
@@ -2557,6 +2563,12 @@ void TypeChecker2::visit(AstExprIfElse* expr)
     visit(expr->condition, ValueContext::RValue);
     visit(expr->trueExpr, ValueContext::RValue);
     visit(expr->falseExpr, ValueContext::RValue);
+}
+
+void TypeChecker2::visit(AstExprExplicitTypeInstantiation* explicitTypeInstantiation)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+    visit(explicitTypeInstantiation->expr, ValueContext::RValue);
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)

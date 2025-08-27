@@ -49,6 +49,7 @@ LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAGVARIABLE(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 namespace Luau
 {
@@ -899,6 +900,11 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*sc, constraint, force);
     else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
         success = tryDispatch(*pftc, constraint);
+    else if (auto esgc = get<ExplicitlySpecifiedGenericsConstraint>(*constraint))
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        success = tryDispatch(*esgc, constraint);
+    }
     else
         LUAU_ASSERT(false);
 
@@ -2941,6 +2947,51 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
 
     if (!c.expr->returnAnnotation && get<FreeTypePack>(fn->retTypes) && !ContainsAnyGeneric::hasAnyGeneric(expectedFn->retTypes))
         bind(constraint, fn->retTypes, expectedFn->retTypes);
+
+    return true;
+}
+
+// todo soon: same deal with metatable classes i think
+bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& c, NotNull<const Constraint> constraint)
+{
+    const FunctionType* functionType = get<FunctionType>(follow(c.functionType));
+    if (!functionType)
+    {
+        return true;
+    }
+
+    DenseHashMap<TypeId, TypeId> replacements{nullptr};
+    auto typeParametersIter = functionType->generics.begin();
+
+    for (const TypeId typeParameter : c.typeParameters)
+    {
+        if (typeParametersIter == functionType->generics.end())
+        {
+            LUAU_ASSERT(!"todo soon: too many generics");
+            continue;
+        }
+
+        replacements[*typeParametersIter++] = typeParameter;
+    }
+
+    DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
+    auto typePackParametersIter = functionType->genericPacks.begin();
+
+    for (const TypePackId typePackParameter : c.typePackParameters)
+    {
+        if (typePackParametersIter == functionType->genericPacks.end())
+        {
+            LUAU_ASSERT(!"todo soon: too many generics");
+            continue;
+        }
+
+        replacementPacks[*typePackParametersIter++] = typePackParameter;
+    }
+
+    Replacer replacer { arena, std::move(replacements), std::move(replacementPacks) };
+    TypeId substituted = replacer.substitute(c.functionType).value_or(builtinTypes->errorType);
+
+    bind(constraint, c.placeholderType, substituted);
 
     return true;
 }

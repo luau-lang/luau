@@ -173,6 +173,7 @@ private:
     void visit(AstExprTypeAssertion* expr);
     void visit(AstExprIfElse* expr);
     void visit(AstExprInterpString* interpString);
+    void visit(AstExprExplicitTypeInstantiation* explicitTypeInstantiation);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);

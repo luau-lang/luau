@@ -3080,7 +3080,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         {
             AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation();
             // todo soon: i don't think the location.end here is correct
-            expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, lexer.current().location.end), typesOrPacks);
+            expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, lexer.current().location.end), expr, typesOrPacks);
         }
         else
         {
