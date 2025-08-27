@@ -3292,11 +3292,21 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     WithPredicate<TypeId> baseType = checkExpr(scope, *explicitTypeInstantiation.expr);
 
+    return WithPredicate{bindExplicitTypeInstantations(scope, baseType.type, explicitTypeInstantiation.types, explicitTypeInstantiation.expr->location)};
+}
+
+TypeId TypeChecker::bindExplicitTypeInstantations(
+    const ScopePtr& scope,
+    TypeId baseType,
+    const AstArray<AstTypeOrPack>& explicitTypes,
+    Location location
+)
+{
     // todo soon: this needs to work with __call too, maybe use astOriginalCallTypes?
     // todo soon: do i need `checkArgumentList`?
-    if (const FunctionType* functionType = get<FunctionType>(baseType.type))
+    if (const FunctionType* functionType = get<FunctionType>(baseType))
     {
-        ScopePtr aliasScope = childScope(scope, explicitTypeInstantiation.location);
+        ScopePtr aliasScope = childScope(scope, location);
         aliasScope->level = scope->level.incr();
 
         std::vector<TypeId> typeParams;
@@ -3317,7 +3327,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
         auto typePackParamsIter = typePackParams.begin();
 
-        for (const AstTypeOrPack& typeOrPack : explicitTypeInstantiation.types)
+        for (const AstTypeOrPack& typeOrPack : explicitTypes)
         {
             if (typeOrPack.type)
             {
@@ -3334,7 +3344,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         }
 
         TypeFun baseFun;
-        baseFun.type = baseType.type;
+        baseFun.type = baseType;
 
         baseFun.typeParams.reserve(functionType->generics.size());
         for (TypeId genericId : functionType->generics)
@@ -3348,13 +3358,13 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
             baseFun.typePackParams.push_back({genericPackId, std::nullopt});
         }
 
-        return WithPredicate{instantiateTypeFun(
+        return instantiateTypeFun(
             scope,
             baseFun,
             typeParams,
             typePackParams,
-            explicitTypeInstantiation.location
-        )};
+            location
+        );
     }
     else
     {
@@ -4431,7 +4441,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
         if (std::optional<TypeId> propTy = getIndexTypeFromType(scope, selfType, indexExpr->index.value, expr.location, /* addErrors= */ true))
         {
             functionType = *propTy;
-            actualFunctionType = instantiate(scope, functionType, expr.func->location);
+            actualFunctionType = instantiate(scope, FFlag::LuauExplicitTypeExpressionInstantiation && expr.explicitTypes.size ? bindExplicitTypeInstantations(scope, functionType, expr.explicitTypes, expr.location) : functionType, expr.func->location);
         }
         else
         {

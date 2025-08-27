@@ -464,6 +464,13 @@ public:
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
+    TypeId specifyExplicitTypes(
+        TypeId functionTypeId,
+        const std::vector<TypeId>& explicitTypeIds,
+        const std::vector<TypePackId>& explicitTypePackIds,
+        NotNull<Scope> scope
+    );
+
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 
     void throwTimeLimitError() const;

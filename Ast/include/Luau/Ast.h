@@ -424,6 +424,9 @@ public:
     void visit(AstVisitor* visitor) override;
 
     AstExpr* func;
+    // These will only be filled in specifically `t:f<<A, B>>()`.
+    // In `f<<A, B>>()`, this is parsed as `f<<A, B>>` as an expression,
+    // which is then called.
     AstArray<AstTypeOrPack> explicitTypes;
     AstArray<AstExpr*> args;
     bool self;

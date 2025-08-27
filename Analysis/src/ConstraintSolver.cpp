@@ -1575,6 +1575,14 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         }
     }
 
+    if (FFlag::LuauExplicitTypeExpressionInstantiation)
+    {
+        if (!c.explicitlySpecifiedTypes.empty() || !c.explicitlySpecifiedTypePackIds.empty())
+        {
+            fn = specifyExplicitTypes(c.fn, c.explicitlySpecifiedTypes, c.explicitlySpecifiedTypePackIds, constraint->scope);
+        }
+    }
+
     fillInDiscriminantTypes(constraint, c.discriminantTypes);
 
     OverloadResolver resolver{
@@ -2956,18 +2964,36 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
-    const FunctionType* functionType = get<FunctionType>(follow(c.functionType));
-    if (!functionType)
+    bind(constraint, c.placeholderType, specifyExplicitTypes(
+        c.functionType,
+        c.typeParameters,
+        c.typePackParameters,
+        constraint->scope
+    ));
+
+    return true;
+}
+
+TypeId ConstraintSolver::specifyExplicitTypes(
+    TypeId functionTypeId,
+    const std::vector<TypeId>& explicitTypeIds,
+    const std::vector<TypePackId>& explicitTypePackIds,
+    NotNull<Scope> scope
+)
+{
+    const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
+    if (!ftv)
     {
-        return true;
+        // todo soon: is this right?
+        return builtinTypes->errorType;
     }
 
     DenseHashMap<TypeId, TypeId> replacements{nullptr};
-    auto typeParametersIter = functionType->generics.begin();
+    auto typeParametersIter = ftv->generics.begin();
 
-    for (const TypeId typeParameter : c.typeParameters)
+    for (const TypeId typeParameter : explicitTypeIds)
     {
-        if (typeParametersIter == functionType->generics.end())
+        if (typeParametersIter == ftv->generics.end())
         {
             LUAU_ASSERT(!"todo soon: too many generics");
             continue;
@@ -2976,17 +3002,17 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
         replacements[*typeParametersIter++] = typeParameter;
     }
 
-    while (typeParametersIter != functionType->generics.end())
+    while (typeParametersIter != ftv->generics.end())
     {
-        replacements[*typeParametersIter++] = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+        replacements[*typeParametersIter++] = freshType(arena, builtinTypes, scope, Polarity::Mixed);
     }
 
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
-    auto typePackParametersIter = functionType->genericPacks.begin();
+    auto typePackParametersIter = ftv->genericPacks.begin();
 
-    for (const TypePackId typePackParameter : c.typePackParameters)
+    for (const TypePackId typePackParameter : explicitTypePackIds)
     {
-        if (typePackParametersIter == functionType->genericPacks.end())
+        if (typePackParametersIter == ftv->genericPacks.end())
         {
             LUAU_ASSERT(!"todo soon: too many generics");
             continue;
@@ -3002,12 +3028,9 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
     // }
 
     Replacer replacer { arena, std::move(replacements), std::move(replacementPacks) };
-    TypeId substituted = replacer.substitute(c.functionType).value_or(builtinTypes->errorType);
-
-    bind(constraint, c.placeholderType, substituted);
-
-    return true;
+    return replacer.substitute(functionTypeId).value_or(builtinTypes->errorType);
 }
+
 
 bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {

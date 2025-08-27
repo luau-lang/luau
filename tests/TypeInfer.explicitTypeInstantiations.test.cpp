@@ -134,7 +134,6 @@ TEST_CASE_FIXTURE(Fixture, "anonymous_type_inferred")
     }
 }
 
-// todo soon: incorrect case
 TEST_CASE_FIXTURE(Fixture, "type_packs")
 {
     ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
@@ -169,6 +168,52 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_incorrect")
     )");
 
     LUAU_REQUIRE_ERROR(result, TypeMismatch);
+}
+
+TEST_CASE_FIXTURE(Fixture, "dot_index_call")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local t = {
+            f = function<T>(): T
+                return nil :: any
+            end,
+        }
+
+        local correct: number = t.f<<number>>()
+        local incorrect: number = t.f<<string>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 9);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "method_index_call")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local t = {
+            f = function<T>(self: any): T
+                return nil :: any
+            end,
+        }
+
+        local correct: number = t:f<<number>>()
+        local incorrect: number = t:f<<string>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 9);
+    }
 }
 
 TEST_SUITE_END();

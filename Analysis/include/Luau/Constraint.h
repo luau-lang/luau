@@ -95,6 +95,9 @@ struct FunctionCallConstraint
     class AstExprCall* callSite = nullptr;
     std::vector<std::optional<TypeId>> discriminantTypes;
 
+    std::vector<TypeId> explicitlySpecifiedTypes;
+    std::vector<TypePackId> explicitlySpecifiedTypePackIds;
+
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
     DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;

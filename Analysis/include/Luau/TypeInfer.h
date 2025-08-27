@@ -228,6 +228,13 @@ struct TypeChecker
         const std::vector<std::optional<TypeId>>& expectedTypes = {}
     );
 
+    TypeId bindExplicitTypeInstantations(
+        const ScopePtr& scope,
+        TypeId baseType,
+        const AstArray<AstTypeOrPack>& explicitTypes,
+        Location location
+    );
+
     static std::optional<AstExpr*> matchRequire(const AstExprCall& call);
     TypeId checkRequire(const ScopePtr& scope, const ModuleInfo& moduleInfo, const Location& location);
 
