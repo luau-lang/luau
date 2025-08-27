@@ -2954,6 +2954,8 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
 // todo soon: same deal with metatable classes i think
 bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& c, NotNull<const Constraint> constraint)
 {
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
     const FunctionType* functionType = get<FunctionType>(follow(c.functionType));
     if (!functionType)
     {
@@ -2974,6 +2976,11 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
         replacements[*typeParametersIter++] = typeParameter;
     }
 
+    while (typeParametersIter != functionType->generics.end())
+    {
+        replacements[*typeParametersIter++] = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+    }
+
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
     auto typePackParametersIter = functionType->genericPacks.begin();
 
@@ -2987,6 +2994,12 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
 
         replacementPacks[*typePackParametersIter++] = typePackParameter;
     }
+
+    // todo soon
+    // while (typeParametersIter != functionType->generics.end())
+    // {
+    //     replacementPacks[*typePackParametersIter++] = freshTypePack(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+    // }
 
     Replacer replacer { arena, std::move(replacements), std::move(replacementPacks) };
     TypeId substituted = replacer.substitute(c.functionType).value_or(builtinTypes->errorType);

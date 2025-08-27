@@ -3296,28 +3296,42 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     // todo soon: do i need `checkArgumentList`?
     if (const FunctionType* functionType = get<FunctionType>(baseType.type))
     {
-        // TypeId appliedFunctionType = instantiate(scope, baseType.type, explicitTypeInstantiation.expr->location);
-
         ScopePtr aliasScope = childScope(scope, explicitTypeInstantiation.location);
         aliasScope->level = scope->level.incr();
 
         std::vector<TypeId> typeParams;
+        typeParams.reserve(functionType->generics.size());
+        for (size_t i = 0; i < functionType->generics.size(); ++i)
+        {
+            typeParams.push_back(freshType(scope));
+        }
+
+        auto typeParamsIter = typeParams.begin();
+
         std::vector<TypePackId> typePackParams;
+        typePackParams.resize(functionType->genericPacks.size());
+        for (size_t i = 0; i < functionType->genericPacks.size(); ++i)
+        {
+            typePackParams.push_back(freshTypePack(scope));
+        }
+
+        auto typePackParamsIter = typePackParams.begin();
 
         for (const AstTypeOrPack& typeOrPack : explicitTypeInstantiation.types)
         {
             if (typeOrPack.type)
             {
-                typeParams.push_back(resolveType(scope, *typeOrPack.type));
+                // todo soon: this and the other one will fail with incorrect arity
+                LUAU_ASSERT(typeParamsIter != typeParams.end());
+                *typeParamsIter++ = resolveType(scope, *typeOrPack.type);
             }
             else
             {
                 LUAU_ASSERT(typeOrPack.typePack);
-                typePackParams.push_back(resolveTypePack(scope, *typeOrPack.typePack));
+                LUAU_ASSERT(typePackParamsIter != typePackParams.end());
+                *typePackParamsIter++ = resolveTypePack(scope, *typeOrPack.typePack);
             }
         }
-
-        // std::optional<TypeFun> baseFun = scope->lookupType(baseType.type->);
 
         TypeFun baseFun;
         baseFun.type = baseType.type;

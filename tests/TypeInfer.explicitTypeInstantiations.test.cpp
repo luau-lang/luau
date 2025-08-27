@@ -91,4 +91,52 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "multiple_calls")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local function f<T>(): T
+            return nil :: any
+        end
+
+        local a: number = f<<number>>()
+        local b: string = f<<string>>()
+        )");
+
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "anonymous_type_inferred")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local function f<T, U>(): { a: T, b: U }
+            return nil :: any
+        end
+
+        local correct: { a: number, b: string } = f<<number>>()
+        local incorrect: { a: number, b: string } = f<<string>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        REQUIRE_EQ(result.errors[0].location.begin.line, 7);
+        LUAU_REQUIRE_ERROR(result, TypeMismatch);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "new_solver_test")
+{
+    REQUIRE(!FFlag::LuauSolverV2);
+}
+
 TEST_SUITE_END();
