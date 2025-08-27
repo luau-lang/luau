@@ -134,9 +134,23 @@ TEST_CASE_FIXTURE(Fixture, "anonymous_type_inferred")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "new_solver_test")
+// todo soon: incorrect case
+TEST_CASE_FIXTURE(Fixture, "type_packs")
 {
-    REQUIRE(!FFlag::LuauSolverV2);
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    // FIXME: This triggers a GenericTypePackCountMismatch error, and it's not obvious if the
+    // code for explicit types is broken, or if subtyping is broken.
+    ScopedFastFlag oldSolver{FFlag::LuauSolverV2, false};
+
+    CheckResult result = check(R"(
+    --!strict
+    local function f<T..., U...>(...: T...): U... end
+
+    local a: number, b: string = f<<(boolean, {}), (number, string)>>(true, {})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
