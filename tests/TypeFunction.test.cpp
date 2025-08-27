@@ -1056,8 +1056,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_wait_for_pending_no_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typefunc_dependency_issue1")
 {
-    if (!FFlag::LuauSolverV2)
-        return;
+    if (!FFlag::LuauSolverV2) { return; }
 
         CheckResult check1 = check(R"(
 local tbl_A = {} :: typeof({entry1 = 1})
