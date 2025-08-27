@@ -1579,7 +1579,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     {
         if (!c.explicitlySpecifiedTypes.empty() || !c.explicitlySpecifiedTypePackIds.empty())
         {
-            fn = specifyExplicitTypes(c.fn, c.explicitlySpecifiedTypes, c.explicitlySpecifiedTypePackIds, constraint->scope);
+            fn = specifyExplicitTypes(c.fn, c.explicitlySpecifiedTypes, c.explicitlySpecifiedTypePackIds, constraint->scope, constraint->location);
         }
     }
 
@@ -2968,7 +2968,8 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
         c.functionType,
         c.typeParameters,
         c.typePackParameters,
-        constraint->scope
+        constraint->scope,
+        constraint->location
     ));
 
     return true;
@@ -2978,14 +2979,16 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     TypeId functionTypeId,
     const std::vector<TypeId>& explicitTypeIds,
     const std::vector<TypePackId>& explicitTypePackIds,
-    NotNull<Scope> scope
+    NotNull<Scope> scope,
+    const Location& location
 )
 {
     const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
     if (!ftv)
     {
-        // todo soon: is this right?
-        return builtinTypes->errorType;
+        reportError(ExplicitlySpecifiedGenericsOnNonFunction{}, location);
+
+        return functionTypeId;
     }
 
     DenseHashMap<TypeId, TypeId> replacements{nullptr};

@@ -212,7 +212,49 @@ TEST_CASE_FIXTURE(Fixture, "method_index_call")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, TypeMismatch);
         REQUIRE_EQ(result.errors[0].location.begin.line, 9);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "stored_as_variable")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local function f<T>(): T
+            return nil :: any
+        end
+
+        local fNumber = f<<number>>
+
+        local correct: number = fNumber()
+        local incorrect: string = fNumber()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, TypeMismatch);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 9);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "not_a_function")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local oops = 3
+        local stub = oops<<number>>
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
     }
 }
 

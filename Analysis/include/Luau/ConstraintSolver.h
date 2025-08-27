@@ -468,7 +468,8 @@ public:
         TypeId functionTypeId,
         const std::vector<TypeId>& explicitTypeIds,
         const std::vector<TypePackId>& explicitTypePackIds,
-        NotNull<Scope> scope
+        NotNull<Scope> scope,
+        const Location& location
     );
 
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);

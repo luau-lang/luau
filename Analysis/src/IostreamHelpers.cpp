@@ -287,6 +287,8 @@ static void errorToString(std::ostream& stream, const T& err)
         }
         stream << "] }";
     }
+    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
+        stream << "ExplicitlySpecifiedGenericsOnNonFunction";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

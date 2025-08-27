@@ -915,6 +915,11 @@ struct ErrorConverter
         return "The generic type parameter " + std::string{e.genericName} + "was found to have invalid bounds. Its lower bounds were [" +
                lowerBounds + "], and its upper bounds were [" + upperBounds + "].";
     }
+
+    std::string operator()(const ExplicitlySpecifiedGenericsOnNonFunction& e) const
+    {
+        return "Explicitly specified generics on something that isn't a function.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1563,6 +1568,8 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         for (auto& upperBound : e.upperBounds)
             upperBound = clone(upperBound);
     }
+    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
+    {}
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

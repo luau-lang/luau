@@ -526,6 +526,15 @@ struct GenericBoundsMismatch
     bool operator==(const GenericBoundsMismatch& rhs) const;
 };
 
+// Used `f<<T>>` where f is not a function
+struct ExplicitlySpecifiedGenericsOnNonFunction
+{
+    bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction& rhs) const
+    {
+        return true;
+    }
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -583,7 +592,8 @@ using TypeErrorData = Variant<
     GenericTypePackCountMismatch,
     MultipleNonviableOverloads,
     RecursiveRestraintViolation,
-    GenericBoundsMismatch>;
+    GenericBoundsMismatch,
+    ExplicitlySpecifiedGenericsOnNonFunction>;
 
 struct TypeErrorSummary
 {

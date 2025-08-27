@@ -3302,75 +3302,75 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
     Location location
 )
 {
+    const FunctionType* functionType = get<FunctionType>(baseType);
+
+    if (!functionType)
+    {
+        reportError(location, ExplicitlySpecifiedGenericsOnNonFunction{});
+        return baseType;
+    }
+
     // todo soon: this needs to work with __call too, maybe use astOriginalCallTypes?
     // todo soon: do i need `checkArgumentList`?
-    if (const FunctionType* functionType = get<FunctionType>(baseType))
+    ScopePtr aliasScope = childScope(scope, location);
+    aliasScope->level = scope->level.incr();
+
+    std::vector<TypeId> typeParams;
+    typeParams.reserve(functionType->generics.size());
+    for (size_t i = 0; i < functionType->generics.size(); ++i)
     {
-        ScopePtr aliasScope = childScope(scope, location);
-        aliasScope->level = scope->level.incr();
-
-        std::vector<TypeId> typeParams;
-        typeParams.reserve(functionType->generics.size());
-        for (size_t i = 0; i < functionType->generics.size(); ++i)
-        {
-            typeParams.push_back(freshType(scope));
-        }
-
-        auto typeParamsIter = typeParams.begin();
-
-        std::vector<TypePackId> typePackParams;
-        typePackParams.resize(functionType->genericPacks.size());
-        for (size_t i = 0; i < functionType->genericPacks.size(); ++i)
-        {
-            typePackParams.push_back(freshTypePack(scope));
-        }
-
-        auto typePackParamsIter = typePackParams.begin();
-
-        for (const AstTypeOrPack& typeOrPack : explicitTypes)
-        {
-            if (typeOrPack.type)
-            {
-                // todo soon: this and the other one will fail with incorrect arity
-                LUAU_ASSERT(typeParamsIter != typeParams.end());
-                *typeParamsIter++ = resolveType(scope, *typeOrPack.type);
-            }
-            else
-            {
-                LUAU_ASSERT(typeOrPack.typePack);
-                LUAU_ASSERT(typePackParamsIter != typePackParams.end());
-                *typePackParamsIter++ = resolveTypePack(scope, *typeOrPack.typePack);
-            }
-        }
-
-        TypeFun baseFun;
-        baseFun.type = baseType;
-
-        baseFun.typeParams.reserve(functionType->generics.size());
-        for (TypeId genericId : functionType->generics)
-        {
-            baseFun.typeParams.push_back({genericId, std::nullopt});
-        }
-
-        baseFun.typePackParams.reserve(functionType->genericPacks.size());
-        for (TypePackId genericPackId : functionType->genericPacks)
-        {
-            baseFun.typePackParams.push_back({genericPackId, std::nullopt});
-        }
-
-        return instantiateTypeFun(
-            scope,
-            baseFun,
-            typeParams,
-            typePackParams,
-            location
-        );
+        typeParams.push_back(freshType(scope));
     }
-    else
+
+    auto typeParamsIter = typeParams.begin();
+
+    std::vector<TypePackId> typePackParams;
+    typePackParams.resize(functionType->genericPacks.size());
+    for (size_t i = 0; i < functionType->genericPacks.size(); ++i)
     {
-        LUAU_ASSERT(!"not provided function");
-        throw std::runtime_error("todo soon");
+        typePackParams.push_back(freshTypePack(scope));
     }
+
+    auto typePackParamsIter = typePackParams.begin();
+
+    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    {
+        if (typeOrPack.type)
+        {
+            // todo soon: this and the other one will fail with incorrect arity
+            LUAU_ASSERT(typeParamsIter != typeParams.end());
+            *typeParamsIter++ = resolveType(scope, *typeOrPack.type);
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            LUAU_ASSERT(typePackParamsIter != typePackParams.end());
+            *typePackParamsIter++ = resolveTypePack(scope, *typeOrPack.typePack);
+        }
+    }
+
+    TypeFun baseFun;
+    baseFun.type = baseType;
+
+    baseFun.typeParams.reserve(functionType->generics.size());
+    for (TypeId genericId : functionType->generics)
+    {
+        baseFun.typeParams.push_back({genericId, std::nullopt});
+    }
+
+    baseFun.typePackParams.reserve(functionType->genericPacks.size());
+    for (TypePackId genericPackId : functionType->genericPacks)
+    {
+        baseFun.typePackParams.push_back({genericPackId, std::nullopt});
+    }
+
+    return instantiateTypeFun(
+        scope,
+        baseFun,
+        typeParams,
+        typePackParams,
+        location
+    );
 }
 
 
