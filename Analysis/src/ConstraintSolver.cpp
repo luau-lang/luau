@@ -281,6 +281,10 @@ size_t HashInstantiationSignature::operator()(const InstantiationSignature& sign
 
 struct TypeFinder : TypeOnceVisitor
 {
+    TypeFinder() : TypeOnceVisitor("TypeFinder", false)
+    {
+    }
+
     TypeId tyToFind;
     bool hasFoundType = false;
 
