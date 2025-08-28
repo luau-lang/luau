@@ -232,7 +232,8 @@ struct TypeChecker
         const ScopePtr& scope,
         TypeId baseType,
         const AstArray<AstTypeOrPack>& explicitTypes,
-        Location location
+        const AstExpr* functionExpr,
+        const Location& location
     );
 
     static std::optional<AstExpr*> matchRequire(const AstExprCall& call);

@@ -920,6 +920,54 @@ struct ErrorConverter
     {
         return "Explicitly specified generics on something that isn't a function.";
     }
+
+    std::string operator()(const ExplicitlySpecifiedGenericsTooManySpecified& e) const
+    {
+        LUAU_ASSERT(e.providedTypes > e.maximumTypes || e.providedTypePacks > e.maximumTypePacks);
+
+        std::string result = "Too many type parameters passed to ";
+
+        if (e.functionName)
+        {
+            result += "'";
+            result += *e.functionName;
+            result += "', which is typed as ";
+        }
+        else
+        {
+            result += "function typed as ";
+        }
+
+        result += toString(e.functionType);
+        result += ". Expected ";
+
+        if (e.providedTypes > e.maximumTypes)
+        {
+            result += "at most ";
+            result += e.maximumTypes;
+            result += " type parameters, but ";
+            result += e.providedTypes;
+            result += " provided";
+
+            if (e.providedTypePacks > e.maximumTypePacks)
+            {
+                result += ". Also expected ";
+            }
+        }
+
+        if (e.providedTypePacks > e.maximumTypePacks)
+        {
+            result += "at most ";
+            result += e.maximumTypePacks;
+            result += " type packs, but ";
+            result += e.providedTypePacks;
+            result += " provided.";
+        }
+
+        result += ".";
+
+        return result;
+    }
 };
 
 struct InvalidNameChecker
@@ -1323,6 +1371,17 @@ bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rh
     return attemptedArgCount == rhs.attemptedArgCount;
 }
 
+bool ExplicitlySpecifiedGenericsTooManySpecified::operator==(const ExplicitlySpecifiedGenericsTooManySpecified& rhs) const
+{
+    return functionName == rhs.functionName
+        && functionType == rhs.functionType
+        && providedTypes == rhs.providedTypes
+        && maximumTypes == rhs.maximumTypes
+        && providedTypePacks == rhs.providedTypePacks
+        && maximumTypePacks == rhs.maximumTypePacks;
+}
+
+
 GenericBoundsMismatch::GenericBoundsMismatch(const std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet)
     : genericName(genericName)
     , lowerBounds(lowerBoundSet.take())
@@ -1570,6 +1629,10 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
     {}
+    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsTooManySpecified>)
+    {
+        e.functionType = clone(e.functionType);
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

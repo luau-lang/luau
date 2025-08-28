@@ -2986,8 +2986,15 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
     if (!ftv)
     {
-        reportError(ExplicitlySpecifiedGenericsOnNonFunction{}, location);
+        if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location))
+        {
+            if (get<FunctionType>(follow(*callMm)))
+            {
+                return specifyExplicitTypes(*callMm, explicitTypeIds, explicitTypePackIds, scope, location);
+            }
+        }
 
+        reportError(ExplicitlySpecifiedGenericsOnNonFunction{}, location);
         return functionTypeId;
     }
 
@@ -2996,13 +3003,12 @@ TypeId ConstraintSolver::specifyExplicitTypes(
 
     for (const TypeId typeParameter : explicitTypeIds)
     {
+        replacements[*typeParametersIter++] = typeParameter;
+
         if (typeParametersIter == ftv->generics.end())
         {
-            LUAU_ASSERT(!"todo soon: too many generics");
-            continue;
+            break;
         }
-
-        replacements[*typeParametersIter++] = typeParameter;
     }
 
     while (typeParametersIter != ftv->generics.end())

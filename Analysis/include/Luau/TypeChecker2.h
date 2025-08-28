@@ -228,6 +228,13 @@ private:
 
     void suggestAnnotations(AstExprFunction* expr, TypeId ty);
 
+    void checkExplicitTypes(
+        AstExpr* baseFunctionExpr,
+        TypeId fnType,
+        const Location& location,
+        const AstArray<AstTypeOrPack>& explicitTypes
+    );
+
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const;
     bool isErrorSuppressing(Location loc, TypeId ty);
     bool isErrorSuppressing(Location loc1, TypeId ty1, Location loc2, TypeId ty2);

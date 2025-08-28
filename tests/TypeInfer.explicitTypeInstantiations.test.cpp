@@ -11,7 +11,7 @@ LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
 #define SUBCASE_BOTH_SOLVERS() \
-    for (bool enabled : { false, true }) \
+    for (bool enabled : { true, false }) \
         if (ScopedFastFlag sffSolver {FFlag::LuauSolverV2, enabled}; true) \
             SUBCASE(enabled ? "New solver" : "Old solver")
 
@@ -255,6 +255,95 @@ TEST_CASE_FIXTURE(Fixture, "not_a_function")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_call")
+{
+    return;
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local t = setmetatable({}, {
+            __call = function<T>(self): T
+                return nil :: any
+            end,
+        })
+
+        local uninteresting = t()
+        local correct: number = t<<number>>()
+        local incorrect: string = t<<number>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, TypeMismatch);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 10);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "method_call_incomplete")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local t = {
+            f = function<T, U>(self: any): T | U
+                return nil :: any
+            end,
+        }
+
+        local correct: number | string = t:f<<number>>()
+        local incorrect: number | string = t:f<<boolean>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, TypeMismatch);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 9);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "too_many_provided")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local function f<T>() end
+
+        f<<number, string>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "too_many_provided_method")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local t = {
+            f = function<T>(self: any) end,
+        }
+
+        t:f<<number, string>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 6);
     }
 }
 

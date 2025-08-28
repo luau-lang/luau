@@ -1515,6 +1515,14 @@ void TypeChecker2::visitCall(AstExprCall* call)
         return;
     }
 
+    if (FFlag::LuauExplicitTypeExpressionInstantiation)
+    {
+        if (call->explicitTypes.size)
+        {
+            checkExplicitTypes(call, fnTy, call->location, call->explicitTypes);
+        }
+    }
+
     if (selectedOverloadTy)
     {
         SubtypingResult result = subtyping->isSubtype(*originalCallTy, *selectedOverloadTy, scope);
@@ -2569,6 +2577,7 @@ void TypeChecker2::visit(AstExprExplicitTypeInstantiation* explicitTypeInstantia
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
+    checkExplicitTypes(explicitTypeInstantiation->expr, lookupType(explicitTypeInstantiation->expr), explicitTypeInstantiation->location, explicitTypeInstantiation->types);
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -3608,6 +3617,47 @@ void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
         }
     }
 }
+
+void TypeChecker2::checkExplicitTypes(AstExpr* baseFunctionExpr, TypeId fnType, const Location& location, const AstArray<AstTypeOrPack>& explicitTypes)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    const FunctionType* ftv = get<FunctionType>(follow(fnType));
+    if (!ftv)
+    {
+        return;
+    }
+
+    size_t typeCount = 0;
+    size_t typePackCount = 0;
+
+    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    {
+        if (typeOrPack.type)
+        {
+            ++typeCount;
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            ++typePackCount;
+        }
+    }
+
+    if (ftv->generics.size() < typeCount || ftv->genericPacks.size() < typePackCount)
+    {
+        reportError(ExplicitlySpecifiedGenericsTooManySpecified
+            {
+                getIdentifierOfBaseVar(baseFunctionExpr),
+                fnType,
+                typeCount,
+                ftv->generics.size(),
+                typePackCount,
+                ftv->genericPacks.size()
+            }, location);
+    }
+}
+
 
 void TypeChecker2::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const
 {

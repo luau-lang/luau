@@ -529,10 +529,25 @@ struct GenericBoundsMismatch
 // Used `f<<T>>` where f is not a function
 struct ExplicitlySpecifiedGenericsOnNonFunction
 {
-    bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction& rhs) const
+    bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction&) const
     {
         return true;
     }
+};
+
+// Provided too many generics inside `f<<T>>`
+struct ExplicitlySpecifiedGenericsTooManySpecified
+{
+    std::optional<std::string> functionName;
+    TypeId functionType;
+
+    size_t providedTypes = 0;
+    size_t maximumTypes = 0;
+
+    size_t providedTypePacks = 0;
+    size_t maximumTypePacks = 0;
+
+    bool operator==(const ExplicitlySpecifiedGenericsTooManySpecified&) const;
 };
 
 using TypeErrorData = Variant<
@@ -593,7 +608,8 @@ using TypeErrorData = Variant<
     MultipleNonviableOverloads,
     RecursiveRestraintViolation,
     GenericBoundsMismatch,
-    ExplicitlySpecifiedGenericsOnNonFunction>;
+    ExplicitlySpecifiedGenericsOnNonFunction,
+    ExplicitlySpecifiedGenericsTooManySpecified>;
 
 struct TypeErrorSummary
 {
