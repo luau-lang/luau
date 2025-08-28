@@ -543,7 +543,7 @@ struct Printer
 
             if (FFlag::LuauExplicitTypeExpressionInstantiation)
             {
-                if (a->explicitTypes.size > 0 || (cstNode && cstNode->explicitTypes.has_value()))
+                if (writeTypes && (a->explicitTypes.size > 0 || (cstNode && cstNode->explicitTypes.has_value())))
                 {
                     visualizeExplicitTypeInstantiation(a->explicitTypes, cstNode && cstNode->explicitTypes.has_value() ? &cstNode->explicitTypes.value() : nullptr);
                 }
