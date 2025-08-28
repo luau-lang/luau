@@ -123,9 +123,7 @@ static bool reportModuleResult(Luau::Frontend& frontend, const Luau::ModuleName&
 
 static void displayHelp(const char* argv0)
 {
-    printf("Usage: %s [--mode] [options] [files or directories...]\n", argv0);
-    printf("  - Inputs may be files or directories; directories are scanned recursively for .lua/.luau files.\n");
-    printf("  - Use '-' to read a single script from stdin.\n");
+    printf("Usage: %s [--mode] [options] [file list]\n", argv0);
     printf("\n");
     printf("Available modes:\n");
     printf("  omitted: typecheck and lint input files\n");
@@ -407,79 +405,8 @@ int main(int argc, char** argv)
 
     std::vector<std::string> files = getSourceFiles(argc, argv);
 
-    // Check if no input files were provided
-    if (files.empty())
-    {
-        fprintf(stderr, "Error: No Lua/Luau source files found in inputs\n");
-        fprintf(stderr, "Usage: %s [--mode] [options] [files or directories...]\n", argv[0]);
-        fprintf(stderr, "Hint: Provide .lua/.luau files or directories containing them, or use '-' for stdin\n");
-        return 1;
-    }
-
-    // failed: number of invalid inputs detected during validation
-    int failed = 0;
-
-    // Track stdin ("-") usage and its normalized pseudo-path (skip when queuing).
-    bool usedStdin = false;
-    std::string stdinNormalized = normalizePath("-");
-
-    for (int i = 1; i < argc; ++i)
-    {
-        // Skip options (arguments starting with - that aren't just -)
-        if (argv[i][0] == '-' && argv[i][1] != '\0')
-            continue;
-
-        std::string originalArg = argv[i];
-
-        // Special case: "-" means read from stdin (validated here, queued later as "-")
-        if (originalArg == "-")
-        {
-            usedStdin = true;
-            continue;
-        }
-
-        std::string normalized = normalizePath(originalArg);
-
-        // Validate inputs:
-        // - If .lua/.luau file is specified, it must exist as a file
-        // - Directories are accepted (expanded by getSourceFiles)
-        // If the argument has a known Luau/Lua extension, ensure it exists as a file.
-        if (hasFileExtension(normalized, std::vector<std::string>{".lua", ".luau"}))
-        {
-            if (!isFile(normalized))
-            {
-                fprintf(stderr, "Error: %s: No such file or directory\n", normalized.c_str());
-                failed++;
-            }
-            continue;
-        }
-
-        if (isDirectory(normalized))
-            continue;
-
-        if (!isFile(normalized))
-        {
-            fprintf(stderr, "Error: %s: No such file or directory\n", normalized.c_str());
-            failed++;
-            continue;
-        }
-
-    }
-
-
-    // Queue files expanded from directories and file arguments
     for (const std::string& path : files)
-    {
-        // Skip the normalized stdin pseudo-path only if '-' was actually requested; stdin is queued separately
-        if (usedStdin && path == stdinNormalized)
-            continue;
-
         frontend.queueModuleCheck(path);
-    }
-
-    // Queue stdin if it was explicitly requested
-    if (usedStdin)
-        frontend.queueModuleCheck("-");
 
     std::vector<Luau::ModuleName> checkedModules;
 
@@ -519,6 +446,8 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    int failed = 0;
+
     for (const Luau::ModuleName& name : checkedModules)
         failed += !reportModuleResult(frontend, name, format, annotate);
 
@@ -533,12 +462,5 @@ int main(int argc, char** argv)
     if (format == ReportFormat::Luacheck)
         return 0;
     else
-    {
-        if (failed == 0 && !checkedModules.empty() && !annotate)
-        {
-            // Print success banner only for interactive runs (not --annotate/luacheck).
-            printf("Analysis completed successfully\n");
-        }
         return failed ? 1 : 0;
-    }
 }
