@@ -3310,17 +3310,25 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
 
     if (!functionType)
     {
-        bool isMetatableCall = false;
+        ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
+            ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None;
 
-        if (const MetatableType* mttv = get<MetatableType>(baseType))
+        if (get<IntersectionType>(baseType))
         {
-            isMetatableCall = getIndexTypeFromType(scope, mttv->metatable, "__call", location, /* addErrors= */ false).has_value();
+            interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection;
+        }
+        else if (const MetatableType* mttv = get<MetatableType>(baseType))
+        {
+            if (getIndexTypeFromType(scope, mttv->metatable, "__call", location, /* addErrors= */ false).has_value())
+            {
+                interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
+            }
         }
 
         reportError(
             location,
             ExplicitlySpecifiedGenericsOnNonFunction{
-                isMetatableCall,
+                interestingEdgeCase,
             }
         );
 

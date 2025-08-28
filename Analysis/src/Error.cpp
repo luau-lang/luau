@@ -918,13 +918,19 @@ struct ErrorConverter
 
     std::string operator()(const ExplicitlySpecifiedGenericsOnNonFunction& e) const
     {
-        return e.isMetatableCall
-                   // `__call` is complicated because `f<<T>>()` is interpreted as `f<<T>>` as its own expression that is then called.
-                   // This is so that you can write code like `local f2 = f<<number>>`, and then call `f2()`.
-                   // With metatables, it's not so obvious what this would result in.
-                   ? "Explicitly specified generics on a table with a call metamethod, which is currently unsupported. \
-                You may be able to work around this by creating a function that calls the table, and using that instead."
-                   : "Explicitly specified generics on something that isn't a function.";
+        switch (e.interestingEdgeCase)
+        {
+        case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None:
+            return "Explicitly specified generics on something that isn't a function.";
+        case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall:
+            // `__call` is complicated because `f<<T>>()` is interpreted as `f<<T>>` as its own expression that is then called.
+            // This is so that you can write code like `local f2 = f<<number>>`, and then call `f2()`.
+            // With metatables, it's not so obvious what this would result in.
+            return "Explicitly specified generics on a table with a call metamethod, which is currently unsupported. \
+                You may be able to work around this by creating a function that calls the table, and using that instead.";
+        case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection:
+            return "Explicitly specified generics are currently not supported for intersection types.";
+        }
     }
 
     std::string operator()(const ExplicitlySpecifiedGenericsTooManySpecified& e) const
@@ -1379,7 +1385,7 @@ bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rh
 
 bool ExplicitlySpecifiedGenericsOnNonFunction::operator==(const ExplicitlySpecifiedGenericsOnNonFunction& rhs) const
 {
-    return isMetatableCall == rhs.isMetatableCall;
+    return interestingEdgeCase == rhs.interestingEdgeCase;
 }
 
 bool ExplicitlySpecifiedGenericsTooManySpecified::operator==(const ExplicitlySpecifiedGenericsTooManySpecified& rhs) const

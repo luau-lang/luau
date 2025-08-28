@@ -529,7 +529,14 @@ struct GenericBoundsMismatch
 // Used `f<<T>>` where f is not a function
 struct ExplicitlySpecifiedGenericsOnNonFunction
 {
-    bool isMetatableCall;
+    enum class InterestingEdgeCase
+    {
+        None,
+        MetatableCall,
+        Intersection,
+    };
+
+    InterestingEdgeCase interestingEdgeCase;
 
     bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction&) const;
 };

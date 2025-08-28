@@ -345,4 +345,23 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_method")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "function_intersections")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local f: (<T>(T) -> T) & (<T>(T?) -> T) = nil :: any
+        f<<number>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 3);
+        REQUIRE_EQ(toString(result.errors[0]), "Explicitly specified generics are currently not supported for intersection types.");
+    }
+}
+
 TEST_SUITE_END();

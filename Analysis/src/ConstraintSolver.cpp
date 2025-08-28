@@ -2984,10 +2984,21 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
     if (!ftv)
     {
-        bool isMetatableCall = findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location).has_value();
+        ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
+            ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None;
+
+        if (findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location).has_value())
+        {
+            interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
+        }
+        else if (get<IntersectionType>(follow(functionTypeId)))
+        {
+            interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection;
+        }
+
         reportError(
             ExplicitlySpecifiedGenericsOnNonFunction{
-                isMetatableCall,
+                interestingEdgeCase,
             },
             location
         );
