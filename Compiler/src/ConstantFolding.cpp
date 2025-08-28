@@ -6,6 +6,8 @@
 #include <vector>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace Luau
 {
 namespace Compile
@@ -539,6 +541,11 @@ struct ConstantVisitor : AstVisitor
         {
             for (AstExpr* expression : expr->expressions)
                 analyze(expression);
+        }
+        else if (AstExprExplicitTypeInstantiation* expr = node->as<AstExprExplicitTypeInstantiation>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            result = analyze(expr->expr);
         }
         else
         {

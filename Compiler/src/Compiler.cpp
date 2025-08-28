@@ -28,6 +28,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauSeparateCompilerTypeInfo)
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace Luau
 {
 
@@ -2346,6 +2348,11 @@ struct Compiler
         else if (AstExprInterpString* interpString = node->as<AstExprInterpString>())
         {
             compileExprInterpString(interpString, target, targetTemp);
+        }
+        else if (AstExprExplicitTypeInstantiation* expr = node->as<AstExprExplicitTypeInstantiation>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            compileExpr(expr->expr, target, targetTemp);
         }
         else
         {

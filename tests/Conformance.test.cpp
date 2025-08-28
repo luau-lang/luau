@@ -850,7 +850,7 @@ TEST_CASE("Pack")
     runConformance("tpack.luau");
 }
 
-TEST_CASE("Explicit type instantiations")
+TEST_CASE("ExplicitTypeInstantiations")
 {
     ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
     runConformance("explicit_type_instantiations.luau");
