@@ -324,6 +324,24 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        --!strict
+        local function f<T...>() end
+
+        f<<(string, number), (true, false)>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "too_many_provided_method")
 {
     SUBCASE_BOTH_SOLVERS()

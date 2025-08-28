@@ -3375,7 +3375,13 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
         else
         {
             LUAU_ASSERT(typeOrPack.typePack);
-            LUAU_ASSERT(typePackParamsIter != typePackParams.end());
+            ++typePackParamCount;
+
+            if (typePackParamsIter == typePackParams.end())
+            {
+                continue;
+            }
+
             *typePackParamsIter++ = resolveTypePack(scope, *typeOrPack.typePack);
         }
     }

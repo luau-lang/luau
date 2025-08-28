@@ -3028,13 +3028,12 @@ TypeId ConstraintSolver::specifyExplicitTypes(
 
     for (const TypePackId typePackParameter : explicitTypePackIds)
     {
+        replacementPacks[*typePackParametersIter++] = typePackParameter;
+
         if (typePackParametersIter == ftv->genericPacks.end())
         {
-            LUAU_ASSERT(!"todo soon: too many generics");
-            continue;
+            break;
         }
-
-        replacementPacks[*typePackParametersIter++] = typePackParameter;
     }
 
     // todo soon
