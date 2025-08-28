@@ -419,7 +419,14 @@ class AstExprCall : public AstExpr
 public:
     LUAU_RTTI(AstExprCall)
 
-    AstExprCall(const Location& location, AstExpr* func, const AstArray<AstExpr*>& args, bool self, const AstArray<AstTypeOrPack>& explicitTypes, const Location& argLocation);
+    AstExprCall(
+        const Location& location,
+        AstExpr* func,
+        const AstArray<AstExpr*>& args,
+        bool self,
+        const AstArray<AstTypeOrPack>& explicitTypes,
+        const Location& argLocation
+    );
 
     void visit(AstVisitor* visitor) override;
 

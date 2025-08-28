@@ -290,19 +290,10 @@ static void errorToString(std::ostream& stream, const T& err)
     else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
         stream << "ExplicitlySpecifiedGenericsOnNonFunction { isMetatableCall = " << err.isMetatableCall << " }";
     else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsTooManySpecified>)
-        stream << "ExplicitlySpecifiedGenericsTooManySpecified { functionName = "
-            << err.functionName.value_or("<unknown>")
-            << ", functionType = "
-            << toString(err.functionType)
-            << ", providedTypes = "
-            << err.providedTypes
-            << ", maximumTypes = "
-            << err.maximumTypes
-            << ", providedTypePacks = "
-            << err.providedTypePacks
-            << ", maximumTypePacks = "
-            << err.maximumTypePacks
-            << " }";
+        stream << "ExplicitlySpecifiedGenericsTooManySpecified { functionName = " << err.functionName.value_or("<unknown>")
+               << ", functionType = " << toString(err.functionType) << ", providedTypes = " << err.providedTypes
+               << ", maximumTypes = " << err.maximumTypes << ", providedTypePacks = " << err.providedTypePacks
+               << ", maximumTypePacks = " << err.maximumTypePacks << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

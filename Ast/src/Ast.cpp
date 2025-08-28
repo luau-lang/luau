@@ -225,7 +225,14 @@ void AstExprVarargs::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprCall::AstExprCall(const Location& location, AstExpr* func, const AstArray<AstExpr*>& args, bool self, const AstArray<AstTypeOrPack>& explicitTypes, const Location& argLocation)
+AstExprCall::AstExprCall(
+    const Location& location,
+    AstExpr* func,
+    const AstArray<AstExpr*>& args,
+    bool self,
+    const AstArray<AstTypeOrPack>& explicitTypes,
+    const Location& argLocation
+)
     : AstExpr(ClassIndex(), location)
     , func(func)
     , explicitTypes(explicitTypes)

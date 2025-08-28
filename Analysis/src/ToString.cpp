@@ -2060,7 +2060,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, PushFunctionTypeConstraint>)
             return "push_function_type " + tos(c.expectedFunctionType) + " => " + tos(c.functionType);
         else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsConstraint>)
-            return "explicitly_specified_constraints " + tos(c.functionType) + " (typeParameters = " + dump(c.typeParameters) + "), (typePackParameters = " + dump(c.typePackParameters) + ")";
+            return "explicitly_specified_constraints " + tos(c.functionType) + " (typeParameters = " + dump(c.typeParameters) +
+                   "), (typePackParameters = " + dump(c.typePackParameters) + ")";
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

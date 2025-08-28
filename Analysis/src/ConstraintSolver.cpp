@@ -2964,13 +2964,11 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
-    bind(constraint, c.placeholderType, specifyExplicitTypes(
-        c.functionType,
-        c.typeParameters,
-        c.typePackParameters,
-        constraint->scope,
-        constraint->location
-    ));
+    bind(
+        constraint,
+        c.placeholderType,
+        specifyExplicitTypes(c.functionType, c.typeParameters, c.typePackParameters, constraint->scope, constraint->location)
+    );
 
     return true;
 }
@@ -2987,9 +2985,12 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     if (!ftv)
     {
         bool isMetatableCall = findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location).has_value();
-        reportError(ExplicitlySpecifiedGenericsOnNonFunction{
-            isMetatableCall,
-        }, location);
+        reportError(
+            ExplicitlySpecifiedGenericsOnNonFunction{
+                isMetatableCall,
+            },
+            location
+        );
         return functionTypeId;
     }
 
@@ -3031,7 +3032,7 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     //     replacementPacks[*typePackParametersIter++] = freshTypePack(arena, builtinTypes, constraint->scope, Polarity::Mixed);
     // }
 
-    Replacer replacer { arena, std::move(replacements), std::move(replacementPacks) };
+    Replacer replacer{arena, std::move(replacements), std::move(replacementPacks)};
     return replacer.substitute(functionTypeId).value_or(builtinTypes->errorType);
 }
 

@@ -2577,7 +2577,12 @@ void TypeChecker2::visit(AstExprExplicitTypeInstantiation* explicitTypeInstantia
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
-    checkExplicitTypes(explicitTypeInstantiation->expr, lookupType(explicitTypeInstantiation->expr), explicitTypeInstantiation->location, explicitTypeInstantiation->types);
+    checkExplicitTypes(
+        explicitTypeInstantiation->expr,
+        lookupType(explicitTypeInstantiation->expr),
+        explicitTypeInstantiation->location,
+        explicitTypeInstantiation->types
+    );
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -3618,7 +3623,12 @@ void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
     }
 }
 
-void TypeChecker2::checkExplicitTypes(AstExpr* baseFunctionExpr, TypeId fnType, const Location& location, const AstArray<AstTypeOrPack>& explicitTypes)
+void TypeChecker2::checkExplicitTypes(
+    AstExpr* baseFunctionExpr,
+    TypeId fnType,
+    const Location& location,
+    const AstArray<AstTypeOrPack>& explicitTypes
+)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
@@ -3646,15 +3656,12 @@ void TypeChecker2::checkExplicitTypes(AstExpr* baseFunctionExpr, TypeId fnType, 
 
     if (ftv->generics.size() < typeCount || ftv->genericPacks.size() < typePackCount)
     {
-        reportError(ExplicitlySpecifiedGenericsTooManySpecified
-            {
-                getIdentifierOfBaseVar(baseFunctionExpr),
-                fnType,
-                typeCount,
-                ftv->generics.size(),
-                typePackCount,
-                ftv->genericPacks.size()
-            }, location);
+        reportError(
+            ExplicitlySpecifiedGenericsTooManySpecified{
+                getIdentifierOfBaseVar(baseFunctionExpr), fnType, typeCount, ftv->generics.size(), typePackCount, ftv->genericPacks.size()
+            },
+            location
+        );
     }
 }
 

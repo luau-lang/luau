@@ -2637,8 +2637,8 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
     FunctionType ftv(TypeLevel{}, argPack, rets, std::nullopt, call->self);
 
     auto [explicitTypeIds, explicitTypePackIds] = FFlag::LuauExplicitTypeExpressionInstantiation && call->explicitTypes.size
-        ? getExplicitTypeIds(scope, call->explicitTypes)
-        : std::pair<std::vector<TypeId>, std::vector<TypePackId>>();
+                                                      ? getExplicitTypeIds(scope, call->explicitTypes)
+                                                      : std::pair<std::vector<TypeId>, std::vector<TypePackId>>();
 
     /*
      * To make bidirectional type checking work, we need to solve these constraints in a particular order:
@@ -2672,7 +2672,8 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             rets,
             call,
             std::move(discriminantTypes),
-            std::move(explicitTypeIds), std::move(explicitTypePackIds),
+            std::move(explicitTypeIds),
+            std::move(explicitTypePackIds),
             &module->astOverloadResolvedTypes,
         }
     );
@@ -3314,12 +3315,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprExplicitTypeI
     NotNull<Constraint> constraint = addConstraint(
         scope,
         explicitTypeInstantiation->location,
-        ExplicitlySpecifiedGenericsConstraint{
-            functionType,
-            placeholderType,
-            std::move(explicitTypeIds),
-            std::move(explicitTypePackIds)
-        }
+        ExplicitlySpecifiedGenericsConstraint{functionType, placeholderType, std::move(explicitTypeIds), std::move(explicitTypePackIds)}
     );
 
     getMutable<BlockedType>(placeholderType)->setOwner(constraint);
@@ -3358,7 +3354,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
         }
     }
 
-    return { std::move(typeParameters), std::move(typePackParameters) };
+    return {std::move(typeParameters), std::move(typePackParameters)};
 }
 
 std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(

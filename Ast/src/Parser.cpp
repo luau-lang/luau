@@ -3343,7 +3343,8 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrP
 
         expectMatchAndConsume(')', matchParen);
 
-        AstExprCall* node = allocator.alloc<AstExprCall>(Location(func->location, end), func, copy(args), self, explicitTypes, Location(argStart, argEnd));
+        AstExprCall* node =
+            allocator.alloc<AstExprCall>(Location(func->location, end), func, copy(args), self, explicitTypes, Location(argStart, argEnd));
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(matchParen.position, lexer.previousLocation().begin, copy(commaPositions));
         return node;
@@ -3354,8 +3355,9 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrP
         AstExpr* expr = parseTableConstructor();
         Position argEnd = lexer.previousLocation().end;
 
-        AstExprCall* node =
-            allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd));
+        AstExprCall* node = allocator.alloc<AstExprCall>(
+            Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd)
+        );
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
         return node;
@@ -3365,7 +3367,9 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrP
         Location argLocation = lexer.current().location;
         AstExpr* expr = parseString();
 
-        AstExprCall* node = allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, argLocation);
+        AstExprCall* node = allocator.alloc<AstExprCall>(
+            Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, argLocation
+        );
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
         return node;

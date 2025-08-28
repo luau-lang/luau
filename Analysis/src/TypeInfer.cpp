@@ -3292,7 +3292,9 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     WithPredicate<TypeId> baseType = checkExpr(scope, *explicitTypeInstantiation.expr);
 
-    return WithPredicate{bindExplicitTypeInstantations(scope, baseType.type, explicitTypeInstantiation.types, explicitTypeInstantiation.expr, explicitTypeInstantiation.expr->location)};
+    return WithPredicate{bindExplicitTypeInstantations(
+        scope, baseType.type, explicitTypeInstantiation.types, explicitTypeInstantiation.expr, explicitTypeInstantiation.expr->location
+    )};
 }
 
 TypeId TypeChecker::bindExplicitTypeInstantations(
@@ -3315,9 +3317,12 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
             isMetatableCall = getIndexTypeFromType(scope, mttv->metatable, "__call", location, /* addErrors= */ false).has_value();
         }
 
-        reportError(location, ExplicitlySpecifiedGenericsOnNonFunction{
-            isMetatableCall,
-        });
+        reportError(
+            location,
+            ExplicitlySpecifiedGenericsOnNonFunction{
+                isMetatableCall,
+            }
+        );
 
         return baseType;
     }
@@ -3369,14 +3374,17 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
 
     if (typeParamCount > functionType->generics.size() || typePackParamCount > functionType->genericPacks.size())
     {
-        reportError(location, ExplicitlySpecifiedGenericsTooManySpecified{
-            getFunctionNameAsString(*functionExpr),
-            baseType,
-            typeParamCount,
-            functionType->generics.size(),
-            typePackParamCount,
-            functionType->genericPacks.size()
-        });
+        reportError(
+            location,
+            ExplicitlySpecifiedGenericsTooManySpecified{
+                getFunctionNameAsString(*functionExpr),
+                baseType,
+                typeParamCount,
+                functionType->generics.size(),
+                typePackParamCount,
+                functionType->genericPacks.size()
+            }
+        );
     }
 
     TypeFun baseFun;
@@ -3394,13 +3402,7 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
         baseFun.typePackParams.push_back({genericPackId, std::nullopt});
     }
 
-    return instantiateTypeFun(
-        scope,
-        baseFun,
-        typeParams,
-        typePackParams,
-        location
-    );
+    return instantiateTypeFun(scope, baseFun, typeParams, typePackParams, location);
 }
 
 
@@ -4471,7 +4473,13 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
         if (std::optional<TypeId> propTy = getIndexTypeFromType(scope, selfType, indexExpr->index.value, expr.location, /* addErrors= */ true))
         {
             functionType = *propTy;
-            actualFunctionType = instantiate(scope, FFlag::LuauExplicitTypeExpressionInstantiation && expr.explicitTypes.size ? bindExplicitTypeInstantations(scope, functionType, expr.explicitTypes, expr.func, expr.location) : functionType, expr.func->location);
+            actualFunctionType = instantiate(
+                scope,
+                FFlag::LuauExplicitTypeExpressionInstantiation && expr.explicitTypes.size
+                    ? bindExplicitTypeInstantations(scope, functionType, expr.explicitTypes, expr.func, expr.location)
+                    : functionType,
+                expr.func->location
+            );
         }
         else
         {

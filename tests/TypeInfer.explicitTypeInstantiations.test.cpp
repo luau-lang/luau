@@ -11,9 +11,9 @@ LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
 #define SUBCASE_BOTH_SOLVERS() \
-    for (bool enabled : { true, false }) \
-        if (ScopedFastFlag sffSolver {FFlag::LuauSolverV2, enabled}; true) \
-            SUBCASE(enabled ? "New solver" : "Old solver")
+    for (bool enabled : {true, false}) \
+        if (ScopedFastFlag sffSolver{FFlag::LuauSolverV2, enabled}; true) \
+    SUBCASE(enabled ? "New solver" : "Old solver")
 
 TEST_CASE_FIXTURE(Fixture, "as_expression_correct")
 {
