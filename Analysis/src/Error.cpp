@@ -918,7 +918,13 @@ struct ErrorConverter
 
     std::string operator()(const ExplicitlySpecifiedGenericsOnNonFunction& e) const
     {
-        return "Explicitly specified generics on something that isn't a function.";
+        return e.isMetatableCall
+            // `__call` is complicated because `f<<T>>()` is interpreted as `f<<T>>` as its own expression that is then called.
+            // This is so that you can write code like `local f2 = f<<number>>`, and then call `f2()`.
+            // With metatables, it's not so obvious what this would result in.
+            ? "Explicitly specified generics on a table with a call metamethod, which is currently unsupported. \
+                You may be able to work around this by creating a function that calls the table, and using that instead."
+            : "Explicitly specified generics on something that isn't a function.";
     }
 
     std::string operator()(const ExplicitlySpecifiedGenericsTooManySpecified& e) const
@@ -1371,6 +1377,11 @@ bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rh
     return attemptedArgCount == rhs.attemptedArgCount;
 }
 
+bool ExplicitlySpecifiedGenericsOnNonFunction::operator==(const ExplicitlySpecifiedGenericsOnNonFunction& rhs) const
+{
+    return isMetatableCall == rhs.isMetatableCall;
+}
+
 bool ExplicitlySpecifiedGenericsTooManySpecified::operator==(const ExplicitlySpecifiedGenericsTooManySpecified& rhs) const
 {
     return functionName == rhs.functionName
@@ -1380,7 +1391,6 @@ bool ExplicitlySpecifiedGenericsTooManySpecified::operator==(const ExplicitlySpe
         && providedTypePacks == rhs.providedTypePacks
         && maximumTypePacks == rhs.maximumTypePacks;
 }
-
 
 GenericBoundsMismatch::GenericBoundsMismatch(const std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet)
     : genericName(genericName)

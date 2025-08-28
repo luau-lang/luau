@@ -288,7 +288,7 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "] }";
     }
     else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
-        stream << "ExplicitlySpecifiedGenericsOnNonFunction";
+        stream << "ExplicitlySpecifiedGenericsOnNonFunction { isMetatableCall = " << err.isMetatableCall << " }";
     else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsTooManySpecified>)
         stream << "ExplicitlySpecifiedGenericsTooManySpecified { functionName = "
             << err.functionName.value_or("<unknown>")

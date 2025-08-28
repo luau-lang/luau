@@ -529,10 +529,9 @@ struct GenericBoundsMismatch
 // Used `f<<T>>` where f is not a function
 struct ExplicitlySpecifiedGenericsOnNonFunction
 {
-    bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction&) const
-    {
-        return true;
-    }
+    bool isMetatableCall;
+
+    bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction&) const;
 };
 
 // Provided too many generics inside `f<<T>>`

@@ -260,7 +260,6 @@ TEST_CASE_FIXTURE(Fixture, "not_a_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_call")
 {
-    return;
     SUBCASE_BOTH_SOLVERS()
     {
         ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
@@ -273,14 +272,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_call")
             end,
         })
 
-        local uninteresting = t()
-        local correct: number = t<<number>>()
-        local incorrect: string = t<<number>>()
+        t<<number>>()
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, TypeMismatch);
-        REQUIRE_EQ(result.errors[0].location.begin.line, 10);
+        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
+        REQUIRE_EQ(toString(result.errors[0]), "Explicitly specified generics on a table with a call metamethod, which is currently unsupported. \
+                You may be able to work around this by creating a function that calls the table, and using that instead.");
     }
 }
 

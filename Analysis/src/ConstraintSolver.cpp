@@ -2986,15 +2986,10 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
     if (!ftv)
     {
-        if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location))
-        {
-            if (get<FunctionType>(follow(*callMm)))
-            {
-                return specifyExplicitTypes(*callMm, explicitTypeIds, explicitTypePackIds, scope, location);
-            }
-        }
-
-        reportError(ExplicitlySpecifiedGenericsOnNonFunction{}, location);
+        bool isMetatableCall = findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location).has_value();
+        reportError(ExplicitlySpecifiedGenericsOnNonFunction{
+            isMetatableCall,
+        }, location);
         return functionTypeId;
     }
 

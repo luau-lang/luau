@@ -3308,18 +3308,17 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
 
     if (!functionType)
     {
+        bool isMetatableCall = false;
+
         if (const MetatableType* mttv = get<MetatableType>(baseType))
         {
-            if (std::optional<TypeId> callTy = getIndexTypeFromType(scope, mttv->metatable, "__call", location, /* addErrors= */ false))
-            {
-                if (get<FunctionType>(callTy))
-                {
-                    return bindExplicitTypeInstantations(scope, *callTy, explicitTypes, functionExpr, location);
-                }
-            }
+            isMetatableCall = getIndexTypeFromType(scope, mttv->metatable, "__call", location, /* addErrors= */ false).has_value();
         }
 
-        reportError(location, ExplicitlySpecifiedGenericsOnNonFunction{});
+        reportError(location, ExplicitlySpecifiedGenericsOnNonFunction{
+            isMetatableCall,
+        });
+
         return baseType;
     }
 
