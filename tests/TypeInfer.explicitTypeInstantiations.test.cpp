@@ -152,6 +152,26 @@ TEST_CASE_FIXTURE(Fixture, "type_packs")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_packs_method")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    // FIXME: This triggers a GenericTypePackCountMismatch error, and it's not obvious if the
+    // code for explicit types is broken, or if subtyping is broken.
+    ScopedFastFlag oldSolver{FFlag::LuauSolverV2, false};
+
+    CheckResult result = check(R"(
+    --!strict
+    local t: {
+        f: <T..., U...>(self: any, T...) -> U...,
+    } = nil :: any
+
+    local a: number, b: string = t:f<<(boolean, {}), (number, string)>>(true, {})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "type_packs_incorrect")
 {
     ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
@@ -165,6 +185,26 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_incorrect")
     local function f<T..., U...>(...: T...): U... end
 
     local a: number, b: string = f<<(boolean, {}), (number, string)>>(true, "uh oh")
+    )");
+
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_packs_incorrect_method")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    // FIXME: This triggers a GenericTypePackCountMismatch error, and it's not obvious if the
+    // code for explicit types is broken, or if subtyping is broken.
+    ScopedFastFlag oldSolver{FFlag::LuauSolverV2, false};
+
+    CheckResult result = check(R"(
+    --!strict
+    local t: {
+        f: <T..., U...>(self: any, T...) -> U...,
+    } = nil :: any
+
+    local a: number, b: string = t:f<<(boolean, {}), (number, string)>>(true, "uh oh")
     )");
 
     LUAU_REQUIRE_ERROR(result, TypeMismatch);
