@@ -3050,16 +3050,33 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
             Name index = parseIndexName("method name", opPosition);
             AstExpr* func = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, ':');
 
-            AstArray<AstTypeOrPack> explicitTypes;
             if (FFlag::LuauExplicitTypeExpressionInstantiation)
             {
+                AstArray<AstTypeOrPack> explicitTypes;
+                CstExplicitTypeInstantiation cstExplicitTypes;
+
                 if (lexer.current().type == '<' && lexer.lookahead().type == '<')
                 {
-                    explicitTypes = parseExplicitTypeInstantiation();
+                    explicitTypes = parseExplicitTypeInstantiation(options.storeCstData ? &cstExplicitTypes : nullptr);
+                }
+
+                expr = parseFunctionArgs(func, true, explicitTypes);
+
+                if (options.storeCstData)
+                {
+                    CstNode** cstNode = cstNodeMap.find(expr);
+                    if (cstNode)
+                    {
+                        CstExprCall* exprCall = (*cstNode)->as<CstExprCall>();
+                        LUAU_ASSERT(exprCall);
+                        exprCall->explicitTypes = cstExplicitTypes;
+                    }
                 }
             }
-
-            expr = parseFunctionArgs(func, true, explicitTypes);
+            else
+            {
+                expr = parseFunctionArgs(func, true);
+            }
         }
         else if (lexer.current().type == '(')
         {
@@ -3078,9 +3095,21 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         }
         else if (FFlag::LuauExplicitTypeExpressionInstantiation && lexer.current().type == '<' && lexer.lookahead().type == '<')
         {
-            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation();
+            CstExprExplicitTypeInstantiation* cstNode = nullptr;
+            if (options.storeCstData)
+            {
+                cstNode = allocator.alloc<CstExprExplicitTypeInstantiation>(CstExplicitTypeInstantiation{});
+            }
+
+            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(&cstNode->instantiation);
+
             // todo soon: i don't think the location.end here is correct
             expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, lexer.current().location.end), expr, typesOrPacks);
+
+            if (options.storeCstData)
+            {
+                cstNodeMap[expr] = cstNode;
+            }
         }
         else
         {
@@ -4045,15 +4074,40 @@ AstExpr* Parser::parseInterpString()
     return node;
 }
 
-AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation()
+AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation(
+    CstExplicitTypeInstantiation* cstNodeOut
+)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
     LUAU_ASSERT(lexer.current().type == '<' && lexer.lookahead().type == '<');
 
+    if (cstNodeOut)
+    {
+        cstNodeOut->leftArrow1Position = lexer.current().location.begin;
+    }
+
     Lexeme begin = lexer.current();
     lexer.next();
-    AstArray<AstTypeOrPack> typeOrPacks = parseTypeParams();
+
+    TempVector<Position> commaPositions = TempVector{scratchPosition};
+
+    AstArray<AstTypeOrPack> typeOrPacks = parseTypeParams(
+        cstNodeOut ? &cstNodeOut->leftArrow2Position : nullptr,
+        cstNodeOut ? &commaPositions : nullptr,
+        cstNodeOut ? &cstNodeOut->rightArrow1Position : nullptr
+    );
+
+    if (cstNodeOut)
+    {
+        cstNodeOut->parametersCommaPositions = copy(commaPositions);
+
+        if (lexer.current().type == '>')
+        {
+            cstNodeOut->rightArrow2Position = lexer.current().location.begin;
+        }
+    }
+
     expectMatchAndConsume('>', begin);
     return typeOrPacks;
 }

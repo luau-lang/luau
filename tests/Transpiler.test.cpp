@@ -10,6 +10,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TranspilerTests");
@@ -2124,6 +2126,17 @@ TEST_CASE("transpile_function_attributes")
         function foo:bar()
         end
     )";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE("transpile_explicit_type_instantiations")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    std::string code = "f<<A, B, C...>>() t.f<<A, B, C...>>() t:f<<A, B, C>>()";
+    CHECK_EQ(code, transpile(code, {}, true).code);
+
+    code = "f < < A , B , C... > >( ) t.f < < A, B, C... > >  ( )  t:f< < A, B, C > > ( )";
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 

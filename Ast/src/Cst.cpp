@@ -76,6 +76,12 @@ CstExprInterpString::CstExprInterpString(AstArray<AstArray<char>> sourceStrings,
 {
 }
 
+CstExprExplicitTypeInstantiation::CstExprExplicitTypeInstantiation(CstExplicitTypeInstantiation instantiation)
+    : CstNode(CstClassIndex())
+    , instantiation(instantiation)
+{
+}
+
 CstStatDo::CstStatDo(Position endPosition)
     : CstNode(CstClassIndex())
     , endPosition(endPosition)

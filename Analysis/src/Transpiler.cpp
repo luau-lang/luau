@@ -10,6 +10,8 @@
 #include <limits>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -539,6 +541,14 @@ struct Printer
 
             const auto cstNode = lookupCstNode<CstExprCall>(a);
 
+            if (FFlag::LuauExplicitTypeExpressionInstantiation)
+            {
+                if (a->explicitTypes.size > 0 || (cstNode && cstNode->explicitTypes.has_value()))
+                {
+                    visualizeExplicitTypeInstantiation(a->explicitTypes, cstNode && cstNode->explicitTypes.has_value() ? &cstNode->explicitTypes.value() : nullptr);
+                }
+            }
+
             if (cstNode)
             {
                 if (cstNode->openParens)
@@ -818,6 +828,22 @@ struct Printer
             }
 
             writer.symbol(")");
+        }
+        else if (const auto& a = expr.as<AstExprExplicitTypeInstantiation>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+            visualize(*a->expr);
+
+            if (writeTypes)
+            {
+                const CstExprExplicitTypeInstantiation* cstExprNode = lookupCstNode<CstExprExplicitTypeInstantiation>(a);
+
+                visualizeExplicitTypeInstantiation(
+                    a->types,
+                    cstExprNode ? &cstExprNode->instantiation : nullptr
+                );
+            }
         }
         else
         {
@@ -1836,6 +1862,55 @@ struct Printer
         {
             LUAU_ASSERT(!"Unknown AstType");
         }
+    }
+
+    void visualizeExplicitTypeInstantiation(
+        const AstArray<AstTypeOrPack>& explicitTypes,
+        // todo soon: is it possible to go without a cst node? place breakpoints on similar lines
+        const CstExplicitTypeInstantiation* cstNode
+    )
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+        if (cstNode)
+        {
+            advance(cstNode->leftArrow1Position);
+        }
+        writer.symbol("<");
+
+        if (cstNode)
+        {
+            advance(cstNode->leftArrow2Position);
+        }
+        writer.symbol("<");
+
+        CommaSeparatorInserter comma(writer, cstNode ? cstNode->parametersCommaPositions.begin() : nullptr);
+        for (const auto& typeOrPack : explicitTypes)
+        {
+            if (typeOrPack.type)
+            {
+                comma();
+                visualizeTypeAnnotation(*typeOrPack.type);
+            }
+            else
+            {
+                LUAU_ASSERT(typeOrPack.typePack);
+                comma();
+                visualizeTypePackAnnotation(*typeOrPack.typePack, /* forVarArg = */ false);
+            }
+        }
+
+        if (cstNode)
+        {
+            advance(cstNode->rightArrow1Position);
+        }
+        writer.symbol(">");
+
+        if (cstNode)
+        {
+            advance(cstNode->rightArrow2Position);
+        }
+        writer.symbol(">");
     }
 };
 
