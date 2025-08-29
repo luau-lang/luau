@@ -959,9 +959,14 @@ struct ErrorConverter
         if (e.providedTypes > e.maximumTypes)
         {
             result += "at most ";
-            result += e.maximumTypes;
-            result += " type parameters, but ";
-            result += e.providedTypes;
+            result += std::to_string(e.maximumTypes);
+            result += " type parameter";
+            if (e.maximumTypes != 1)
+            {
+                result += "s";
+            }
+            result += ", but ";
+            result += std::to_string(e.providedTypes);
             result += " provided";
 
             if (e.providedTypePacks > e.maximumTypePacks)
@@ -973,9 +978,14 @@ struct ErrorConverter
         if (e.providedTypePacks > e.maximumTypePacks)
         {
             result += "at most ";
-            result += e.maximumTypePacks;
-            result += " type packs, but ";
-            result += e.providedTypePacks;
+            result += std::to_string(e.maximumTypePacks);
+            result += " type pack";
+            if (e.maximumTypePacks != 1)
+            {
+                result += "s";
+            }
+            result += ", but ";
+            result += std::to_string(e.providedTypePacks);
             result += " provided.";
         }
 

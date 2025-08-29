@@ -361,6 +361,15 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+
+        if (FFlag::LuauSolverV2)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T>(...any) -> (). Expected at most 1 type parameter, but 2 provided.");
+        }
+        else
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T>() -> (). Expected at most 1 type parameter, but 2 provided.");
+        }
     }
 }
 
