@@ -166,23 +166,25 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
 
         if (status == 0)
         {
-            if (lua_gettop(ML) == 0)
-                lua_pushstring(ML, "module must return a value");
+            if (lua_gettop(ML) != 1)
+                luaL_error(L, "module must return a single value");
         }
         else if (status == LUA_YIELD)
         {
-            lua_pushstring(ML, "module can not yield");
+            luaL_error(L, "module can not yield");
         }
         else if (!lua_isstring(ML, -1))
         {
-            lua_pushstring(ML, "unknown error while running module");
+            luaL_error(L, "unknown error while running module");
+        }
+        else
+        {
+            luaL_error(L, "error while running module: %s", lua_tostring(ML, -1));
         }
     }
 
     // add ML result to L stack
     lua_xmove(ML, L, 1);
-    if (lua_isstring(L, -1))
-        lua_error(L);
 
     // remove ML thread from L stack
     lua_remove(L, -2);
