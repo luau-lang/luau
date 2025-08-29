@@ -50,6 +50,15 @@ TEST_CASE_FIXTURE(Fixture, "as_expression_incorrect")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        if (FFlag::LuauSolverV2)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add");
+        }
+        else
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+        }
     }
 }
 
@@ -88,6 +97,14 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
+        if (FFlag::LuauSolverV2)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'");
+        }
+        else
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible");
+        }
     }
 }
 
@@ -295,6 +312,8 @@ TEST_CASE_FIXTURE(Fixture, "not_a_function")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
+
+        REQUIRE_EQ(toString(result.errors[0]), "Explicitly specified generics on something that isn't a function.");
     }
 }
 
@@ -388,6 +407,15 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+
+        if (FFlag::LuauSolverV2)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as (...any) -> (). Expected at most 0 type packs, but 2 provided.");
+        }
+        else
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T...>() -> (). Expected at most 1 type pack, but 2 provided.");
+        }
     }
 }
 

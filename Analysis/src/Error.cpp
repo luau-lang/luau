@@ -986,7 +986,7 @@ struct ErrorConverter
             }
             result += ", but ";
             result += std::to_string(e.providedTypePacks);
-            result += " provided.";
+            result += " provided";
         }
 
         result += ".";
