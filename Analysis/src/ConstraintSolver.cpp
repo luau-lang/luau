@@ -2959,7 +2959,6 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
     return true;
 }
 
-// todo soon: same deal with metatable classes i think
 bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& c, NotNull<const Constraint> constraint)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
