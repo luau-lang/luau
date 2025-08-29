@@ -17,7 +17,7 @@
 
 #include <string.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauErrorYield, false)
+LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
@@ -296,26 +296,7 @@ void luaD_call(lua_State* L, StkId func, int nresults)
     ptrdiff_t funcoffset = savestack(L, func);
     ptrdiff_t cioffset = saveci(L, L->ci);
 
-    if (DFFlag::LuauErrorYield)
-    {
-        performcall(L, func, nresults);
-    }
-    else
-    {
-        if (luau_precall(L, func, nresults) == PCRLUA)
-        {                                        // is a Lua function?
-            L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
-
-            bool oldactive = L->isactive;
-            L->isactive = true;
-            luaC_threadbarrier(L);
-
-            luau_execute(L); // call it
-
-            if (!oldactive)
-                L->isactive = false;
-        }
-    }
+    performcall(L, func, nresults);
 
     bool yielded = L->status == LUA_YIELD || L->status == LUA_BREAK;
 
@@ -361,7 +342,7 @@ void luaD_callny(lua_State* L, StkId func, int nresults)
     luaC_checkGC(L);
 }
 
-static void seterrorobj(lua_State* L, int errcode, StkId oldtop)
+void luaD_seterrorobj(lua_State* L, int errcode, StkId oldtop)
 {
     switch (errcode)
     {
@@ -480,6 +461,17 @@ static CallInfo* resume_findhandler(lua_State* L)
     return NULL;
 }
 
+static void restore_stack_limit(lua_State* L)
+{
+    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
+    if (L->size_ci > LUAI_MAXCALLS)
+    { // there was an overflow?
+        int inuse = cast_int(L->ci - L->base_ci);
+        if (inuse + 1 < LUAI_MAXCALLS) // can `undo' overflow?
+            luaD_reallocCI(L, LUAI_MAXCALLS);
+    }
+}
+
 static void resume_handle(lua_State* L, void* ud)
 {
     CallInfo* ci = (CallInfo*)ud;
@@ -501,7 +493,7 @@ static void resume_handle(lua_State* L, void* ud)
 
     // push error object to stack top if it's not already there
     if (status != LUA_ERRRUN)
-        seterrorobj(L, status, L->top);
+        luaD_seterrorobj(L, status, L->top);
 
     // adjust the stack frame for ci to prepare for cont call
     L->base = ci->base;
@@ -518,6 +510,9 @@ static void resume_handle(lua_State* L, void* ud)
 
     // close eventual pending closures; this means it's now safe to restore stack
     luaF_close(L, L->ci->base);
+
+    if (DFFlag::LuauXpcallContErrorHandling)
+        restore_stack_limit(L);
 
     // finish cont call and restore stack to previous ci top
     luau_poscall(L, L->top - n);
@@ -542,7 +537,7 @@ static void resume_finish(lua_State* L, int status)
     if (status != 0)
     {                                  // error?
         L->status = cast_byte(status); // mark thread as `dead'
-        seterrorobj(L, status, L->top);
+        luaD_seterrorobj(L, status, L->top);
         L->ci->top = L->top;
     }
     else if (L->status == 0)
@@ -643,21 +638,7 @@ static void callerrfunc(lua_State* L, void* ud)
     setobj2s(L, L->top - 1, errfunc);
     incr_top(L);
 
-    if (DFFlag::LuauErrorYield)
-        luaD_callny(L, L->top - 2, 1);
-    else
-        luaD_call(L, L->top - 2, 1);
-}
-
-static void restore_stack_limit(lua_State* L)
-{
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
-    if (L->size_ci > LUAI_MAXCALLS)
-    { // there was an overflow?
-        int inuse = cast_int(L->ci - L->base_ci);
-        if (inuse + 1 < LUAI_MAXCALLS) // can `undo' overflow?
-            luaD_reallocCI(L, LUAI_MAXCALLS);
-    }
+    luaD_callny(L, L->top - 2, 1);
 }
 
 int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t ef)
@@ -676,7 +657,7 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
         {
             // push error object to stack top if it's not already there
             if (status != LUA_ERRRUN)
-                seterrorobj(L, status, L->top);
+                luaD_seterrorobj(L, status, L->top);
 
             // if errfunc fails, we fail with "error in error handling" or "not enough memory"
             int err = luaD_rawrunprotected(L, callerrfunc, restorestack(L, ef));
@@ -713,7 +694,7 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
 
         StkId oldtop = restorestack(L, old_top);
         luaF_close(L, oldtop); // close eventual pending closures
-        seterrorobj(L, errstatus, oldtop);
+        luaD_seterrorobj(L, errstatus, oldtop);
         L->ci = restoreci(L, old_ci);
         L->base = L->ci->base;
         restore_stack_limit(L);

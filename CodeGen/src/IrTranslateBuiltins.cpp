@@ -9,6 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenDirectBtest)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorLerp)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -281,6 +282,31 @@ static BuiltinImplResult translateBuiltinMathClamp(
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
     return {BuiltinImplType::UsesFallback, 1};
+}
+
+static BuiltinImplResult translateBuiltinVectorLerp(IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
+{
+    if (!FFlag::LuauCodeGenVectorLerp || nparams < 3 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    IrOp arg1 = build.vmReg(arg);
+    build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
+    build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
+    builtinCheckDouble(build, arg3, pcpos);
+
+    IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1);
+    IrOp b = build.inst(IrCmd::LOAD_TVALUE, args);
+    IrOp t = builtinLoadDouble(build, arg3);
+
+    IrOp tvec = build.inst(IrCmd::NUM_TO_VEC, t);
+    IrOp one = build.inst(IrCmd::NUM_TO_VEC, build.constDouble(1.0));
+    IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
+    IrOp incr = build.inst(IrCmd::MUL_VEC, diff, tvec);
+    IrOp res = build.inst(IrCmd::ADD_VEC, a, incr);
+    IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+
+    return {BuiltinImplType::Full, 1};
 }
 
 static BuiltinImplResult translateBuiltinMathLerp(
@@ -1343,6 +1369,8 @@ BuiltinImplResult translateBuiltin(
         return translateBuiltinVectorMap2(build, IrCmd::MIN_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_MAX:
         return translateBuiltinVectorMap2(build, IrCmd::MAX_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
+    case LBF_VECTOR_LERP:
+        return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     default:

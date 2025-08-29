@@ -23,6 +23,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
+LUAU_FASTFLAG(LuauPushTypeConstraint)
 
 namespace Luau
 {
@@ -421,7 +422,18 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         return Relation::Intersects;
 
     if (auto ut = get<UnionType>(left))
+    {
+        if (FFlag::LuauPushTypeConstraint)
+        {
+            for (TypeId part : ut)
+            {
+                Relation r = relate(part, right, seen);
+                if (r == Relation::Superset || r == Relation::Coincident)
+                    return Relation::Superset;
+            }
+        }
         return Relation::Intersects;
+    }
     else if (auto ut = get<UnionType>(right))
     {
         std::vector<Relation> opts;

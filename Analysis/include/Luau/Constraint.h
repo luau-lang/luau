@@ -116,21 +116,6 @@ struct FunctionCheckConstraint
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
 };
 
-// table_check expectedType exprType
-//
-// If `expectedType` is a table type and `exprType` is _also_ a table type,
-// propogate the member types of `expectedType` into the types of `exprType`.
-// This is used to implement bidirectional inference on table assignment.
-// Also see: FunctionCheckConstraint.
-struct TableCheckConstraint
-{
-    TypeId expectedType;
-    TypeId exprType;
-    AstExprTable* table = nullptr;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
-};
-
 // prim FreeType ExpectedType PrimitiveType
 //
 // FreeType is bounded below by the singleton type and above by PrimitiveType
@@ -303,6 +288,15 @@ struct PushFunctionTypeConstraint
     bool isSelf;
 };
 
+struct PushTypeConstraint
+{
+    TypeId expectedType;
+    TypeId targetType;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<const AstExpr> expr;
+};
+
 using ConstraintV = Variant<
     SubtypeConstraint,
     PackSubtypeConstraint,
@@ -321,9 +315,9 @@ using ConstraintV = Variant<
     ReduceConstraint,
     ReducePackConstraint,
     EqualityConstraint,
-    TableCheckConstraint,
     SimplifyConstraint,
-    PushFunctionTypeConstraint>;
+    PushFunctionTypeConstraint,
+    PushTypeConstraint>;
 
 struct Constraint
 {

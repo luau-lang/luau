@@ -382,6 +382,7 @@ do
   assert(st and msg == nil)
 end
 
+-- xpcall is non-yieldable
 do
   local co = coroutine.wrap(xpcall)
 
@@ -389,6 +390,25 @@ do
   local status, err = pcall(co, 0, 0, 0)
   assert(status == false)
   assert(err == "cannot resume dead coroutine")
+end
+
+-- xpcall continuation is non-yieldable
+do
+  local function test()
+      coroutine.yield()
+      xpcall(test, nil) -- argument error
+  end
+
+  local co = coroutine.wrap(xpcall)
+  co(test, test)
+
+  local status, result = co()
+  assert(status == false)
+  assert(result == "error in error handling")
+
+  local status, result = pcall(co)
+  assert(status == false)
+  assert(result == "cannot resume dead coroutine")
 end
 
 return 'OK'

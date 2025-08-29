@@ -27,11 +27,10 @@ LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
-LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
-LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1686,6 +1685,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
 {
+    ScopedFastFlag _[] = {
+        {FFlag::LuauEagerGeneralization4, true},
+    };
     CheckResult result = check(R"(
 local t: { f: ((x: number) -> number)? } = {}
 
@@ -1700,22 +1702,10 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, WhereClauseNeeded); // x2
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(
-            toString(result.errors[0]),
-            R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)"
-        );
-        CHECK_EQ(
-            toString(result.errors[1]),
-            R"(Type function instance add<a, number> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time)"
-        );
     }
     else
     {
@@ -2270,6 +2260,7 @@ TEST_CASE_FIXTURE(Fixture, "inner_frees_become_generic_in_dcr")
 
 TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_not_enclosing")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local foo
         local bar
@@ -2287,12 +2278,13 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
     else
     {
         // note that b is not in the generic list; it is free, the unconstrained type of `bar`.
-        CHECK(toString(requireType("foo")) == "<a>(a) -> b");
+        CHECK(toString(requireType("foo")) == "<a>(a) -> 'b");
     }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function foo<a>(x: a, y: a?)
             return x
@@ -2346,10 +2338,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
 
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        const std::string expected = R"(Type '{ x: number }' could not be converted into 'vec2?'
+        const std::string expected = R"(Type '{| x: number |}' could not be converted into 'vec2?'
 caused by:
   None of the union options are compatible. For example:
-Table type '{ x: number }' not compatible with type 'vec2' because the former is missing field 'y')";
+Table type '{| x: number |}' not compatible with type 'vec2' because the former is missing field 'y')";
         CHECK_EQ(expected, toString(result.errors[0]));
         CHECK_EQ("Type 'vec2' could not be converted into 'number'", toString(result.errors[1]));
     }
@@ -2385,6 +2377,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
 
 TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function f(t: { x: number } & { y: string })
             t()
@@ -2396,7 +2389,7 @@ TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
     if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number } & { y: string }");
     else
-        CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type {| x: number |}");
+        CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_with_call_metamethod")
@@ -2605,8 +2598,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     // CLI-114134: This test:
@@ -2634,8 +2625,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -2940,7 +2929,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
     {
         // The new solver should ideally be able to do better here, but this is no worse than the old solver.
 
-        if (FFlag::LuauTrackFreeInteriorTypePacks)
+        if (FFlag::LuauEagerGeneralization4)
         {
             LUAU_REQUIRE_ERROR_COUNT(2, result);
 
@@ -2953,10 +2942,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
             REQUIRE(tm2);
             CHECK(toString(tm2->wantedType) == "string");
 
-            if (FFlag::LuauEagerGeneralization4)
-                CHECK(toString(tm2->givenType) == "unknown & ~(false?)");
-            else
-                CHECK(toString(tm2->givenType) == "~(false?)");
+            CHECK(toString(tm2->givenType) == "unknown & ~(false?)");
         }
         else
         {

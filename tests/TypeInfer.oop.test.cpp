@@ -15,7 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
-LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -333,6 +333,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "flag_when_index_metamethod_returns_0_values"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatable")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local A = {number = 8}
 
@@ -346,7 +347,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
     if (FFlag::LuauSolverV2)
         CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
     else
-        CHECK("{ @metatable { number: number }, { method: <a>(a) -> string } }" == toString(requireType("B"), {true}));
+        CHECK("{ @metatable {| number: number |}, {| method: <a>(a) -> string |} }" == toString(requireType("B"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
@@ -556,8 +557,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(
@@ -590,8 +589,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
 
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     CheckResult result = check(R"(

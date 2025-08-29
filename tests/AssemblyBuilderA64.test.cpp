@@ -598,6 +598,9 @@ TEST_CASE("LogTest")
     build.dup_4s(q29, q30, 0);
     build.fmul(q0, q1, q2);
 
+    build.fcmeq_4s(q2, q0, q1);
+    build.bit(q1, q0, q2);
+
     build.setLabel(l);
     build.ret();
 
@@ -640,6 +643,8 @@ TEST_CASE("LogTest")
  dup         s29,v31.s[2]
  dup         v29.4s,v30.s[0]
  fmul        v0.4s,v1.4s,v2.4s
+ fcmeq       v2.4s,v0.4s,v1.4s
+ bit         v1.16b,v0.16b,v2.16b
 .L1:
  ret
 )";
