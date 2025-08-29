@@ -930,6 +930,9 @@ struct ErrorConverter
                 You may be able to work around this by creating a function that calls the table, and using that instead.";
         case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection:
             return "Explicitly specified generics are currently not supported for intersection types.";
+        default:
+            LUAU_ASSERT(false);
+            return ""; // MSVC exhaustive
         }
     }
 
