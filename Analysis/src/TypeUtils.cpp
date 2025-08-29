@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauVariadicAnyPackShouldBeErrorSuppressing)
+LUAU_FASTFLAG(LuauPushTypeConstraint)
 
 namespace Luau
 {
@@ -598,14 +599,6 @@ private:
     NotNull<std::vector<TypeId>> toBlock_;
 };
 
-std::vector<TypeId> findBlockedTypesIn(AstExprTable* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes)
-{
-    std::vector<TypeId> toBlock;
-    BlockedTypeInLiteralVisitor v{astTypes, NotNull{&toBlock}};
-    expr->visit(&v);
-    return toBlock;
-}
-
 std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes)
 {
     std::vector<TypeId> toBlock;
@@ -723,6 +716,9 @@ std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, Type
                         return ty;
                     }
                 }
+
+                if (FFlag::LuauPushTypeConstraint && fastIsSubtype(propType, expectedType))
+                    return ty;
             }
         }
     }

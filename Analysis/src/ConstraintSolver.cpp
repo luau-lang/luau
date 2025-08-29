@@ -49,6 +49,7 @@ LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAGVARIABLE(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
+LUAU_FASTFLAG(LuauPushTypeConstraint)
 
 namespace Luau
 {
@@ -73,7 +74,6 @@ size_t HashSubtypeConstraintRecord::operator()(const SubtypeConstraintRecord& c)
     hashCombine(result, intptr_t(c.variance));
     return result;
 }
-
 
 static void dump(ConstraintSolver* cs, ToStringOptions& opts);
 
@@ -874,9 +874,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto fcc = get<FunctionCallConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint, force);
     else if (auto fcc = get<FunctionCheckConstraint>(*constraint))
-        success = tryDispatch(*fcc, constraint);
-    else if (auto tcc = get<TableCheckConstraint>(*constraint))
-        success = tryDispatch(*tcc, constraint);
+        success = tryDispatch(*fcc, constraint, force);
     else if (auto fcc = get<PrimitiveTypeConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
@@ -899,6 +897,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*sc, constraint, force);
     else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
         success = tryDispatch(*pftc, constraint);
+    else if (auto ptc = get<PushTypeConstraint>(*constraint))
+        success = tryDispatch(*ptc, constraint, force);
     else
         LUAU_ASSERT(false);
 
@@ -1787,7 +1787,7 @@ struct ContainsGenerics : public TypeOnceVisitor
 
 } // namespace
 
-bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId fn = follow(c.fn);
     const TypePackId argsPack = follow(c.argsPack);
@@ -1899,7 +1899,47 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                     expectedArgTy = *res;
                 }
             }
-            u2.unify(actualArgTy, expectedArgTy);
+            if (FFlag::LuauPushTypeConstraint)
+            {
+                Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+                PushTypeResult result =
+                    pushTypeInto(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr);
+
+                // Consider:
+                //
+                //  local Direction = { Left = 1, Right = 2 }
+                //  type Direction = keyof<Direction>
+                //
+                //  local function move(dirs: { Direction }) --[[...]] end
+                //
+                //  move({ "Left", "Right", "Left", "Right" })
+                //
+                // We need `keyof<Direction>` to reduce prior to inferring that the
+                // arguments to `move` must generalize to their lower bounds. This
+                // is how we ensure that ordering.
+                if (!force && !result.incompleteTypes.empty())
+                {
+                    for (const auto& [newExpectedTy, newTargetTy, newExpr] : result.incompleteTypes)
+                    {
+                        auto addition = pushConstraint(
+                            constraint->scope,
+                            constraint->location,
+                            PushTypeConstraint{
+                                newExpectedTy,
+                                newTargetTy,
+                                /* astTypes */ c.astTypes,
+                                /* astExpectedTypes */ c.astExpectedTypes,
+                                /* expr */ NotNull{newExpr},
+                            }
+                        );
+                        inheritBlocks(constraint, addition);
+                    }
+                }
+            }
+            else
+            {
+                u2.unify(actualArgTy, expectedArgTy);
+            }
         }
     }
 
@@ -1921,29 +1961,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
         inheritBlocks(constraint, addition);
     }
 
-    return true;
-}
-
-bool ConstraintSolver::tryDispatch(const TableCheckConstraint& c, NotNull<const Constraint> constraint)
-{
-    // This is expensive as we need to traverse a (potentially large)
-    // literal up front in order to determine if there are any blocked
-    // types, otherwise we may run `matchTypeLiteral` multiple times,
-    // which right now may fail due to being non-idempotent (it
-    // destructively updates the underlying literal type).
-    auto blockedTypes = findBlockedTypesIn(c.table, c.astTypes);
-    for (const auto ty : blockedTypes)
-    {
-        block(ty, constraint);
-    }
-    if (!blockedTypes.empty())
-        return false;
-
-    Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
-    Subtyping sp{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
-    std::vector<TypeId> toBlock;
-    (void)matchLiteralType(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&sp}, c.expectedType, c.exprType, c.table, toBlock);
-    LUAU_ASSERT(toBlock.empty());
     return true;
 }
 
@@ -2943,6 +2960,46 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
         bind(constraint, fn->retTypes, expectedFn->retTypes);
 
     return true;
+}
+
+bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force)
+{
+    LUAU_ASSERT(FFlag::LuauPushTypeConstraint);
+    Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
+    Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+
+    // NOTE: If we don't do this check up front, we almost immediately start
+    // spawning tons of push type constraints. It's pretty important.
+    if (isBlocked(c.expectedType))
+    {
+        block(c.expectedType, constraint);
+        return false;
+    }
+
+    auto result = pushTypeInto(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&subtyping}, c.expectedType, c.expr);
+
+    // If we're forcing this constraint, just early exit: we can continue
+    // inferring the rest of the file, we might just error when we shouldn't.
+    if (force || result.incompleteTypes.empty())
+        return true;
+
+    for (auto [newExpectedTy, newTargetTy, newExpr] : result.incompleteTypes)
+    {
+        auto addition = pushConstraint(
+            constraint->scope,
+            constraint->location,
+            PushTypeConstraint{
+                /* expectedType */ newExpectedTy,
+                /* targetType */ newTargetTy,
+                /* astTypes */ c.astTypes,
+                /* astExpectedTypes */ c.astExpectedTypes,
+                /* expr */ NotNull{newExpr},
+            }
+        );
+        inheritBlocks(constraint, addition);
+    }
+
+    return false;
 }
 
 bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)

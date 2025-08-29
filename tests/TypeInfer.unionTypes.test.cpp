@@ -11,6 +11,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -403,6 +404,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors")
 
 TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type A = { x: number } & { y: number }
         function f(a: A?)
@@ -412,10 +414,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto s = toString(result.errors[0]);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("Value of type '({ x: number } & { y: number })?' could be nil", s);
-    else
-        CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", s);
+    CHECK_EQ("Value of type '({ x: number } & { y: number })?' could be nil", s);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
@@ -526,6 +525,7 @@ local oh : boolean = t.y
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -554,10 +554,10 @@ end
     }
     else
     {
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'X | Y | Z' could not be converted into '{| w: number |}'
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'X | Y | Z' could not be converted into '{ w: number }'
 caused by:
   Not all union options are compatible.
-Table type 'X' not compatible with type '{| w: number |}' because the former is missing field 'w')");
+Table type 'X' not compatible with type '{ w: number }' because the former is missing field 'w')");
     }
 }
 

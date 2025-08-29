@@ -17,8 +17,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
-LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
@@ -1748,8 +1746,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true}
     };
 
     TypeId argTy = arena.freshType(getBuiltins(), moduleScope.get());

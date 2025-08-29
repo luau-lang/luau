@@ -18,6 +18,7 @@ enum class AutocompleteContext
     Type,
     Keyword,
     String,
+    HotComment,
 };
 
 enum class AutocompleteEntryKind
@@ -30,6 +31,7 @@ enum class AutocompleteEntryKind
     Module,
     GeneratedFunction,
     RequirePath,
+    HotComment,
 };
 
 enum class ParenthesesRecommendation

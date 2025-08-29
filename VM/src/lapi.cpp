@@ -15,8 +15,6 @@
 
 #include <string.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauSafeStackCheck, false)
-
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
  *
@@ -141,34 +139,27 @@ int lua_checkstack(lua_State* L, int size)
         res = 0; // stack overflow
     else if (size > 0)
     {
-        if (DFFlag::LuauSafeStackCheck)
+        if (stacklimitreached(L, size))
         {
-            if (stacklimitreached(L, size))
+            struct CallContext
             {
-                struct CallContext
+                int size;
+
+                static void run(lua_State* L, void* ud)
                 {
-                    int size;
+                    CallContext* ctx = (CallContext*)ud;
 
-                    static void run(lua_State* L, void* ud)
-                    {
-                        CallContext* ctx = (CallContext*)ud;
+                    luaD_growstack(L, ctx->size);
+                }
+            } ctx = {size};
 
-                        luaD_growstack(L, ctx->size);
-                    }
-                } ctx = {size};
-
-                // there could be no memory to extend the stack
-                if (luaD_rawrunprotected(L, &CallContext::run, &ctx) != LUA_OK)
-                    return 0;
-            }
-            else
-            {
-                condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 0));
-            }
+            // there could be no memory to extend the stack
+            if (luaD_rawrunprotected(L, &CallContext::run, &ctx) != LUA_OK)
+                return 0;
         }
         else
         {
-            luaD_checkstack(L, size);
+            condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK, 0));
         }
 
         expandstacklimit(L, L->top + size);

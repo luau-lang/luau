@@ -14,8 +14,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauHeapDumpStringSizeOverhead)
-
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
     LUAU_ASSERT(!isdead(g, t));
@@ -653,10 +651,7 @@ static void enumedges(EnumContext* ctx, GCObject* from, TValue* data, size_t siz
 
 static void enumstring(EnumContext* ctx, TString* ts)
 {
-    if (FFlag::LuauHeapDumpStringSizeOverhead)
-        enumnode(ctx, obj2gco(ts), sizestring(ts->len), NULL);
-    else
-        enumnode(ctx, obj2gco(ts), ts->len, NULL);
+    enumnode(ctx, obj2gco(ts), sizestring(ts->len), NULL);
 }
 
 static void enumtable(EnumContext* ctx, LuaTable* h)
