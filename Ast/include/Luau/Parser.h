@@ -295,7 +295,7 @@ private:
 
     std::tuple<AstArray<AstExpr*>, Location, Location> parseCallList(TempVector<Position>* commaPositions);
     // args ::=  `(' [explist] `)' | tableconstructor | String
-    AstExpr* parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrPack> explicitTypes = {});
+    AstExpr* parseFunctionArgs(AstExpr* func, bool self);
 
     std::optional<CstExprTable::Separator> tableSeparator();
 

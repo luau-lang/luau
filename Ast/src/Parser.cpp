@@ -3060,7 +3060,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
                     explicitTypes = parseExplicitTypeInstantiation(options.storeCstData ? &cstExplicitTypes : nullptr);
                 }
 
-                expr = parseFunctionArgs(func, true, explicitTypes);
+                expr = parseFunctionArgs(func, true);
 
                 if (options.storeCstData)
                 {
@@ -3071,6 +3071,13 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
                         LUAU_ASSERT(exprCall);
                         exprCall->explicitTypes = cstExplicitTypes;
                     }
+                }
+
+                if (explicitTypes.size > 0)
+                {
+                    AstExprCall* call = expr->as<AstExprCall>();
+                    LUAU_ASSERT(call);
+                    call->explicitTypes = explicitTypes;
                 }
             }
             else
@@ -3350,7 +3357,7 @@ std::tuple<AstArray<AstExpr*>, Location, Location> Parser::parseCallList(TempVec
 }
 
 // args ::=  `(' [explist] `)' | tableconstructor | String
-AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrPack> explicitTypes)
+AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
 {
     if (lexer.current().type == '(')
     {
@@ -3373,7 +3380,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, AstArray<AstTypeOrP
         expectMatchAndConsume(')', matchParen);
 
         AstExprCall* node =
-            allocator.alloc<AstExprCall>(Location(func->location, end), func, copy(args), self, explicitTypes, Location(argStart, argEnd));
+            allocator.alloc<AstExprCall>(Location(func->location, end), func, copy(args), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd));
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(matchParen.position, lexer.previousLocation().begin, copy(commaPositions));
         return node;
