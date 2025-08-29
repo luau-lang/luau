@@ -3101,7 +3101,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
                 cstNode = allocator.alloc<CstExprExplicitTypeInstantiation>(CstExplicitTypeInstantiation{});
             }
 
-            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(&cstNode->instantiation);
+            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(cstNode ? &cstNode->instantiation : nullptr);
 
             // todo soon: i don't think the location.end here is correct
             expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, lexer.current().location.end), expr, typesOrPacks);
