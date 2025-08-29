@@ -146,7 +146,14 @@ checkresults({ true, false, "fail" }, coroutine.resume(co))
 
 -- stack overflow needs to happen at the call limit
 local calllimit = 20000
-function recurse(n) return n <= 1 and 1 or recurse(n-1) + 1 end
+function recurse(n)
+	return n <= 1 and 1 or recurse(n-1) + 1
+end
+
+function yieldandrecurse(n)
+	coroutine.yield()
+	recurse(n)
+end
 
 -- we use one frame for top-level function and one frame is the service frame for coroutines
 assert(recurse(calllimit - 2) == calllimit - 2)
@@ -167,6 +174,26 @@ checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6)
 checkresults({ false, "oops" }, xpcall(function() table.create(1e6) end, function(e) return "oops" end))
 checkresults({ false, "error in error handling" }, xpcall(function() error("oops") end, function(e) table.create(1e6) end))
 checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6) end, function(e) table.create(1e6) end))
+
+-- Same tests as above are performed using the pcall continuation
+local yieldwithsameresult = coroutine.wrap(function()
+	-- xpcall handler runs in context of the stack frame, but this works just fine since we allow extra stack consumption past stack overflow
+	checkresults({ false, "ok" }, xpcall(yieldandrecurse, function() return string.reverse("ko") end, calllimit - 2))
+
+	-- however, if xpcall handler itself runs out of extra stack space, we get "error in error handling"
+	checkresults({ false, "error in error handling" }, xpcall(yieldandrecurse, function() return recurse(calllimit) end, calllimit - 2))
+
+	-- simulate OOM and make sure we can catch it with pcall or xpcall
+	checkresults({ false, "not enough memory" }, pcall(function() coroutine.yield(); table.create(1e6) end))
+	checkresults({ false, "not enough memory" }, xpcall(function() coroutine.yield(); table.create(1e6) end, function(e) return e end))
+	checkresults({ false, "oops" }, xpcall(function() coroutine.yield(); table.create(1e6) end, function(e) return "oops" end))
+	checkresults({ false, "error in error handling" }, xpcall(function() coroutine.yield(); error("oops") end, function(e) table.create(1e6) end))
+	checkresults({ false, "not enough memory" }, xpcall(function() coroutine.yield(); table.create(1e6) end, function(e) table.create(1e6) end))
+
+	return 1
+end)
+
+while yieldwithsameresult() ~= 1 do end
 
 co = coroutine.create(function() table.create(1e6) end)
 coroutine.resume(co)

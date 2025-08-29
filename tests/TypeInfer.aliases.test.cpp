@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -308,6 +309,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_stop_typechecking_after_reporting_duplicate_typ
 
 TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+
     CheckResult result = check(R"(
         type Table<T> = { a: T }
         type Wrapped = Table<Wrapped>
@@ -324,6 +327,8 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 
 TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type2")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+
     CheckResult result = check(R"(
         type Table<T> = { a: T }
         type Wrapped = (Table<Wrapped>) -> string
@@ -334,10 +339,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("t1 where t1 = ({ a: t1 }) -> string", toString(tm->wantedType));
-    else
-        CHECK_EQ("t1 where t1 = ({| a: t1 |}) -> string", toString(tm->wantedType));
+    CHECK_EQ("t1 where t1 = ({ a: t1 }) -> string", toString(tm->wantedType));
     CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
@@ -587,6 +589,8 @@ type Cool = typeof(c)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_type")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+
     fileResolver.source["game/A"] = R"(
 export type X = { a: number, b: X? }
 return {}
@@ -612,6 +616,8 @@ type X = Import.X
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_type")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+
     fileResolver.source["game/A"] = R"(
         export type X<T, U> = { a: T, b: U, C: X<T, U>? }
         return {}
@@ -653,8 +659,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_
     }
     else
     {
-        CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = {| C: t1?, a: T, b: U |}");
-        CHECK_EQ(toString(*ty2, {true}), "{| C: t1, a: U, b: T |} where t1 = {| C: t1, a: U, b: T |}?");
+        CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = { C: t1?, a: T, b: U }");
+        CHECK_EQ(toString(*ty2, {true}), "{ C: t1, a: U, b: T } where t1 = { C: t1, a: U, b: T }?");
     }
 }
 
@@ -832,6 +838,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
  */
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+
     CheckResult result = check(R"(
         local function x()
             local y: FutureType = {}::any
@@ -841,10 +849,7 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
         local d: FutureType = { smth = true } -- missing error, 'd' is resolved to 'any'
     )");
 
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ foo: number }", toString(requireType("d"), {true}));
-    else
-        CHECK_EQ("{| foo: number |}", toString(requireType("d"), {true}));
+    CHECK_EQ("{ foo: number }", toString(requireType("d"), {true}));
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }

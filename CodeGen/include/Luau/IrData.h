@@ -192,6 +192,11 @@ enum class IrCmd : uint8_t
     // C, D: double (condition arguments)
     SELECT_NUM,
 
+    // For each lane in the vector, select B if C == D, otherwise select A
+    // A, B: TValue (endpoints)
+    // C, D: TValue (condition arguments)
+    SELECT_VEC,
+
     // Add/Sub/Mul/Div/Idiv two vectors
     // A, B: TValue
     ADD_VEC,

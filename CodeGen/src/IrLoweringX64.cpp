@@ -17,6 +17,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenVBlendpdReorder)
 
 namespace Luau
 {
@@ -619,7 +620,10 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // If arg < 0 then tmp1 is -1 and mask-bit is 0, result is -1
         // If arg == 0 then tmp1 is 0 and mask-bit is 0, result is 0
         // If arg > 0 then tmp1 is 0 and mask-bit is 1, result is 1
-        build.vblendvpd(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
+        if (FFlag::LuauCodeGenVBlendpdReorder)
+            build.vblendvpd(inst.regX64, tmp1.reg, inst.regX64, build.f64x2(1, 1));
+        else
+            build.vblendvpd_DEPRECATED(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
         break;
     }
     case IrCmd::SELECT_NUM:
@@ -637,12 +641,32 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
 
         if (inst.a.kind == IrOpKind::Inst)
-            build.vblendvpd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b), tmp.reg);
+            if (FFlag::LuauCodeGenVBlendpdReorder)
+                build.vblendvpd(inst.regX64, regOp(inst.a), tmp.reg, memRegDoubleOp(inst.b));
+            else
+                build.vblendvpd_DEPRECATED(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b), tmp.reg);
         else
         {
             build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
-            build.vblendvpd(inst.regX64, inst.regX64, memRegDoubleOp(inst.b), tmp.reg);
+            if (FFlag::LuauCodeGenVBlendpdReorder)
+                build.vblendvpd(inst.regX64, inst.regX64, tmp.reg, memRegDoubleOp(inst.b));
+            else
+                build.vblendvpd_DEPRECATED(inst.regX64, inst.regX64, memRegDoubleOp(inst.b), tmp.reg);
         }
+        break;
+    }
+    case IrCmd::SELECT_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.c, inst.d});
+
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
+        RegisterX64 tmpc = vecOp(inst.c, tmp1);
+        RegisterX64 tmpd = vecOp(inst.d, tmp2);
+
+        build.vcmpeqps(inst.regX64, tmpc, tmpd);
+        build.vblendvps(inst.regX64, vecOp(inst.a, tmp1), vecOp(inst.b, tmp2), inst.regX64);
+
         break;
     }
     case IrCmd::ADD_VEC:

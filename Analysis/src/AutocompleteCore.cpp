@@ -17,6 +17,9 @@
 #include "Luau/TypePack.h"
 
 #include <algorithm>
+#include <array>
+#include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -26,9 +29,12 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 LUAU_FASTFLAGVARIABLE(LuauIncludeBreakContinueStatements)
+LUAU_FASTFLAGVARIABLE(LuauSuggestHotComments)
 
-static const std::unordered_set<std::string> kStatementStartingKeywords =
+static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
+
+static constexpr std::array<std::string_view, 6> kHotComments = {"nolint", "nocheck", "nonstrict", "strict", "optimize", "native"};
 
 namespace Luau
 {
@@ -1280,7 +1286,7 @@ static AutocompleteEntryMap autocompleteStatement(
     if (FFlag::LuauIncludeBreakContinueStatements)
     {
         bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
-        for (const auto& kw : kStatementStartingKeywords)
+        for (const std::string_view kw : kStatementStartingKeywords)
         {
             if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
                 result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
@@ -1288,7 +1294,7 @@ static AutocompleteEntryMap autocompleteStatement(
     }
     else
     {
-        for (const auto& kw : kStatementStartingKeywords)
+        for (const std::string_view kw : kStatementStartingKeywords)
             result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
     }
 
@@ -1838,10 +1844,24 @@ AutocompleteResult autocomplete_(
     const ScopePtr& scopeAtPosition,
     Position position,
     FileResolver* fileResolver,
-    StringCompletionCallback callback
+    StringCompletionCallback callback,
+    bool isInHotComment
 )
 {
     LUAU_TIMETRACE_SCOPE("Luau::autocomplete_", "AutocompleteCore");
+
+    if (FFlag::LuauSuggestHotComments)
+    {
+        if (isInHotComment)
+        {
+            AutocompleteEntryMap result;
+
+            for (const std::string_view hc : kHotComments)
+                result.emplace(hc, AutocompleteEntry{AutocompleteEntryKind::HotComment});
+            return {std::move(result), ancestry, AutocompleteContext::HotComment};
+        }
+    }
+
     AstNode* node = ancestry.back();
 
     AstExprConstantNil dummy{Location{}};
@@ -2139,6 +2159,5 @@ AutocompleteResult autocomplete_(
 
     return {};
 }
-
 
 } // namespace Luau

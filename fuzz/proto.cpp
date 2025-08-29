@@ -258,8 +258,10 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     FInt::LuauTableTypeMaximumStringifierLength.value = 100;
 
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+    {
         if (strncmp(flag->name, "Luau", 4) == 0)
             flag->value = true;
+    }
 
     FFlag::DebugLuauFreezeArena.value = true;
     FFlag::DebugLuauAbortingChecks.value = true;

@@ -14,6 +14,8 @@ LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauSolverAgnosticSetType)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -372,6 +374,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type A = {tag: "A", x: number}
         type B = {tag: "B", y: string}
@@ -384,8 +387,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
+    if (FFlag::LuauSolverV2)
+        CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
+    else
+        CHECK("{ @metatable {|  |}, A } | { @metatable {|  |}, B }" == toString(requireTypeAlias("X")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
@@ -414,19 +419,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t = table.pack(1, "foo", true)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ [number]: boolean | number | string, n: number }", toString(requireType("t")));
-    else
-        CHECK_EQ("{| [number]: boolean | number | string, n: number |}", toString(requireType("t")));
+    CHECK_EQ("{ [number]: boolean | number | string, n: number }", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
 --!strict
 function f(): (string, ...number)
@@ -437,33 +441,25 @@ local t = table.pack(f())
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ [number]: number | string, n: number }", toString(requireType("t")));
-    else
-        CHECK_EQ("{| [number]: number | string, n: number |}", toString(requireType("t")));
+    CHECK_EQ("{ [number]: number | string, n: number }", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ [number]: boolean | number, n: number }", toString(requireType("t")));
-    else
-        CHECK_EQ("{| [number]: boolean | number, n: number |}", toString(requireType("t")));
+    CHECK_EQ("{ [number]: boolean | number, n: number }", toString(requireType("t")));
 
     result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));
-    else
-        CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));
+    CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gcinfo")
@@ -1112,6 +1108,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_returns_false_and_string_iff_it_knows
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t1: {a: number} = {a = 42}
         local t2: {b: string} = {b = "hello"}
@@ -1136,7 +1133,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     if (FFlag::LuauSolverV2)
         CHECK("Key 'b' not found in table '{ read a: number }'" == toString(result.errors[0]));
     else
-        CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
+        CHECK_EQ("Key 'b' not found in table '{ a: number }'", toString(result.errors[0]));
     CHECK(Location({13, 18}, {13, 23}) == result.errors[0].location);
 
     if (FFlag::LuauSolverV2)
@@ -1592,6 +1589,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverAgnosticStringification, true}, {FFlag::LuauSolverAgnosticSetType, true}, {FFlag::LuauTableCloneClonesType3, true}
+    };
     CheckResult result = check(R"(
         local t1 = {}
         t1.x = 5
@@ -1602,15 +1602,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauTableCloneClonesType3)
+    if (FFlag::LuauSolverV2)
     {
         CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, z: number }");
         CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number }");
     }
     else
     {
-        CHECK_EQ(toString(requireType("t1"), {true}), "{ x: number, y: number, z: number }");
-        CHECK_EQ(toString(requireType("t2"), {true}), "{ x: number, y: number, z: number }");
+        CHECK_EQ(toString(requireType("t1"), {true}), "{| x: number, z: number |}");
+        CHECK_EQ(toString(requireType("t2"), {true}), "{| x: number, y: number |}");
     }
 }
 

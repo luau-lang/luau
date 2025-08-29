@@ -2053,8 +2053,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, EqualityConstraint>)
             return "equality: " + tos(c.resultType) + " ~ " + tos(c.assignmentType);
-        else if constexpr (std::is_same_v<T, TableCheckConstraint>)
-            return "table_check " + tos(c.expectedType) + " :> " + tos(c.exprType);
         else if constexpr (std::is_same_v<T, SimplifyConstraint>)
             return "simplify " + tos(c.ty);
         else if constexpr (std::is_same_v<T, PushFunctionTypeConstraint>)
@@ -2062,6 +2060,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsConstraint>)
             return "explicitly_specified_constraints " + tos(c.functionType) + " (typeParameters = " + dump(c.typeParameters) +
                    "), (typePackParameters = " + dump(c.typePackParameters) + ")";
+        else if constexpr (std::is_same_v<T, PushTypeConstraint>)
+            return "push_type " + tos(c.expectedType) + " => " + tos(c.targetType);
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

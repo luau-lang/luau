@@ -99,6 +99,7 @@ endif
 # enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
 ifneq ($(werror),)
 	CXXFLAGS+=-Werror
+	CXXFLAGS+=-Wno-unused-but-set-variable
 endif
 
 # configuration-specific flags

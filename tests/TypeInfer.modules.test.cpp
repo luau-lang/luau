@@ -8,6 +8,7 @@
 
 #include "Fixture.h"
 
+#include "Luau/VisitType.h"
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -19,6 +20,8 @@ LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauSolverAgnosticSetType)
 
 using namespace Luau;
 
@@ -161,6 +164,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
 {
+    ScopedFastFlag sff = {FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/A"] = R"(
         --!strict
         return {
@@ -182,10 +186,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
     ModulePtr a = getFrontend().moduleResolver.getModule("game/A");
     REQUIRE(a != nullptr);
     // confirm that no cross-module mutation happened here!
-    if (FFlag::LuauSolverV2)
-        CHECK(toString(a->returnType) == "{ a: number }");
-    else
-        CHECK(toString(a->returnType) == "{| a: number |}");
+    CHECK(toString(a->returnType) == "{ a: number }");
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
     REQUIRE(b != nullptr);
@@ -193,7 +194,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
     if (FFlag::LuauSolverV2)
         CHECK(toString(b->returnType) == "{ read a: number }");
     else
-        CHECK(toString(b->returnType) == "{| a: number |}");
+        CHECK(toString(b->returnType) == "{ a: number }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_error_of_unknown_qualified_type")
@@ -271,6 +272,7 @@ a = tbl.abc.def
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_type_mismatch")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/A"] = R"(
 return { def = 4 }
     )";
@@ -281,10 +283,7 @@ local tbl: string = require(game.A)
 
     CheckResult result = getFrontend().check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("Type '{ def: number }' could not be converted into 'string'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type '{| def: number |}' could not be converted into 'string'", toString(result.errors[0]));
+    CHECK_EQ("Type '{ def: number }' could not be converted into 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_free_table_export_is_ok")

@@ -41,7 +41,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_FASTFLAGVARIABLE(LuauTrackTypeAllocations)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
@@ -1030,7 +1029,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         item.stats.timeCheck += duration;
         item.stats.filesStrict += 1;
 
-        if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
+        if (item.options.collectTypeAllocationStats)
         {
             item.stats.typesAllocated += moduleForAutocomplete->internalTypes.types.size();
             item.stats.typePacksAllocated += moduleForAutocomplete->internalTypes.typePacks.size();
@@ -1060,7 +1059,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     item.stats.filesStrict += (mode == Mode::Strict) ? 1 : 0;
     item.stats.filesNonstrict += (mode == Mode::Nonstrict) ? 1 : 0;
 
-    if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
+    if (item.options.collectTypeAllocationStats)
     {
         item.stats.typesAllocated += module->internalTypes.types.size();
         item.stats.typePacksAllocated += module->internalTypes.typePacks.size();
@@ -1194,7 +1193,7 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
     stats.filesStrict += item.stats.filesStrict;
     stats.filesNonstrict += item.stats.filesNonstrict;
 
-    if (FFlag::LuauTrackTypeAllocations && item.options.collectTypeAllocationStats)
+    if (item.options.collectTypeAllocationStats)
     {
         stats.typesAllocated += item.stats.typesAllocated;
         stats.typePacksAllocated += item.stats.typePacksAllocated;
@@ -1445,8 +1444,7 @@ ModulePtr check(
     result->mode = mode;
     result->internalTypes.owningModule = result.get();
     result->interfaceTypes.owningModule = result.get();
-    if (FFlag::LuauTrackTypeAllocations)
-        result->internalTypes.collectSingletonStats = options.collectTypeAllocationStats;
+    result->internalTypes.collectSingletonStats = options.collectTypeAllocationStats;
     result->allocator = sourceModule.allocator;
     result->names = sourceModule.names;
     result->root = sourceModule.root;

@@ -190,6 +190,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
     case IrCmd::UNM_VEC:
+    case IrCmd::SELECT_VEC:
         return IrValueKind::Tvalue;
     case IrCmd::DOT_VEC:
         return IrValueKind::Double;

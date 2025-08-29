@@ -34,16 +34,17 @@ void luaC_validate(lua_State* L);
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
-LUAU_FASTFLAG(LuauHeapDumpStringSizeOverhead)
+LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauErrorYield)
-LUAU_DYNAMIC_FASTFLAG(LuauSafeStackCheck)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
+LUAU_FASTFLAG(LuauCodeGenVectorLerp)
+LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
+LUAU_FASTFLAG(LuauCodeGenBetterBytecodeAnalysis)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -577,12 +578,12 @@ void setupUserdataHelpers(lua_State* L)
 
 static void setupNativeHelpers(lua_State* L)
 {
+    extern int luaG_isnative(lua_State * L, int level);
+
     lua_pushcclosurek(
         L,
         [](lua_State* L) -> int
         {
-            extern int luaG_isnative(lua_State * L, int level);
-
             lua_pushboolean(L, luaG_isnative(L, 1));
             return 1;
         },
@@ -591,6 +592,23 @@ static void setupNativeHelpers(lua_State* L)
         nullptr
     );
     lua_setglobal(L, "is_native");
+
+    lua_pushcclosurek(
+        L,
+        [](lua_State* L) -> int
+        {
+            if (!codegen || !luau_codegen_supported())
+                lua_pushboolean(L, 1);
+            else
+                lua_pushboolean(L, luaG_isnative(L, 1));
+
+            return 1;
+        },
+        "is_native_if_supported",
+        0,
+        nullptr
+    );
+    lua_setglobal(L, "is_native_if_supported");
 }
 
 static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const char* source, const unsigned nestingLimit)
@@ -740,8 +758,6 @@ TEST_CASE("Closure")
 
 TEST_CASE("Calls")
 {
-    ScopedFastFlag luauSafeStackCheck{DFFlag::LuauSafeStackCheck, true};
-
     runConformance("calls.luau");
 }
 
@@ -804,7 +820,7 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
-    ScopedFastFlag luauErrorYield{DFFlag::LuauErrorYield, true};
+    ScopedFastFlag luauXpcallContNoYield{DFFlag::LuauXpcallContNoYield, true};
 
     runConformance("coroutine.luau");
 }
@@ -820,6 +836,8 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
+    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
+
     runConformance(
         "pcall.luau",
         [](lua_State* L)
@@ -1130,6 +1148,7 @@ TEST_CASE("Vector")
         [](lua_State* L)
         {
             setupVectorHelpers(L);
+            setupNativeHelpers(L);
         },
         nullptr,
         nullptr,
@@ -1141,7 +1160,13 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag _[]{{FFlag::LuauCompileVectorLerp, true}, {FFlag::LuauTypeCheckerVectorLerp, true}, {FFlag::LuauVectorLerp, true}};
+    ScopedFastFlag _[]{
+        {FFlag::LuauCompileVectorLerp, true},
+        {FFlag::LuauTypeCheckerVectorLerp, true},
+        {FFlag::LuauVectorLerp, true},
+        {FFlag::LuauCodeGenVectorLerp, true},
+        {FFlag::LuauCodeGenBetterBytecodeAnalysis, true}
+    };
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -1158,7 +1183,16 @@ TEST_CASE("VectorLibrary")
         copts.optimizationLevel = 2;
     }
 
-    runConformance("vector_library.luau", [](lua_State* L) {}, nullptr, nullptr, &copts);
+    runConformance(
+        "vector_library.luau",
+        [](lua_State* L)
+        {
+            setupNativeHelpers(L);
+        },
+        nullptr,
+        nullptr,
+        &copts
+    );
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -2147,8 +2181,6 @@ int slowlyOverflowStack(lua_State* L)
 
 TEST_CASE("ApiStack")
 {
-    ScopedFastFlag luauSafeStackCheck{DFFlag::LuauSafeStackCheck, true};
-
     StateRef globalState(lua_newstate(blockableRealloc, nullptr), lua_close);
     lua_State* GL = globalState.get();
 
@@ -2388,8 +2420,6 @@ TEST_CASE("StringConversion")
 
 TEST_CASE("GCDump")
 {
-    ScopedFastFlag luauHeapDumpStringSizeOverhead{FFlag::LuauHeapDumpStringSizeOverhead, true};
-
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
     extern void luaC_enumheap(

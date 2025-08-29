@@ -173,15 +173,13 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(rpc->tp);
     }
-    else if (auto tcc = get<TableCheckConstraint>(*this))
-    {
-        rci.traverse(tcc->exprType);
-    }
-
-    // NOTE: this should probably be in an if-else chain with the above.
-    if (auto pftc = get<PushFunctionTypeConstraint>(*this))
+    else if (auto pftc = get<PushFunctionTypeConstraint>(*this))
     {
         rci.traverse(pftc->functionType);
+    }
+    else if (auto ptc = get<PushTypeConstraint>(*this))
+    {
+        rci.traverse(ptc->targetType);
     }
 
     return types;

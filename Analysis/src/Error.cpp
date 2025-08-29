@@ -993,6 +993,11 @@ struct ErrorConverter
 
         return result;
     }
+
+    std::string operator()(const UnappliedTypeFunction&) const
+    {
+        return "Type functions always require `<>` when referenced.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1419,6 +1424,11 @@ bool GenericBoundsMismatch::operator==(const GenericBoundsMismatch& rhs) const
     return genericName == rhs.genericName && lowerBounds == rhs.lowerBounds && upperBounds == rhs.upperBounds;
 }
 
+bool UnappliedTypeFunction::operator==(const UnappliedTypeFunction& rhs) const
+{
+    return true;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1658,6 +1668,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsTooManySpecified>)
     {
         e.functionType = clone(e.functionType);
+    }
+    else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

@@ -10,9 +10,13 @@ function ecall(fn, ...)
     return err:sub((err:find(": ") or -1) + 2, #err)
 end
 
--- make sure we cover both builtin and C impl
-assert(vector.create(1, 2) == vector.create("1", "2"))
-assert(vector.create(1, 2, 4) == vector.create("1", "2", "4"))
+-- in a different thread to not deoptimize native execution
+pcall(function()
+    -- make sure we cover both builtin and C impl
+    assert(vector.create(1, 2) == vector.create("1", "2"))
+    assert(vector.create(1, 2, 4) == vector.create("1", "2", "4"))
+    assert(not is_native_if_supported())
+end)
 
 -- 'create'
 local v12 = vector.create(1, 2)
@@ -203,5 +207,7 @@ if vector_size == 4 then
 	assert(vector.create(1, 2, 3, 4).W == 4)
 	assert(vector.create(1, 2, 3, 4)['W'] == 4)
 end
+
+assert(is_native_if_supported())
 
 return 'OK'

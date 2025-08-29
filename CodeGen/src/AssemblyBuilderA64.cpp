@@ -770,6 +770,32 @@ void AssemblyBuilderA64::dup_4s(RegisterA64 dst, RegisterA64 src, uint8_t index)
     commit();
 }
 
+void AssemblyBuilderA64::fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        logAppend(" %-12sv%d.4s,v%d.4s,v%d.4s\n", "fcmeq", dst.index, src1.index, src2.index);
+
+    //                Q U      ESz Rm    Opcode Rn    Rd
+    uint32_t op = 0b0'1'0'01110001'00000'111001'00000'00000;
+
+    place(dst.index | (src1.index << 5) | (src2.index << 16) | op);
+
+    commit();
+}
+
+void AssemblyBuilderA64::bit(RegisterA64 dst, RegisterA64 src, RegisterA64 mask)
+{
+    if (logText)
+        logAppend(" %-12sv%d.16b,v%d.16b,v%d.16b\n", "bit", dst.index, src.index, mask.index);
+
+    //                Q U          Rm    Opcode Rn    Rd
+    uint32_t op = 0b0'1'1'01110101'00000'000111'00000'00000;
+
+    place(dst.index | (src.index << 5) | (mask.index << 16) | op);
+
+    commit();
+}
+
 void AssemblyBuilderA64::frinta(RegisterA64 dst, RegisterA64 src)
 {
     CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
