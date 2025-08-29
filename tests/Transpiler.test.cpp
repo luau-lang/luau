@@ -2136,6 +2136,12 @@ TEST_CASE("transpile_explicit_type_instantiations")
     std::string code = "f<<A, B, C...>>() t.f<<A, B, C...>>() t:f<<A, B, C>>()";
     CHECK_EQ(code, transpile(code, {}, true).code);
 
+    Allocator allocator;
+    AstNameTable names = {allocator};
+    ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
+    REQUIRE(parseResult.errors.empty());
+    CHECK_EQ(code, transpileWithTypes(*parseResult.root));
+
     // No types
     CHECK_EQ(
         "f              () t.f              () t:f           ()",

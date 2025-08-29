@@ -2857,8 +2857,6 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_empty_list")
     REQUIRE(stat != nullptr);
 }
 
-// todo soon: f<<...T>>
-
 TEST_CASE_FIXTURE(Fixture, "two_left_and_right_arrows_but_no_explicit_type_instantiation")
 {
     AstStat* stat = parse(R"(

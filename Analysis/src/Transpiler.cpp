@@ -1866,7 +1866,6 @@ struct Printer
 
     void visualizeExplicitTypeInstantiation(
         const AstArray<AstTypeOrPack>& explicitTypes,
-        // todo soon: is it possible to go without a cst node? place breakpoints on similar lines
         const CstExplicitTypeInstantiation* cstNode
     )
     {
