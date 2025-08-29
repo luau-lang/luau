@@ -4092,28 +4092,29 @@ bool Parser::expectAndConsume(char value, const char* context)
 bool Parser::expectAndConsume(Lexeme::Type type, const char* context)
 {
     if (lexer.current().type != type)
-    {
-        expectAndConsumeFail(type, context);
+        return expectAndConsumeFailWithLookahead(type, context);
 
-        // check if this is an extra token and the expected token is next
-        if (lexer.lookahead().type == type)
-        {
-            // skip invalid and consume expected
-            nextLexeme();
-            nextLexeme();
-        }
-
-        return false;
-    }
-    else
-    {
-        nextLexeme();
-        return true;
-    }
+    nextLexeme();
+    return true;
 }
 
-// LUAU_NOINLINE is used to limit the stack cost of this function due to std::string objects, and to increase caller performance since this code is
-// cold
+// LUAU_NOINLINE is used to limit the stack cost due to std::string objects, and to increase caller performance since this code is cold
+LUAU_NOINLINE bool Parser::expectAndConsumeFailWithLookahead(Lexeme::Type type, const char* context)
+{
+    expectAndConsumeFail(type, context);
+
+    // check if this is an extra token and the expected token is next
+    if (lexer.lookahead().type == type)
+    {
+        // skip invalid and consume expected
+        nextLexeme();
+        nextLexeme();
+    }
+
+    return false;
+}
+
+// LUAU_NOINLINE is used to limit the stack cost due to std::string objects, and to increase caller performance since this code is cold
 LUAU_NOINLINE void Parser::expectAndConsumeFail(Lexeme::Type type, const char* context)
 {
     std::string typeString = Lexeme(Location(Position(0, 0), 0), type).toString();
@@ -4143,6 +4144,7 @@ bool Parser::expectMatchAndConsume(char value, const MatchLexeme& begin, bool se
     }
 }
 
+// LUAU_NOINLINE is used to limit the stack cost due to std::string objects, and to increase caller performance since this code is cold
 LUAU_NOINLINE bool Parser::expectMatchAndConsumeRecover(char value, const MatchLexeme& begin, bool searchForMissing)
 {
     Lexeme::Type type = static_cast<Lexeme::Type>(static_cast<unsigned char>(value));
@@ -4185,8 +4187,7 @@ LUAU_NOINLINE bool Parser::expectMatchAndConsumeRecover(char value, const MatchL
     return false;
 }
 
-// LUAU_NOINLINE is used to limit the stack cost of this function due to std::string objects, and to increase caller performance since this code is
-// cold
+// LUAU_NOINLINE is used to limit the stack cost due to std::string objects, and to increase caller performance since this code is cold
 LUAU_NOINLINE void Parser::expectMatchAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin, const char* extra)
 {
     std::string typeString = Lexeme(Location(Position(0, 0), 0), type).toString();
@@ -4217,40 +4218,23 @@ LUAU_NOINLINE void Parser::expectMatchAndConsumeFail(Lexeme::Type type, const Ma
 bool Parser::expectMatchEndAndConsume(Lexeme::Type type, const MatchLexeme& begin)
 {
     if (lexer.current().type != type)
+        return expectMatchEndAndConsumeFailWithLookahead(type, begin);
+
+    // If the token matches on a different line and a different column, it suggests misleading indentation
+    // This can be used to pinpoint the problem location for a possible future *actual* mismatch
+    if (lexer.current().location.begin.line != begin.position.line && lexer.current().location.begin.column != begin.position.column &&
+        endMismatchSuspect.position.line < begin.position.line) // Only replace the previous suspect with more recent suspects
     {
-        expectMatchEndAndConsumeFail(type, begin);
-
-        // check if this is an extra token and the expected token is next
-        if (lexer.lookahead().type == type)
-        {
-            // skip invalid and consume expected
-            nextLexeme();
-            nextLexeme();
-
-            return true;
-        }
-
-        return false;
+        endMismatchSuspect = begin;
     }
-    else
-    {
-        // If the token matches on a different line and a different column, it suggests misleading indentation
-        // This can be used to pinpoint the problem location for a possible future *actual* mismatch
-        if (lexer.current().location.begin.line != begin.position.line && lexer.current().location.begin.column != begin.position.column &&
-            endMismatchSuspect.position.line < begin.position.line) // Only replace the previous suspect with more recent suspects
-        {
-            endMismatchSuspect = begin;
-        }
 
-        nextLexeme();
+    nextLexeme();
 
-        return true;
-    }
+    return true;
 }
 
-// LUAU_NOINLINE is used to limit the stack cost of this function due to std::string objects, and to increase caller performance since this code is
-// cold
-LUAU_NOINLINE void Parser::expectMatchEndAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin)
+// LUAU_NOINLINE is used to limit the stack cost due to std::string objects, and to increase caller performance since this code is cold
+LUAU_NOINLINE bool Parser::expectMatchEndAndConsumeFailWithLookahead(Lexeme::Type type, const MatchLexeme& begin)
 {
     if (endMismatchSuspect.type != Lexeme::Eof && endMismatchSuspect.position.line > begin.position.line)
     {
@@ -4263,6 +4247,18 @@ LUAU_NOINLINE void Parser::expectMatchEndAndConsumeFail(Lexeme::Type type, const
     {
         expectMatchAndConsumeFail(type, begin);
     }
+
+    // check if this is an extra token and the expected token is next
+    if (lexer.lookahead().type == type)
+    {
+        // skip invalid and consume expected
+        nextLexeme();
+        nextLexeme();
+
+        return true;
+    }
+
+    return false;
 }
 
 template<typename T>

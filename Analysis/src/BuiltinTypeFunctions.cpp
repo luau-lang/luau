@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauRawGetHandlesNil)
 
 namespace Luau
 {
@@ -2328,7 +2329,12 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
         {
             for (TypeId ty : *typesToFind)
                 if (!tblIndexInto(ty, *tablesIter, properties, ctx, isRaw))
-                    return {std::nullopt, Reduction::Erroneous, {}, {}};
+                {
+                    if (FFlag::LuauRawGetHandlesNil && isRaw)
+                        properties.insert(ctx->builtins->nilType);
+                    else
+                        return {std::nullopt, Reduction::Erroneous, {}, {}};
+                }
         }
     }
 

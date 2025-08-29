@@ -241,22 +241,26 @@ struct ProtoToLuau
         functions.push_back(top);
     }
 
-    void ident(const luau::Name& name)
+    std::string displayName(const luau::Name& name)
     {
         if (name.has_builtin())
         {
             size_t index = size_t(name.builtin()) % std::size(kNames);
-            source += kNames[index];
+            return kNames[index];
         }
         else if (name.has_custom())
         {
-            source += 'n';
-            source += std::to_string(name.custom() & 0xff);
+            return 'n' + std::to_string(name.custom() & 0xff);
         }
         else
         {
-            source += '_';
+            return "_";
         }
+    }
+
+    void ident(const luau::Name& name)
+    {
+        source += displayName(name);
     }
 
     void ident(const luau::RegularTypeName& name)
@@ -513,6 +517,11 @@ struct ProtoToLuau
 
     void print(const luau::ExprFunction& expr)
     {
+        for (size_t i = 0; i < expr.attributes_size(); ++i)
+        {
+            print(expr.attributes(i));
+            source += "\n";
+        }
         source += "function";
         function(expr);
     }
@@ -975,6 +984,12 @@ struct ProtoToLuau
 
     void print(const luau::StatTypeFunction& stat)
     {
+        for (size_t i = 0; i < stat.func().attributes_size(); ++i)
+        {
+            print(stat.func().attributes(i));
+            source += "\n";
+        }
+
         if (stat.export_())
             source += "export ";
 
@@ -1165,6 +1180,73 @@ struct ProtoToLuau
             if (isgraph(ch))
                 source += ch;
         source += '"';
+    }
+
+    void print(const luau::ExprLiteralTable& table)
+    {
+        source += '{';
+        for (int i = 0; i < table.items_size(); ++i)
+        {
+            ident(table.items(i).key_name());
+            source += '=';
+
+            print(table.items(i).value());
+            source += ',';
+        }
+        source += '}';
+    }
+
+    void print(const luau::ExprLiteral& lit)
+    {
+        if (lit.has_table())
+            print(lit.table());
+        else if (lit.has_nil())
+            print(lit.nil());
+        else if (lit.has_bool_())
+            print(lit.bool_());
+        else if (lit.has_number())
+            print(lit.number());
+        else if (lit.has_string())
+            print(lit.string());
+    }
+
+    void print(const luau::ExprAttr& attr)
+    {
+        std::string name;
+        if (attr.type() == luau::AttrType::Checked)
+            name = "checked";
+        if (attr.type() == luau::AttrType::Native)
+            name = "native";
+        if (attr.type() == luau::AttrType::Deprecated)
+            name = "deprecated";
+        else
+            name = displayName(attr.name());
+
+        if (attr.braced())
+        {
+            source += "@[" + name;
+            if (attr.args_size() == 1)
+            {
+                source += " ";
+                print(attr.args(0));
+            }
+            else if (attr.args_size() > 1)
+            {
+                source += "(";
+                for (int i = 0; i < attr.args_size(); ++i)
+                {
+                    if (i != 0)
+                        source += ',';
+                    print(attr.args(i));
+                }
+                source += ")";
+            }
+            source += "]";
+        }
+        else
+        {
+            source += "@" + name;
+        }
     }
 };
 

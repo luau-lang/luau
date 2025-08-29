@@ -347,6 +347,7 @@ private:
     // check that parser is at lexeme/symbol, move to next lexeme/symbol on success, report failure and continue on failure
     bool expectAndConsume(char value, const char* context = nullptr);
     bool expectAndConsume(Lexeme::Type type, const char* context = nullptr);
+    bool expectAndConsumeFailWithLookahead(Lexeme::Type type, const char* context);
     void expectAndConsumeFail(Lexeme::Type type, const char* context);
 
     struct MatchLexeme
@@ -366,7 +367,7 @@ private:
     bool expectMatchAndConsumeRecover(char value, const MatchLexeme& begin, bool searchForMissing);
 
     bool expectMatchEndAndConsume(Lexeme::Type type, const MatchLexeme& begin);
-    void expectMatchEndAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin);
+    bool expectMatchEndAndConsumeFailWithLookahead(Lexeme::Type type, const MatchLexeme& begin);
 
     template<typename T>
     AstArray<T> copy(const T* data, std::size_t size);

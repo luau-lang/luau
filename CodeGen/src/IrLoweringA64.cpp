@@ -716,6 +716,26 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fcsel(inst.regA64, temp2, temp1, getConditionFP(IrCondition::Equal));
         break;
     }
+    case IrCmd::SELECT_VEC:
+    {
+        // `inst.b` cannot be reused for return value, because it can be overwritten with A before the first usage
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.c, inst.d});
+
+        RegisterA64 temp1 = regOp(inst.a);
+        RegisterA64 temp2 = regOp(inst.b);
+        RegisterA64 temp3 = regOp(inst.c);
+        RegisterA64 temp4 = regOp(inst.d);
+
+        RegisterA64 mask = regs.allocTemp(KindA64::q);
+
+        // Evaluate predicate and calculate mask.
+        build.fcmeq_4s(mask, temp3, temp4);
+        // mov A to res register
+        build.mov(inst.regA64, temp1);
+        // If numbers are equal override A with B in res register.
+        build.bit(inst.regA64, temp2, mask);
+        break;
+    }
     case IrCmd::ADD_VEC:
     {
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});

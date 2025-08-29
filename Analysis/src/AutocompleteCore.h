@@ -21,7 +21,8 @@ AutocompleteResult autocomplete_(
     const ScopePtr& scopeAtPosition,
     Position position,
     FileResolver* fileResolver,
-    StringCompletionCallback callback
+    StringCompletionCallback callback,
+    bool isInHotComment = false
 );
 
 } // namespace Luau

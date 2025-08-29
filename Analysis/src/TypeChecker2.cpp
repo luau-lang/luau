@@ -28,6 +28,8 @@
 #include <algorithm>
 #include <sstream>
 
+#include "Luau/Simplify.h"
+
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauSuppressErrorsForMultipleNonviableOverloads)
@@ -35,12 +37,12 @@ LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowMixedTables)
+LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionForLiteralSubtypeCheck)
 
 namespace Luau
 {
@@ -1734,11 +1736,10 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
 void TypeChecker2::visit(AstExprCall* call)
 {
-    std::optional<InConditionalContext> flipper;
-    if (FFlag::LuauResetConditionalContextProperly)
-        flipper.emplace(&typeContext, TypeContext::Default);
-    visit(call->func, ValueContext::RValue);
-    flipper.reset();
+    {
+        InConditionalContext flipper(&typeContext, TypeContext::Default);
+        visit(call->func, ValueContext::RValue);
+    }
 
     for (AstExpr* arg : call->args)
         visit(arg, ValueContext::RValue);
@@ -1898,9 +1899,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
 
 void TypeChecker2::visit(AstExprFunction* fn)
 {
-    std::optional<InConditionalContext> flipper;
-    if (FFlag::LuauResetConditionalContextProperly)
-        flipper.emplace(&typeContext, TypeContext::Default);
+    InConditionalContext flipper(&typeContext, TypeContext::Default);
 
     auto StackPusher = pushStack(fn);
 
@@ -2055,9 +2054,7 @@ void TypeChecker2::visit(AstExprFunction* fn)
 
 void TypeChecker2::visit(AstExprTable* expr)
 {
-    std::optional<InConditionalContext> inContext;
-    if (FFlag::LuauResetConditionalContextProperly)
-        inContext.emplace(&typeContext, TypeContext::Default);
+    InConditionalContext inContext(&typeContext, TypeContext::Default);
 
     for (const AstExprTable::Item& item : expr->items)
     {
@@ -2070,7 +2067,7 @@ void TypeChecker2::visit(AstExprTable* expr)
 void TypeChecker2::visit(AstExprUnary* expr)
 {
     std::optional<InConditionalContext> inContext;
-    if (FFlag::LuauResetConditionalContextProperly && expr->op != AstExprUnary::Op::Not)
+    if (expr->op != AstExprUnary::Op::Not)
         inContext.emplace(&typeContext, TypeContext::Default);
 
     visit(expr->expr, ValueContext::RValue);
@@ -2165,11 +2162,8 @@ void TypeChecker2::visit(AstExprUnary* expr)
 TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 {
     std::optional<InConditionalContext> inContext;
-    if (FFlag::LuauResetConditionalContextProperly)
-    {
-        if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq && expr->op != AstExprBinary::CompareNe)
-            inContext.emplace(&typeContext, TypeContext::Default);
-    }
+    if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq && expr->op != AstExprBinary::CompareNe)
+        inContext.emplace(&typeContext, TypeContext::Default);
 
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
@@ -2550,9 +2544,7 @@ void TypeChecker2::visit(AstExprTypeAssertion* expr)
 
 void TypeChecker2::visit(AstExprIfElse* expr)
 {
-    std::optional<InConditionalContext> inContext;
-    if (FFlag::LuauResetConditionalContextProperly)
-        inContext.emplace(&typeContext, TypeContext::Default);
+    InConditionalContext inContext(&typeContext, TypeContext::Default);
 
     visit(expr->condition, ValueContext::RValue);
     visit(expr->trueExpr, ValueContext::RValue);
@@ -2561,9 +2553,7 @@ void TypeChecker2::visit(AstExprIfElse* expr)
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
 {
-    std::optional<InConditionalContext> inContext;
-    if (FFlag::LuauResetConditionalContextProperly)
-        inContext.emplace(&typeContext, TypeContext::Default);
+    InConditionalContext inContext(&typeContext, TypeContext::Default);
 
     for (AstExpr* expr : interpString->expressions)
         visit(expr, ValueContext::RValue);
@@ -3112,6 +3102,19 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             std::optional<TypeId> tt = extractMatchingTableType(parts, exprType, builtinTypes);
             if (tt)
                 return testPotentialLiteralIsSubtype(expr, *tt);
+        }
+
+        if (FFlag::LuauSimplifyIntersectionForLiteralSubtypeCheck)
+        {
+            if (auto itv = get<IntersectionType>(expectedType))
+            {
+                // If we _happen_ to have an intersection of tables, let's try to
+                // construct it and use it as the input to this algorithm.
+                std::set<TypeId> parts{begin(itv), end(itv)};
+                TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+                if (is<TableType>(simplified))
+                    return testPotentialLiteralIsSubtype(expr, simplified);
+            }
         }
 
         return testIsSubtype(exprType, expectedType, expr->location);
