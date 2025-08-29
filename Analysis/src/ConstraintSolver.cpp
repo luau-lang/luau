@@ -3010,12 +3010,12 @@ TypeId ConstraintSolver::specifyExplicitTypes(
 
     for (const TypeId typeParameter : explicitTypeIds)
     {
-        replacements[*typeParametersIter++] = typeParameter;
-
         if (typeParametersIter == ftv->generics.end())
         {
             break;
         }
+
+        replacements[*typeParametersIter++] = typeParameter;
     }
 
     while (typeParametersIter != ftv->generics.end())
@@ -3028,12 +3028,12 @@ TypeId ConstraintSolver::specifyExplicitTypes(
 
     for (const TypePackId typePackParameter : explicitTypePackIds)
     {
-        replacementPacks[*typePackParametersIter++] = typePackParameter;
-
         if (typePackParametersIter == ftv->genericPacks.end())
         {
             break;
         }
+
+        replacementPacks[*typePackParametersIter++] = typePackParameter;
     }
 
     // todo soon
