@@ -170,7 +170,6 @@ private:
         std::vector<TypePackId> typePacks;
     };
 
-    std::vector<std::vector<TypeId>> DEPRECATED_interiorTypes;
     std::vector<InteriorFreeTypes> interiorFreeTypes;
 
     std::vector<TypeId> unionsToSimplify;

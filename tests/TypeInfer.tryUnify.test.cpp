@@ -13,6 +13,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauUnifierRecursionOnRestart);
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 struct TryUnifyFixture : Fixture
 {
@@ -275,6 +276,8 @@ TEST_CASE_FIXTURE(Fixture, "variadics_should_use_reversed_properly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
+
     CheckResult result = check(R"(
         --!strict
         table.insert()
@@ -285,7 +288,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unifica
     if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(result.errors[1]), "Available overloads: <V>({V}, V) -> (); and <V>({V}, number, V) -> ()");
     else
-        CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
+        CHECK_EQ(toString(result.errors[1]), "Available overloads: ({'a}, 'a) -> (); and ({'a}, number, 'a) -> ()");
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")

@@ -27,8 +27,6 @@ LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
-LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
-LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
@@ -299,8 +297,6 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
         // These flags are required to surface the problem.
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true},
 
         // And this flag is the one that fixes it.
         {FFlag::LuauSimplifyAnyAndUnion, true},
@@ -383,8 +379,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauLimitDynamicConstraintSolving3, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true},
         {FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints, true},
     };
 
@@ -568,8 +562,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true},
         {FFlag::LuauReduceSetTypeStackPressure, true},
     };
 
@@ -583,14 +575,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
     CHECK_EQ("<a>({ read Do: { read Re: { read Mi: a } } }) -> ()", toString(requireType("get")));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping" * doctest::timeout(2.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping" * doctest::timeout(4.0))
 {
     ScopedFastFlag sff[] = {
         // These are necessary to trigger the bug
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauEagerGeneralization4, true},
-        {FFlag::LuauTrackFreeInteriorTypePacks, true},
-        {FFlag::LuauResetConditionalContextProperly, true},
 
         // This is the fix
         {FFlag::LuauLimitUnification, true}

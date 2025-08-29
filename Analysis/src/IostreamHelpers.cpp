@@ -287,6 +287,8 @@ static void errorToString(std::ostream& stream, const T& err)
         }
         stream << "] }";
     }
+    else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
+        stream << "UnappliedTypeFunction {}";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

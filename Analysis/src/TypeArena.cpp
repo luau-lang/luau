@@ -3,7 +3,6 @@
 #include "Luau/TypeArena.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena);
-LUAU_FASTFLAG(LuauTrackTypeAllocations)
 
 namespace Luau
 {
@@ -117,8 +116,6 @@ TypePackId TypeArena::addTypePackFunction(const TypePackFunction& function, std:
 
 void TypeArena::recordSingletonStats(const NotNull<SingletonType> singleton)
 {
-    LUAU_ASSERT(FFlag::LuauTrackTypeAllocations);
-
     auto record = [this](auto&& s)
     {
         using T = std::decay_t<decltype(s)>;

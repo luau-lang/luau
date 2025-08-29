@@ -7,6 +7,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauPushTypeConstraint)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -289,11 +291,15 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
 
 TEST_CASE_FIXTURE(Fixture, "table_has_a_boolean")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t={a=1,b=false}
     )");
 
-    CHECK("{ a: number, b: boolean }" == toString(requireType("t"), {true}));
+    if (FFlag::LuauSolverV2)
+        CHECK("{ a: number, b: boolean }" == toString(requireType("t"), {true}));
+    else
+        CHECK("{| a: number, b: boolean |}" == toString(requireType("t"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_singleton_strings")
@@ -392,6 +398,8 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }
@@ -402,9 +410,7 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        // NOTE: This error is not great, it might be more helpful to indicate
-        // that tag _could_ have type 'cat'.
-        CHECK("Type '{ cafood: string, tag: string }' could not be converted into 'Cat | Dog'" == toString(result.errors[0]));
+        CHECK(R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" == toString(result.errors[0]));
     else
     {
         const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
@@ -651,6 +657,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tagged_union_in_ternary")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Result = { type: "ok", value: unknown } | { type: "error" }
+
+        local function coinflip(): boolean return true end
+
+        local function readFromDB(): Result
+            return if coinflip() then { type = "ok", value = 42 } else { type = "error" }
+        end
+    )"));
 }
 
 TEST_SUITE_END();

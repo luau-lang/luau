@@ -8,8 +8,6 @@
 
 #include <vector>
 
-LUAU_FASTFLAG(LuauTrackTypeAllocations)
-
 namespace Luau
 {
 struct Module;
@@ -37,7 +35,7 @@ struct TypeArena
 
         if constexpr (std::is_same_v<T, SingletonType>)
         {
-            if (FFlag::LuauTrackTypeAllocations && collectSingletonStats)
+            if (collectSingletonStats)
                 recordSingletonStats(NotNull{&tv});
         }
 

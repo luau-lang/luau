@@ -33,6 +33,9 @@ LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
 LUAU_FASTFLAG(LuauPopulateSelfTypesInFragment)
 LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
 LUAU_FASTFLAG(LuauForInProvidesRecommendations)
+LUAU_FASTFLAG(LuauFragmentAutocompleteTakesInnermostRefinement)
+LUAU_FASTFLAG(LuauSuggestHotComments)
+LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -863,7 +866,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_else_if")
     auto region = getAutocompleteRegion(
         R"(
 if true then
-elseif  
+elseif
 end
 
 )",
@@ -4284,6 +4287,133 @@ end
             CHECK(result.result->acResults.entryMap.count("x"));
             CHECK(result.result->acResults.entryMap.count("y"));
             CHECK(result.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "correctly_grab_innermost_refinement")
+{
+    ScopedFastFlag _{FFlag::LuauFragmentAutocompleteTakesInnermostRefinement, true};
+
+    const std::string source = R"(
+--!strict
+type Type1 = { Type: "Type1", CommonKey: string, Type1Key: string }
+type Type2 = { Type: "Type2", CommonKey: string, Type2Key: string }
+type UnionType = Type1 | Type2
+
+local foo: UnionType? = nil
+if foo then
+    if foo.Type == "Type2" then
+    end
+end
+    )";
+
+    const std::string dest = R"(
+--!strict
+type Type1 = { Type: "Type1", CommonKey: string, Type1Key: string }
+type Type2 = { Type: "Type2", CommonKey: string, Type2Key: string }
+type UnionType = Type1 | Type2
+
+local foo: UnionType? = nil
+if foo then
+    if foo.Type == "Type2" then
+        foo.
+    end
+end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{9, 12},
+        [](FragmentAutocompleteStatusResult& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("Type2Key") > 0);
+            CHECK(result.result->acResults.entryMap.count("Type1Key") == 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "hot_comment_should_rec")
+{
+    ScopedFastFlag sff{FFlag::LuauSuggestHotComments, true};
+    const std::string source = R"(--!)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        source,
+        Position{0, 3},
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("strict"));
+            CHECK(result.result->acResults.entryMap.count("nonstrict"));
+            CHECK(result.result->acResults.entryMap.count("nocheck"));
+            CHECK(result.result->acResults.entryMap.count("native"));
+            CHECK(result.result->acResults.entryMap.count("nolint"));
+            CHECK(result.result->acResults.entryMap.count("optimize"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "len_operator_needs_to_provide_autocomplete_results")
+{
+    ScopedFastFlag sff{FFlag::LuauNumericUnaryOpsDontProduceNegationRefinements, true};
+    std::string source = R"(
+type Pool = { numbers: { number }}
+
+local function foobar(p)
+    local pool = p :: Pool
+    if #pool
+end
+)";
+    std::string dest = R"(
+type Pool = { numbers: { number }}
+
+local function foobar(p)
+    local pool = p :: Pool
+    if #pool.
+end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{5, 13},
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("numbers"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "unary_minus_operator_needs_to_provide_autocomplete_results")
+{
+    ScopedFastFlag sff{FFlag::LuauNumericUnaryOpsDontProduceNegationRefinements, true};
+    std::string source = R"(
+type Pool = { x : number }
+
+local function foobar(p)
+    local pool = p :: Pool
+    if -pool
+end
+)";
+    std::string dest = R"(
+type Pool = { x : number }
+
+local function foobar(p)
+    local pool = p :: Pool
+    if -pool.
+end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        Position{5, 13},
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("x"));
         }
     );
 }

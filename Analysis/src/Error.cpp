@@ -915,6 +915,11 @@ struct ErrorConverter
         return "The generic type parameter " + std::string{e.genericName} + "was found to have invalid bounds. Its lower bounds were [" +
                lowerBounds + "], and its upper bounds were [" + upperBounds + "].";
     }
+
+    std::string operator()(const UnappliedTypeFunction&) const
+    {
+        return "Type functions always require `<>` when referenced.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1330,6 +1335,11 @@ bool GenericBoundsMismatch::operator==(const GenericBoundsMismatch& rhs) const
     return genericName == rhs.genericName && lowerBounds == rhs.lowerBounds && upperBounds == rhs.upperBounds;
 }
 
+bool UnappliedTypeFunction::operator==(const UnappliedTypeFunction& rhs) const
+{
+    return true;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1562,6 +1572,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
             lowerBound = clone(lowerBound);
         for (auto& upperBound : e.upperBounds)
             upperBound = clone(upperBound);
+    }
+    else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
