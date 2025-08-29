@@ -3348,7 +3348,7 @@ TypeId TypeChecker::bindExplicitTypeInstantations(
     auto typeParamsIter = typeParams.begin();
 
     std::vector<TypePackId> typePackParams;
-    typePackParams.resize(functionType->genericPacks.size());
+    typePackParams.reserve(functionType->genericPacks.size());
     for (size_t i = 0; i < functionType->genericPacks.size(); ++i)
     {
         typePackParams.push_back(freshTypePack(scope));

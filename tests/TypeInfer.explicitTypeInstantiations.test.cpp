@@ -443,4 +443,22 @@ TEST_CASE_FIXTURE(Fixture, "function_intersections")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "incomplete_type_packs")
+{
+    SUBCASE_BOTH_SOLVERS()
+    {
+        ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+        CheckResult result = check(R"(
+        local f: <A, T...>() -> (A, T...) = nil :: any
+        local correct: string, b: number, c: boolean = f<<string>>()
+        local incorrect: number, b: number, c: boolean = f<<string>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, TypeMismatch);
+        REQUIRE_EQ(result.errors[0].location.begin.line, 3);
+    }
+}
+
 TEST_SUITE_END();
