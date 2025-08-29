@@ -12,6 +12,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+
 namespace Luau
 {
 namespace CodeGen
@@ -795,6 +797,30 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.cset(inst.regA64, ConditionA64::Less);
 
             build.setLabel(exit);
+        }
+        break;
+    }
+    case IrCmd::CMP_INT:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
+
+        inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
+
+        IrCondition cond = conditionOp(inst.c);
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            build.cmp(regOp(inst.b), intOp(inst.a));
+            build.cset(inst.regA64, getInverseCondition(getConditionInt(cond)));
+        }
+        else if (inst.a.kind == IrOpKind::Inst)
+        {
+            build.cmp(regOp(inst.a), intOp(inst.b));
+            build.cset(inst.regA64, getConditionInt(cond));
+        }
+        else
+        {
+            CODEGEN_ASSERT(!"Unsupported instruction form");
         }
         break;
     }

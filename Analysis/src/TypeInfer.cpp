@@ -14,7 +14,6 @@
 #include "Luau/TimeTrace.h"
 #include "Luau/TopoSortStatements.h"
 #include "Luau/ToString.h"
-#include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
@@ -33,8 +32,8 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-
-LUAU_FASTFLAGVARIABLE(LuauReduceCheckBinaryExprStackPressure)
+LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 namespace Luau
 {
@@ -1854,6 +1853,16 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
     for (const auto& el : global.paramNames)
         ftv->argNames.push_back(FunctionArgument{el.first.value, el.second});
 
+    if (FFlag::LuauParametrizedAttributeSyntax)
+    {
+        AstAttr* deprecatedAttr = global.getAttribute(AstAttr::Type::Deprecated);
+        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+        if (deprecatedAttr)
+        {
+            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
+        }
+    }
+
     Name fnName(global.name.value);
 
     currentModule->declaredGlobals[fnName] = fnType;
@@ -1912,7 +1921,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     else if (auto a = expr.as<AstExprUnary>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprBinary>())
-        result = FFlag::LuauReduceCheckBinaryExprStackPressure ? checkExpr(scope, *a, expectedType) : checkExpr_DEPRECATED(scope, *a, expectedType);
+        result = checkExpr(scope, *a, expectedType);
     else if (auto a = expr.as<AstExprTypeAssertion>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprError>())
@@ -3212,63 +3221,6 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     }
 }
 
-WithPredicate<TypeId> TypeChecker::checkExpr_DEPRECATED(const ScopePtr& scope, const AstExprBinary& expr, std::optional<TypeId> expectedType)
-{
-    if (expr.op == AstExprBinary::And)
-    {
-        auto [lhsTy, lhsPredicates] = checkExpr(scope, *expr.left, expectedType);
-
-        ScopePtr innerScope = childScope(scope, expr.location);
-        resolve(lhsPredicates, innerScope, true);
-
-        auto [rhsTy, rhsPredicates] = checkExpr(innerScope, *expr.right, expectedType);
-
-        return {checkBinaryOperation(scope, expr, lhsTy, rhsTy), {AndPredicate{std::move(lhsPredicates), std::move(rhsPredicates)}}};
-    }
-    else if (expr.op == AstExprBinary::Or)
-    {
-        auto [lhsTy, lhsPredicates] = checkExpr(scope, *expr.left, expectedType);
-
-        ScopePtr innerScope = childScope(scope, expr.location);
-        resolve(lhsPredicates, innerScope, false);
-
-        auto [rhsTy, rhsPredicates] = checkExpr(innerScope, *expr.right, expectedType);
-
-        // Because of C++, I'm not sure if lhsPredicates was not moved out by the time we call checkBinaryOperation.
-        TypeId result = checkBinaryOperation(scope, expr, lhsTy, rhsTy, lhsPredicates);
-        return {result, {OrPredicate{std::move(lhsPredicates), std::move(rhsPredicates)}}};
-    }
-    else if (expr.op == AstExprBinary::CompareEq || expr.op == AstExprBinary::CompareNe)
-    {
-        // For these, passing expectedType is worse than simply forcing them, because their implementation
-        // may inadvertently check if expectedTypes exist first and use it, instead of forceSingleton first.
-        WithPredicate<TypeId> lhs = checkExpr(scope, *expr.left, std::nullopt, /*forceSingleton=*/true);
-        WithPredicate<TypeId> rhs = checkExpr(scope, *expr.right, std::nullopt, /*forceSingleton=*/true);
-        if (auto predicate = tryGetTypeGuardPredicate(expr))
-            return {booleanType, {std::move(*predicate)}};
-
-        PredicateVec predicates;
-        if (auto lvalue = tryGetLValue(*expr.left))
-            predicates.push_back(EqPredicate{std::move(*lvalue), rhs.type, expr.location});
-        if (auto lvalue = tryGetLValue(*expr.right))
-            predicates.push_back(EqPredicate{std::move(*lvalue), lhs.type, expr.location});
-
-        if (!predicates.empty() && expr.op == AstExprBinary::CompareNe)
-            predicates = {NotPredicate{std::move(predicates)}};
-
-        return {checkBinaryOperation(scope, expr, lhs.type, rhs.type), std::move(predicates)};
-    }
-    else
-    {
-        // Expected types are not useful for other binary operators.
-        WithPredicate<TypeId> lhs = checkExpr(scope, *expr.left);
-        WithPredicate<TypeId> rhs = checkExpr(scope, *expr.right);
-
-        // Intentionally discarding predicates with other operators.
-        return WithPredicate{checkBinaryOperation(scope, expr, lhs.type, rhs.type, lhs.predicates)};
-    }
-}
-
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr)
 {
     TypeId annotationType = resolveType(scope, *expr.annotation);
@@ -3988,6 +3940,16 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
 
     for (AstLocal* local : expr.args)
         ftv->argNames.push_back(FunctionArgument{local->name.value, local->location});
+
+    if (FFlag::LuauParametrizedAttributeSyntax)
+    {
+        AstAttr* deprecatedAttr = expr.getAttribute(AstAttr::Type::Deprecated);
+        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+        if (deprecatedAttr)
+        {
+            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
+        }
+    }
 
     return std::make_pair(funTy, funScope);
 }
@@ -5827,6 +5789,16 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
                 ftv->argNames.push_back(std::nullopt);
         }
 
+        if (FFlag::LuauParametrizedAttributeSyntax)
+        {
+            AstAttr* deprecatedAttr = func->getAttribute(AstAttr::Type::Deprecated);
+            ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+            if (deprecatedAttr)
+            {
+                ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
+            }
+        }
+
         return fnType;
     }
     else if (auto typeOf = annotation.as<AstTypeTypeof>())
@@ -5972,7 +5944,10 @@ TypeId TypeChecker::instantiateTypeFun(
     }
     if (applyTypeFunction.encounteredForwardedType)
     {
-        reportError(TypeError{location, GenericError{"Recursive type being used with different parameters"}});
+        if (FFlag::LuauNameConstraintRestrictRecursiveTypes)
+            reportError(TypeError{location, RecursiveRestraintViolation{}});
+        else
+            reportError(TypeError{location, GenericError{"Recursive type being used with different parameters"}});
         return errorRecoveryType(scope);
     }
 

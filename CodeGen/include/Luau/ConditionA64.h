@@ -52,6 +52,35 @@ enum class ConditionA64
     Count
 };
 
+// Returns a condition that for 'a op b' will result in 'b op a'
+// Only a subset of conditions is allowed
+inline ConditionA64 getInverseCondition(ConditionA64 cond)
+{
+    switch (cond)
+    {
+    case ConditionA64::Equal:
+        return ConditionA64::Equal;
+    case ConditionA64::NotEqual:
+        return ConditionA64::NotEqual;
+    case ConditionA64::UnsignedGreater:
+        return ConditionA64::CarryClear;
+    case ConditionA64::UnsignedLessEqual:
+        return ConditionA64::CarrySet;
+    case ConditionA64::GreaterEqual:
+        return ConditionA64::LessEqual;
+    case ConditionA64::Less:
+        return ConditionA64::Greater;
+    case ConditionA64::Greater:
+        return ConditionA64::Less;
+    case ConditionA64::LessEqual:
+        return ConditionA64::GreaterEqual;
+    default:
+        CODEGEN_ASSERT(!"invalid ConditionA64 value for getInverseCondition");
+    }
+
+    return ConditionA64::Count;
+}
+
 } // namespace A64
 } // namespace CodeGen
 } // namespace Luau

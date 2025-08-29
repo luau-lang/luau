@@ -16,7 +16,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeSpecificCheck2)
 
 namespace
 {
@@ -877,8 +876,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeSpecificCheck2, true};
-
     Frontend fe{&fileResolver, &configResolver, {false}};
 
     fileResolver.source["Module/A"] = R"(
@@ -1356,7 +1353,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
 
     FrontendOptions opts;
     opts.forAutocomplete = true;
-    getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
     getFrontend().check("game/A", opts);
 
     CHECK(nullptr == getFrontend().moduleResolver.getModule("game/A"));
@@ -1728,7 +1725,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_resolver")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverSelectionFromWorkspace(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
 
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = "return require(game:GetService('Gui').Modules.A)";

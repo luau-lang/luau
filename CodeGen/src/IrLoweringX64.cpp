@@ -16,6 +16,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+
 namespace Luau
 {
 namespace CodeGen
@@ -757,6 +759,34 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(inst.regX64, 1);
 
         build.setLabel(exit);
+        break;
+    }
+    case IrCmd::CMP_INT:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
+
+        // Cannot reuse operand registers as a target because we have to modify it before the comparison
+        inst.regX64 = regs.allocReg(SizeX64::dword, index);
+
+        // We are going to operate on byte register, those do not clear high bits on write
+        build.xor_(inst.regX64, inst.regX64);
+
+        IrCondition cond = conditionOp(inst.c);
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            build.cmp(regOp(inst.b), intOp(inst.a));
+            build.setcc(getInverseCondition(getConditionInt(cond)), byteReg(inst.regX64));
+        }
+        else if (inst.a.kind == IrOpKind::Inst)
+        {
+            build.cmp(regOp(inst.a), intOp(inst.b));
+            build.setcc(getConditionInt(cond), byteReg(inst.regX64));
+        }
+        else
+        {
+            CODEGEN_ASSERT(!"Unsupported instruction form");
+        }
         break;
     }
     case IrCmd::CMP_ANY:
@@ -2246,7 +2276,7 @@ void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrB
         }
         else
         {
-            build.jcc(getReverseCondition(cond), label);
+            build.jcc(getNegatedCondition(cond), label);
             build.ud2();
             build.setLabel(label);
         }

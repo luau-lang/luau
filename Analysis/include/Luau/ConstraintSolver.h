@@ -13,6 +13,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/OrderedSet.h"
 #include "Luau/Substitution.h"
+#include "Luau/SubtypingVariance.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
@@ -39,6 +40,20 @@ using BlockedConstraintId = Variant<TypeId, TypePackId, const Constraint*>;
 struct HashBlockedConstraintId
 {
     size_t operator()(const BlockedConstraintId& bci) const;
+};
+
+struct SubtypeConstraintRecord
+{
+    TypeId subTy = nullptr;
+    TypeId superTy = nullptr;
+    SubtypingVariance variance = SubtypingVariance::Invalid;
+
+    bool operator==(const SubtypeConstraintRecord& other) const;
+};
+
+struct HashSubtypeConstraintRecord
+{
+    size_t operator()(const SubtypeConstraintRecord& c) const;
 };
 
 struct ModuleResolver;
@@ -102,6 +117,11 @@ struct ConstraintSolver
     // scope tree.
     std::vector<std::unique_ptr<Constraint>> solverConstraints;
 
+    // Ticks downward toward zero each time a new constraint is pushed into
+    // solverConstraints. When this counter reaches zero, the type inference
+    // engine reports a CodeTooComplex error and aborts.
+    size_t solverConstraintLimit = 0;
+
     // This includes every constraint that has not been fully solved.
     // A constraint can be both blocked and unsolved, for instance.
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
@@ -122,15 +142,13 @@ struct ConstraintSolver
     // A mapping from free types to the number of unresolved constraints that mention them.
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
 
-    // Clip with LuauUseOrderedTypeSetsInConstraints
-    std::unordered_map<NotNull<const Constraint>, DenseHashSet<TypeId>> maybeMutatedFreeTypes_DEPRECATED;
-    std::unordered_map<TypeId, DenseHashSet<const Constraint*>> mutatedFreeTypeToConstraint_DEPRECATED;
-
     std::unordered_map<NotNull<const Constraint>, TypeIds> maybeMutatedFreeTypes;
     std::unordered_map<TypeId, OrderedSet<const Constraint*>> mutatedFreeTypeToConstraint;
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
+
+    DenseHashMap<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints{{}};
 
     // The set of types that will definitely be unchanged by generalization.
     DenseHashSet<TypeId> generalizedTypes_{nullptr};

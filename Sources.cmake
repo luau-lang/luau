@@ -220,6 +220,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
+    Analysis/include/Luau/SubtypingVariance.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/TableLiteralInference.h
     Analysis/include/Luau/ToDot.h

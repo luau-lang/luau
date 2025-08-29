@@ -6,7 +6,6 @@
 #include "Luau/Common.h"
 #include "Luau/Simplify.h"
 #include "Luau/Type.h"
-#include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Normalize.h"
 #include "Luau/Error.h"
@@ -17,14 +16,14 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeUtils.h"
 
-#include <iostream>
 #include <iterator>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictFixGenericTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressesDynamicRequireErrors)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 namespace Luau
 {
@@ -42,7 +41,10 @@ struct StackPusher
         : stack(&stack)
         , scope(scope)
     {
-        stack.push_back(NotNull{scope});
+        if (FFlag::LuauEmplaceNotPushBack)
+            stack.emplace_back(scope);
+        else
+            stack.push_back(NotNull{scope});
     }
 
     ~StackPusher()
@@ -1094,43 +1096,19 @@ struct NonStrictTypeChecker
         Scope* scope = findInnermostScope(tp->location);
         LUAU_ASSERT(scope);
 
-        if (FFlag::LuauNewNonStrictFixGenericTypePacks)
-        {
-            if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
-                return;
+        if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+            return;
 
-            if (scope->lookupType(tp->genericName.value))
-                return reportError(
-                    SwappedGenericTypeParameter{
-                        tp->genericName.value,
-                        SwappedGenericTypeParameter::Kind::Pack,
-                    },
-                    tp->location
-                );
+        if (scope->lookupType(tp->genericName.value))
+            return reportError(
+                SwappedGenericTypeParameter{
+                    tp->genericName.value,
+                    SwappedGenericTypeParameter::Kind::Pack,
+                },
+                tp->location
+            );
 
-            reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-        }
-        else
-        {
-            std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
-            if (!alias.has_value())
-            {
-                if (scope->lookupType(tp->genericName.value))
-                {
-                    reportError(
-                        SwappedGenericTypeParameter{
-                            tp->genericName.value,
-                            SwappedGenericTypeParameter::Kind::Pack,
-                        },
-                        tp->location
-                    );
-                }
-            }
-            else
-            {
-                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
-            }
-        }
+        reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
     }
 
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
@@ -1272,6 +1250,22 @@ void checkNonStrict(
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);
+
+    if (FFlag::LuauNewNonStrictSuppressesDynamicRequireErrors)
+    {
+        module->errors.erase(
+            std::remove_if(
+                module->errors.begin(),
+                module->errors.end(),
+                [](auto err)
+                {
+                    return get<UnknownRequire>(err) != nullptr;
+                }
+            ),
+            module->errors.end()
+        );
+    }
+
     freeze(module->interfaceTypes);
 }
 

@@ -17,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -168,85 +169,127 @@ Path PathBuilder::build()
 
 PathBuilder& PathBuilder::readProp(std::string name)
 {
-    components.push_back(Property{std::move(name), true});
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(Property{std::move(name), true});
+    else
+        components.push_back(Property{std::move(name), true});
     return *this;
 }
 
 PathBuilder& PathBuilder::writeProp(std::string name)
 {
-    components.push_back(Property{std::move(name), false});
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(Property{std::move(name), false});
+    else
+        components.push_back(Property{std::move(name), false});
     return *this;
 }
 
 PathBuilder& PathBuilder::prop(std::string name)
 {
-    components.push_back(Property{std::move(name)});
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(Property{std::move(name)});
+    else
+        components.push_back(Property{std::move(name)});
     return *this;
 }
 
 PathBuilder& PathBuilder::index(size_t i)
 {
-    components.push_back(Index{i});
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(Index{i});
+    else
+        components.push_back(Index{i});
     return *this;
 }
 
 PathBuilder& PathBuilder::mt()
 {
-    components.push_back(TypeField::Metatable);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::Metatable);
+    else
+        components.push_back(TypeField::Metatable);
     return *this;
 }
 
 PathBuilder& PathBuilder::lb()
 {
-    components.push_back(TypeField::LowerBound);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::LowerBound);
+    else
+        components.push_back(TypeField::LowerBound);
     return *this;
 }
 
 PathBuilder& PathBuilder::ub()
 {
-    components.push_back(TypeField::UpperBound);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::UpperBound);
+    else
+        components.push_back(TypeField::UpperBound);
     return *this;
 }
 
 PathBuilder& PathBuilder::indexKey()
 {
-    components.push_back(TypeField::IndexLookup);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::IndexLookup);
+    else
+        components.push_back(TypeField::IndexLookup);
     return *this;
 }
 
 PathBuilder& PathBuilder::indexValue()
 {
-    components.push_back(TypeField::IndexResult);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::IndexResult);
+    else
+        components.push_back(TypeField::IndexResult);
     return *this;
 }
 
 PathBuilder& PathBuilder::negated()
 {
-    components.push_back(TypeField::Negated);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::Negated);
+    else
+        components.push_back(TypeField::Negated);
     return *this;
 }
 
 PathBuilder& PathBuilder::variadic()
 {
-    components.push_back(TypeField::Variadic);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(TypeField::Variadic);
+    else
+        components.push_back(TypeField::Variadic);
     return *this;
 }
 
 PathBuilder& PathBuilder::args()
 {
-    components.push_back(PackField::Arguments);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(PackField::Arguments);
+    else
+        components.push_back(PackField::Arguments);
     return *this;
 }
 
 PathBuilder& PathBuilder::rets()
 {
-    components.push_back(PackField::Returns);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(PackField::Returns);
+    else
+        components.push_back(PackField::Returns);
     return *this;
 }
 
 PathBuilder& PathBuilder::tail()
 {
-    components.push_back(PackField::Tail);
+    if (FFlag::LuauEmplaceNotPushBack)
+        components.emplace_back(PackField::Tail);
+    else
+        components.push_back(PackField::Tail);
     return *this;
 }
 

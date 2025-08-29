@@ -15,7 +15,6 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauScopeMethodsAreSolverAgnostic)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
@@ -443,8 +442,6 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
-
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -901,7 +898,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "ice_while_checking_script_due_to_scopes_no
     // new solver code paths.
     // This is necessary to repro an ice that can occur in studio
     ScopedFastFlag luauSolverOff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverSelectionFromWorkspace(SolverMode::New);
+    getFrontend().setLuauSolverMode(SolverMode::New);
     ScopedFastFlag sff{FFlag::LuauScopeMethodsAreSolverAgnostic, true};
 
     auto result = check(R"(

@@ -20,9 +20,8 @@ LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauExpectedTypeVisitor)
 LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
+LUAU_FASTFLAG(LuauIncludeBreakContinueStatements)
 
 using namespace Luau;
 
@@ -4560,8 +4559,6 @@ end
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
 {
-    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
-
     check(R"(
         local function foobar(tbl: { tag: "left" | "right" })
             tbl.tag = "@1"
@@ -4575,8 +4572,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_local_table")
 {
-    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
-
     check(R"(
         type Entry = { field: number, prop: string }
         local x : {Entry} = {}
@@ -4603,8 +4598,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_local_table")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_type_assertion")
 {
-    ScopedFastFlag _{FFlag::LuauExpectedTypeVisitor, true};
-
     check(R"(
         type Entry = { field: number, prop: string }
         return ( { f@1, p@2 } :: Entry )
@@ -4621,7 +4614,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
     ScopedFastFlag sffs[] = {
         // Somewhat surprisingly, the old solver didn't cover this case.
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExpectedTypeVisitor, true},
         {FFlag::LuauImplicitTableIndexerKeys3, true},
     };
 
@@ -4648,7 +4640,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_witho
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExpectedTypeVisitor, true},
         {FFlag::LuauImplicitTableIndexerKeys3, true},
     };
 
@@ -4679,10 +4670,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_witho
 
 TEST_CASE_FIXTURE(ACFixture, "bidirectional_autocomplete_in_function_call")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExpectedTypeVisitor, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     check(R"(
         local function take(_: { choice: "left" | "right" }) end
@@ -4697,10 +4685,7 @@ TEST_CASE_FIXTURE(ACFixture, "bidirectional_autocomplete_in_function_call")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_via_bidirectional_self")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     check(R"(
         type IAccount = {
@@ -4732,6 +4717,165 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_via_bidirectional_self")
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("name"), 1);
     CHECK_EQ(ac.entryMap.count("balance"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_loop")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(for x in y do
+        @1
+        if true then
+            @2
+        end
+    end)");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("break") > 0);
+    CHECK(ac.entryMap.count("continue") > 0);
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("break") > 0);
+    CHECK(ac.entryMap.count("continue") > 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_outside_loop")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(@1if true then
+        @2
+    end)");
+
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+
+    ac = autocomplete('2');
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_function_boundary")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(for i = 1, 10 do
+    local function helper()
+        @1
+    end
+    end)");
+
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_param")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(while @1 do
+        end)");
+
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_incomplete_while")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check("while @1");
+
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_incomplete_for")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check("for @1 in @2 do");
+
+    auto ac = autocomplete('1');
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+
+    ac = autocomplete('2');
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_expr_func")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(while true do
+        local _ = function ()
+        @1
+        end
+    end)");
+
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_repeat")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(repeat
+        @1
+    until foo())");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("break") > 0);
+    CHECK(ac.entryMap.count("continue") > 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_nests")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(while ((function ()
+        while true do
+            @1
+        end
+        end)()) do
+    end)");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("break") > 0);
+    CHECK(ac.entryMap.count("continue") > 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_incomplete_loop")
+{
+    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
+
+    check(R"(while foo() do
+        @1)");
+
+    auto ac = autocomplete('1');
+
+    // We'd like to include break/continue here but the incomplete loop ends immediately.
+    CHECK_EQ(ac.entryMap.count("break"), 0);
+    CHECK_EQ(ac.entryMap.count("continue"), 0);
 }
 
 TEST_SUITE_END();

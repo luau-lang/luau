@@ -5,6 +5,8 @@
 LUAU_FASTFLAG(LuauSolverV2);
 
 LUAU_FASTFLAGVARIABLE(LuauScopeMethodsAreSolverAgnostic)
+LUAU_FASTFLAGVARIABLE(LuauNoScopeShallNotSubsumeAll)
+LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 namespace Luau
 {
@@ -265,6 +267,19 @@ bool Scope::shouldWarnGlobal(std::string name) const
     return false;
 }
 
+bool Scope::isInvalidTypeAliasName(const std::string& name) const
+{
+    LUAU_ASSERT(FFlag::LuauNameConstraintRestrictRecursiveTypes);
+
+    for (auto scope = this; scope; scope = scope->parent.get())
+    {
+        if (scope->invalidTypeAliasNames.contains(name))
+            return true;
+    }
+
+    return false;
+}
+
 NotNull<Scope> Scope::findNarrowestScopeContaining(Location location)
 {
     Scope* bestScope = this;
@@ -290,6 +305,12 @@ NotNull<Scope> Scope::findNarrowestScopeContaining(Location location)
 
 bool subsumesStrict(Scope* left, Scope* right)
 {
+    if (FFlag::LuauNoScopeShallNotSubsumeAll)
+    {
+        if (!left || !right)
+            return false;
+    }
+
     while (right)
     {
         if (right->parent.get() == left)
@@ -303,6 +324,12 @@ bool subsumesStrict(Scope* left, Scope* right)
 
 bool subsumes(Scope* left, Scope* right)
 {
+    if (FFlag::LuauNoScopeShallNotSubsumeAll)
+    {
+        if (!left || !right)
+            return false;
+    }
+
     return left == right || subsumesStrict(left, right);
 }
 

@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
@@ -1340,10 +1339,8 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
 
 TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauDfgAllowUpdatesInLoops, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     // This is a tactical unsoundness we're introducing to resolve issues around
     // cyclic types. You can see that if this loop were to run more than once,
     // we'd error as we'd try to call a number.
@@ -1353,6 +1350,29 @@ TEST_CASE_FIXTURE(Fixture, "loop_unsoundness")
             f = f()
         end
     )"));
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        local function f(x: unknown): string
+            if typeof(x) == 'table' then
+                if typeof(x.foo) == 'string' and typeof(x.bar) == 'string' then
+                    return x.foo .. x.bar
+                end
+            end
+            return ''
+        end
+    )");
+
+    // We'd like for this to be 0
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
+    CHECK(Position{3, 56} == result.errors[0].location.begin);
+    CHECK(Position{3, 61} == result.errors[0].location.end);
 }
 
 TEST_SUITE_END();
