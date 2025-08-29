@@ -68,6 +68,9 @@ struct SubtypingResult
     // those assumptions are recorded here.
     std::vector<SubtypeConstraint> assumedConstraints;
 
+    /// If any generic bounds were invalid, report them here
+    std::vector<GenericBoundsMismatch> genericBoundsMismatches;
+
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
     SubtypingResult& withBothComponent(TypePath::Component component);
@@ -358,7 +361,15 @@ private:
                                          NotNull<Scope> scope,
                                          SubtypingResult& original);
 
-    SubtypingResult checkGenericBounds(const SubtypingEnvironment::GenericBounds& bounds, SubtypingEnvironment& env, NotNull<Scope> scope);
+    SubtypingResult checkGenericBounds(
+        const SubtypingEnvironment::GenericBounds& bounds,
+        SubtypingEnvironment& env,
+        NotNull<Scope> scope,
+        std::string_view genericName
+    );
+
+    // TODO: Clip with LuauSubtypingReportGenericBoundMismatches
+    SubtypingResult checkGenericBounds_DEPRECATED(const SubtypingEnvironment::GenericBounds& bounds, SubtypingEnvironment& env, NotNull<Scope> scope);
 
     static void maybeUpdateBounds(
         TypeId here,

@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
+LUAU_FASTFLAGVARIABLE(LuauIncludeBreakContinueStatements)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -1210,6 +1211,28 @@ static bool isBindingLegalAtCurrentPosition(const Symbol& symbol, const Binding&
     return binding.location == Location() || !binding.location.containsClosed(pos);
 }
 
+static bool isValidBreakContinueContext(const std::vector<AstNode*>& ancestry, Position position)
+{
+    LUAU_ASSERT(FFlag::LuauIncludeBreakContinueStatements);
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
+    {
+        if ((*it)->is<AstStatFunction>() || (*it)->is<AstStatLocalFunction>() || (*it)->is<AstExprFunction>() || (*it)->is<AstStatTypeFunction>() ||
+            (*it)->is<AstTypeFunction>())
+            return false;
+
+        if (auto statWhile = (*it)->as<AstStatWhile>(); statWhile && statWhile->body->location.contains(position))
+            return true;
+        else if (auto statFor = (*it)->as<AstStatFor>(); statFor && statFor->body->location.contains(position))
+            return true;
+        else if (auto statForIn = (*it)->as<AstStatForIn>(); statForIn && statForIn->body->location.contains(position))
+            return true;
+        else if (auto statRepeat = (*it)->as<AstStatRepeat>(); statRepeat && statRepeat->body->location.contains(position))
+            return true;
+    }
+
+    return false;
+}
+
 static AutocompleteEntryMap autocompleteStatement(
     const Module& module,
     const std::vector<AstNode*>& ancestry,
@@ -1254,8 +1277,20 @@ static AutocompleteEntryMap autocompleteStatement(
         scope = scope->parent;
     }
 
-    for (const auto& kw : kStatementStartingKeywords)
-        result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+    if (FFlag::LuauIncludeBreakContinueStatements)
+    {
+        bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
+        for (const auto& kw : kStatementStartingKeywords)
+        {
+            if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
+                result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        }
+    }
+    else
+    {
+        for (const auto& kw : kStatementStartingKeywords)
+            result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+    }
 
     for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
     {

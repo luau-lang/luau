@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
+LUAU_FASTFLAG(LuauTypeFunNoScopeMapRef)
 LUAU_FASTFLAG(LuauRenameClassToExtern)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -2481,6 +2482,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_extern_tag")
     auto test = requireTypeAlias("a");
     // If it's not an ExternType it will fail.
     LUAU_ASSERT( test->ty.get_if<ExternType>() );
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_fuzz_environment_scope_crash")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauTypeFunNoScopeMapRef{FFlag::LuauTypeFunNoScopeMapRef, true};
+
+    CheckResult result = check(R"(
+local _, running = ...
+type function t255() end
+if _ then
+    type function t1() end
+    type function t6(l0,...) end
+    type function t255<A...>() end
+    export type function t0<A>() end
+else
+    type function t1(...) end
+    type function t66<A...>(...) end
+    type function t255() end
+    if running then
+        export type function t255() end
+        type function t0(l0) end
+    end
+end
+type function t0(l0,...) end
+export type function t66(...)
+    export type function t255() end
+end
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

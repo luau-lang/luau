@@ -27,11 +27,11 @@ LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1449,7 +1449,14 @@ local a = {{x=4}, {x=7}, {x=1}}
 table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+    {
+        // FIXME CLI-161355
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<GenericBoundsMismatch>(result.errors[0]));
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
@@ -3184,10 +3191,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_pack_variadic")
 
 TEST_CASE_FIXTURE(Fixture, "table_annotated_explicit_self")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type MyObject = {
@@ -3210,11 +3214,7 @@ TEST_CASE_FIXTURE(Fixture, "table_annotated_explicit_self")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1871")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-    };
-
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type Test = {
@@ -3233,10 +3233,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1871")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type IIOManager = {
@@ -3268,10 +3265,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushFunctionTypesInFunctionStatement, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Object = {

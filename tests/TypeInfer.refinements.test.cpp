@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
 
 using namespace Luau;
 
@@ -2350,7 +2351,14 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "mutate_prop_of_some_refined_symb
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+    {
+        // FIXME CLI-161355
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<GenericBoundsMismatch>(result.errors[0]));
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_t_after_return_references_all_reachable_points")

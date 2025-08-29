@@ -21,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 
 namespace Luau
 {
@@ -607,6 +608,7 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_VECTOR_CLAMP:
     case LBF_VECTOR_MIN:
     case LBF_VECTOR_MAX:
+    case LBF_VECTOR_LERP:
     case LBF_MATH_LERP:
         break;
     case LBF_TABLE_INSERT:
@@ -1325,6 +1327,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SELECT_NUM:
     case IrCmd::NOT_ANY:
         state.substituteOrRecord(inst, index);
+        break;
+    case IrCmd::CMP_INT:
+        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
         break;
     case IrCmd::CMP_ANY:
         state.invalidateUserCall();

@@ -24,17 +24,16 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauTableLiteralSubtypeCheckFunctionCalls)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNormalizationLimitTyvarUnionSize)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauResetConditionalContextProperly)
 LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
+LUAU_FASTFLAG(LuauAllowMixedTables)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -491,8 +490,6 @@ TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_param_width_subtyping_2")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
-
     CheckResult result = check(R"(
         --!strict
         function foo(o)
@@ -3879,10 +3876,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly
 
 TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_tables_in_call_is_unsound")
 {
-    ScopedFastFlag sff[]{
-        {FFlag::LuauInstantiateInSubtyping, true},
-        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauInstantiateInSubtyping, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -4436,8 +4430,6 @@ TEST_CASE_FIXTURE(Fixture, "new_solver_supports_read_write_properties")
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
 {
-    ScopedFastFlag _{FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true};
-
     CheckResult result = check(R"(
         function one(tbl: {x: any}) end
         function two(tbl: {x: string}) one(tbl) end -- ok, string <: any and any <: string
@@ -5835,10 +5827,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1651")
 
 TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function take(_: { foo: string? }) end
@@ -5849,10 +5838,7 @@ TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call")
 
 TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call_incorrect")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         local function take(_: { foo: string?, bing: number }) end
@@ -5870,10 +5856,7 @@ TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call_incorrect")
 
 TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call_singleton")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         local function take(_: { foo: "foo" }) end
@@ -5888,7 +5871,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableLiteralSubtypeCheckFunctionCalls, true},
         {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauTrackFreeInteriorTypePacks, true},
         {FFlag::LuauResetConditionalContextProperly, true}
@@ -6045,6 +6027,32 @@ TEST_CASE_FIXTURE(Fixture, "free_types_with_sealed_table_upper_bounds_can_still_
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("({ read nope: () -> (...unknown) } & { x: number }) -> ()" == toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "mixed_tables_are_ok_when_explicit")
+{
+    ScopedFastFlag _{FFlag::LuauAllowMixedTables, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo: { [number | string]: unknown } = {
+            Key = "sorry",
+            "A",
+            "B",
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "mixed_tables_are_ok_for_any_key")
+{
+    ScopedFastFlag _{FFlag::LuauAllowMixedTables, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo: { [any]: unknown } = {
+            Key = "sorry",
+            "A",
+            "B",
+        }
+    )"));
 }
 
 TEST_SUITE_END();

@@ -5,8 +5,8 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
+LUAU_FASTFLAGVARIABLE(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -24,7 +24,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
     bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer(NotNull<TypeIds> result)
-        : TypeOnceVisitor("ReferenceCountInitializer")
+        : TypeOnceVisitor("ReferenceCountInitializer", FFlag::LuauExplicitSkipBoundTypes)
         , result(result)
     {
     }
@@ -178,12 +178,10 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
         rci.traverse(tcc->exprType);
     }
 
-    if (FFlag::LuauPushFunctionTypesInFunctionStatement)
+    // NOTE: this should probably be in an if-else chain with the above.
+    if (auto pftc = get<PushFunctionTypeConstraint>(*this))
     {
-        if (auto pftc = get<PushFunctionTypeConstraint>(*this))
-        {
-            rci.traverse(pftc->functionType);
-        }
+        rci.traverse(pftc->functionType);
     }
 
     return types;

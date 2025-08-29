@@ -1,11 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Ast.h"
 #include "Luau/Location.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
+#include "Luau/TypeIds.h"
 #include "Luau/Variant.h"
-#include "Luau/Ast.h"
 
 #include <set>
 
@@ -513,6 +514,18 @@ struct RecursiveRestraintViolation
     }
 };
 
+// Error during subtyping when the inferred bounds of a generic type are incompatible
+struct GenericBoundsMismatch
+{
+    std::string_view genericName;
+    std::vector<TypeId> lowerBounds;
+    std::vector<TypeId> upperBounds;
+
+    GenericBoundsMismatch(std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet);
+
+    bool operator==(const GenericBoundsMismatch& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -569,7 +582,8 @@ using TypeErrorData = Variant<
     GenericTypeCountMismatch,
     GenericTypePackCountMismatch,
     MultipleNonviableOverloads,
-    RecursiveRestraintViolation>;
+    RecursiveRestraintViolation,
+    GenericBoundsMismatch>;
 
 struct TypeErrorSummary
 {

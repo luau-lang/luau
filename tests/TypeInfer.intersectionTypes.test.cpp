@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
-LUAU_FASTFLAG(LuauPushFunctionTypesInFunctionStatement)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -334,8 +333,6 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
-    ScopedFastFlag sff{FFlag::LuauPushFunctionTypesInFunctionStatement, true};
-
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
         type Y = { y: (string) -> string }
