@@ -3036,12 +3036,6 @@ TypeId ConstraintSolver::specifyExplicitTypes(
         replacementPacks[*typePackParametersIter++] = typePackParameter;
     }
 
-    // todo soon
-    // while (typeParametersIter != functionType->generics.end())
-    // {
-    //     replacementPacks[*typePackParametersIter++] = freshTypePack(arena, builtinTypes, constraint->scope, Polarity::Mixed);
-    // }
-
     Replacer replacer{arena, std::move(replacements), std::move(replacementPacks)};
     return replacer.substitute(functionTypeId).value_or(builtinTypes->errorType);
 }
