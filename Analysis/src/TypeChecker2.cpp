@@ -38,6 +38,7 @@ LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
@@ -1377,6 +1378,11 @@ void TypeChecker2::visit(AstExpr* expr, ValueContext context)
         return visit(e);
     else if (auto e = expr->as<AstExprIfElse>())
         return visit(e);
+    else if (auto e = expr->as<AstExprExplicitTypeInstantiation>())
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        return visit(e);
+    }
     else if (auto e = expr->as<AstExprInterpString>())
         return visit(e);
     else if (auto e = expr->as<AstExprError>())
@@ -1509,6 +1515,14 @@ void TypeChecker2::visitCall(AstExprCall* call)
             reportError(OptionalValueAccess{fnTy}, call->func->location);
         }
         return;
+    }
+
+    if (FFlag::LuauExplicitTypeExpressionInstantiation)
+    {
+        if (call->explicitTypes.size)
+        {
+            checkExplicitTypes(call, fnTy, call->location, call->explicitTypes);
+        }
     }
 
     if (selectedOverloadTy)
@@ -2549,6 +2563,18 @@ void TypeChecker2::visit(AstExprIfElse* expr)
     visit(expr->condition, ValueContext::RValue);
     visit(expr->trueExpr, ValueContext::RValue);
     visit(expr->falseExpr, ValueContext::RValue);
+}
+
+void TypeChecker2::visit(AstExprExplicitTypeInstantiation* explicitTypeInstantiation)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+    visit(explicitTypeInstantiation->expr, ValueContext::RValue);
+    checkExplicitTypes(
+        explicitTypeInstantiation->expr,
+        lookupType(explicitTypeInstantiation->expr),
+        explicitTypeInstantiation->location,
+        explicitTypeInstantiation->types
+    );
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -3599,6 +3625,49 @@ void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
         }
     }
 }
+
+void TypeChecker2::checkExplicitTypes(
+    AstExpr* baseFunctionExpr,
+    TypeId fnType,
+    const Location& location,
+    const AstArray<AstTypeOrPack>& explicitTypes
+)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    const FunctionType* ftv = get<FunctionType>(follow(fnType));
+    if (!ftv)
+    {
+        return;
+    }
+
+    size_t typeCount = 0;
+    size_t typePackCount = 0;
+
+    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    {
+        if (typeOrPack.type)
+        {
+            ++typeCount;
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            ++typePackCount;
+        }
+    }
+
+    if (ftv->generics.size() < typeCount || ftv->genericPacks.size() < typePackCount)
+    {
+        reportError(
+            ExplicitlySpecifiedGenericsTooManySpecified{
+                getIdentifierOfBaseVar(baseFunctionExpr), fnType, typeCount, ftv->generics.size(), typePackCount, ftv->genericPacks.size()
+            },
+            location
+        );
+    }
+}
+
 
 void TypeChecker2::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const
 {

@@ -136,6 +136,7 @@ std::string dump(const std::optional<TypeId>& ty);
 std::string dump(TypePackId ty);
 std::string dump(const std::optional<TypePackId>& ty);
 std::string dump(const std::vector<TypeId>& types);
+std::string dump(const std::vector<TypePackId>& types);
 std::string dump(DenseHashMap<TypeId, TypeId>& types);
 std::string dump(DenseHashMap<TypePackId, TypePackId>& types);
 
@@ -159,4 +160,5 @@ inline std::string toString(const TypeOrPack& tyOrTp)
 std::string dump(const TypeOrPack& tyOrTp);
 
 std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& opts);
+std::string toStringVector(const std::vector<TypePackId>& typePacks, ToStringOptions& opts);
 } // namespace Luau

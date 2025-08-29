@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
@@ -1352,7 +1353,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
 
         Position start = firstValue->location.begin;
         Position end = values[forin.values.size - 1]->location.end;
-        AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
+        AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, AstArray<AstTypeOrPack>{}, Location()};
 
         retPack = checkExprPack(scope, exprCall).type;
     }
@@ -1930,6 +1931,11 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         result = checkExpr(scope, *a, expectedType);
     else if (auto a = expr.as<AstExprInterpString>())
         result = checkExpr(scope, *a);
+    else if (auto a = expr.as<AstExprExplicitTypeInstantiation>())
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        result = checkExpr(scope, *a);
+    }
     else
         ice("Unhandled AstExpr?");
 
@@ -3280,6 +3286,140 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     return WithPredicate{stringType};
 }
 
+WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprExplicitTypeInstantiation& explicitTypeInstantiation)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    WithPredicate<TypeId> baseType = checkExpr(scope, *explicitTypeInstantiation.expr);
+
+    return WithPredicate{bindExplicitTypeInstantations(
+        scope, baseType.type, explicitTypeInstantiation.types, explicitTypeInstantiation.expr, explicitTypeInstantiation.expr->location
+    )};
+}
+
+TypeId TypeChecker::bindExplicitTypeInstantations(
+    const ScopePtr& scope,
+    TypeId baseType,
+    const AstArray<AstTypeOrPack>& explicitTypes,
+    const AstExpr* functionExpr,
+    const Location& location
+)
+{
+    baseType = follow(baseType);
+    const FunctionType* functionType = get<FunctionType>(baseType);
+
+    if (!functionType)
+    {
+        ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
+            ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None;
+
+        if (get<IntersectionType>(baseType))
+        {
+            interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection;
+        }
+        else if (const MetatableType* mttv = get<MetatableType>(baseType))
+        {
+            if (getIndexTypeFromType(scope, mttv->metatable, "__call", location, /* addErrors= */ false).has_value())
+            {
+                interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
+            }
+        }
+
+        reportError(
+            location,
+            ExplicitlySpecifiedGenericsOnNonFunction{
+                interestingEdgeCase,
+            }
+        );
+
+        return baseType;
+    }
+
+    ScopePtr aliasScope = childScope(scope, location);
+    aliasScope->level = scope->level.incr();
+
+    std::vector<TypeId> typeParams;
+    typeParams.reserve(functionType->generics.size());
+    for (size_t i = 0; i < functionType->generics.size(); ++i)
+    {
+        typeParams.push_back(freshType(scope));
+    }
+
+    auto typeParamsIter = typeParams.begin();
+
+    std::vector<TypePackId> typePackParams;
+    typePackParams.reserve(functionType->genericPacks.size());
+    for (size_t i = 0; i < functionType->genericPacks.size(); ++i)
+    {
+        typePackParams.push_back(freshTypePack(scope));
+    }
+
+    auto typePackParamsIter = typePackParams.begin();
+
+    size_t typeParamCount = 0;
+    size_t typePackParamCount = 0;
+
+    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    {
+        if (typeOrPack.type)
+        {
+            ++typeParamCount;
+
+            if (typeParamsIter == typeParams.end())
+            {
+                continue;
+            }
+
+            *typeParamsIter++ = resolveType(scope, *typeOrPack.type);
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            ++typePackParamCount;
+
+            if (typePackParamsIter == typePackParams.end())
+            {
+                continue;
+            }
+
+            *typePackParamsIter++ = resolveTypePack(scope, *typeOrPack.typePack);
+        }
+    }
+
+    if (typeParamCount > functionType->generics.size() || typePackParamCount > functionType->genericPacks.size())
+    {
+        reportError(
+            location,
+            ExplicitlySpecifiedGenericsTooManySpecified{
+                getFunctionNameAsString(*functionExpr),
+                baseType,
+                typeParamCount,
+                functionType->generics.size(),
+                typePackParamCount,
+                functionType->genericPacks.size()
+            }
+        );
+    }
+
+    TypeFun baseFun;
+    baseFun.type = baseType;
+
+    baseFun.typeParams.reserve(functionType->generics.size());
+    for (TypeId genericId : functionType->generics)
+    {
+        baseFun.typeParams.push_back({genericId, std::nullopt});
+    }
+
+    baseFun.typePackParams.reserve(functionType->genericPacks.size());
+    for (TypePackId genericPackId : functionType->genericPacks)
+    {
+        baseFun.typePackParams.push_back({genericPackId, std::nullopt});
+    }
+
+    return instantiateTypeFun(scope, baseFun, typeParams, typePackParams, location);
+}
+
+
 TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr, ValueContext ctx)
 {
     return checkLValueBinding(scope, expr, ctx);
@@ -4347,7 +4487,13 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
         if (std::optional<TypeId> propTy = getIndexTypeFromType(scope, selfType, indexExpr->index.value, expr.location, /* addErrors= */ true))
         {
             functionType = *propTy;
-            actualFunctionType = instantiate(scope, functionType, expr.func->location);
+            actualFunctionType = instantiate(
+                scope,
+                FFlag::LuauExplicitTypeExpressionInstantiation && expr.explicitTypes.size
+                    ? bindExplicitTypeInstantations(scope, functionType, expr.explicitTypes, expr.func, expr.location)
+                    : functionType,
+                expr.func->location
+            );
         }
         else
         {

@@ -252,7 +252,7 @@ public:
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
-
+    bool tryDispatch(const ExplicitlySpecifiedGenericsConstraint& c, NotNull<const Constraint> constraint);
 
     bool tryDispatchHasIndexer(
         int& recursionDepth,
@@ -463,6 +463,14 @@ public:
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
+
+    TypeId specifyExplicitTypes(
+        TypeId functionTypeId,
+        const std::vector<TypeId>& explicitTypeIds,
+        const std::vector<TypePackId>& explicitTypePackIds,
+        NotNull<Scope> scope,
+        const Location& location
+    );
 
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 

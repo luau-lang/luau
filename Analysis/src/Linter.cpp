@@ -17,6 +17,8 @@ LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace Luau
 {
 
@@ -188,6 +190,11 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
                 return false;
 
         return true;
+    }
+    CASE(AstExprExplicitTypeInstantiation)
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        return similar(le->expr, re->expr);
     }
     else
     {
