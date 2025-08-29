@@ -319,6 +319,9 @@ std::ostream& operator<<(std::ostream& stream, const ExplicitlySpecifiedGenerics
         return stream << "MetatableCall";
     case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection:
         return stream << "Intersection";
+    default:
+        LUAU_ASSERT(false);
+        return stream << "Unknown";
     }
 }
 
