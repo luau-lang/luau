@@ -43,6 +43,39 @@ struct Counter
 
 int Counter::instanceCount = 0;
 
+std::string_view stringAtLocation(std::string_view source, const Location& location)
+{
+    std::vector<std::string_view> lines = Luau::split(source, '\n');
+    LUAU_ASSERT(lines.size() > location.begin.line && lines.size() > location.end.line);
+
+    int byteStart = -1;
+    int byteEnd = -1;
+    int bytesSum = 0;
+
+    for (size_t lineNo = 0; lineNo < lines.size(); ++lineNo)
+    {
+        std::string_view line = lines.at(lineNo);
+
+        if (lineNo == location.begin.line)
+        {
+            byteStart = bytesSum + location.begin.column;
+        }
+
+        if (lineNo == location.end.line)
+        {
+            byteEnd = bytesSum + location.end.column;
+            break;
+        }
+
+        bytesSum += line.size() + 1;
+    }
+
+    LUAU_ASSERT(byteStart != -1);
+    LUAU_ASSERT(byteEnd != -1);
+
+    return source.substr(byteStart, byteEnd - byteStart);
+}
+
 } // namespace
 
 TEST_SUITE_BEGIN("AllocatorTests");
@@ -111,9 +144,11 @@ TEST_CASE_FIXTURE(Fixture, "can_haz_annotations")
 
 TEST_CASE_FIXTURE(Fixture, "local_with_annotation")
 {
-    AstStatBlock* block = parse(R"(
+    std::string code = R"(
         local foo: string = "Hello Types!"
-    )");
+    )";
+
+    AstStatBlock* block = parse(code);
 
     REQUIRE(block != nullptr);
 
@@ -128,6 +163,8 @@ TEST_CASE_FIXTURE(Fixture, "local_with_annotation")
     REQUIRE(l->annotation != nullptr);
 
     REQUIRE_EQ(1, local->values.size);
+
+    REQUIRE_EQ(stringAtLocation(code, l->location), "foo");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_names_can_contain_dots")
@@ -2815,8 +2852,26 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression_call")
 {
     ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
 
-    AstStat* stat = parse("local x = f<<T, U>>()");
-    REQUIRE(stat != nullptr);
+    std::string source = "local x = f<<T, U>>()";
+
+    ParseResult result = parseEx(source);
+    REQUIRE(result.root);
+
+    AstStatLocal* local = result.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local != nullptr);
+
+    REQUIRE_EQ(1, local->vars.size);
+
+    AstExpr* expr = local->values.data[0];
+    REQUIRE(expr != nullptr);
+
+    AstExprCall* call = expr->as<AstExprCall>();
+    REQUIRE(call != nullptr);
+
+    AstExprExplicitTypeInstantiation* explicitTypeInstantiation = call->func->as<AstExprExplicitTypeInstantiation>();
+    REQUIRE(explicitTypeInstantiation != nullptr);
+
+    REQUIRE_EQ(stringAtLocation(source, explicitTypeInstantiation->location), "f<<T, U>>");
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression")
@@ -2841,8 +2896,8 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_indexing")
 
     AstStat* stat = parse(R"(
         t.f<<T, U>>()
-        -- t:f<<T, U>>()
-        -- t["f"]<<T, U>>()
+        t:f<<T, U>>()
+        t["f"]<<T, U>>()
     )");
     REQUIRE(stat != nullptr);
 }

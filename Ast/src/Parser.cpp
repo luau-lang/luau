@@ -3101,10 +3101,10 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
                 cstNode = allocator.alloc<CstExprExplicitTypeInstantiation>(CstExplicitTypeInstantiation{});
             }
 
-            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(cstNode ? &cstNode->instantiation : nullptr);
+            Location endLocation;
+            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(cstNode ? &cstNode->instantiation : nullptr, &endLocation);
 
-            // todo soon: i don't think the location.end here is correct
-            expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, lexer.current().location.end), expr, typesOrPacks);
+            expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, endLocation.end), expr, typesOrPacks);
 
             if (options.storeCstData)
             {
@@ -4075,7 +4075,8 @@ AstExpr* Parser::parseInterpString()
 }
 
 AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation(
-    CstExplicitTypeInstantiation* cstNodeOut
+    CstExplicitTypeInstantiation* cstNodeOut,
+    Location* endLocationOut
 )
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
@@ -4106,6 +4107,11 @@ AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation(
         {
             cstNodeOut->rightArrow2Position = lexer.current().location.begin;
         }
+    }
+
+    if (endLocationOut)
+    {
+        *endLocationOut = lexer.current().location;
     }
 
     expectMatchAndConsume('>', begin);

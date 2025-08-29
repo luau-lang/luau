@@ -312,7 +312,10 @@ private:
     AstExpr* parseInterpString();
 
     // ExplicitTypeInstantiation ::= `<' `<' [TypeList] `>' `>'
-    AstArray<AstTypeOrPack> parseExplicitTypeInstantiation(CstExplicitTypeInstantiation* cstNodeOut);
+    AstArray<AstTypeOrPack> parseExplicitTypeInstantiation(
+        CstExplicitTypeInstantiation* cstNodeOut = nullptr,
+        Location* endLocationOut = nullptr
+    );
 
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);
