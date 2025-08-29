@@ -67,7 +67,7 @@ std::string_view stringAtLocation(std::string_view source, const Location& locat
             break;
         }
 
-        bytesSum += line.size() + 1;
+        bytesSum += static_cast<int>(line.size()) + 1;
     }
 
     LUAU_ASSERT(byteStart != -1);
