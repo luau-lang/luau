@@ -400,7 +400,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
 
         CheckResult result = check(R"(
         --!strict
-        local function f<T...>() end
+        local function f<T...>(): (T...) end
 
         f<<(string, number), (true, false)>>()
         )");
@@ -410,11 +410,11 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
 
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as (...any) -> (). Expected at most 0 type packs, but 2 provided.");
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T...>(...any) -> (T...). Expected at most 1 type pack, but 2 provided.");
         }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T...>() -> (). Expected at most 1 type pack, but 2 provided.");
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T...>() -> (T...). Expected at most 1 type pack, but 2 provided.");
         }
     }
 }
