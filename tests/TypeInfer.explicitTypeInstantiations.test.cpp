@@ -437,6 +437,15 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_method")
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
         REQUIRE_EQ(result.errors[0].location.begin.line, 6);
+
+        if (FFlag::LuauSolverV2)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to function typed as <T>(any) -> (). Expected at most 1 type parameter, but 2 provided.");
+        }
+        else
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 't.f', which is typed as <T>(any) -> (). Expected at most 1 type parameter, but 2 provided.");
+        }
     }
 }
 
@@ -449,7 +458,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_type_packs_provided_method")
         CheckResult result = check(R"(
         --!strict
         local t = {
-            f = function<T...>(self: any) end,
+            f = function<T...>(self: any): (T...) end,
         }
 
         t:f<<(number, string), (true, false)>>()
@@ -458,6 +467,15 @@ TEST_CASE_FIXTURE(Fixture, "too_many_type_packs_provided_method")
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
         REQUIRE_EQ(result.errors[0].location.begin.line, 6);
+
+        if (FFlag::LuauSolverV2)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to function typed as <T...>(any) -> (T...). Expected at most 1 type pack, but 2 provided.");
+        }
+        else
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 't.f', which is typed as <T...>(any) -> (T...). Expected at most 1 type pack, but 2 provided.");
+        }
     }
 }
 
