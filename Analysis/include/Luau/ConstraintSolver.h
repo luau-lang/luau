@@ -249,8 +249,7 @@ public:
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const TableCheckConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
 
@@ -275,6 +274,7 @@ public:
     bool tryDispatch(const SimplifyConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     bool tryDispatch(const PushFunctionTypeConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     // for a, ... in some_table do
     // also handles __iter metamethod

@@ -131,9 +131,6 @@ assert(pcall(function() local t = {} rawset(t, vector.create(0/0, 2, 3), 1) end)
 assert(vector.create(1, 0, 0):Cross(vector.create(0, 1, 0)) == vector.create(0, 0, 1))
 assert(vector.create(0, 1, 0):Cross(vector.create(1, 0, 0)) == vector.create(0, 0, -1))
 
--- make sure we cover both builtin and C impl
-assert(vector.create(1, 2, 4) == vector.create("1", "2", "4"))
-
 -- validate component access (both cases)
 assert(vector.create(1, 2, 3).x == 1)
 assert(vector.create(1, 2, 3).X == 1)
@@ -182,5 +179,7 @@ local function numvectemporary()
 end
 
 numvectemporary()
+
+assert(is_native_if_supported())
 
 return 'OK'

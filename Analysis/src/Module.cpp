@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAGVARIABLE(LuauEmplaceNotPushBack)
+LUAU_FASTFLAG(LuauSuggestHotComments)
 
 namespace Luau
 {
@@ -92,6 +93,27 @@ bool isWithinComment(const SourceModule& sourceModule, Position pos)
 bool isWithinComment(const ParseResult& result, Position pos)
 {
     return isWithinComment(result.commentLocations, pos);
+}
+
+bool isWithinHotComment(const std::vector<HotComment>& hotComments, Position pos)
+{
+    for (const HotComment& hotComment : hotComments)
+    {
+        if (hotComment.location.containsClosed(pos))
+            return true;
+    }
+
+    return false;
+}
+
+bool isWithinHotComment(const SourceModule& sourceModule, Position pos)
+{
+    return isWithinHotComment(sourceModule.hotcomments, pos);
+}
+
+bool isWithinHotComment(const ParseResult& result, Position pos)
+{
+    return isWithinHotComment(result.hotcomments, pos);
 }
 
 struct ClonePublicInterface : Substitution

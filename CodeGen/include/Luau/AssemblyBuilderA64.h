@@ -145,6 +145,9 @@ public:
     void ins_4s(RegisterA64 dst, uint8_t dstIndex, RegisterA64 src, uint8_t srcIndex);
     void dup_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);
 
+    void fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void bit(RegisterA64 dst, RegisterA64 src, RegisterA64 mask);
+
     // Floating-point rounding and conversions
     void frinta(RegisterA64 dst, RegisterA64 src);
     void frintm(RegisterA64 dst, RegisterA64 src);

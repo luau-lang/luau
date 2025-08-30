@@ -11,6 +11,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+
 TEST_SUITE_BEGIN("TypeTests");
 
 TEST_CASE_FIXTURE(Fixture, "primitives_are_equal")
@@ -219,6 +221,7 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_only_cyclic_union")
  */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     Type ftv11{FreeType{TypeLevel{}, getBuiltins()->neverType, getBuiltins()->unknownType}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
@@ -304,10 +307,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
     REQUIRE(!anyification.normalizationTooComplex);
     REQUIRE(any.has_value());
-    if (FFlag::LuauSolverV2)
-        CHECK_EQ("{ f: t1 } where t1 = () -> { f: () -> { f: ({ f: t1 }) -> (), signal: { f: (any) -> () } } }", toString(*any));
-    else
-        CHECK_EQ("{| f: t1 |} where t1 = () -> {| f: () -> {| f: ({| f: t1 |}) -> (), signal: {| f: (any) -> () |} |} |}", toString(*any));
+    CHECK_EQ("{ f: t1 } where t1 = () -> { f: () -> { f: ({ f: t1 }) -> (), signal: { f: (any) -> () } } }", toString(*any));
 }
 
 TEST_CASE("tagging_tables")

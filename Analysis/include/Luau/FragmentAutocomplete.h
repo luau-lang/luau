@@ -127,7 +127,8 @@ FragmentAutocompleteResult fragmentAutocomplete(
     StringCompletionCallback callback,
     std::optional<Position> fragmentEndPosition = std::nullopt,
     AstStatBlock* recentParse = nullptr,
-    IFragmentAutocompleteReporter* reporter = nullptr
+    IFragmentAutocompleteReporter* reporter = nullptr,
+    bool isInHotComment = false
 );
 
 enum class FragmentAutocompleteStatus

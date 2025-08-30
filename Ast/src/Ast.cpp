@@ -64,18 +64,24 @@ AstAttr::DeprecatedInfo AstAttr::deprecatedInfo() const
     AstAttr::DeprecatedInfo info;
     info.deprecated = type == AstAttr::Type::Deprecated;
 
-    if (info.deprecated && args.size > 0)
+    if (info.deprecated && args.size > 0 && args.data[0]->is<AstExprTable>())
     {
         AstExprTable* table = args.data[0]->as<AstExprTable>();
         if (auto useValue = table->getRecord("use"))
         {
-            AstArray<char> use = (*useValue)->as<AstExprConstantString>()->value;
-            info.use = {{use.data, use.size}};
+            if ((*useValue)->is<AstExprConstantString>())
+            {
+                AstArray<char> use = (*useValue)->as<AstExprConstantString>()->value;
+                info.use = {{use.data, use.size}};
+            }
         }
         if (auto reasonValue = table->getRecord("reason"))
         {
-            AstArray<char> reason = (*reasonValue)->as<AstExprConstantString>()->value;
-            info.reason = {{reason.data, reason.size}};
+            if ((*reasonValue)->is<AstExprConstantString>())
+            {
+                AstArray<char> reason = (*reasonValue)->as<AstExprConstantString>()->value;
+                info.reason = {{reason.data, reason.size}};
+            }
         }
     }
 
