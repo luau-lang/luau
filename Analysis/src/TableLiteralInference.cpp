@@ -122,8 +122,81 @@ TypeId matchLiteralType(
         }
 
         Relation r = relate(exprType, expectedType);
+
+        // Accept exact or narrower matches unconditionally.
         if (r == Relation::Coincident || r == Relation::Subset)
             return expectedType;
+
+        // For Superset, only accept if the expected type contains the literal's exact value.
+        if (r == Relation::Superset)
+        {
+            TypeId ty = follow(expectedType);
+
+            // String literal membership check
+            if (auto s = expr->as<AstExprConstantString>())
+            {
+                std::string lit{s->value.data, s->value.size};
+                bool contains = false;
+
+                if (auto utv = get<UnionType>(ty))
+                {
+                    for (TypeId option : utv)
+                    {
+                        if (const SingletonType* st = get<SingletonType>(follow(option)))
+                            if (const StringSingleton* ss = get<StringSingleton>(st))
+                                if (ss->value == lit)
+                                {
+                                    contains = true;
+                                    break;
+                                }
+                    }
+                }
+                else if (const SingletonType* st = get<SingletonType>(ty))
+                {
+                    if (const StringSingleton* ss = get<StringSingleton>(st))
+                        contains = (ss->value == lit);
+                }
+
+                if (contains)
+                    return expectedType;
+
+                return exprType;
+            }
+
+            // Boolean literal membership check
+            if (auto b = expr->as<AstExprConstantBool>())
+            {
+                bool lit = b->value;
+                bool contains = false;
+
+                if (auto utv = get<UnionType>(ty))
+                {
+                    for (TypeId option : utv)
+                    {
+                        if (const SingletonType* st = get<SingletonType>(follow(option)))
+                            if (const BooleanSingleton* bs = get<BooleanSingleton>(st))
+                                if (bs->value == lit)
+                                {
+                                    contains = true;
+                                    break;
+                                }
+                    }
+                }
+                else if (const SingletonType* st = get<SingletonType>(ty))
+                {
+                    if (const BooleanSingleton* bs = get<BooleanSingleton>(st))
+                        contains = (bs->value == lit);
+                }
+
+                if (contains)
+                    return expectedType;
+
+                return exprType;
+            }
+
+            // For numbers and nil, do not accept Superset here (no number singletons; nil will match via Subset path).
+            return exprType;
+        }
 
         return exprType;
     }
