@@ -204,7 +204,7 @@ private:
         else if (auto f = get<FunctionType>(ty))
         {
             TypeFunctionTypePackId emptyTypePack = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{});
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{{}, {}, emptyTypePack, emptyTypePack});
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{{}, {}, emptyTypePack, emptyTypePack, {}});
         }
         else if (auto c = get<ExternType>(ty))
         {
@@ -407,6 +407,11 @@ private:
 
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
+
+        f2->argNames.reserve(f1->argNames.size());
+        for (auto argName : f1->argNames)
+            f2->argNames.push_back(argName ? std::optional<Name>{argName->name} 
+                                           : std::nullopt);
     }
 
     void serializeChildren(const ExternType* c1, TypeFunctionExternType* c2)
@@ -993,6 +998,11 @@ private:
 
         if (f2->retTypes)
             f1->retTypes = shallowDeserialize(f2->retTypes);
+
+        f1->argNames.reserve(f2->argNames.size());
+        for (const auto& argName : f2->argNames)
+            f1->argNames.push_back(argName ? std::optional<FunctionArgument>{{*argName, Location()}}
+                                           : std::nullopt);
     }
 
     void deserializeChildren(TypeFunctionExternType* c2, ExternType* c1)
