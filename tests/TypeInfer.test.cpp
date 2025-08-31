@@ -2639,4 +2639,33 @@ TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_t
     )");
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_literal_with_singleton_union_values")
+{
+    CheckResult result = check(R"(
+        local t1: {[string]: "a" | "b"} = { a = "a", b = "b" }
+        local t2: {[string]: "a" | true} = { a = "a", b = true }
+        local t3: {[string]: "a" | nil} = { a = "a" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "singleton_type_mismatch_via_variable")
+{
+    CheckResult result = check(R"(
+        local c = "c"
+        local x: "a" = c
+        local y: "a" | "b" = c
+        local z: "a"? = c
+        local w: "a" | "b" = "c"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+    REQUIRE(get<TypeMismatch>(result.errors[1]));
+    REQUIRE(get<TypeMismatch>(result.errors[2]));
+    REQUIRE(get<TypeMismatch>(result.errors[3]));
+}
+
 TEST_SUITE_END();
