@@ -317,6 +317,8 @@ private:
         Location* endLocationOut = nullptr
     );
 
+    AstExpr* parseExplicitTypeInstantiationExpr(Position start, AstExpr& basedOnExpr);
+
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);
     Name parseName(const char* context = nullptr);

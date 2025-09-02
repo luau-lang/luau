@@ -3053,11 +3053,11 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
             if (FFlag::LuauExplicitTypeExpressionInstantiation)
             {
                 AstArray<AstTypeOrPack> explicitTypes;
-                CstExplicitTypeInstantiation cstExplicitTypes;
+                CstExplicitTypeInstantiation* cstExplicitTypes = options.storeCstData ? allocator.alloc<CstExplicitTypeInstantiation>() : nullptr;
 
                 if (lexer.current().type == '<' && lexer.lookahead().type == '<')
                 {
-                    explicitTypes = parseExplicitTypeInstantiation(options.storeCstData ? &cstExplicitTypes : nullptr);
+                    explicitTypes = parseExplicitTypeInstantiation(cstExplicitTypes);
                 }
 
                 expr = parseFunctionArgs(func, true);
@@ -3102,21 +3102,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         }
         else if (FFlag::LuauExplicitTypeExpressionInstantiation && lexer.current().type == '<' && lexer.lookahead().type == '<')
         {
-            CstExprExplicitTypeInstantiation* cstNode = nullptr;
-            if (options.storeCstData)
-            {
-                cstNode = allocator.alloc<CstExprExplicitTypeInstantiation>(CstExplicitTypeInstantiation{});
-            }
-
-            Location endLocation;
-            AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(cstNode ? &cstNode->instantiation : nullptr, &endLocation);
-
-            expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, endLocation.end), expr, typesOrPacks);
-
-            if (options.storeCstData)
-            {
-                cstNodeMap[expr] = cstNode;
-            }
+            expr = parseExplicitTypeInstantiationExpr(start, *expr);
         }
         else
         {
@@ -4079,6 +4065,27 @@ AstExpr* Parser::parseInterpString()
     if (options.storeCstData)
         cstNodeMap[node] = allocator.alloc<CstExprInterpString>(copy(sourceStrings), copy(stringPositions));
     return node;
+}
+
+LUAU_NOINLINE AstExpr* Parser::parseExplicitTypeInstantiationExpr(Position start, AstExpr& basedOnExpr)
+{
+    CstExprExplicitTypeInstantiation* cstNode = nullptr;
+    if (options.storeCstData)
+    {
+        cstNode = allocator.alloc<CstExprExplicitTypeInstantiation>(CstExplicitTypeInstantiation{});
+    }
+
+    Location endLocation;
+    AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(cstNode ? &cstNode->instantiation : nullptr, &endLocation);
+
+    AstExpr* expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, endLocation.end), &basedOnExpr, typesOrPacks);
+
+    if (options.storeCstData)
+    {
+        cstNodeMap[expr] = cstNode;
+    }
+
+    return expr;
 }
 
 AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation(

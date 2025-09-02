@@ -104,7 +104,7 @@ public:
     std::optional<Position> openParens;
     std::optional<Position> closeParens;
     AstArray<Position> commaPositions;
-    std::optional<CstExplicitTypeInstantiation> explicitTypes;
+    CstExplicitTypeInstantiation* explicitTypes = nullptr;
 };
 
 class CstExprIndexExpr : public CstNode
