@@ -3265,7 +3265,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
             typeParameters.push_back(resolveType(
                 scope,
                 typeOrPack.type,
-                true // todo soon: what does this (inTypeArguments) do?
+                /* inTypeArguments = */ false
             ));
         }
         else
@@ -3274,7 +3274,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
             typePackParameters.push_back(resolveTypePack(
                 scope,
                 typeOrPack.typePack,
-                true // todo soon: what does this (inTypeArguments) do?
+                /* inTypeArguments = */ false
             ));
         }
     }
