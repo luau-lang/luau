@@ -3255,14 +3255,14 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
-    std::vector<TypeId> typeParameters;
-    std::vector<TypePackId> typePackParameters;
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
 
     for (const AstTypeOrPack& typeOrPack : explicitTypes)
     {
         if (typeOrPack.type)
         {
-            typeParameters.push_back(resolveType(
+            typeArguments.push_back(resolveType(
                 scope,
                 typeOrPack.type,
                 /* inTypeArguments = */ false
@@ -3271,7 +3271,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
         else
         {
             LUAU_ASSERT(typeOrPack.typePack);
-            typePackParameters.push_back(resolveTypePack(
+            typePackArguments.push_back(resolveTypePack(
                 scope,
                 typeOrPack.typePack,
                 /* inTypeArguments = */ false
@@ -3279,7 +3279,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
         }
     }
 
-    return {std::move(typeParameters), std::move(typePackParameters)};
+    return {std::move(typeArguments), std::move(typePackArguments)};
 }
 
 std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(

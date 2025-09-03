@@ -297,8 +297,8 @@ struct ExplicitlySpecifiedGenericsConstraint
 {
     TypeId functionType;
     TypeId placeholderType;
-    std::vector<TypeId> typeParameters;
-    std::vector<TypePackId> typePackParameters;
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
 };
 
 struct PushTypeConstraint

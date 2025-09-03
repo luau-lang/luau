@@ -4115,7 +4115,7 @@ AstArray<AstTypeOrPack> Parser::parseExplicitTypeInstantiation(
 
     if (cstNodeOut)
     {
-        cstNodeOut->parametersCommaPositions = copy(commaPositions);
+        cstNodeOut->commaPositions = copy(commaPositions);
 
         if (lexer.current().type == '>')
         {

@@ -88,7 +88,7 @@ struct CstExplicitTypeInstantiation
     Position leftArrow1Position = {0,0};
     Position leftArrow2Position = {0,0};
 
-    AstArray<Position> parametersCommaPositions = {};
+    AstArray<Position> commaPositions = {};
 
     Position rightArrow1Position = {0,0};
     Position rightArrow2Position = {0,0};

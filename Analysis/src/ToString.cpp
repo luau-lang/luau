@@ -2058,8 +2058,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, PushFunctionTypeConstraint>)
             return "push_function_type " + tos(c.expectedFunctionType) + " => " + tos(c.functionType);
         else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsConstraint>)
-            return "explicitly_specified_constraints " + tos(c.functionType) + " (typeParameters = " + dump(c.typeParameters) +
-                   "), (typePackParameters = " + dump(c.typePackParameters) + ")";
+            return "explicitly_specified_constraints " + tos(c.functionType) + " (typeArguments = " + dump(c.typeArguments) +
+                   "), (typePackArguments = " + dump(c.typePackArguments) + ")";
         else if constexpr (std::is_same_v<T, PushTypeConstraint>)
             return "push_type " + tos(c.expectedType) + " => " + tos(c.targetType);
         else

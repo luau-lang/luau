@@ -1883,7 +1883,7 @@ struct Printer
         }
         writer.symbol("<");
 
-        CommaSeparatorInserter comma(writer, cstNode ? cstNode->parametersCommaPositions.begin() : nullptr);
+        CommaSeparatorInserter comma(writer, cstNode ? cstNode->commaPositions.begin() : nullptr);
         for (const auto& typeOrPack : explicitTypes)
         {
             if (typeOrPack.type)

@@ -2983,7 +2983,7 @@ bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& 
     bind(
         constraint,
         c.placeholderType,
-        specifyExplicitTypes(c.functionType, c.typeParameters, c.typePackParameters, constraint->scope, constraint->location)
+        specifyExplicitTypes(c.functionType, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location)
     );
 
     return true;
@@ -3024,14 +3024,14 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     DenseHashMap<TypeId, TypeId> replacements{nullptr};
     auto typeParametersIter = ftv->generics.begin();
 
-    for (const TypeId typeParameter : explicitTypeIds)
+    for (const TypeId typeArgument : explicitTypeIds)
     {
         if (typeParametersIter == ftv->generics.end())
         {
             break;
         }
 
-        replacements[*typeParametersIter++] = typeParameter;
+        replacements[*typeParametersIter++] = typeArgument;
     }
 
     while (typeParametersIter != ftv->generics.end())
@@ -3042,14 +3042,14 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
     auto typePackParametersIter = ftv->genericPacks.begin();
 
-    for (const TypePackId typePackParameter : explicitTypePackIds)
+    for (const TypePackId typePackArgument : explicitTypePackIds)
     {
         if (typePackParametersIter == ftv->genericPacks.end())
         {
             break;
         }
 
-        replacementPacks[*typePackParametersIter++] = typePackParameter;
+        replacementPacks[*typePackParametersIter++] = typePackArgument;
     }
 
     Replacer replacer{arena, std::move(replacements), std::move(replacementPacks)};
