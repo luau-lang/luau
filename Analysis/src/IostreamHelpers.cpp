@@ -287,6 +287,13 @@ static void errorToString(std::ostream& stream, const T& err)
         }
         stream << "] }";
     }
+    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
+        stream << "ExplicitlySpecifiedGenericsOnNonFunction { interestingEdgeCase = " << err.interestingEdgeCase << " }";
+    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsTooManySpecified>)
+        stream << "ExplicitlySpecifiedGenericsTooManySpecified { functionName = " << err.functionName.value_or("<unknown>")
+               << ", functionType = " << toString(err.functionType) << ", providedTypes = " << err.providedTypes
+               << ", maximumTypes = " << err.maximumTypes << ", providedTypePacks = " << err.providedTypePacks
+               << ", maximumTypePacks = " << err.maximumTypePacks << " }";
     else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
         stream << "UnappliedTypeFunction {}";
     else
@@ -301,6 +308,22 @@ std::ostream& operator<<(std::ostream& stream, const CannotAssignToNever::Reason
         return stream << "PropertyNarrowed";
     default:
         return stream << "UnknownReason";
+    }
+}
+
+std::ostream& operator<<(std::ostream& stream, const ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase& edgeCase)
+{
+    switch (edgeCase)
+    {
+    case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None:
+        return stream << "None";
+    case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall:
+        return stream << "MetatableCall";
+    case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection:
+        return stream << "Intersection";
+    default:
+        LUAU_ASSERT(false);
+        return stream << "Unknown";
     }
 }
 

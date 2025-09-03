@@ -46,6 +46,7 @@ LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateResolvedTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraint)
@@ -2572,6 +2573,10 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
     TypePackId argPack = addTypePack(std::move(args), argTail);
     FunctionType ftv(TypeLevel{}, argPack, rets, std::nullopt, call->self);
 
+    auto [explicitTypeIds, explicitTypePackIds] = FFlag::LuauExplicitTypeExpressionInstantiation && call->explicitTypes.size
+                                                      ? getExplicitTypeIds(scope, call->explicitTypes)
+                                                      : std::pair<std::vector<TypeId>, std::vector<TypePackId>>();
+
     /*
      * To make bidirectional type checking work, we need to solve these constraints in a particular order:
      *
@@ -2604,6 +2609,8 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             rets,
             call,
             std::move(discriminantTypes),
+            std::move(explicitTypeIds),
+            std::move(explicitTypePackIds),
             &module->astOverloadResolvedTypes,
         }
     );
@@ -2684,6 +2691,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
         result = check(scope, typeAssert);
     else if (auto interpString = expr->as<AstExprInterpString>())
         result = check(scope, interpString);
+    else if (auto explicitTypeInstantiation = expr->as<AstExprExplicitTypeInstantiation>())
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        result = check(scope, explicitTypeInstantiation);
+    }
     else if (auto err = expr->as<AstExprError>())
     {
         // Open question: Should we traverse into this?
@@ -3213,6 +3225,61 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInterpString*
         check(scope, expr);
 
     return Inference{builtinTypes->stringType};
+}
+
+Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprExplicitTypeInstantiation* explicitTypeInstantiation)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    TypeId functionType = check(scope, explicitTypeInstantiation->expr, std::nullopt).ty;
+
+    auto [explicitTypeIds, explicitTypePackIds] = getExplicitTypeIds(scope, explicitTypeInstantiation->types);
+
+    TypeId placeholderType = arena->addType(BlockedType{});
+
+    NotNull<Constraint> constraint = addConstraint(
+        scope,
+        explicitTypeInstantiation->location,
+        ExplicitlySpecifiedGenericsConstraint{functionType, placeholderType, std::move(explicitTypeIds), std::move(explicitTypePackIds)}
+    );
+
+    getMutable<BlockedType>(placeholderType)->setOwner(constraint);
+
+    return Inference{placeholderType};
+}
+
+std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::getExplicitTypeIds(
+    const ScopePtr& scope,
+    const AstArray<AstTypeOrPack>& explicitTypes
+)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
+
+    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    {
+        if (typeOrPack.type)
+        {
+            typeArguments.push_back(resolveType(
+                scope,
+                typeOrPack.type,
+                /* inTypeArguments = */ false
+            ));
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            typePackArguments.push_back(resolveTypePack(
+                scope,
+                typeOrPack.typePack,
+                /* inTypeArguments = */ false
+            ));
+        }
+    }
+
+    return {std::move(typeArguments), std::move(typePackArguments)};
 }
 
 std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(

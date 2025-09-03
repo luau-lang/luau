@@ -82,6 +82,18 @@ public:
     unsigned int blockDepth;
 };
 
+// Shared between the expression and call nodes
+struct CstExplicitTypeInstantiation
+{
+    Position leftArrow1Position = {0,0};
+    Position leftArrow2Position = {0,0};
+
+    AstArray<Position> commaPositions = {};
+
+    Position rightArrow1Position = {0,0};
+    Position rightArrow2Position = {0,0};
+};
+
 class CstExprCall : public CstNode
 {
 public:
@@ -92,6 +104,7 @@ public:
     std::optional<Position> openParens;
     std::optional<Position> closeParens;
     AstArray<Position> commaPositions;
+    CstExplicitTypeInstantiation* explicitTypes = nullptr;
 };
 
 class CstExprIndexExpr : public CstNode
@@ -189,6 +202,16 @@ public:
 
     AstArray<AstArray<char>> sourceStrings;
     AstArray<Position> stringPositions;
+};
+
+class CstExprExplicitTypeInstantiation : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstExprExplicitTypeInstantiation)
+
+    explicit CstExprExplicitTypeInstantiation(CstExplicitTypeInstantiation instantiation);
+
+    CstExplicitTypeInstantiation instantiation;
 };
 
 class CstStatDo : public CstNode

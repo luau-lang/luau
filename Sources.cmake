@@ -518,6 +518,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.cfa.test.cpp
         tests/TypeInfer.classes.test.cpp
         tests/TypeInfer.definitions.test.cpp
+        tests/TypeInfer.explicitTypeInstantiations.test.cpp
         tests/TypeInfer.functions.test.cpp
         tests/TypeInfer.generics.test.cpp
         tests/TypeInfer.intersectionTypes.test.cpp
