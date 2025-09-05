@@ -16,8 +16,10 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodeGenUnassignedBcTargetAbort)
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenVBlendpdReorder)
+LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
 
 namespace Luau
 {
@@ -2186,6 +2188,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     valueTracker.afterInstLowering(inst, index);
 
+    if (FFlag::LuauCodeGenRegAutoSpillA64)
+        regs.currInstIdx = kInvalidInstIdx;
+
     regs.freeLastUseRegs(inst, index);
 }
 
@@ -2226,6 +2231,13 @@ void IrLoweringX64::finishFunction()
 
         build.mov(edx, handler.pcpos * sizeof(Instruction));
         build.jmp(helpers.updatePcAndContinueInVm);
+    }
+
+    if (FFlag::LuauCodeGenUnassignedBcTargetAbort)
+    {
+        // An undefined instruction is placed after the function to be used as an aborting jump offset
+        function.endLocation = build.setLabel().location;
+        build.ud2();
     }
 
     if (stats)

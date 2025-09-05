@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
 LUAU_FASTFLAG(LuauPushTypeConstraint)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSimplifyIntersectionForLiteralSubtypeCheck)
+LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3855,13 +3856,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly
         if (FFlag::LuauEagerGeneralization4)
         {
             /*
-            * string.byte returns ...number, which cannot be passed to
-            * table.insert.
-            *
-            * Intuitively, Luau has no way to guarantee that string.byte() will
-            * always return at least 1 number and there is no table.insert overload
-            * that takes just 1 argument.
-            */
+             * string.byte returns ...number, which cannot be passed to
+             * table.insert.
+             *
+             * Intuitively, Luau has no way to guarantee that string.byte() will
+             * always return at least 1 number and there is no table.insert overload
+             * that takes just 1 argument.
+             */
             LUAU_REQUIRE_ERROR(result, MultipleNonviableOverloads);
         }
         else
@@ -5994,13 +5995,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_norma
 {
     ScopedFastFlag sff{FFlag::LuauNormalizationLimitTyvarUnionSize, true};
 
-    const std::string source =
-        "local res = {\n" + rep("\"foo\",\n", 100) + "}\n"
-        + "local function check(index: number)\n"
-        + "  if res[index] == \"foo\" then\n"
-        + "    print(\"found a foo!\")\n"
-        + "  end\n"
-        + "end";
+    const std::string source = format(
+        R"(
+        local res = { %s }
+
+        local function check(index: number)
+            if res[index] == "foo" then
+                print("found a foo!")
+            end
+        end
+    )",
+        rep(R"("foo",)", 100).c_str()
+    );
 
     LUAU_REQUIRE_NO_ERRORS(check(source));
 }
@@ -6137,6 +6143,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_167052")
             [Children] = true;
         }
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "duplicate_prop_references_share_same_result_type_and_constraint")
+{
+    ScopedFastFlag sff{FFlag::LuauCacheDuplicateHasPropConstraints, true};
+    CheckResult result = check(R"(
+local tbl = {}
+function f(x : number) : () end
+function tbl:updateAmmoText()
+    f(self.leadingZeros)
+    local y = self.leadingZeros - 3
+end
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

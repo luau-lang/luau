@@ -6,6 +6,8 @@
 
 #include "EmitCommonX64.h"
 
+LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
+
 namespace Luau
 {
 namespace CodeGen
@@ -393,6 +395,12 @@ OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
 
 uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint32_t, 16>& regInstUsers) const
 {
+    if (FFlag::LuauCodeGenRegAutoSpillA64)
+    {
+        if (currInstIdx == kInvalidInstIdx)
+            return kInvalidInstIdx;
+    }
+
     uint32_t furthestUseTarget = kInvalidInstIdx;
     uint32_t furthestUseLocation = 0;
 

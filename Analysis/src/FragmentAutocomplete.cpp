@@ -992,18 +992,18 @@ ScopePtr findClosestScope_DEPRECATED(const ModulePtr& module, const AstStat* nea
 ScopePtr findClosestScope(const ModulePtr& module, const Position& scopePos)
 {
     LUAU_ASSERT(module->hasModuleScope());
-        ScopePtr closest = module->getModuleScope();
-        // find the scope the nearest statement belonged to.
-        for (const auto& [loc, sc] : module->scopes)
-        {
-            // We bias towards the later scopes because those correspond to inner scopes.
-            // in the case of if statements, we create two scopes at the same location for the body of the then
-            // and else branches, so we need to bias later. This is why the closest update condition has a <=
-            // instead of a <
-            if (sc->location.contains(scopePos) && closest->location.begin <= sc->location.begin)
-                closest = sc;
-        }
-        return closest;
+    ScopePtr closest = module->getModuleScope();
+    // find the scope the nearest statement belonged to.
+    for (const auto& [loc, sc] : module->scopes)
+    {
+        // We bias towards the later scopes because those correspond to inner scopes.
+        // in the case of if statements, we create two scopes at the same location for the body of the then
+        // and else branches, so we need to bias later. This is why the closest update condition has a <=
+        // instead of a <
+        if (sc->location.contains(scopePos) && closest->location.begin <= sc->location.begin)
+            closest = sc;
+    }
+    return closest;
 }
 
 std::optional<FragmentParseResult> parseFragment_DEPRECATED(
@@ -1248,7 +1248,7 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
         NotNull{&cg.scopeToFunction},
-        incrementalModule->name,
+        incrementalModule,
         NotNull{&resolver},
         {},
         nullptr,
@@ -1403,7 +1403,7 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
         NotNull{&cg.scopeToFunction},
-        incrementalModule->name,
+        incrementalModule,
         NotNull{&resolver},
         {},
         nullptr,

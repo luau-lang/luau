@@ -65,9 +65,7 @@ using namespace Luau;
 struct NonStrictTypeCheckerFixture : Fixture
 {
 
-    NonStrictTypeCheckerFixture()
-    {
-    }
+    NonStrictTypeCheckerFixture() {}
 
     CheckResult checkNonStrict(const std::string& code)
     {

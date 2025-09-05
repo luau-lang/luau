@@ -276,7 +276,6 @@ struct ClonePublicInterface : Substitution
             else if (auto gtp = getMutable<GenericTypePack>(clonedTp))
                 gtp->scope = nullptr;
             return clonedTp;
-
         }
         else
         {
@@ -400,7 +399,7 @@ void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes,
             Location{}, // Not amazing but the best we can do.
             name,
             InternalError{"An internal type is escaping this module; please report this bug at "
-                "https://github.com/luau-lang/luau/issues"}
+                          "https://github.com/luau-lang/luau/issues"}
         );
     }
 
@@ -451,7 +450,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
             Location{}, // Not amazing but the best we can do.
             name,
             InternalError{"An internal type is escaping this module; please report this bug at "
-                "https://github.com/luau-lang/luau/issues"}
+                          "https://github.com/luau-lang/luau/issues"}
         );
     }
 

@@ -33,7 +33,7 @@ enum class UnifyResult
     TooComplex
 };
 
-inline UnifyResult operator &(UnifyResult lhs, UnifyResult rhs)
+inline UnifyResult operator&(UnifyResult lhs, UnifyResult rhs)
 {
     if (lhs == UnifyResult::Ok)
         return rhs;

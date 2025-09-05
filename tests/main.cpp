@@ -428,9 +428,14 @@ int main(int argc, char** argv)
     doctest::String filter;
     if (doctest::parseOption(argc, argv, "--run_test", &filter) && filter[0] == '=')
     {
-        if (doctest::parseOption(argc, argv, "--run_tests_in_file"))
+        if (doctest::parseOption(argc, argv, "--run_suites_in_file"))
         {
-            fprintf(stderr, "ERROR: Cannot pass both --run_test and --run_tests_in_file\n");
+            fprintf(stderr, "ERROR: Cannot pass both --run_test and --run_suites_in_file\n");
+            return 1;
+        }
+        if (doctest::parseOption(argc, argv, "--run_cases_in_file"))
+        {
+            fprintf(stderr, "ERROR: Cannot pass both --run_test and --run_cases_in_file\n");
             return 1;
         }
         const char* f = filter.c_str() + 1;
@@ -447,13 +452,26 @@ int main(int argc, char** argv)
         }
     }
 
-    doctest::String filter_path;
-    if (doctest::parseOption(argc, argv, "--run_tests_in_file", &filter_path) && filter_path[0] == '=')
+    doctest::String suite_filter_path;
+    if (doctest::parseOption(argc, argv, "--run_suites_in_file", &suite_filter_path) && suite_filter_path[0] == '=')
     {
-        filter_path = filter_path.substr(1, filter_path.size() - 1);
-        std::ifstream filter_stream(filter_path.c_str());
-        std::string case_list((std::istreambuf_iterator<char>(filter_stream)), std::istreambuf_iterator<char>());
-        context.addFilter("test-case", case_list.c_str());
+        const char* filter_file = suite_filter_path.c_str() + 1;
+        std::ifstream filter_stream(filter_file);
+        std::stringstream buffer;
+        buffer << filter_stream.rdbuf();
+        std::string suite_list = buffer.str();
+        context.addFilter("test-suite", suite_list.c_str());
+    }
+
+    doctest::String case_filter_path;
+    if (doctest::parseOption(argc, argv, "--run_cases_in_file", &case_filter_path) && case_filter_path[0] == '=')
+    {
+        const char* filter_file = case_filter_path.c_str() + 1;
+        std::ifstream filter_stream(filter_file);
+        std::stringstream buffer;
+        buffer << filter_stream.rdbuf();
+        std::string case_list = buffer.str();
+        context.addFilter("test-path", case_list.c_str());
     }
 
     // These callbacks register unit tests that need runtime support to be

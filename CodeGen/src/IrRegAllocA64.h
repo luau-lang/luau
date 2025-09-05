@@ -22,7 +22,12 @@ class AssemblyBuilderA64;
 
 struct IrRegAllocA64
 {
-    IrRegAllocA64(IrFunction& function, LoweringStats* stats, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs);
+    IrRegAllocA64(
+        AssemblyBuilderA64& build,
+        IrFunction& function,
+        LoweringStats* stats,
+        std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs
+    );
 
     RegisterA64 allocReg(KindA64 kind, uint32_t index);
     RegisterA64 allocTemp(KindA64 kind);
@@ -38,13 +43,13 @@ struct IrRegAllocA64
     void freeTempRegs();
 
     // Spills all live registers that outlive current instruction; all allocated registers are assumed to be undefined
-    size_t spill(AssemblyBuilderA64& build, uint32_t index, std::initializer_list<RegisterA64> live = {});
+    size_t spill(uint32_t index, std::initializer_list<RegisterA64> live = {});
 
     // Restores registers starting from the offset returned by spill(); all spills will be restored to the original registers
-    void restore(AssemblyBuilderA64& build, size_t start);
+    void restore(size_t start);
 
     // Restores register for a single instruction; may not assign the previously used register!
-    void restoreReg(AssemblyBuilderA64& build, IrInst& inst);
+    void restoreReg(IrInst& inst);
 
     struct Set
     {
@@ -69,10 +74,19 @@ struct IrRegAllocA64
         int8_t slot;
     };
 
+    // Spills the selected register
+    void spill(Set& set, uint32_t index, uint32_t targetInstIdx);
+
+    uint32_t findInstructionWithFurthestNextUse(Set& set) const;
+
     Set& getSet(KindA64 kind);
 
+    AssemblyBuilderA64& build;
     IrFunction& function;
     LoweringStats* stats = nullptr;
+
+    uint32_t currInstIdx = kInvalidInstIdx;
+
     Set gpr, simd;
 
     std::vector<Spill> spills;

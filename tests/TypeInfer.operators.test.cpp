@@ -18,6 +18,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
+LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
@@ -1455,8 +1456,12 @@ end
     )");
 
     // FIXME(CLI-165431): fixing subtyping revealed an overload selection problems
-    if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll)
+    if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll && FFlag::LuauTrackUniqueness)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll)
+    {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
+    }
     else
         LUAU_REQUIRE_NO_ERRORS(result);
 }

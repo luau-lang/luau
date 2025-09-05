@@ -29,34 +29,33 @@ struct TypeFunctionFixture : Fixture
     TypeFunctionFixture()
         : Fixture(false)
     {
-        swapFunction = TypeFunction{
-            /* name */ "Swap",
-            /* reducer */
-            [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps, NotNull<TypeFunctionContext> ctx
-            ) -> TypeFunctionReductionResult<TypeId>
-            {
-                LUAU_ASSERT(tys.size() == 1);
-                TypeId param = follow(tys.at(0));
+        swapFunction =
+            TypeFunction{/* name */ "Swap",
+                         /* reducer */
+                         [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps, NotNull<TypeFunctionContext> ctx)
+                             -> TypeFunctionReductionResult<TypeId>
+                         {
+                             LUAU_ASSERT(tys.size() == 1);
+                             TypeId param = follow(tys.at(0));
 
-                if (isString(param))
-                {
-                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
-                }
-                else if (isNumber(param))
-                {
-                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
-                }
-                else if (is<BlockedType>(param) || is<PendingExpansionType>(param) || is<TypeFunctionInstanceType>(param) ||
-                         (ctx->solver && ctx->solver->hasUnresolvedConstraints(param)))
-                {
-                    return TypeFunctionReductionResult<TypeId>{std::nullopt, Reduction::MaybeOk, {param}, {}};
-                }
-                else
-                {
-                    return TypeFunctionReductionResult<TypeId>{std::nullopt, Reduction::Erroneous, {}, {}};
-                }
-            }
-        };
+                             if (isString(param))
+                             {
+                                 return TypeFunctionReductionResult<TypeId>{ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
+                             }
+                             else if (isNumber(param))
+                             {
+                                 return TypeFunctionReductionResult<TypeId>{ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
+                             }
+                             else if (is<BlockedType>(param) || is<PendingExpansionType>(param) || is<TypeFunctionInstanceType>(param) ||
+                                      (ctx->solver && ctx->solver->hasUnresolvedConstraints(param)))
+                             {
+                                 return TypeFunctionReductionResult<TypeId>{std::nullopt, Reduction::MaybeOk, {param}, {}};
+                             }
+                             else
+                             {
+                                 return TypeFunctionReductionResult<TypeId>{std::nullopt, Reduction::Erroneous, {}, {}};
+                             }
+                         }};
 
         unfreeze(getFrontend().globals.globalTypes);
         TypeId t = getFrontend().globals.globalTypes.addType(GenericType{"T"});
@@ -1895,13 +1894,15 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_degenerate_refinement")
     };
 
     TypeId root = arena->addType(BlockedType{});
-    TypeId refinement = arena->addType(TypeFunctionInstanceType{
-        builtinTypeFunctions.refineFunc,
-        {
-            root,
-            builtinTypes_.unknownType,
+    TypeId refinement = arena->addType(
+        TypeFunctionInstanceType{
+            builtinTypeFunctions.refineFunc,
+            {
+                root,
+                builtinTypes_.unknownType,
+            }
         }
-    });
+    );
 
     emplaceType<BoundType>(asMutable(root), refinement);
     reduceTypeFunctions(refinement, Location{}, tfc, true);

@@ -62,9 +62,20 @@ struct OverloadResolver
     std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads;
     InsertionOrderedMap<TypeId, std::pair<OverloadResolver::Analysis, size_t>> resolution;
 
+    std::pair<OverloadResolver::Analysis, TypeId> selectOverload(
+        TypeId ty,
+        TypePackId args,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes,
+        bool useFreeTypeBounds
+    );
 
-    std::pair<OverloadResolver::Analysis, TypeId> selectOverload(TypeId ty, TypePackId args, bool useFreeTypeBounds);
-    void resolve(TypeId fnTy, const TypePack* args, AstExpr* selfExpr, const std::vector<AstExpr*>* argExprs);
+    void resolve(
+        TypeId fnTy,
+        const TypePack* args,
+        AstExpr* selfExpr,
+        const std::vector<AstExpr*>* argExprs,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes
+    );
 
 private:
     std::optional<ErrorVec> testIsSubtype(const Location& location, TypeId subTy, TypeId superTy);
@@ -74,6 +85,7 @@ private:
         const TypePack* args,
         AstExpr* fnLoc,
         const std::vector<AstExpr*>* argExprs,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes,
         bool callMetamethodOk = true
     );
     static bool isLiteral(AstExpr* expr);
@@ -83,7 +95,8 @@ private:
         const FunctionType* fn,
         const TypePack* args,
         AstExpr* fnExpr,
-        const std::vector<AstExpr*>* argExprs
+        const std::vector<AstExpr*>* argExprs,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes
     );
     size_t indexof(Analysis analysis);
     void add(Analysis analysis, TypeId ty, ErrorVec&& errors);

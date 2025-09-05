@@ -719,7 +719,7 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
     }
     else
     {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
         CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
     }
 }
@@ -737,7 +737,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any"); // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");            // a ~= b
     CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{ x: number }?"); // a ~= b
 }
 
@@ -871,8 +871,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_table")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{ x: number } | { y: boolean }", toString(requireTypeAtPosition({3, 28})));         // type(x) == "table"
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                                 // type(x) ~= "table"
+    CHECK_EQ("{ x: number } | { y: boolean }", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                         // type(x) ~= "table"
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_functions")

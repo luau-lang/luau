@@ -2087,8 +2087,10 @@ until (function() return rr end)() < 0.5
 
     // unless that upvalue is from an outer scope
     CHECK_EQ(
-        "\n" + compileFunction0("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
-                                "continue end r = r + 0.3 until stop or r < 0.5 end"),
+        "\n" + compileFunction0(
+                   "local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
+                   "continue end r = r + 0.3 until stop or r < 0.5 end"
+               ),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1

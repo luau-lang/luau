@@ -4089,12 +4089,14 @@ void TypeChecker::checkArgumentList(
             namePath = *path;
 
         auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
-        state.reportError(TypeError{
-            location,
-            CountMismatch{
-                minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, std::move(namePath)
+        state.reportError(
+            TypeError{
+                location,
+                CountMismatch{
+                    minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, std::move(namePath)
+                }
             }
-        });
+        );
     };
 
     while (true)
@@ -4211,10 +4213,12 @@ void TypeChecker::checkArgumentList(
                     if (std::optional<std::string> path = getFunctionNameAsString(funName))
                         namePath = *path;
 
-                    state.reportError(TypeError{
-                        funName.location,
-                        CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, std::move(namePath)}
-                    });
+                    state.reportError(
+                        TypeError{
+                            funName.location,
+                            CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, std::move(namePath)}
+                        }
+                    );
                     return;
                 }
                 ++paramIter;
@@ -4631,12 +4635,14 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(
         else
             overloadsThatDont.push_back(fn);
 
-        errors.push_back(OverloadErrorEntry{
-            std::move(state.log),
-            std::move(state.errors),
-            args->head,
-            ftv,
-        });
+        errors.push_back(
+            OverloadErrorEntry{
+                std::move(state.log),
+                std::move(state.errors),
+                args->head,
+                ftv,
+            }
+        );
     }
     else
     {
