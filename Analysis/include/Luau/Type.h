@@ -317,8 +317,12 @@ struct MagicFunctionTypeCheckContext
 
 struct MagicFunction
 {
-    virtual std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) = 0;
+    virtual std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) = 0;
 
     // Callback to allow custom typechecking of builtin function calls whose argument types
     // will only be resolved after constraint solving. For example, the arguments to string.format
@@ -355,13 +359,7 @@ struct FunctionType
     );
 
     // Local monomorphic function
-    FunctionType(
-        TypeLevel level,
-        TypePackId argTypes,
-        TypePackId retTypes,
-        std::optional<FunctionDefinition> defn = {},
-        bool hasSelf = false
-    );
+    FunctionType(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Local polymorphic function
     FunctionType(

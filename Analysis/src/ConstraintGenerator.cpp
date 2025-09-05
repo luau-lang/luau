@@ -49,7 +49,11 @@ LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateResolvedTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraint)
+LUAU_FASTFLAGVARIABLE(LuauEGFixGenericsList)
 LUAU_FASTFLAGVARIABLE(LuauNumericUnaryOpsDontProduceNegationRefinements)
+LUAU_FASTFLAGVARIABLE(LuauInitializeDefaultGenericParamsAtProgramPoint)
+LUAU_FASTFLAGVARIABLE(LuauNoConstraintGenRecursionLimitIce)
+LUAU_FASTFLAGVARIABLE(LuauCacheDuplicateHasPropConstraints)
 
 namespace Luau
 {
@@ -289,7 +293,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
             moduleFnTy,
             /*interiorTypes*/ std::vector<TypeId>{},
             /*hasDeprecatedAttribute*/ false,
-            /*deprecatedInfo*/{},
+            /*deprecatedInfo*/ {},
             /*noGenerics*/ true
         }
     );
@@ -373,9 +377,8 @@ void ConstraintGenerator::visitFragmentRoot(const ScopePtr& resumeScope, AstStat
 
 TypeId ConstraintGenerator::freshType(const ScopePtr& scope, Polarity polarity)
 {
-    const TypeId ft = FFlag::LuauEagerGeneralization4
-        ? Luau::freshType(arena, builtinTypes, scope.get(), polarity)
-        : Luau::freshType(arena, builtinTypes, scope.get());
+    const TypeId ft = FFlag::LuauEagerGeneralization4 ? Luau::freshType(arena, builtinTypes, scope.get(), polarity)
+                                                      : Luau::freshType(arena, builtinTypes, scope.get());
 
     interiorFreeTypes.back().types.push_back(ft);
 
@@ -790,16 +793,27 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
             TypeId initialType = arena->addType(BlockedType{});
             TypeFun initialFun{initialType};
 
-            for (const auto& [name, gen] : createGenerics(defnScope, alias->generics, /* useCache */ true))
+            /* The boolean toggle `addTypes` decides whether or not to introduce the generic type/pack param into the privateType/Pack bindings.
+               This map is used by resolveType(Pack) to determine whether or not to produce an error for `F<T... = ...T>`. Because we are delaying
+               the the initialization of the generic default to the point at which we check the type alias, we need to ensure that we don't
+               prematurely add `T` as this will cause us to allow the above example (T is in the bindings so we return that as the resolved type).
+               Done this way, we can evaluate the default safely and then introduce the variable into the map again once the default has been
+               evaluated. Note, only generic type aliases support default generic parameters.
+             */
+
+            for (const auto& [name, gen] : createGenerics(
+                     defnScope, alias->generics, /* useCache */ true, /* addTypes */ !FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint
+                 ))
             {
                 initialFun.typeParams.push_back(gen);
             }
 
-            for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks, /* useCache */ true))
+            for (const auto& [name, genPack] : createGenericPacks(
+                     defnScope, alias->genericPacks, /* useCache */ true, /* addTypes */ !FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint
+                 ))
             {
                 initialFun.typePackParams.push_back(genPack);
             }
-
             initialFun.definitionLocation = alias->location;
 
             if (alias->exported)
@@ -1002,7 +1016,20 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStat* stat)
 {
-    RecursionLimiter limiter{"ConstraintGenerator", &recursionCount, FInt::LuauCheckRecursionLimit};
+    std::optional<RecursionCounter> counter;
+    std::optional<RecursionLimiter> limiter;
+    if (FFlag::LuauNoConstraintGenRecursionLimitIce)
+    {
+        counter.emplace(&recursionCount);
+
+        if (recursionCount >= FInt::LuauCheckRecursionLimit)
+        {
+            reportCodeTooComplex(stat->location);
+            return ControlFlow::None;
+        }
+    }
+    else
+        limiter.emplace("ConstraintGenerator", &recursionCount, FInt::LuauCheckRecursionLimit);
 
     if (auto s = stat->as<AstStatBlock>())
         return visit(scope, s);
@@ -1793,6 +1820,39 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
         return ControlFlow::None;
 }
 
+void ConstraintGenerator::resolveGenericDefaultParameters(const ScopePtr& defnScope, AstStatTypeAlias* alias, const TypeFun& fun)
+{
+    LUAU_ASSERT(FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint);
+
+    LUAU_ASSERT(alias->generics.size == fun.typeParams.size());
+    for (size_t i = 0; i < alias->generics.size; i++)
+    {
+        auto astTy = alias->generics.data[i];
+        auto param = fun.typeParams[i];
+        if (param.defaultValue && astTy->defaultValue != nullptr)
+        {
+            auto resolvesTo = astTy->defaultValue;
+            auto toUnblock = *param.defaultValue;
+            emplaceType<BoundType>(asMutable(toUnblock), resolveType(defnScope, resolvesTo, /*  inTypeArguments */ false));
+        }
+        defnScope->privateTypeBindings[astTy->name.value] = TypeFun{param.ty};
+    }
+
+    LUAU_ASSERT(alias->genericPacks.size == fun.typePackParams.size());
+    for (size_t i = 0; i < alias->genericPacks.size; i++)
+    {
+        auto astPack = alias->genericPacks.data[i];
+        auto param = fun.typePackParams[i];
+        if (param.defaultValue && astPack->defaultValue != nullptr)
+        {
+            auto resolvesTo = astPack->defaultValue;
+            auto toUnblock = *param.defaultValue;
+            emplaceTypePack<BoundTypePack>(asMutable(toUnblock), resolveTypePack(defnScope, resolvesTo, /*  inTypeArguments */ false));
+        }
+        defnScope->privateTypePackBindings[astPack->name.value] = param.tp;
+    }
+}
+
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* alias)
 {
     if (alias->name == kParseNameError)
@@ -1820,6 +1880,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
     auto bindingIt = typeBindings->find(alias->name.value);
     if (bindingIt == typeBindings->end() || defnScope == nullptr)
         return ControlFlow::None;
+
+    if (FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint)
+        resolveGenericDefaultParameters(*defnScope, alias, bindingIt->second);
 
     TypeId ty = resolveType(*defnScope, alias->type, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false);
 
@@ -2064,7 +2127,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         {
             reportError(
                 declaredExternType->location,
-                GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredExternType->name.value)
+                GenericError{
+                    format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredExternType->name.value)
                 }
             );
 
@@ -2095,7 +2159,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
     if (declaredExternType->indexer)
     {
-        RecursionCounter counter{&recursionCount};
+        std::optional<RecursionCounter> counter;
+        if (!FFlag::LuauNoConstraintGenRecursionLimitIce)
+            counter.emplace(&recursionCount);
 
         if (recursionCount >= FInt::LuauCheckRecursionLimit)
         {
@@ -2531,7 +2597,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             scope->bindings[targetLocal->local].typeId = resultTy;
 
             DefId def = dfg->getDef(targetLocal);
-            scope->lvalueTypes[def] = resultTy;       // TODO: typestates: track this as an assignment
+            scope->lvalueTypes[def] = resultTy; // TODO: typestates: track this as an assignment
             if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
                 updateRValueRefinements(scope, def, resultTy); // TODO: typestates: track this as an assignment
             else
@@ -2759,7 +2825,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
         if (forceSingleton)
             return Inference{singletonType};
 
-        return Inference { builtinTypes->booleanType };
+        return Inference{builtinTypes->booleanType};
     }
 
 
@@ -2876,12 +2942,20 @@ Inference ConstraintGenerator::checkIndexName(
             result = *it->second.readTy;
     }
 
+    if (FFlag::LuauCacheDuplicateHasPropConstraints)
+    {
+        if (auto cachedHasPropResult = propIndexPairsSeen.find({obj,index}))
+            result = *cachedHasPropResult;
+    }
+
     if (!result)
     {
         result = arena->addType(BlockedType{});
 
         auto c = addConstraint(scope, indexee->location, HasPropConstraint{result, obj, index, ValueContext::RValue, inConditional(typeContext)});
         getMutable<BlockedType>(result)->setOwner(c);
+        if (FFlag::LuauCacheDuplicateHasPropConstraints)
+            propIndexPairsSeen[{obj, index}] = result;
     }
 
     if (key)
@@ -3400,7 +3474,6 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
 
     if (annotatedTy)
         addConstraint(scope, local->location, SubtypeConstraint{rhsType, *annotatedTy});
-
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId rhsType)
@@ -3732,16 +3805,46 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 
     if (FFlag::LuauEagerGeneralization4)
     {
-        // Some of the types in argTypes will eventually be generics, and some
-        // will not. The ones that are not generic will be pruned when
-        // GeneralizationConstraint dispatches.
-        genericTypes.insert(genericTypes.begin(), argTypes.begin(), argTypes.end());
-        varargPack = follow(varargPack);
-        returnType = follow(returnType);
-        if (varargPack == returnType)
-            genericTypePacks = {varargPack};
+        if (FFlag::LuauEGFixGenericsList)
+        {
+            // Some of the unannotated parameters in argTypes will eventually be
+            // generics, and some will not. The ones that are not generic will be
+            // pruned when GeneralizationConstraint dispatches.
+
+            // The self parameter never has an annotation and so could always become generic.
+            if (fn->self)
+                genericTypes.push_back(argTypes[0]);
+
+            size_t typeIndex = fn->self ? 1 : 0;
+            for (auto astArg : fn->args)
+            {
+                TypeId argTy = argTypes.at(typeIndex);
+                if (!astArg->annotation)
+                    genericTypes.push_back(argTy);
+
+                ++typeIndex;
+            }
+
+            varargPack = follow(varargPack);
+            returnType = follow(returnType);
+            if (varargPack == returnType)
+                genericTypePacks = {varargPack};
+            else
+                genericTypePacks = {varargPack, returnType};
+        }
         else
-            genericTypePacks = {varargPack, returnType};
+        {
+            // Some of the types in argTypes will eventually be generics, and some
+            // will not. The ones that are not generic will be pruned when
+            // GeneralizationConstraint dispatches.
+            genericTypes.insert(genericTypes.begin(), argTypes.begin(), argTypes.end());
+            varargPack = follow(varargPack);
+            returnType = follow(returnType);
+            if (varargPack == returnType)
+                genericTypePacks = {varargPack};
+            else
+                genericTypePacks = {varargPack, returnType};
+        }
     }
 
     // If there is both an annotation and an expected type, the annotation wins.
@@ -4031,7 +4134,7 @@ TypeId ConstraintGenerator::resolveFunctionType(
     {
         ftv.isDeprecatedFunction = fn->hasAttribute(AstAttr::Type::Deprecated);
     }
-    
+
 
     // This replicates the behavior of the appropriate FunctionType
     // constructors.
@@ -4235,8 +4338,16 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGenerator::createG
 
         std::optional<TypeId> defaultTy = std::nullopt;
 
-        if (generic->defaultValue)
-            defaultTy = resolveType(scope, generic->defaultValue, /* inTypeArguments */ false);
+        if (FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint)
+        {
+            if (generic->defaultValue)
+                defaultTy = arena->addType(BlockedType{});
+        }
+        else
+        {
+            if (generic->defaultValue)
+                defaultTy = resolveType(scope, generic->defaultValue, /* inTypeArguments */ false);
+        }
 
         if (addTypes)
             scope->privateTypeBindings[generic->name.value] = TypeFun{genericTy};
@@ -4270,8 +4381,16 @@ std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGenerator::cre
 
         std::optional<TypePackId> defaultTy = std::nullopt;
 
-        if (generic->defaultValue)
-            defaultTy = resolveTypePack(scope, generic->defaultValue, /* inTypeArguments */ false);
+        if (FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint)
+        {
+            if (generic->defaultValue)
+                defaultTy = arena->addTypePack(BlockedTypePack{});
+        }
+        else
+        {
+            if (generic->defaultValue)
+                defaultTy = resolveTypePack(scope, generic->defaultValue, /* inTypeArguments */ false);
+        }
 
         if (addTypes)
             scope->privateTypePackBindings[generic->name.value] = genericTy;
@@ -4319,6 +4438,9 @@ void ConstraintGenerator::reportCodeTooComplex(Location location)
 
     if (logger)
         logger->captureGenerationError(errors.back());
+
+    if (FFlag::LuauNoConstraintGenRecursionLimitIce)
+        recursionLimitMet = true;
 }
 
 TypeId ConstraintGenerator::makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs)

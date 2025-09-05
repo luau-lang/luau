@@ -42,79 +42,123 @@ namespace Luau
 
 struct MagicSelect final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicSetMetatable final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicAssert final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicPack final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicRequire final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicClone final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFreeze final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFormat final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
     bool typeCheck(const MagicFunctionTypeCheckContext& ctx) override;
 };
 
 struct MagicMatch final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicGmatch final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFind final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
@@ -411,10 +455,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
         TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().setmetatableFunc, {genericT, genericMT}});
         addGlobalBinding(
-            globals,
-            "setmetatable",
-            makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}),
-            "@luau"
+            globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
         );
     }
     else
@@ -442,13 +483,17 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     {
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
         TypeId genericT = arena.addType(GenericType{globalScope, "T"});
-        TypeId refinedTy = arena.addType(TypeFunctionInstanceType{
-            NotNull{&builtinTypeFunctions().intersectFunc}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}
-        });
+        TypeId refinedTy = arena.addType(
+            TypeFunctionInstanceType{
+                NotNull{&builtinTypeFunctions().intersectFunc}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}
+            }
+        );
 
-        TypeId assertTy = arena.addType(FunctionType{
-            {genericT}, {}, arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}), arena.addTypePack(TypePack{{refinedTy}})
-        });
+        TypeId assertTy = arena.addType(
+            FunctionType{
+                {genericT}, {}, arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}), arena.addTypePack(TypePack{{refinedTy}})
+            }
+        );
         addGlobalBinding(globals, "assert", assertTy, "@luau");
     }
 
@@ -699,83 +744,80 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
     if (iter == end(context.arguments))
     {
-        context.typechecker->reportError(
-            CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
-            );
-            return true;
-        }
+        context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+        return true;
+    }
 
-        // we'll suppress any errors for `string.format` if the format string is error suppressing.
-        if (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, follow(*iter)) == ErrorSuppression::Suppress)
+    // we'll suppress any errors for `string.format` if the format string is error suppressing.
+    if (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, follow(*iter)) == ErrorSuppression::Suppress)
+    {
+        return true;
+    }
+
+    AstExprConstantString* fmt = nullptr;
+    if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+        fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
+
+    if (!context.callSite->self && context.callSite->args.size > 0)
+        fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+    std::optional<std::string_view> formatString;
+    if (fmt)
+        formatString = {fmt->value.data, fmt->value.size};
+    else if (auto singleton = get<SingletonType>(follow(*iter)))
+    {
+        if (auto stringSingleton = get<StringSingleton>(singleton))
+            formatString = {stringSingleton->value};
+    }
+
+    if (!formatString)
+    {
+        context.typechecker->reportError(CannotCheckDynamicStringFormatCalls{}, context.callSite->location);
+        return true;
+    }
+
+    // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
+    // This does _not_ handle cases like:
+    //
+    //  local foo : () -> (...string) = (nil :: any)
+    //  print(string.format("%s %d %s", foo()))
+    //
+    // ... which should be disallowed.
+
+    std::vector<TypeId> expected = parseFormatString(context.builtinTypes, formatString->data(), formatString->size());
+
+    const auto& [params, tail] = flatten(context.arguments);
+
+    size_t paramOffset = 1;
+    // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
+    bool calledWithSelf = expected.size() == context.callSite->args.size;
+    // unify the prefix one argument at a time
+    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+    {
+        TypeId actualTy = params[i + paramOffset];
+        TypeId expectedTy = expected[i];
+        Location location = context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
+        // use subtyping instead here
+        SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
+
+        if (!result.isSubtype)
         {
-            return true;
-        }
-
-        AstExprConstantString* fmt = nullptr;
-        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
-            fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
-
-        if (!context.callSite->self && context.callSite->args.size > 0)
-            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-        std::optional<std::string_view> formatString;
-        if (fmt)
-            formatString = {fmt->value.data, fmt->value.size};
-        else if (auto singleton = get<SingletonType>(follow(*iter)))
-        {
-            if (auto stringSingleton = get<StringSingleton>(singleton))
-                formatString = {stringSingleton->value};
-        }
-
-        if (!formatString)
-        {
-            context.typechecker->reportError(CannotCheckDynamicStringFormatCalls{}, context.callSite->location);
-            return true;
-        }
-
-        // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
-        // This does _not_ handle cases like:
-        //
-        //  local foo : () -> (...string) = (nil :: any)
-        //  print(string.format("%s %d %s", foo()))
-        //
-        // ... which should be disallowed.
-
-        std::vector<TypeId> expected = parseFormatString(context.builtinTypes, formatString->data(), formatString->size());
-
-        const auto& [params, tail] = flatten(context.arguments);
-
-        size_t paramOffset = 1;
-        // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
-        bool calledWithSelf = expected.size() == context.callSite->args.size;
-        // unify the prefix one argument at a time
-        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
-        {
-            TypeId actualTy = params[i + paramOffset];
-            TypeId expectedTy = expected[i];
-            Location location =
-                context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
-            // use subtyping instead here
-            SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
-
-            if (!result.isSubtype)
+            switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
             {
-                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
-                {
-                    case ErrorSuppression::Suppress:
-                        break;
-                    case ErrorSuppression::NormalizationFailed:
-                        break;
-                    case ErrorSuppression::DoNotSuppress:
-                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                break;
+            case ErrorSuppression::DoNotSuppress:
+                Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
 
-                        if (!reasonings.suppressed)
-                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
-                }
+                if (!reasonings.suppressed)
+                    context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
             }
         }
+    }
 
-        return true;
+    return true;
 }
 
 static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
@@ -1127,11 +1169,13 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
 
     const TypeId stringToStringType = makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ true);
 
-    const TypeId replArgType = arena->addType(UnionType{
-        {stringType,
-         arena->addType(TableType({}, TableIndexer(stringType, stringType), TypeLevel{}, TableState::Generic)),
-         makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ false)}
-    });
+    const TypeId replArgType = arena->addType(
+        UnionType{
+            {stringType,
+             arena->addType(TableType({}, TableIndexer(stringType, stringType), TypeLevel{}, TableState::Generic)),
+             makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ false)}
+        }
+    );
     const TypeId gsubFunc =
         makeFunction(*arena, stringType, {}, {}, {stringType, replArgType, optionalNumber}, {}, {stringType, numberType}, /* checked */ false);
     const TypeId gmatchFunc =
@@ -1194,10 +1238,12 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
              /* checked */ true
          )}},
         {"pack",
-         {arena->addType(FunctionType{
-             arena->addTypePack(TypePack{{stringType}, variadicTailPack}),
-             oneStringPack,
-         })}},
+         {arena->addType(
+             FunctionType{
+                 arena->addTypePack(TypePack{{stringType}, variadicTailPack}),
+                 oneStringPack,
+             }
+         )}},
         {"packsize", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType}, /* checked */ true)}},
         {"unpack", {arena->addType(std::move(stringDotUnpack))}},
     };
@@ -1622,8 +1668,12 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
     return std::nullopt;
 }
 
-std::optional<WithPredicate<TypePackId>> MagicFreeze::
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>)
+std::optional<WithPredicate<TypePackId>> MagicFreeze::handleOldSolver(
+    struct TypeChecker&,
+    const std::shared_ptr<struct Scope>&,
+    const class AstExprCall&,
+    WithPredicate<TypePackId>
+)
 {
     return std::nullopt;
 }
@@ -1754,7 +1804,7 @@ bool MagicRequire::infer(const MagicFunctionCallContext& context)
     if (!checkRequirePathDcr(context.solver, context.callSite->args.data[0]))
         return false;
 
-    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(context.solver->currentModuleName, *context.callSite))
+    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(context.solver->module->name, *context.callSite))
     {
         TypeId moduleType = context.solver->resolveModule(*moduleInfo, context.callSite->location);
         TypePackId moduleResult = context.solver->arena->addTypePack({moduleType});

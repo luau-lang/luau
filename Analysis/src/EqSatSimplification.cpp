@@ -4,6 +4,7 @@
 #include "Luau/EqSatSimplificationImpl.h"
 
 #include "Luau/EGraph.h"
+#include "Luau/HashUtil.h"
 #include "Luau/Id.h"
 #include "Luau/Language.h"
 
@@ -84,9 +85,9 @@ size_t TTable::Hash::operator()(const TTable& value) const
     // We're using pointers here, which does mean platform divergence. I think
     // it's okay? (famous last words, I know)
     for (StringId s : value.propNames)
-        EqSat::hashCombine(hash, EqSat::languageHash(s));
+        hashCombine(hash, EqSat::languageHash(s));
 
-    EqSat::hashCombine(hash, EqSat::languageHash(value.storage));
+    hashCombine(hash, EqSat::languageHash(value.storage));
 
     return hash;
 }
@@ -415,12 +416,14 @@ Id toId(
         // `TypeFunctionInstanceType` outside of the provided arena so that
         // we can access the members without fear of the specific TFIT being
         // overwritten with a bound type.
-        return cache(egraph.add(TTypeFun{
-            std::make_shared<const TypeFunctionInstanceType>(
-                tfun->function, tfun->typeArguments, tfun->packArguments, tfun->userFuncName, tfun->userFuncData
-            ),
-            std::move(parts)
-        }));
+        return cache(egraph.add(
+            TTypeFun{
+                std::make_shared<const TypeFunctionInstanceType>(
+                    tfun->function, tfun->typeArguments, tfun->packArguments, tfun->userFuncName, tfun->userFuncData
+                ),
+                std::move(parts)
+            }
+        ));
     }
     else if (get<NoRefineType>(ty))
         return egraph.add(TNoRefine{});
@@ -2368,11 +2371,12 @@ void Simplifier::intersectTableProperty(Id id)
                                     newIntersectionParts.push_back(intersectionParts[index]);
                             }
 
-                            Id newTableProp =
-                                egraph.add(Intersection{
+                            Id newTableProp = egraph.add(
+                                Intersection{
                                     toId(egraph, builtinTypes, mappingIdToClass, stringCache, *it->second.readTy),
                                     toId(egraph, builtinTypes, mappingIdToClass, stringCache, *table1Ty->props.begin()->second.readTy)
-                                });
+                                }
+                            );
 
                             newIntersectionParts.push_back(egraph.add(TTable{jId, {stringCache.add(it->first)}, {newTableProp}}));
 

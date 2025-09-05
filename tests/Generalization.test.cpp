@@ -166,10 +166,12 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can
 {
     TypeId selfTy = arena.addType(BlockedType{});
 
-    TypeId methodTy = arena.addType(FunctionType{
-        arena.addTypePack({selfTy}),
-        arena.addTypePack({builtinTypes.numberType}),
-    });
+    TypeId methodTy = arena.addType(
+        FunctionType{
+            arena.addTypePack({selfTy}),
+            arena.addTypePack({builtinTypes.numberType}),
+        }
+    );
 
     asMutable(selfTy)->ty.emplace<TableType>(
         TableType::Props{{"count", builtinTypes.numberType}, {"method", methodTy}}, std::nullopt, TypeLevel{}, TableState::Sealed

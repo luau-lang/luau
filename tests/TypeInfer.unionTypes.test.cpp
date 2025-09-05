@@ -629,13 +629,15 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     UnionType u;
 
     u.options.push_back(badCyclicUnionTy);
-    u.options.push_back(arena.addType(TableType{
-        {},
-        TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType},
-        TypeLevel{},
-        getFrontend().globals.globalScope.get(),
-        TableState::Sealed
-    }));
+    u.options.push_back(arena.addType(
+        TableType{
+            {},
+            TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType},
+            TypeLevel{},
+            getFrontend().globals.globalScope.get(),
+            TableState::Sealed
+        }
+    ));
 
     asMutable(badCyclicUnionTy)->ty.emplace<UnionType>(std::move(u));
 

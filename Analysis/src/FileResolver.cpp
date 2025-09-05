@@ -120,8 +120,10 @@ static RequireSuggestions makeSuggestionsFromNode(std::unique_ptr<RequireNode> n
     return result;
 }
 
-std::optional<RequireSuggestions> RequireSuggester::getRequireSuggestionsImpl(const ModuleName& requirer, const std::optional<std::string>& path)
-    const
+std::optional<RequireSuggestions> RequireSuggester::getRequireSuggestionsImpl(
+    const ModuleName& requirer,
+    const std::optional<std::string>& path
+) const
 {
     if (!path)
         return std::nullopt;

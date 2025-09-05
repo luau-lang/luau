@@ -1452,9 +1452,11 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
                     if (chars && !containsNull)
                     {
-                        props.push_back(AstDeclaredExternTypeProperty{
-                            AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
-                        });
+                        props.push_back(
+                            AstDeclaredExternTypeProperty{
+                                AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
+                            }
+                        );
                     }
                     else
                     {
@@ -1485,9 +1487,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
                 expectAndConsume(':', "property type annotation");
                 AstType* propType = parseType();
-                props.push_back(AstDeclaredExternTypeProperty{
-                    propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())
-                });
+                props.push_back(
+                    AstDeclaredExternTypeProperty{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
+                );
             }
         }
 
@@ -2118,16 +2120,18 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                 {
                     props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
                     if (options.storeCstData)
-                        cstItems.push_back(CstTypeTable::Item{
-                            CstTypeTable::Item::Kind::StringProperty,
-                            begin.location.begin,
-                            indexerClosePosition,
-                            colonPosition,
-                            tableSeparator(),
-                            lexer.current().location.begin,
-                            allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth),
-                            stringPosition
-                        });
+                        cstItems.push_back(
+                            CstTypeTable::Item{
+                                CstTypeTable::Item::Kind::StringProperty,
+                                begin.location.begin,
+                                indexerClosePosition,
+                                colonPosition,
+                                tableSeparator(),
+                                lexer.current().location.begin,
+                                allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth),
+                                stringPosition
+                            }
+                        );
                 }
                 else
                     report(begin.location, "String literal contains malformed escape sequence or \\0");
@@ -2148,14 +2152,16 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                     auto tableIndexerResult = parseTableIndexer(access, accessLocation, begin);
                     indexer = tableIndexerResult.node;
                     if (options.storeCstData)
-                        cstItems.push_back(CstTypeTable::Item{
-                            CstTypeTable::Item::Kind::Indexer,
-                            tableIndexerResult.indexerOpenPosition,
-                            tableIndexerResult.indexerClosePosition,
-                            tableIndexerResult.colonPosition,
-                            tableSeparator(),
-                            lexer.current().location.begin,
-                        });
+                        cstItems.push_back(
+                            CstTypeTable::Item{
+                                CstTypeTable::Item::Kind::Indexer,
+                                tableIndexerResult.indexerOpenPosition,
+                                tableIndexerResult.indexerClosePosition,
+                                tableIndexerResult.colonPosition,
+                                tableSeparator(),
+                                lexer.current().location.begin,
+                            }
+                        );
                 }
             }
         }
@@ -2184,14 +2190,16 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
             props.push_back(AstTableProp{name->name, name->location, type, access, accessLocation});
             if (options.storeCstData)
-                cstItems.push_back(CstTypeTable::Item{
-                    CstTypeTable::Item::Kind::Property,
-                    Position{0, 0},
-                    Position{0, 0},
-                    colonPosition,
-                    tableSeparator(),
-                    lexer.current().location.begin
-                });
+                cstItems.push_back(
+                    CstTypeTable::Item{
+                        CstTypeTable::Item::Kind::Property,
+                        Position{0, 0},
+                        Position{0, 0},
+                        colonPosition,
+                        tableSeparator(),
+                        lexer.current().location.begin
+                    }
+                );
         }
 
         if (lexer.current().type == ',' || lexer.current().type == ';')
@@ -3859,9 +3867,8 @@ AstExpr* Parser::parseString()
             style = AstExprConstantString::QuotedRaw;
             break;
         case Lexeme::QuotedString:
-            style = lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Single
-                        ? AstExprConstantString::QuotedSingle
-                        : AstExprConstantString::QuotedSimple;
+            style = lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Single ? AstExprConstantString::QuotedSingle
+                                                                                  : AstExprConstantString::QuotedSimple;
             break;
         default:
             LUAU_ASSERT(false && "Invalid string type");

@@ -112,6 +112,7 @@ inline bool lowerImpl(
 
     // Make sure entry block is first
     CODEGEN_ASSERT(sortedBlocks[0] == 0);
+    CODEGEN_ASSERT(function.entryBlock == 0);
 
     for (size_t i = 0; i < sortedBlocks.size(); ++i)
     {
@@ -123,6 +124,7 @@ inline bool lowerImpl(
 
         CODEGEN_ASSERT(block.start != ~0u);
         CODEGEN_ASSERT(block.finish != ~0u);
+        CODEGEN_ASSERT(!seenFallback || block.kind == IrBlockKind::Fallback);
 
         // If we want to skip fallback code IR/asm, we'll record when those blocks start once we see them
         if (block.kind == IrBlockKind::Fallback && !seenFallback)

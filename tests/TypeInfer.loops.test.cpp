@@ -16,6 +16,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
+LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -758,6 +760,11 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_generic_next")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
+        {FFlag::LuauEagerGeneralization4, true},
+    };
+
     CheckResult result = check(R"(
         for k: number, v: number in next, {1, 2, 3} do
         end
@@ -865,11 +872,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
-        result.errors[0] ==
-        TypeError{
-            Location{{2, 36}, {2, 37}},
-            GenericError{"__iter must return at least one value"},
-        }
+        result.errors[0] == TypeError{
+                                Location{{2, 36}, {2, 37}},
+                                GenericError{"__iter must return at least one value"},
+                            }
     );
 }
 
