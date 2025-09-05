@@ -7,6 +7,7 @@
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/EqSatSimplification.h"
+#include "Luau/HashUtil.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
@@ -135,6 +136,8 @@ struct ConstraintGenerator
 
     DcrLogger* logger;
 
+    bool recursionLimitMet = false;
+
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
@@ -173,6 +176,8 @@ private:
     std::vector<InteriorFreeTypes> interiorFreeTypes;
 
     std::vector<TypeId> unionsToSimplify;
+
+    DenseHashMap<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen{{nullptr, ""}};
 
     // Used to keep track of when we are inside a large table and should
     // opt *not* to do type inference for singletons.
@@ -259,7 +264,6 @@ private:
     LUAU_NOINLINE void checkAliases(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
-    ControlFlow visitBlockWithoutChildScope_DEPRECATED(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visit(const ScopePtr& scope, AstStat* stat);
     ControlFlow visit(const ScopePtr& scope, AstStatBlock* block);
@@ -496,6 +500,7 @@ private:
 
     void updateRValueRefinements(const ScopePtr& scope, DefId def, TypeId ty) const;
     void updateRValueRefinements(Scope* scope, DefId def, TypeId ty) const;
+    void resolveGenericDefaultParameters(const ScopePtr& defnScope, AstStatTypeAlias* alias, const TypeFun& fun);
 };
 
 } // namespace Luau

@@ -504,7 +504,7 @@ struct ConstPropState
 
     // Heap changes might affect table state
     std::vector<NumberedInstruction> getSlotNodeCache; // Additionally, pcpos argument might be different
-    std::vector<uint32_t> checkSlotMatchCache; // Additionally, fallback block argument might be different
+    std::vector<uint32_t> checkSlotMatchCache;         // Additionally, fallback block argument might be different
 
     std::vector<uint32_t> getArrAddrCache;
     std::vector<uint32_t> checkArraySizeCache; // Additionally, fallback block argument might be different

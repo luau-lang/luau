@@ -126,9 +126,10 @@ struct ErrorConverter
             return "'" + s + "'";
         };
 
-        auto constructErrorMessage =
-            [&](std::string givenType, std::string wantedType, std::optional<std::string> givenModule, std::optional<std::string> wantedModule
-            ) -> std::string
+        auto constructErrorMessage = [&](std::string givenType,
+                                         std::string wantedType,
+                                         std::optional<std::string> givenModule,
+                                         std::optional<std::string> wantedModule) -> std::string
         {
             std::string given = givenModule ? quote(givenType) + " from " + quote(*givenModule) : quote(givenType);
             std::string wanted = wantedModule ? quote(wantedType) + " from " + quote(*wantedModule) : quote(wantedType);

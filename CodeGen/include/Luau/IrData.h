@@ -1058,6 +1058,7 @@ struct IrFunction
     std::vector<BytecodeMapping> bcMapping;
     uint32_t entryBlock = 0;
     uint32_t entryLocation = 0;
+    uint32_t endLocation = 0;
 
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;

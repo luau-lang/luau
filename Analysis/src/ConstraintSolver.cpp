@@ -3,9 +3,11 @@
 
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
+#include "Luau/AstUtils.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Generalization.h"
+#include "Luau/HashUtil.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/Location.h"
@@ -36,6 +38,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauAvoidExcessiveTypeCopying)
 LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauForceSimplifyConstraint2)
@@ -53,13 +56,6 @@ LUAU_FASTFLAG(LuauPushTypeConstraint)
 
 namespace Luau
 {
-
-static void hashCombine(size_t& seed, size_t hash)
-{
-    // Golden Ratio constant used for better hash scattering
-    // See https://softwareengineering.stackexchange.com/a/402543
-    seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
 
 bool SubtypeConstraintRecord::operator==(const SubtypeConstraintRecord& other) const
 {
@@ -378,7 +374,7 @@ ConstraintSolver::ConstraintSolver(
     NotNull<Normalizer> normalizer,
     NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
-    ModuleName moduleName,
+    ModulePtr module,
     NotNull<ModuleResolver> moduleResolver,
     std::vector<RequireCycle> requireCycles,
     DcrLogger* logger,
@@ -395,7 +391,7 @@ ConstraintSolver::ConstraintSolver(
     , constraints(borrowConstraints(constraintSet.constraints))
     , scopeToFunction(&constraintSet.scopeToFunction)
     , rootScope(constraintSet.rootScope)
-    , currentModuleName(std::move(moduleName))
+    , module(std::move(module))
     , dfg(dfg)
     , solverConstraintLimit(FInt::LuauSolverConstraintLimit)
     , moduleResolver(moduleResolver)
@@ -414,7 +410,7 @@ ConstraintSolver::ConstraintSolver(
     NotNull<Scope> rootScope,
     std::vector<NotNull<Constraint>> constraints,
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
-    ModuleName moduleName,
+    ModulePtr module,
     NotNull<ModuleResolver> moduleResolver,
     std::vector<RequireCycle> requireCycles,
     DcrLogger* logger,
@@ -430,7 +426,7 @@ ConstraintSolver::ConstraintSolver(
     , constraints(std::move(constraints))
     , scopeToFunction(scopeToFunction)
     , rootScope(rootScope)
-    , currentModuleName(std::move(moduleName))
+    , module(std::move(module))
     , dfg(dfg)
     , solverConstraintLimit(FInt::LuauSolverConstraintLimit)
     , moduleResolver(moduleResolver)
@@ -472,7 +468,7 @@ void ConstraintSolver::run()
     if (FFlag::DebugLuauLogSolver)
     {
         printf(
-            "Starting solver for module %s (%s)\n", moduleResolver->getHumanReadableModuleName(currentModuleName).c_str(), currentModuleName.c_str()
+            "Starting solver for module %s (%s)\n", module->humanReadableName.c_str(), module->name.c_str()
         );
         dump(this, opts);
         printf("Bindings:\n");
@@ -1414,7 +1410,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
         // This is a new type - redefine the location.
         ttv->definitionLocation = constraint->location;
-        ttv->definitionModuleName = currentModuleName;
+        ttv->definitionModuleName = module->name;
 
         ttv->instantiatedTypeParams = typeArguments;
         ttv->instantiatedTypePackParams = packArguments;
@@ -1582,7 +1578,12 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         NotNull{&limits},
         constraint->location
     };
-    auto [status, overload] = resolver.selectOverload(fn, argsPack, /*useFreeTypeBounds*/ force);
+
+    DenseHashSet<TypeId> uniqueTypes{nullptr};
+    if (FFlag::LuauTrackUniqueness && c.callSite)
+        findUniqueTypes(NotNull{&uniqueTypes}, c.callSite->args, NotNull{&module->astTypes});
+
+    auto [status, overload] = resolver.selectOverload(fn, argsPack, NotNull{&uniqueTypes}, /*useFreeTypeBounds*/ force);
     TypeId overloadToUse = fn;
     if (status == OverloadResolver::Analysis::Ok)
         overloadToUse = overload;
@@ -1804,7 +1805,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // which right now may fail due to being non-idempotent (it
     // destructively updates the underlying literal type).
     auto blockedTypes = findBlockedArgTypesIn(c.callSite, c.astTypes);
-    for (const auto ty : blockedTypes)
+    for (TypeId ty : blockedTypes)
     {
         block(ty, constraint);
     }
@@ -2847,7 +2848,7 @@ bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Co
     }
     if (FFlag::LuauForceSimplifyConstraint2)
     {
-        // If we forced, then there _may_ be blocked types, and we should 
+        // If we forced, then there _may_ be blocked types, and we should
         // include those in the union as well.
         for (TypeId ty : finder.blockedTys)
         {
@@ -3851,13 +3852,13 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
 void ConstraintSolver::reportError(TypeErrorData&& data, const Location& location)
 {
     errors.emplace_back(location, std::move(data));
-    errors.back().moduleName = currentModuleName;
+    errors.back().moduleName = module->name;
 }
 
 void ConstraintSolver::reportError(TypeError e)
 {
     errors.emplace_back(std::move(e));
-    errors.back().moduleName = currentModuleName;
+    errors.back().moduleName = module->name;
 }
 
 void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
@@ -4028,12 +4029,12 @@ TypePackId ConstraintSolver::anyifyModuleReturnTypePackGenerics(TypePackId tp)
 
 LUAU_NOINLINE void ConstraintSolver::throwTimeLimitError() const
 {
-    throw TimeLimitError(currentModuleName);
+    throw TimeLimitError(module->name);
 }
 
 LUAU_NOINLINE void ConstraintSolver::throwUserCancelError() const
 {
-    throw UserCancelError(currentModuleName);
+    throw UserCancelError(module->name);
 }
 
 // Instantiate private template implementations for external callers

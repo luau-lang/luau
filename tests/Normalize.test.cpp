@@ -458,9 +458,7 @@ struct NormalizeFixture : Fixture
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
 
-    NormalizeFixture()
-    {
-    }
+    NormalizeFixture() {}
 
     std::shared_ptr<const NormalizedType> toNormalizedType(const std::string& annotation, int expectedErrors = 0)
     {
@@ -1084,10 +1082,12 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
     TypeId t1 = arena.addType(TableType{TableType::Props{{"x", getBuiltins()->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
     // { x: number? }?
-    TypeId t2 = arena.addType(UnionType{
-        {arena.addType(TableType{TableType::Props{{"x", getBuiltins()->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed}),
-         getBuiltins()->nilType}
-    });
+    TypeId t2 = arena.addType(
+        UnionType{
+            {arena.addType(TableType{TableType::Props{{"x", getBuiltins()->optionalNumberType}}, std::nullopt, TypeLevel{}, TableState::Sealed}),
+             getBuiltins()->nilType}
+        }
+    );
 
     TypeId intersection = arena.addType(IntersectionType{{t2, t1}});
 

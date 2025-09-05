@@ -893,10 +893,7 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauLimitDynamicConstraintSolving3, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauLimitDynamicConstraintSolving3, true}};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
 

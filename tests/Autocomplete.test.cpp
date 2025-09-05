@@ -3992,8 +3992,8 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
         local x = require(@1"@2"@3)
     )");
 
-    StringCompletionCallback callback = [](std::string, std::optional<const ExternType*>, std::optional<std::string> contents
-                                        ) -> std::optional<AutocompleteEntryMap>
+    StringCompletionCallback callback =
+        [](std::string, std::optional<const ExternType*>, std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap>
     {
         Luau::AutocompleteEntryMap results = {{"test", Luau::AutocompleteEntry{Luau::AutocompleteEntryKind::String, std::nullopt, false, false}}};
         return results;

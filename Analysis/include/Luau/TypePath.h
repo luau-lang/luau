@@ -111,9 +111,17 @@ struct Reduction
     bool operator==(const Reduction& other) const;
 };
 
+// Component representing a mapped generic pack. Allows traversal into the pack that a generic pack was mapped to.
+struct GenericPackMapping
+{
+    TypePackId mappedType;
+
+    bool operator==(const GenericPackMapping& other) const;
+};
+
 /// A single component of a path, representing one inner type or type pack to
 /// traverse into.
-using Component = Luau::Variant<Property, Index, TypeField, PackField, PackSlice, Reduction>;
+using Component = Luau::Variant<Property, Index, TypeField, PackField, PackSlice, Reduction, GenericPackMapping>;
 
 /// A path through a type or type pack accessing a particular type or type pack
 /// contained within.
@@ -190,6 +198,7 @@ struct PathHash
     size_t operator()(const PackField& field) const;
     size_t operator()(const PackSlice& slice) const;
     size_t operator()(const Reduction& reduction) const;
+    size_t operator()(const GenericPackMapping& mapping) const;
     size_t operator()(const Component& component) const;
     size_t operator()(const Path& path) const;
 };
@@ -218,6 +227,7 @@ struct PathBuilder
     PathBuilder& rets();
     PathBuilder& tail();
     PathBuilder& packSlice(size_t start_index);
+    PathBuilder& mappedGenericPack(TypePackId mappedType);
 };
 
 } // namespace TypePath
@@ -231,10 +241,21 @@ std::string toString(const TypePath::Path& path, bool prefixDot = false);
 /// Converts a Path to a human readable string for error reporting.
 std::string toStringHuman(const TypePath::Path& path);
 
-// TODO: clip traverse_DEPRECATED along with `LuauReturnMappedGenericPacksFromSubtyping2`
+// To keep my head straight when clipping:
+// LuauReturnMappedGenericPacksFromSubtyping2 expects mappedGenericPacks AND arena
+// LuauSubtypingGenericPacksDoesntUseVariance expects just arena. this is the final state
+
+// TODO: clip below two along with `LuauReturnMappedGenericPacksFromSubtyping2`
 std::optional<TypeOrPack> traverse_DEPRECATED(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse_DEPRECATED(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse(
+    TypePackId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
+// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+std::optional<TypeOrPack> traverse_DEPRECATED(
     TypePackId root,
     const Path& path,
     NotNull<BuiltinTypes> builtinTypes,
@@ -242,6 +263,13 @@ std::optional<TypeOrPack> traverse(
     NotNull<TypeArena> arena
 );
 std::optional<TypeOrPack> traverse(
+    TypeId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
+// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+std::optional<TypeOrPack> traverse_DEPRECATED(
     TypeId root,
     const Path& path,
     NotNull<BuiltinTypes> builtinTypes,
@@ -264,11 +292,24 @@ std::optional<TypeId> traverseForType_DEPRECATED(TypeId root, const Path& path, 
 /// @param mappedGenericPacks the mapping for any encountered generic packs we want to reify
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypeId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypeId> traverseForType(
+std::optional<TypeId> traverseForType_DEPRECATED(
     TypeId root,
     const Path& path,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<const DenseHashMap<TypePackId, TypePackId>> mappedGenericPacks,
+    NotNull<TypeArena> arena
+);
+
+/// Traverses a path from a type to its end point, which must be a type.
+/// @param root the entry point of the traversal
+/// @param path the path to traverse
+/// @param builtinTypes the built-in types in use (used to acquire the string metatable)
+/// @param arena a TypeArena, required if path has a PackSlice component
+/// @returns the TypeId at the end of the path, or nullopt if the traversal failed.
+std::optional<TypeId> traverseForType(
+    TypeId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena
 );
 
@@ -286,11 +327,24 @@ std::optional<TypeId> traverseForType_DEPRECATED(TypePackId root, const Path& pa
 /// @param mappedGenericPacks the mapping for any encountered generic packs we want to reify
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypeId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypeId> traverseForType(
+std::optional<TypeId> traverseForType_DEPRECATED(
     TypePackId root,
     const Path& path,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<const DenseHashMap<TypePackId, TypePackId>> mappedGenericPacks,
+    NotNull<TypeArena> arena
+);
+
+/// Traverses a path from a type pack to its end point, which must be a type.
+/// @param root the entry point of the traversal
+/// @param path the path to traverse
+/// @param builtinTypes the built-in types in use (used to acquire the string metatable)
+/// @param arena a TypeArena, required if path has a PackSlice component
+/// @returns the TypeId at the end of the path, or nullopt if the traversal failed.
+std::optional<TypeId> traverseForType(
+    TypePackId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena
 );
 
@@ -309,11 +363,24 @@ std::optional<TypePackId> traverseForPack_DEPRECATED(TypeId root, const Path& pa
 /// @param mappedGenericPacks the mapping for any encountered generic packs we want to reify
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypePackId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypePackId> traverseForPack(
+std::optional<TypePackId> traverseForPack_DEPRECATED(
     TypeId root,
     const Path& path,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<const DenseHashMap<TypePackId, TypePackId>> mappedGenericPacks,
+    NotNull<TypeArena> arena
+);
+
+/// Traverses a path from a type to its end point, which must be a type pack.
+/// @param root the entry point of the traversal
+/// @param path the path to traverse
+/// @param builtinTypes the built-in types in use (used to acquire the string metatable)
+/// @param arena a TypeArena, required if path has a PackSlice component
+/// @returns the TypePackId at the end of the path, or nullopt if the traversal failed.
+std::optional<TypePackId> traverseForPack(
+    TypeId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena
 );
 
@@ -331,7 +398,7 @@ std::optional<TypePackId> traverseForPack_DEPRECATED(TypePackId root, const Path
 /// @param mappedGenericPacks the mapping for any encountered generic packs we want to reify
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypePackId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypePackId> traverseForPack(
+std::optional<TypePackId> traverseForPack_DEPRECATED(
     TypePackId root,
     const Path& path,
     NotNull<BuiltinTypes> builtinTypes,
@@ -339,8 +406,29 @@ std::optional<TypePackId> traverseForPack(
     NotNull<TypeArena> arena
 );
 
+/// Traverses a path from a type pack to its end point, which must be a type pack.
+/// @param root the entry point of the traversal
+/// @param path the path to traverse
+/// @param builtinTypes the built-in types in use (used to acquire the string metatable)
+/// @param arena a TypeArena, required if path has a PackSlice component
+/// @returns the TypePackId at the end of the path, or nullopt if the traversal failed.
+std::optional<TypePackId> traverseForPack(
+    TypePackId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
+
 /// Traverses a path of Index and PackSlices to compute the index of the type the path points to
 /// Returns std::nullopt if the path isn't n PackSlice components followed by an Index component
 std::optional<size_t> traverseForIndex(const Path& path);
+
+// Flattens a type pack with generic packs into a type pack without generic packs, using the generics mapping encoded in path.
+// Path is assumed to contain only PackField::Tail and GenericPackMapping components.
+TypePack flattenPackWithPath(TypePackId root, const Path& path);
+
+TypePack traverseForFlattenedPack(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
+
+bool matchesPrefix(const Path& prefix, const Path& full);
 
 } // namespace Luau

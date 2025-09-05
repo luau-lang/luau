@@ -20,7 +20,7 @@ struct GlobalTypes
     TypeArena globalTypes;
     SourceModule globalNames; // names for symbols entered into globalScope
 
-    ScopePtr globalScope;     // shared by all modules
+    ScopePtr globalScope;             // shared by all modules
     ScopePtr globalTypeFunctionScope; // shared by all modules
 
     SolverMode mode = SolverMode::Old;

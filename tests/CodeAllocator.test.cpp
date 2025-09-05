@@ -736,7 +736,8 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
     uint8_t* nativeData1;
     size_t sizeNativeData1;
     uint8_t* nativeEntry1;
-    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData1, sizeNativeData1, nativeEntry1)
+    REQUIRE(
+        allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData1, sizeNativeData1, nativeEntry1)
     );
     REQUIRE(nativeEntry1);
 

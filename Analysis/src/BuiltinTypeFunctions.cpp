@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
+LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauRawGetHandlesNil)
 
@@ -108,11 +109,13 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
         if (results.size() == 1)
             return {{results[0], Reduction::MaybeOk, {}, {}}};
 
-        TypeId resultTy = ctx->arena->addType(TypeFunctionInstanceType{
-            NotNull{&builtinTypeFunctions().unionFunc},
-            std::move(results),
-            {},
-        });
+        TypeId resultTy = ctx->arena->addType(
+            TypeFunctionInstanceType{
+                NotNull{&builtinTypeFunctions().unionFunc},
+                std::move(results),
+                {},
+            }
+        );
 
         if (ctx->solver)
             ctx->pushConstraint(ReduceConstraint{resultTy});
@@ -318,9 +321,12 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
-        return {std::nullopt, Reduction::Erroneous, {}, {}};
+    if (!FFlag::LuauEGFixGenericsList)
+    {
+        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+    }
 
     if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
         return {ret, Reduction::MaybeOk, {}, {}};
@@ -1334,9 +1340,8 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
 
     if (FFlag::LuauEagerGeneralization4)
     {
-        targetIsPending = FFlag::LuauDoNotBlockOnStuckTypeFunctions
-            ? isBlockedOrUnsolvedType(targetTy)
-            : is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy);
+        targetIsPending = FFlag::LuauDoNotBlockOnStuckTypeFunctions ? isBlockedOrUnsolvedType(targetTy)
+                                                                    : is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy);
     }
     else
     {

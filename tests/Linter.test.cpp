@@ -1986,7 +1986,9 @@ Account:deposit(200.00)
 )");
 
         REQUIRE(1 == result.warnings.size());
-        checkDeprecatedWarning(result.warnings[0], Position(8, 0), Position(8, 15), "Member 'Account.deposit' is deprecated, use 'credit' instead. It sounds cool");
+        checkDeprecatedWarning(
+            result.warnings[0], Position(8, 0), Position(8, 15), "Member 'Account.deposit' is deprecated, use 'credit' instead. It sounds cool"
+        );
     }
 
     // @deprecated works for methods with a compound expression class name
@@ -2007,7 +2009,9 @@ end
 )");
 
         REQUIRE(1 == result.warnings.size());
-        checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated, use 'credit' instead. It sounds cool");
+        checkDeprecatedWarning(
+            result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated, use 'credit' instead. It sounds cool"
+        );
     }
 
     {

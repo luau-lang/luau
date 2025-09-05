@@ -2807,10 +2807,12 @@ void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, const s
     if (auto e = hasUnificationTooComplex(innerErrors))
         reportError(*e);
     else if (!innerErrors.empty())
-        reportError(TypeError{
-            location,
-            TypeMismatch{wantedType, givenType, format("Property '%s' is not compatible.", prop.c_str()), innerErrors.front(), mismatchContext()}
-        });
+        reportError(
+            TypeError{
+                location,
+                TypeMismatch{wantedType, givenType, format("Property '%s' is not compatible.", prop.c_str()), innerErrors.front(), mismatchContext()}
+            }
+        );
 }
 
 void Unifier::ice(const std::string& message, const Location& location)

@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 
 namespace Luau
 {
@@ -235,7 +236,8 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(
         return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), nullptr};
 
     Frontend::Stats dummyStats;
-    ModulePtr checkedModule = check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, dummyStats, {});
+    ModulePtr checkedModule =
+        check(sourceModule, Mode::Definition, {}, std::nullopt, /*forAutocomplete*/ false, /*recordJsonLog*/ false, dummyStats, {});
 
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, std::move(parseResult), std::move(sourceModule), std::move(checkedModule)};
@@ -1045,8 +1047,9 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         return;
     }
 
-    ModulePtr module =
-        check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, item.stats, std::move(typeCheckLimits));
+    ModulePtr module = check(
+        sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, item.stats, std::move(typeCheckLimits)
+    );
 
     double duration = getTimestamp() - timestamp;
 
@@ -1437,17 +1440,17 @@ ModulePtr check(
     LUAU_TIMETRACE_ARGUMENT("module", sourceModule.name.c_str());
     LUAU_TIMETRACE_ARGUMENT("name", sourceModule.humanReadableName.c_str());
 
-    ModulePtr result = std::make_shared<Module>();
-    result->checkedInNewSolver = true;
-    result->name = sourceModule.name;
-    result->humanReadableName = sourceModule.humanReadableName;
-    result->mode = mode;
-    result->internalTypes.owningModule = result.get();
-    result->interfaceTypes.owningModule = result.get();
-    result->internalTypes.collectSingletonStats = options.collectTypeAllocationStats;
-    result->allocator = sourceModule.allocator;
-    result->names = sourceModule.names;
-    result->root = sourceModule.root;
+    ModulePtr module = std::make_shared<Module>();
+    module->checkedInNewSolver = true;
+    module->name = sourceModule.name;
+    module->humanReadableName = sourceModule.humanReadableName;
+    module->mode = mode;
+    module->internalTypes.owningModule = module.get();
+    module->interfaceTypes.owningModule = module.get();
+    module->internalTypes.collectSingletonStats = options.collectTypeAllocationStats;
+    module->allocator = sourceModule.allocator;
+    module->names = sourceModule.names;
+    module->root = sourceModule.root;
 
     iceHandler->moduleName = sourceModule.name;
 
@@ -1455,27 +1458,27 @@ ModulePtr check(
     if (recordJsonLog)
     {
         logger = std::make_unique<DcrLogger>();
-        std::optional<SourceCode> source = fileResolver->readSource(result->name);
+        std::optional<SourceCode> source = fileResolver->readSource(module->name);
         if (source)
         {
             logger->captureSource(source->source);
         }
     }
 
-    DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, NotNull{&result->defArena}, NotNull{&result->keyArena}, iceHandler);
+    DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, NotNull{&module->defArena}, NotNull{&module->keyArena}, iceHandler);
 
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
     unifierState.counters.iterationLimit = limits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
-    Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}, SolverMode::New};
-    SimplifierPtr simplifier = newSimplifier(NotNull{&result->internalTypes}, builtinTypes);
+    Normalizer normalizer{&module->internalTypes, builtinTypes, NotNull{&unifierState}, SolverMode::New};
+    SimplifierPtr simplifier = newSimplifier(NotNull{&module->internalTypes}, builtinTypes);
     TypeFunctionRuntime typeFunctionRuntime{iceHandler, NotNull{&limits}};
 
     typeFunctionRuntime.allowEvaluation = true;
 
     ConstraintGenerator cg{
-        result,
+        module,
         NotNull{&normalizer},
         NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
@@ -1490,7 +1493,7 @@ ModulePtr check(
         requireCycles
     };
 
-    // FIXME: Delete this flag when clipping FFlag::LuauEagerGeneralization4.
+    // FIXME: Unwrap this std::option when clipping FFlag::LuauEagerGeneralization4.
     //
     // This optional<> only exists so that we can run one constructor when the flag
     // is set, and another when it is unset.
@@ -1499,13 +1502,15 @@ ModulePtr check(
     if (FFlag::LuauEagerGeneralization4)
     {
         ConstraintSet constraintSet = cg.run(sourceModule.root);
-        result->errors = std::move(constraintSet.errors);
+        module->errors = std::move(constraintSet.errors);
+        if (FFlag::LuauNoConstraintGenRecursionLimitIce)
+            module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
 
         cs.emplace(
             NotNull{&normalizer},
             NotNull{simplifier.get()},
             NotNull{&typeFunctionRuntime},
-            result->name,
+            module,
             moduleResolver,
             requireCycles,
             logger.get(),
@@ -1517,7 +1522,9 @@ ModulePtr check(
     else
     {
         cg.visitModuleRoot(sourceModule.root);
-        result->errors = std::move(cg.errors);
+        module->errors = std::move(cg.errors);
+        if (FFlag::LuauNoConstraintGenRecursionLimitIce)
+            module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
 
         cs.emplace(
             NotNull{&normalizer},
@@ -1526,7 +1533,7 @@ ModulePtr check(
             NotNull(cg.rootScope),
             borrowConstraints(cg.constraints),
             NotNull{&cg.scopeToFunction},
-            result->name,
+            module,
             moduleResolver,
             requireCycles,
             logger.get(),
@@ -1546,11 +1553,11 @@ ModulePtr check(
     }
     catch (const TimeLimitError&)
     {
-        result->timeout = true;
+        module->timeout = true;
     }
     catch (const UserCancelError&)
     {
-        result->cancelled = true;
+        module->cancelled = true;
     }
 
     stats.dynamicConstraintsCreated += cs->solverConstraints.size();
@@ -1565,23 +1572,23 @@ ModulePtr check(
     }
 
     for (TypeError& e : cs->errors)
-        result->errors.emplace_back(std::move(e));
+        module->errors.emplace_back(std::move(e));
 
-    result->scopes = std::move(cg.scopes);
-    result->type = sourceModule.type;
-    result->upperBoundContributors = std::move(cs->upperBoundContributors);
+    module->scopes = std::move(cg.scopes);
+    module->type = sourceModule.type;
+    module->upperBoundContributors = std::move(cs->upperBoundContributors);
 
-    if (result->timeout || result->cancelled)
+    if (module->timeout || module->cancelled)
     {
         // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
         // types
-        ScopePtr moduleScope = result->getModuleScope();
+        ScopePtr moduleScope = module->getModuleScope();
         moduleScope->returnType = builtinTypes->errorTypePack;
 
-        for (auto& [name, ty] : result->declaredGlobals)
+        for (auto& [name, ty] : module->declaredGlobals)
             ty = builtinTypes->errorType;
 
-        for (auto& [name, tf] : result->exportedTypeBindings)
+        for (auto& [name, tf] : module->exportedTypeBindings)
             tf.type = builtinTypes->errorType;
     }
     else
@@ -1600,7 +1607,7 @@ ModulePtr check(
                     NotNull{&dfg},
                     NotNull{&limits},
                     sourceModule,
-                    result.get()
+                    module.get()
                 );
                 break;
             case Mode::Definition:
@@ -1614,7 +1621,7 @@ ModulePtr check(
                     NotNull{&limits},
                     logger.get(),
                     sourceModule,
-                    result.get()
+                    module.get()
                 );
                 break;
             case Mode::NoCheck:
@@ -1623,11 +1630,11 @@ ModulePtr check(
         }
         catch (const TimeLimitError&)
         {
-            result->timeout = true;
+            module->timeout = true;
         }
         catch (const UserCancelError&)
         {
-            result->cancelled = true;
+            module->cancelled = true;
         }
     }
 
@@ -1636,16 +1643,16 @@ ModulePtr check(
     // this is probably, on the whole, a good decision to not annoy users though.
     if (FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
     {
-        if (result->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(result->errors[0]) &&
+        if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]) &&
             !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
-            result->errors.clear();
+            module->errors.clear();
     }
 
     ExpectedTypeVisitor etv{
-        NotNull{&result->astTypes},
-        NotNull{&result->astExpectedTypes},
-        NotNull{&result->astResolvedTypes},
-        NotNull{&result->internalTypes},
+        NotNull{&module->astTypes},
+        NotNull{&module->astExpectedTypes},
+        NotNull{&module->astResolvedTypes},
+        NotNull{&module->internalTypes},
         builtinTypes,
         NotNull{parentScope.get()}
     };
@@ -1661,37 +1668,37 @@ ModulePtr check(
 
             // `result->returnType` is not filled in yet, so we
             // traverse the return type of the root module.
-            finder.traverse(result->getModuleScope()->returnType);
+            finder.traverse(module->getModuleScope()->returnType);
 
-            for (const auto& [_, binding] : result->exportedTypeBindings)
+            for (const auto& [_, binding] : module->exportedTypeBindings)
                 finder.traverse(binding.type);
 
-            for (const auto& [_, ty] : result->astTypes)
+            for (const auto& [_, ty] : module->astTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, ty] : result->astExpectedTypes)
+            for (const auto& [_, ty] : module->astExpectedTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, tp] : result->astTypePacks)
+            for (const auto& [_, tp] : module->astTypePacks)
                 finder.traverse(tp);
 
-            for (const auto& [_, ty] : result->astResolvedTypes)
+            for (const auto& [_, ty] : module->astResolvedTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, ty] : result->astOverloadResolvedTypes)
+            for (const auto& [_, ty] : module->astOverloadResolvedTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, tp] : result->astResolvedTypePacks)
+            for (const auto& [_, tp] : module->astResolvedTypePacks)
                 finder.traverse(tp);
         }
     }
 
 
-    unfreeze(result->interfaceTypes);
+    unfreeze(module->interfaceTypes);
     if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        result->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
+        module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
     else
-        result->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
+        module->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
 
     if (!FFlag::LuauLimitDynamicConstraintSolving3)
     {
@@ -1699,27 +1706,27 @@ ModulePtr check(
         {
             InternalTypeFinder finder;
 
-            finder.traverse(result->returnType);
+            finder.traverse(module->returnType);
 
-            for (const auto& [_, binding] : result->exportedTypeBindings)
+            for (const auto& [_, binding] : module->exportedTypeBindings)
                 finder.traverse(binding.type);
 
-            for (const auto& [_, ty] : result->astTypes)
+            for (const auto& [_, ty] : module->astTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, ty] : result->astExpectedTypes)
+            for (const auto& [_, ty] : module->astExpectedTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, tp] : result->astTypePacks)
+            for (const auto& [_, tp] : module->astTypePacks)
                 finder.traverse(tp);
 
-            for (const auto& [_, ty] : result->astResolvedTypes)
+            for (const auto& [_, ty] : module->astResolvedTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, ty] : result->astOverloadResolvedTypes)
+            for (const auto& [_, ty] : module->astOverloadResolvedTypes)
                 finder.traverse(ty);
 
-            for (const auto& [_, tp] : result->astResolvedTypePacks)
+            for (const auto& [_, tp] : module->astResolvedTypePacks)
                 finder.traverse(tp);
         }
     }
@@ -1735,10 +1742,10 @@ ModulePtr check(
     // Notably, we would first need to get to a place where TypeChecker2 is
     // never in the position of dealing with a FreeType.  They should all be
     // bound to something by the time constraints are solved.
-    freeze(result->internalTypes);
-    freeze(result->interfaceTypes);
+    freeze(module->internalTypes);
+    freeze(module->interfaceTypes);
 
-    return result;
+    return module;
 }
 
 ModulePtr Frontend::check(

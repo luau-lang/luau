@@ -525,12 +525,12 @@ assert(extramath3(2) == "number")
 assert(extramath3("2") == "number")
 
 local function scopedrestorefailurea(format: string, b: buffer): (string, buffer)
-	local H1F, H2F, H3F, H4F = buffer.readu32(b, 0), buffer.readu32(b, 8), buffer.readu32(b, 16), buffer.readu32(b, 24)
-	local H5F, H6F, _, _ = buffer.readu32(b, 32), buffer.readu32(b, 40), buffer.readu32(b, 48), buffer.readu32(b, 56)
-	local H1B, H2B, H3B, H4B = buffer.readu32(b, 4), buffer.readu32(b, 12), buffer.readu32(b, 20), buffer.readu32(b, 28)
-	local H5B, H6B, _, _ = buffer.readu32(b, 36), buffer.readu32(b, 44), buffer.readu32(b, 52), buffer.readu32(b, 60)
+  local H1F, H2F, H3F, H4F = buffer.readu32(b, 0), buffer.readu32(b, 8), buffer.readu32(b, 16), buffer.readu32(b, 24)
+  local H5F, H6F, _, _ = buffer.readu32(b, 32), buffer.readu32(b, 40), buffer.readu32(b, 48), buffer.readu32(b, 56)
+  local H1B, H2B, H3B, H4B = buffer.readu32(b, 4), buffer.readu32(b, 12), buffer.readu32(b, 20), buffer.readu32(b, 28)
+  local H5B, H6B, _, _ = buffer.readu32(b, 36), buffer.readu32(b, 44), buffer.readu32(b, 52), buffer.readu32(b, 60)
 
-	return string.format(format, H1F, H1B, H2F, H2B, H3F, H3B, H4F, H4B, H5F, H5B, H6F, H6B), b
+  return string.format(format, H1F, H1B, H2F, H2B, H3F, H3B, H4F, H4B, H5F, H5B, H6F, H6B), b
 end
 
 local function scopedrestorefailureb()
@@ -604,5 +604,33 @@ local function slotcachelimit2(foo, size)
 end
 
 slotcachelimit2(function(a) return -a end, vector.create(1, 2, 3))
+
+local function forcedregisterspill1(x, y, z)
+  local c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = (x + 1), (x + 2), (x + 3), (x + 4), (x + 5), (x + 6), (x + 7), (x + 8), (x + 9), (x + 10)
+  local d1, d2, d3, d4, d5, d6, d7, d8, d9, d10 = (y + 1), (y + 2), (y + 3), (y + 4), (y + 5), (y + 6), (y + 7), (y + 8), (y + 9), (y + 10)
+  local e1, e2, e3, e4, e5, e6, e7, e8, e9, e10 = (z * 1), (z * 2), (z * 3), (z * 4), (z * 5), (z * 6), (z * 7), (z * 8), (z * 9), (z * 10)
+
+  -- force store of all those values for a call and then bring all those registers back from VM slot spills
+  local t = {
+    c1 + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + (x + 1) + (x + 2) + (x + 3) + (x + 4) + (x + 5) + (x + 6) + (x + 7) + (x + 8) + (x + 9) + (x + 10),
+    d1 + d2 + d3 + d4 + d5 + d6 + d7 + d8 + d9 + d10 + (y + 1) + (y + 2) + (y + 3) + (y + 4) + (y + 5) + (y + 6) + (y + 7) + (y + 8) + (y + 9) + (y + 10),
+    e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + (z * 1) + (z * 2) + (z * 3) + (z * 4) + (z * 5) + (z * 6) + (z * 7) + (z * 8) + (z * 9) + (z * 10),
+  }
+
+  -- bring them back once more time
+  local s1 = c1 + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + (x + 1) + (x + 2) + (x + 3) + (x + 4) + (x + 5) + (x + 6) + (x + 7) + (x + 8) + (x + 9) + (x + 10)
+  local s2 = d1 + d2 + d3 + d4 + d5 + d6 + d7 + d8 + d9 + d10 + (y + 1) + (y + 2) + (y + 3) + (y + 4) + (y + 5) + (y + 6) + (y + 7) + (y + 8) + (y + 9) + (y + 10)
+  local s3 = e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + (z * 1) + (z * 2) + (z * 3) + (z * 4) + (z * 5) + (z * 6) + (z * 7) + (z * 8) + (z * 9) + (z * 10)
+
+  -- have not fallen back
+  assert(is_native())
+  return s1, s2, s3, t
+end
+
+do
+  local a, b, c, t = forcedregisterspill1(2, 20, 10)
+  assert(a == 150 and b == 510 and c == 1100)
+  assert(t[1] == 150 and t[2] == 510 and t[3] == 1100)
+end
 
 return('OK')
