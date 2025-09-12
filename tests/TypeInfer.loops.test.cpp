@@ -17,7 +17,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -762,7 +761,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_generic_next")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-        {FFlag::LuauEagerGeneralization4, true},
     };
 
     CheckResult result = check(R"(

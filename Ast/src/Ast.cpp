@@ -54,6 +54,14 @@ AstAttr::AstAttr(const Location& location, Type type, AstArray<AstExpr*> args)
 {
 }
 
+AstAttr::AstAttr(const Location& location, Type type, AstArray<AstExpr*> args, AstName name)
+    : AstNode(ClassIndex(), location)
+    , type(type)
+    , args(args)
+    , name(name)
+{
+}
+
 void AstAttr::visit(AstVisitor* visitor)
 {
     visitor->visit(this);

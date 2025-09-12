@@ -9,7 +9,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTypeFunNoScopeMapRef)
 LUAU_FASTFLAG(LuauInstantiateResolvedTypeFunctions)
 
@@ -1982,7 +1981,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_bool")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (false) // FFlag::LuauEagerGeneralization4)
     {
         // FIXME: CLI-151985
         // This test breaks because we can't see that eq<type?, b> is already fully reduced.
@@ -2005,7 +2004,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_string")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (false) // FFlag::LuauEagerGeneralization4)
     {
         // FIXME: CLI-151985
         // This test breaks because we can't see that eq<type?, b> is already fully reduced.
@@ -2369,10 +2368,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_reduction_errors")
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
 
     CheckResult result = check(R"(
 type Test<T, U> = setmetatable<T, U>

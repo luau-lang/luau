@@ -35,14 +35,12 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
@@ -1493,63 +1491,30 @@ ModulePtr check(
         requireCycles
     };
 
-    // FIXME: Unwrap this std::option when clipping FFlag::LuauEagerGeneralization4.
-    //
-    // This optional<> only exists so that we can run one constructor when the flag
-    // is set, and another when it is unset.
-    std::optional<ConstraintSolver> cs;
+    ConstraintSet constraintSet = cg.run(sourceModule.root);
+    module->errors = std::move(constraintSet.errors);
+    if (FFlag::LuauNoConstraintGenRecursionLimitIce)
+        module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
 
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        ConstraintSet constraintSet = cg.run(sourceModule.root);
-        module->errors = std::move(constraintSet.errors);
-        if (FFlag::LuauNoConstraintGenRecursionLimitIce)
-            module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
-
-        cs.emplace(
-            NotNull{&normalizer},
-            NotNull{simplifier.get()},
-            NotNull{&typeFunctionRuntime},
-            module,
-            moduleResolver,
-            requireCycles,
-            logger.get(),
-            NotNull{&dfg},
-            limits,
-            std::move(constraintSet)
-        );
-    }
-    else
-    {
-        cg.visitModuleRoot(sourceModule.root);
-        module->errors = std::move(cg.errors);
-        if (FFlag::LuauNoConstraintGenRecursionLimitIce)
-            module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
-
-        cs.emplace(
-            NotNull{&normalizer},
-            NotNull{simplifier.get()},
-            NotNull{&typeFunctionRuntime},
-            NotNull(cg.rootScope),
-            borrowConstraints(cg.constraints),
-            NotNull{&cg.scopeToFunction},
-            module,
-            moduleResolver,
-            requireCycles,
-            logger.get(),
-            NotNull{&dfg},
-            limits
-        );
-    }
-
-    LUAU_ASSERT(bool(cs));
+    ConstraintSolver cs{
+        NotNull{&normalizer},
+        NotNull{simplifier.get()},
+        NotNull{&typeFunctionRuntime},
+        module,
+        moduleResolver,
+        requireCycles,
+        logger.get(),
+        NotNull{&dfg},
+        limits,
+        std::move(constraintSet)
+    };
 
     if (options.randomizeConstraintResolutionSeed)
-        cs->randomize(*options.randomizeConstraintResolutionSeed);
+        cs.randomize(*options.randomizeConstraintResolutionSeed);
 
     try
     {
-        cs->run();
+        cs.run();
     }
     catch (const TimeLimitError&)
     {
@@ -1560,7 +1525,7 @@ ModulePtr check(
         module->cancelled = true;
     }
 
-    stats.dynamicConstraintsCreated += cs->solverConstraints.size();
+    stats.dynamicConstraintsCreated += cs.solverConstraints.size();
 
     if (recordJsonLog)
     {
@@ -1571,12 +1536,12 @@ ModulePtr check(
             printf("%s\n", output.c_str());
     }
 
-    for (TypeError& e : cs->errors)
+    for (TypeError& e : cs.errors)
         module->errors.emplace_back(std::move(e));
 
     module->scopes = std::move(cg.scopes);
     module->type = sourceModule.type;
-    module->upperBoundContributors = std::move(cs->upperBoundContributors);
+    module->upperBoundContributors = std::move(cs.upperBoundContributors);
 
     if (module->timeout || module->cancelled)
     {
@@ -1641,12 +1606,9 @@ ModulePtr check(
     // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
     // this means we won't give this warning if types seem totally nonsensical, but there are no other errors.
     // this is probably, on the whole, a good decision to not annoy users though.
-    if (FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
-    {
-        if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]) &&
-            !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
-            module->errors.clear();
-    }
+    if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]) &&
+        !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
+        module->errors.clear();
 
     ExpectedTypeVisitor etv{
         NotNull{&module->astTypes},

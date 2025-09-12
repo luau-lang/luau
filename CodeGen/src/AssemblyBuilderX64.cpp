@@ -6,8 +6,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenFixRexw, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -39,8 +37,6 @@ static_assert(sizeof(cmovTextForCondition) / sizeof(cmovTextForCondition[0]) == 
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
 
 #define REX_W_BIT(value) (value ? 0x8 : 0x0)
-// TODO: remove with DFFlagLuauCodeGenFixRexw
-#define REX_W_DEPRECATED(reg) REX_W_BIT((reg).size == SizeX64::qword || ((reg).size == SizeX64::byte && (reg).index >= 4))
 #define REX_W(reg) REX_W_BIT((reg).size == SizeX64::qword)
 #define REX_FORCE(reg) (((reg).size == SizeX64::byte && (reg).index >= 4) ? 0x40 : 0x00)
 #define REX_R(reg) (((reg).index & 0x8) >> 1)
@@ -82,9 +78,10 @@ static ABIX64 getCurrentX64ABI()
 #endif
 }
 
-AssemblyBuilderX64::AssemblyBuilderX64(bool logText, ABIX64 abi)
+AssemblyBuilderX64::AssemblyBuilderX64(bool logText, ABIX64 abi, unsigned int features)
     : logText(logText)
     , abi(abi)
+    , features(features)
     , constCache32(~0u)
     , constCache64(~0ull)
 {
@@ -96,8 +93,8 @@ AssemblyBuilderX64::AssemblyBuilderX64(bool logText, ABIX64 abi)
     codeEnd = code.data() + code.size();
 }
 
-AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
-    : AssemblyBuilderX64(logText, getCurrentX64ABI())
+AssemblyBuilderX64::AssemblyBuilderX64(bool logText, unsigned int features)
+    : AssemblyBuilderX64(logText, getCurrentX64ABI(), features)
 {
 }
 
@@ -978,6 +975,17 @@ void AssemblyBuilderX64::vdpps(OperandX64 dst, OperandX64 src1, OperandX64 src2,
     placeAvx("vdpps", dst, src1, src2, mask, 0x40, false, AVX_0F3A, AVX_66);
 }
 
+
+void AssemblyBuilderX64::vfmadd213ps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vfmadd213ps", dst, src1, src2, 0xA8, false, AVX_0F38, AVX_66);
+}
+
+void AssemblyBuilderX64::vfmadd213pd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vfmadd213pd", dst, src1, src2, 0xA8, true, AVX_0F38, AVX_66);
+}
+
 bool AssemblyBuilderX64::finalize()
 {
     code.resize(codePos - code.data());
@@ -1412,52 +1420,25 @@ void AssemblyBuilderX64::
 
 void AssemblyBuilderX64::placeRex(RegisterX64 op)
 {
-    if (DFFlag::LuauCodeGenFixRexw)
-    {
-        uint8_t code = REX_W(op) | REX_B(op) | REX_FORCE(op);
+    uint8_t code = REX_W(op) | REX_B(op) | REX_FORCE(op);
 
-        if (code != 0)
-            place(code | 0x40);
-    }
-    else
-    {
-        uint8_t code = REX_W_DEPRECATED(op) | REX_B(op);
-
-        if (code != 0)
-            place(code | 0x40);
-    }
+    if (code != 0)
+        place(code | 0x40);
 }
 
 void AssemblyBuilderX64::placeRex(OperandX64 op)
 {
-    if (DFFlag::LuauCodeGenFixRexw)
-    {
-        uint8_t code = 0;
+    uint8_t code = 0;
 
-        if (op.cat == CategoryX64::reg)
-            code = REX_W(op.base) | REX_B(op.base) | REX_FORCE(op.base);
-        else if (op.cat == CategoryX64::mem)
-            code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
-        else
-            CODEGEN_ASSERT(!"No encoding for left operand of this category");
-
-        if (code != 0)
-            place(code | 0x40);
-    }
+    if (op.cat == CategoryX64::reg)
+        code = REX_W(op.base) | REX_B(op.base) | REX_FORCE(op.base);
+    else if (op.cat == CategoryX64::mem)
+        code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
     else
-    {
-        uint8_t code = 0;
+        CODEGEN_ASSERT(!"No encoding for left operand of this category");
 
-        if (op.cat == CategoryX64::reg)
-            code = REX_W_DEPRECATED(op.base) | REX_B(op.base);
-        else if (op.cat == CategoryX64::mem)
-            code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
-        else
-            CODEGEN_ASSERT(!"No encoding for left operand of this category");
-
-        if (code != 0)
-            place(code | 0x40);
-    }
+    if (code != 0)
+        place(code | 0x40);
 }
 
 void AssemblyBuilderX64::placeRexNoW(OperandX64 op)
@@ -1477,30 +1458,15 @@ void AssemblyBuilderX64::placeRexNoW(OperandX64 op)
 
 void AssemblyBuilderX64::placeRex(RegisterX64 lhs, OperandX64 rhs)
 {
-    if (DFFlag::LuauCodeGenFixRexw)
-    {
-        uint8_t code = REX_W(lhs) | REX_FORCE(lhs);
+    uint8_t code = REX_W(lhs) | REX_FORCE(lhs);
 
-        if (rhs.cat == CategoryX64::imm)
-            code |= REX_B(lhs);
-        else
-            code |= REX_R(lhs) | REX_X(rhs.index) | REX_B(rhs.base) | REX_FORCE(lhs) | REX_FORCE(rhs.base);
-
-        if (code != 0)
-            place(code | 0x40);
-    }
+    if (rhs.cat == CategoryX64::imm)
+        code |= REX_B(lhs);
     else
-    {
-        uint8_t code = REX_W_DEPRECATED(lhs);
+        code |= REX_R(lhs) | REX_X(rhs.index) | REX_B(rhs.base) | REX_FORCE(lhs) | REX_FORCE(rhs.base);
 
-        if (rhs.cat == CategoryX64::imm)
-            code |= REX_B(lhs);
-        else
-            code |= REX_R(lhs) | REX_X(rhs.index) | REX_B(rhs.base);
-
-        if (code != 0)
-            place(code | 0x40);
-    }
+    if (code != 0)
+        place(code | 0x40);
 }
 
 void AssemblyBuilderX64::placeVex(OperandX64 dst, OperandX64 src1, OperandX64 src2, bool setW, uint8_t mode, uint8_t prefix)

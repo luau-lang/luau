@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauEagerGeneralization4);
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 using namespace Luau;

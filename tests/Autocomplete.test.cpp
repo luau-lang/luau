@@ -19,11 +19,12 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 LUAU_FASTFLAG(LuauIncludeBreakContinueStatements)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSuggestHotComments)
+LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
+LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
 using namespace Luau;
 
@@ -99,6 +100,13 @@ struct ACFixtureImpl : BaseType
             else if (c == '@')
             {
                 // skip the '@' character
+                if (prevChar == '\\')
+                {
+                    // escaped @, prevent prevChar to be equal to '@' on next loop
+                    c = '\0';
+                    // replace escaping '\' with '@'
+                    filteredSource.back() = '@';
+                }
             }
             else
             {
@@ -4478,10 +4486,8 @@ TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
 
     auto ac = autocomplete('1');
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauSolverV2)
     {
-        // This `if` statement is because `LuauEagerGeneralization4`
-        // sets some flags
         CHECK(ac.entryMap.count("BaseMethod") > 0);
         CHECK(ac.entryMap.count("Method") > 0);
     }
@@ -4613,11 +4619,8 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_type_assertion")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
 {
-    ScopedFastFlag sffs[] = {
-        // Somewhat surprisingly, the old solver didn't cover this case.
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauImplicitTableIndexerKeys3, true},
-    };
+    // Somewhat surprisingly, the old solver didn't cover this case.
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     check(R"(
         type Constraint = "A" | "B" | "C"
@@ -4640,10 +4643,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_without_annotation")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauImplicitTableIndexerKeys3, true},
-    };
+    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
 
     check(R"(
         local foo = {
@@ -4895,6 +4895,110 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_suggest_hot_comments")
     CHECK(ac.entryMap.count("native"));
     CHECK(ac.entryMap.count("nolint"));
     CHECK(ac.entryMap.count("optimize"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_repeat_body_eof")
+{
+    ScopedFastFlag sff{FFlag::LuauUnfinishedRepeatAncestryFix, true};
+
+    check(R"(local t = {}
+        function t:Foo() end
+        repeat
+        t:@1)");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("Foo"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_repeat_body_not_eof")
+{
+    ScopedFastFlag sff{FFlag::LuauUnfinishedRepeatAncestryFix, true};
+
+    check(R"(local t = {}
+        function t:Foo() end
+        repeat
+        t:@1
+        )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("Foo"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_while_body")
+{
+    check(R"(local t = {}
+        function t:Foo() end
+        while true do
+        t:@1)");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("Foo"));
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@@1
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@dep@1
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_braced_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@[@1]
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_braced_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@[dep@1]
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
 }
 
 TEST_SUITE_END();

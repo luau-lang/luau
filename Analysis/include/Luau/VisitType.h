@@ -10,8 +10,6 @@
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSolverAgnosticVisitType)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 namespace Luau
@@ -261,37 +259,16 @@ struct GenericTypeVisitor
         }
         else if (auto ftv = get<FreeType>(ty))
         {
-            if (FFlag::LuauSolverAgnosticVisitType)
+            if (visit(ty, *ftv))
             {
-                if (visit(ty, *ftv))
-                {
-                    // Regardless of the choice of solver, all free types are guaranteed to have
-                    // lower and upper bounds
-                    LUAU_ASSERT(ftv->lowerBound);
-                    LUAU_ASSERT(ftv->upperBound);
+                // Regardless of the choice of solver, all free types are guaranteed to have
+                // lower and upper bounds
+                LUAU_ASSERT(ftv->lowerBound);
+                LUAU_ASSERT(ftv->upperBound);
 
-                    traverse(ftv->lowerBound);
-                    traverse(ftv->upperBound);
-                }
+                traverse(ftv->lowerBound);
+                traverse(ftv->upperBound);
             }
-            else if (FFlag::LuauSolverV2)
-            {
-                if (visit(ty, *ftv))
-                {
-                    // TODO: Replace these if statements with assert()s when we
-                    // delete FFlag::LuauSolverV2.
-                    //
-                    // When the old solver is used, these pointers are always
-                    // unused. When the new solver is used, they are never null.
-                    if (ftv->lowerBound)
-                        traverse(ftv->lowerBound);
-
-                    if (ftv->upperBound)
-                        traverse(ftv->upperBound);
-                }
-            }
-            else
-                visit(ty, *ftv);
         }
         else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);
@@ -324,20 +301,15 @@ struct GenericTypeVisitor
                 {
                     for (auto& [_name, prop] : ttv->props)
                     {
-                        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
-                        {
-                            if (auto ty = prop.readTy)
-                                traverse(*ty);
+                        if (auto ty = prop.readTy)
+                            traverse(*ty);
 
-                            // In the case that the readType and the writeType
-                            // are the same pointer, just traverse once.
-                            // Traversing each property twice has pretty
-                            // significant performance consequences.
-                            if (auto ty = prop.writeTy; ty && !prop.isShared())
-                                traverse(*ty);
-                        }
-                        else
-                            traverse(prop.type_DEPRECATED());
+                        // In the case that the readType and the writeType
+                        // are the same pointer, just traverse once.
+                        // Traversing each property twice has pretty
+                        // significant performance consequences.
+                        if (auto ty = prop.writeTy; ty && !prop.isShared())
+                            traverse(*ty);
                     }
 
                     if (ttv->indexer)
@@ -362,20 +334,15 @@ struct GenericTypeVisitor
             {
                 for (const auto& [name, prop] : etv->props)
                 {
-                    if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticVisitType)
-                    {
-                        if (auto ty = prop.readTy)
-                            traverse(*ty);
-
-                        // In the case that the readType and the writeType are
-                        // the same pointer, just traverse once. Traversing each
-                        // property twice would have pretty significant
-                        // performance consequences.
-                        if (auto ty = prop.writeTy; ty && !prop.isShared())
-                            traverse(*ty);
-                    }
-                    else
-                        traverse(prop.type_DEPRECATED());
+                    if (auto ty = prop.readTy)
+                        traverse(*ty);
+                    
+                    // In the case that the readType and the writeType are
+                    // the same pointer, just traverse once. Traversing each
+                    // property twice would have pretty significant
+                    // performance consequences.
+                    if (auto ty = prop.writeTy; ty && !prop.isShared())
+                        traverse(*ty);
                 }
 
                 if (etv->parent)

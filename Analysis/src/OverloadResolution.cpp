@@ -15,7 +15,7 @@ LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 
 namespace Luau
@@ -584,7 +584,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
         }
     }
 
-    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
     {
         for (GenericBoundsMismatch& mismatch : sr.genericBoundsMismatches)
             errors.emplace_back(fnExpr->location, std::move(mismatch));

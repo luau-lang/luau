@@ -478,6 +478,63 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         build.vroundsd(inst.regX64, inst.regX64, inst.regX64, RoundingModeX64::RoundToNegativeInfinity);
         break;
+    case IrCmd::MULADD_NUM:
+    {
+        if ((build.features & Feature_FMA3) != 0)
+        {
+            if (inst.a.kind != IrOpKind::Inst)
+            {
+                inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+                build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
+            }
+            else
+            {
+                inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
+                RegisterX64 aReg = regOp(inst.a);
+                if (inst.regX64 != aReg)
+                    build.vmovupd(inst.regX64, aReg);
+            }
+
+            ScopedRegX64 optBTmp{regs};
+            RegisterX64 bReg{};
+
+            if (inst.b.kind == IrOpKind::Constant)
+            {
+                optBTmp.alloc(SizeX64::xmmword);
+
+                build.vmovsd(optBTmp.reg, memRegDoubleOp(inst.b));
+                bReg = optBTmp.reg;
+            }
+            else
+            {
+                bReg = regOp(inst.b);
+            }
+
+            build.vfmadd213pd(inst.regX64, bReg, memRegDoubleOp(inst.c));
+        }
+        else
+        {
+            inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
+
+            if (inst.a.kind != IrOpKind::Inst && inst.b.kind != IrOpKind::Inst)
+            {
+                build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
+                build.vmulsd(inst.regX64, inst.regX64, memRegDoubleOp(inst.b));
+            }
+            else if (inst.a.kind == IrOpKind::Inst)
+            {
+                build.vmulsd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b));
+            }
+            else
+            {
+                CODEGEN_ASSERT(inst.b.kind == IrOpKind::Inst);
+                build.vmulsd(inst.regX64, regOp(inst.b), memRegDoubleOp(inst.a));
+            }
+
+            build.vaddsd(inst.regX64, inst.regX64, memRegDoubleOp(inst.c));
+        }
+        break;
+    }
     case IrCmd::MOD_NUM:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
@@ -721,6 +778,32 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
         build.vdivps(inst.regX64, tmpa, tmpb);
+        break;
+    }
+    case IrCmd::MULADD_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
+        ScopedRegX64 tmp3{regs};
+
+        RegisterX64 tmpa = vecOp(inst.a, tmp1);
+        RegisterX64 tmpb = vecOp(inst.b, tmp2);
+        RegisterX64 tmpc = vecOp(inst.c, tmp3);
+
+        if ((build.features & Feature_FMA3) != 0)
+        {
+            if (inst.regX64 != tmpa)
+                build.vmovups(inst.regX64, tmpa);
+
+            build.vfmadd213ps(inst.regX64, tmpb, tmpc);
+        }
+        else
+        {
+            build.vmulps(inst.regX64, tmpa, tmpb);
+            build.vaddps(inst.regX64, inst.regX64, tmpc);
+        }
+
         break;
     }
     case IrCmd::UNM_VEC:
@@ -1257,24 +1340,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             CODEGEN_ASSERT(!"Unsupported instruction form");
         }
         break;
-    case IrCmd::GET_IMPORT:
-    {
-        ScopedRegX64 tmp1{regs, SizeX64::qword};
-
-        build.mov(tmp1.reg, sClosure);
-
-        IrCallWrapperX64 callWrap(regs, build, index);
-        callWrap.addArgument(SizeX64::qword, rState);
-        callWrap.addArgument(SizeX64::qword, qword[tmp1.release() + offsetof(Closure, env)]);
-        callWrap.addArgument(SizeX64::qword, rConstants);
-        callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(inst.a)));
-        callWrap.addArgument(SizeX64::dword, uintOp(inst.b));
-        callWrap.addArgument(SizeX64::dword, 0);
-        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_getimport)]);
-
-        emitUpdateBase(build);
-        break;
-    }
     case IrCmd::GET_CACHED_IMPORT:
     {
         regs.assertAllFree();

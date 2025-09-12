@@ -5,6 +5,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCompileTypeofFold)
+
 namespace Luau
 {
 namespace Compile
@@ -67,6 +69,33 @@ static Constant ctype(const Constant& c)
 
     case Constant::Type_Vector:
         return cstring("vector");
+
+    case Constant::Type_String:
+        return cstring("string");
+
+    default:
+        LUAU_ASSERT(!"Unsupported constant type");
+        return cvar();
+    }
+}
+
+static Constant ctypeof(const Constant& c)
+{
+    LUAU_ASSERT(c.type != Constant::Type_Unknown);
+
+    switch (c.type)
+    {
+    case Constant::Type_Nil:
+        return cstring("nil");
+
+    case Constant::Type_Boolean:
+        return cstring("boolean");
+
+    case Constant::Type_Number:
+        return cstring("number");
+
+    case Constant::Type_Vector:
+        return cvar(); // vector can have a custom typeof name at runtime
 
     case Constant::Type_String:
         return cstring("string");
@@ -436,7 +465,7 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
 
     case LBF_TYPEOF:
         if (count == 1 && args[0].type != Constant::Type_Unknown)
-            return ctype(args[0]);
+            return FFlag::LuauCompileTypeofFold ? ctypeof(args[0]) : ctype(args[0]);
         break;
 
     case LBF_MATH_CLAMP:

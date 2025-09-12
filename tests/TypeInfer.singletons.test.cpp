@@ -2,6 +2,7 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -669,6 +670,59 @@ TEST_CASE_FIXTURE(Fixture, "tagged_union_in_ternary")
         local function readFromDB(): Result
             return if coinflip() then { type = "ok", value = 42 } else { type = "error" }
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_with_singleton_union_values")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+
+    CheckResult result = check(R"(
+        local t1: {[string]: "a" | "b"} = { a = "a", b = "b" }
+        local t2: {[string]: "a" | true} = { a = "a", b = true }
+        local t3: {[string]: "a" | nil} = { a = "a" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "singleton_type_mismatch_via_variable")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+
+    CheckResult result = check(R"(
+        local c = "c"
+        local x: "a" = c
+        local y: "a" | "b" = c
+        local z: "a"? = c
+        local w: "a" | "b" = "c"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+    REQUIRE(get<TypeMismatch>(result.errors[1]));
+    REQUIRE(get<TypeMismatch>(result.errors[2]));
+    REQUIRE(get<TypeMismatch>(result.errors[3]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_163481_any_indexer_pushes_type")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        type test = "A"
+        type test2 = "A"|"B"|"C"
+
+        local t: { [any]: test } = { A = "A" }
+
+        local t2: { [any]: test2 } = {
+            A = "A",
+            B = "B",
+            C = "C"
+        }
     )"));
 }
 

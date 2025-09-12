@@ -17,9 +17,7 @@
 #include "Luau/UserDefinedTypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAGVARIABLE(LuauDoNotBlockOnStuckTypeFunctions)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 LUAU_FASTFLAGVARIABLE(LuauRefineOccursCheckDirectRecursion)
@@ -30,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauRawGetHandlesNil)
+LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 namespace Luau
 {
@@ -268,8 +267,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {operandTy}, {}};
 
-    if (FFlag::LuauEagerGeneralization4)
-        operandTy = follow(operandTy);
+    operandTy = follow(operandTy);
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
 
@@ -761,30 +759,10 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
         return {rhsTy, Reduction::MaybeOk, {}, {}};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        if (FFlag::LuauDoNotBlockOnStuckTypeFunctions)
-        {
-            if (isBlockedOrUnsolvedType(lhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-            else if (isBlockedOrUnsolvedType(rhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-        }
-        else
-        {
-            if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-            else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-        }
-    }
-    else
-    {
-        if (isPending(lhsTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (isPending(rhsTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-    }
+    if (isBlockedOrUnsolvedType(lhsTy))
+        return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+    else if (isBlockedOrUnsolvedType(rhsTy))
+        return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
     // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
@@ -818,30 +796,10 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (lhsTy == instance || rhsTy == instance)
         return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
 
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        if (FFlag::LuauDoNotBlockOnStuckTypeFunctions)
-        {
-            if (isBlockedOrUnsolvedType(lhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-            else if (isBlockedOrUnsolvedType(rhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-        }
-        else
-        {
-            if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(lhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-            else if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(rhsTy))
-                return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-        }
-    }
-    else
-    {
-        if (isPending(lhsTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
-        else if (isPending(rhsTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
-    }
+    if (isBlockedOrUnsolvedType(lhsTy))
+        return {std::nullopt, Reduction::MaybeOk, {lhsTy}, {}};
+    else if (isBlockedOrUnsolvedType(rhsTy))
+        return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
     // Algebra Reduction Rules for comparison type functions
     // Note that comparing to never tells you nothing about the other operand
@@ -1336,17 +1294,7 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             return {targetTy, {}};
     }
 
-    bool targetIsPending = false;
-
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        targetIsPending = FFlag::LuauDoNotBlockOnStuckTypeFunctions ? isBlockedOrUnsolvedType(targetTy)
-                                                                    : is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(targetTy);
-    }
-    else
-    {
-        targetIsPending = isPending(targetTy, ctx->solver);
-    }
+    const bool targetIsPending = isBlockedOrUnsolvedType(targetTy);
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (targetIsPending)
@@ -1436,32 +1384,25 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             if (is<TableType>(target) || isTruthyOrFalsyType(discriminant))
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                if (FFlag::LuauEagerGeneralization4)
+                // Simplification considers free and generic types to be
+                // 'blocking', but that's not suitable for refine<>.
+                //
+                // If we are only blocked on those types, we consider
+                // the simplification a success and reduce.
+                if (std::all_of(
+                        begin(result.blockedTypes),
+                        end(result.blockedTypes),
+                        [](TypeId v)
+                        {
+                            return is<FreeType, GenericType>(follow(v));
+                        }
+                    ))
                 {
-                    // Simplification considers free and generic types to be
-                    // 'blocking', but that's not suitable for refine<>.
-                    //
-                    // If we are only blocked on those types, we consider
-                    // the simplification a success and reduce.
-                    if (std::all_of(
-                            begin(result.blockedTypes),
-                            end(result.blockedTypes),
-                            [](auto&& v)
-                            {
-                                return is<FreeType, GenericType>(follow(v));
-                            }
-                        ))
-                    {
-                        return {result.result, {}};
-                    }
-                    else
-                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+                    return {result.result, {}};
                 }
                 else
-                {
-                    if (!result.blockedTypes.empty())
-                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
-                }
+                    return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+
                 return {result.result, {}};
             }
 
@@ -2662,7 +2603,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
     , eqFunc{"eq", eqTypeFunction}
-    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ FFlag::LuauEagerGeneralization4}
+    , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ true}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}
@@ -2723,7 +2664,8 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
 
     scope->exportedTypeBindings[ltFunc.name] = mkBinaryTypeFunctionWithDefault(&ltFunc);
     scope->exportedTypeBindings[leFunc.name] = mkBinaryTypeFunctionWithDefault(&leFunc);
-    scope->exportedTypeBindings[eqFunc.name] = mkBinaryTypeFunctionWithDefault(&eqFunc);
+    if (!FFlag::LuauNoMoreComparisonTypeFunctions)
+        scope->exportedTypeBindings[eqFunc.name] = mkBinaryTypeFunctionWithDefault(&eqFunc);
 
     scope->exportedTypeBindings[keyofFunc.name] = mkUnaryTypeFunction(&keyofFunc);
     scope->exportedTypeBindings[rawkeyofFunc.name] = mkUnaryTypeFunction(&rawkeyofFunc);

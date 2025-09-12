@@ -16,12 +16,12 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCodeGenSimplifyImport2)
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp)
+LUAU_FASTFLAG(LuauCodeGenFMA)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -473,7 +473,43 @@ TEST_CASE("VectorLerp")
         {FFlag::LuauVectorLerp, true},
         {FFlag::LuauCodeGenVectorLerp, true}
     };
-    CHECK_EQ(
+    if (FFlag::LuauCodeGenFMA)
+    {
+      CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function vec3lerp(a: vector, b: vector, t: number)
+    return vector.lerp(a, b, t)
+end
+)"),
+        R"(
+; function vec3lerp($arg0, $arg1, $arg2) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  CHECK_TAG R2, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  CHECK_SAFE_ENV exit(2)
+  %15 = LOAD_TVALUE R0
+  %16 = LOAD_TVALUE R1
+  %17 = LOAD_DOUBLE R2
+  %18 = NUM_TO_VEC %17
+  %19 = NUM_TO_VEC 1
+  %20 = SUB_VEC %16, %15
+  MULADD_VEC %20, %18, %15
+  SELECT_VEC %21, %16, %18, %19
+  %23 = TAG_VECTOR %22
+  STORE_TVALUE R3, %23
+  INTERRUPT 8u
+  RETURN R3, 1i
+)"
+        );
+    }
+    else
+    {
+      CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3lerp(a: vector, b: vector, t: number)
     return vector.lerp(a, b, t)
@@ -504,7 +540,8 @@ bb_bytecode_1:
   INTERRUPT 8u
   RETURN R3, 1i
 )"
-    );
+        );
+    }
 }
 
 TEST_CASE("ExtraMathMemoryOperands")
@@ -547,8 +584,6 @@ bb_bytecode_1:
 
 TEST_CASE("DseInitialStackState")
 {
-    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport2, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo()
@@ -1614,8 +1649,6 @@ end
 
 TEST_CASE("ForInManualAnnotation")
 {
-    ScopedFastFlag luauCodeGenSimplifyImport{FFlag::LuauCodeGenSimplifyImport2, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(

@@ -12,7 +12,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 namespace Luau
 {
@@ -73,27 +72,16 @@ struct BidirectionalTypePusher
         // We'll have a cycle between trying to push `fact`'s type into its
         // arguments and generalizing `fact`.
 
-        if (FFlag::LuauEagerGeneralization4)
+        if (auto tfit = get<TypeFunctionInstanceType>(expectedType); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
         {
-            if (auto tfit = get<TypeFunctionInstanceType>(expectedType); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
-            {
-                incompleteInferences.push_back(IncompleteInference{expectedType, exprType, expr});
-                return exprType;
-            }
-
-            if (is<BlockedType, PendingExpansionType>(expectedType))
-            {
-                incompleteInferences.push_back(IncompleteInference{expectedType, exprType, expr});
-                return exprType;
-            }
+            incompleteInferences.push_back(IncompleteInference{expectedType, exprType, expr});
+            return exprType;
         }
-        else
+
+        if (is<BlockedType, PendingExpansionType>(expectedType))
         {
-            if (is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(expectedType))
-            {
-                incompleteInferences.push_back(IncompleteInference{expectedType, exprType, expr});
-                return exprType;
-            }
+            incompleteInferences.push_back(IncompleteInference{expectedType, exprType, expr});
+            return exprType;
         }
 
         if (is<AnyType, UnknownType>(expectedType))

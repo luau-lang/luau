@@ -20,15 +20,14 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauReturnMappedGenericPacksFromSubtyping2)
-LUAU_FASTFLAGVARIABLE(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingNegationsChecksNormalizationComplexity)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingReportGenericBoundMismatches)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAGVARIABLE(LuauTrackUniqueness)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
 
 namespace Luau
 {
@@ -300,7 +299,7 @@ SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
     errors.insert(errors.end(), other.errors.begin(), other.errors.end());
-    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
         genericBoundsMismatches.insert(genericBoundsMismatches.end(), other.genericBoundsMismatches.begin(), other.genericBoundsMismatches.end());
 
     return *this;
@@ -324,7 +323,7 @@ SubtypingResult& SubtypingResult::orElse(const SubtypingResult& other)
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
     errors.insert(errors.end(), other.errors.begin(), other.errors.end());
-    if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+    if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
         genericBoundsMismatches.insert(genericBoundsMismatches.end(), other.genericBoundsMismatches.begin(), other.genericBoundsMismatches.end());
 
     return *this;
@@ -848,7 +847,7 @@ SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNu
             {
                 // Bounds should have exactly one entry
                 LUAU_ASSERT(bounds->size() == 1);
-                if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+                if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
                 {
                     if (bounds->empty())
                         continue;
@@ -1013,17 +1012,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
     SubtypingResult result;
 
-    if (auto subUnion = get<UnionType>(subTy))
+    if (auto subUnion = get<UnionType>(subTy); subUnion && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
         result = isCovariantWith(env, subUnion, superTy, scope);
-    else if (auto superUnion = get<UnionType>(superTy))
+    else if (auto superUnion = get<UnionType>(superTy); superUnion && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
     {
         result = isCovariantWith(env, subTy, superUnion, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
     }
-    else if (auto superIntersection = get<IntersectionType>(superTy))
+    else if (auto superIntersection = get<IntersectionType>(superTy); superIntersection && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
         result = isCovariantWith(env, subTy, superIntersection, scope);
-    else if (auto subIntersection = get<IntersectionType>(subTy))
+    else if (auto subIntersection = get<IntersectionType>(subTy); subIntersection && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
     {
         result = isCovariantWith(env, subIntersection, superTy, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
@@ -1043,7 +1042,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result =
             isCovariantWith(env, builtinTypes->unknownType, superTy, scope).andAlso(isCovariantWith(env, builtinTypes->errorType, superTy, scope));
     }
-    else if (get<UnknownType>(superTy))
+    else if (get<UnknownType>(superTy) && // flag delays recursing into unions and inters, so only handle this case if subTy isn't a union or inter
+             (FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds ? !get<UnionType>(subTy) && !get<IntersectionType>(subTy) : true))
     {
         LUAU_ASSERT(!get<AnyType>(subTy));          // TODO: replace with ice.
         LUAU_ASSERT(!get<UnionType>(subTy));        // TODO: replace with ice.
@@ -1099,6 +1099,30 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             result.isCacheable = false;
         }
     }
+    else if (auto subUnion = get<UnionType>(subTy))
+    {
+        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
+        result = isCovariantWith(env, subUnion, superTy, scope);
+    }
+    else if (auto superUnion = get<UnionType>(superTy))
+    {
+        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
+        result = isCovariantWith(env, subTy, superUnion, scope);
+        if (!result.isSubtype && !result.normalizationTooComplex)
+            result = trySemanticSubtyping(env, subTy, superTy, scope, result);
+    }
+    else if (auto superIntersection = get<IntersectionType>(superTy))
+    {
+        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
+        result = isCovariantWith(env, subTy, superIntersection, scope);
+    }
+    else if (auto subIntersection = get<IntersectionType>(subTy))
+    {
+        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
+        result = isCovariantWith(env, subIntersection, superTy, scope);
+        if (!result.isSubtype && !result.normalizationTooComplex)
+            result = trySemanticSubtyping(env, subTy, superTy, scope, result);
+    }
     else if (!FFlag::LuauSubtypingGenericsDoesntUseVariance && get<GenericType>(subTy) && variance == Variance::Covariant)
     {
         bool ok = bindGeneric(env, subTy, superTy);
@@ -1111,14 +1135,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result.isSubtype = ok;
         result.isCacheable = false;
     }
-    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy); FFlag::LuauEagerGeneralization4 && pair)
+    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy))
     {
         // Any two free types are potentially subtypes of one another because
         // both of them could be narrowed to never.
         result = {true};
         result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
     }
-    else if (auto superFree = get<FreeType>(superTy); superFree && FFlag::LuauEagerGeneralization4)
+    else if (auto superFree = get<FreeType>(superTy))
     {
         // Given SubTy <: (LB <: SuperTy <: UB)
         //
@@ -1133,7 +1157,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (result.isSubtype)
             result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
     }
-    else if (auto subFree = get<FreeType>(subTy); subFree && FFlag::LuauEagerGeneralization4)
+    else if (auto subFree = get<FreeType>(subTy))
     {
         // Given (LB <: SubTy <: UB) <: SuperTy
         //
@@ -1369,9 +1393,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                         if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
                         {
                             const TypePack* tp = get<TypePack>(*other);
-                            if (const VariadicTypePack* vtp =
-                                    tp ? get<VariadicTypePack>(FFlag::LuauMissingFollowMappedGenericPacks ? follow(tp->tail) : tp->tail) : nullptr;
-                                vtp && vtp->hidden)
+                            if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
                             {
                                 TypePackId taillessTp = arena->addTypePack(tp->head);
                                 results.push_back(isCovariantWith(env, taillessTp, superTailPack, scope)
@@ -1500,9 +1522,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                         if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
                         {
                             const TypePack* tp = get<TypePack>(*other);
-                            if (const VariadicTypePack* vtp =
-                                    tp ? get<VariadicTypePack>(FFlag::LuauMissingFollowMappedGenericPacks ? follow(tp->tail) : tp->tail) : nullptr;
-                                vtp && vtp->hidden)
+                            if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
                             {
                                 TypePackId taillessTp = arena->addTypePack(tp->head);
                                 results.push_back(isCovariantWith(env, subTailPack, taillessTp, scope)
@@ -2232,23 +2252,15 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     SubtypingResult result{true};
 
-    if (FFlag::LuauEagerGeneralization4)
+    if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
     {
-        if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
-        {
-            // While it is certainly the case that {} </: {T}, the story is a little bit different for {| |} <: {T}
-            // The shape of an unsealed tabel is still in flux, so it is probably the case that the unsealed table
-            // will later gain the necessary indexer as type inference proceeds.
-            //
-            // Unsealed tables are always sealed by the time inference completes, so this should never affect the
-            // type checking phase.
-            return {false};
-        }
-    }
-    else
-    {
-        if (subTable->props.empty() && !subTable->indexer && superTable->indexer)
-            return {false};
+        // While it is certainly the case that {} </: {T}, the story is a little bit different for {| |} <: {T}
+        // The shape of an unsealed tabel is still in flux, so it is probably the case that the unsealed table
+        // will later gain the necessary indexer as type inference proceeds.
+        //
+        // Unsealed tables are always sealed by the time inference completes, so this should never affect the
+        // type checking phase.
+        return {false};
     }
 
     for (const auto& [name, superProp] : superTable->props)
@@ -2290,7 +2302,7 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         if (subTable->indexer)
             result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
-        else if (FFlag::LuauEagerGeneralization4 && subTable->state != TableState::Sealed)
+        else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
             // on the left will eventually gain the necessary indexer.
@@ -2456,7 +2468,7 @@ SubtypingResult Subtyping::isCovariantWith(
                 auto bounds = env.mappedGenerics.find(g);
                 LUAU_ASSERT(bounds && !bounds->empty());
                 // Check the bounds are valid
-                if (FFlag::LuauSubtypingReportGenericBoundMismatches)
+                if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
                     result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
                 else
                     result.andAlso(checkGenericBounds_DEPRECATED(bounds->back(), env, scope));
@@ -2977,7 +2989,7 @@ SubtypingResult Subtyping::checkGenericBounds(
 )
 {
     LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
-    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches);
+    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
 
     SubtypingResult result{true};
 
@@ -3058,8 +3070,31 @@ SubtypingResult Subtyping::checkGenericBounds(
     SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
     boundsResult.reasoning.clear();
 
-    if (res == NormalizationResult::False || !boundsResult.isSubtype)
+    if (res == NormalizationResult::False)
         result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+    else if (!boundsResult.isSubtype)
+    {
+        if (FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
+        {
+            // Check if the bounds are error suppressing before reporting a mismatch
+            switch (shouldSuppressErrors(normalizer, lowerBound).orElse(shouldSuppressErrors(normalizer, upperBound)))
+            {
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                // intentionally fallthrough here since we couldn't prove this was error-suppressing
+                [[fallthrough]];
+            case ErrorSuppression::DoNotSuppress:
+                result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+                break;
+            default:
+                LUAU_ASSERT(0);
+                break;
+            }
+        }
+        else
+            result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+    }
 
     result.andAlso(boundsResult);
 
@@ -3073,7 +3108,7 @@ SubtypingResult Subtyping::checkGenericBounds_DEPRECATED(
 )
 {
     LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
-    LUAU_ASSERT(!FFlag::LuauSubtypingReportGenericBoundMismatches);
+    LUAU_ASSERT(!FFlag::LuauSubtypingReportGenericBoundMismatches2);
 
     SubtypingResult result{true};
 

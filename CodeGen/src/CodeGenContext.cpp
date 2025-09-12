@@ -16,6 +16,7 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenUnassignedBcTargetAbort)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenDisableWithNoReentry, false)
 
 namespace Luau
 {
@@ -29,6 +30,7 @@ static void* gPerfLogContext = nullptr;
 static PerfLogFn gPerfLogFn = nullptr;
 
 unsigned int getCpuFeaturesA64();
+unsigned int getCpuFeaturesX64();
 
 void setPerfLog(void* context, PerfLogFn logFn)
 {
@@ -376,6 +378,12 @@ static int onEnter(lua_State* L, Proto* proto)
 
 static int onEnterDisabled(lua_State* L, Proto* proto)
 {
+    if (DFFlag::LuauCodeGenDisableWithNoReentry)
+    {
+        // If the function wasn't entered natively, it cannot be resumed natively later
+        L->ci->flags &= ~LUA_CALLINFO_NATIVE;
+    }
+
     return 1;
 }
 
@@ -566,7 +574,8 @@ template<typename AssemblyBuilder>
     static unsigned int cpuFeatures = getCpuFeaturesA64();
     A64::AssemblyBuilderA64 build(/* logText= */ false, cpuFeatures);
 #else
-    X64::AssemblyBuilderX64 build(/* logText= */ false);
+    static unsigned int cpuFeatures = getCpuFeaturesX64();
+    X64::AssemblyBuilderX64 build(/* logText= */ false, cpuFeatures);
 #endif
 
     ModuleHelpers helpers;

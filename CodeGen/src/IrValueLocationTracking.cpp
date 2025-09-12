@@ -3,6 +3,8 @@
 
 #include "Luau/IrUtils.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodeGenRestoreFromSplitStore)
+
 namespace Luau
 {
 namespace CodeGen
@@ -54,7 +56,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
-    case IrCmd::GET_IMPORT:
     case IrCmd::GET_CACHED_IMPORT:
         invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
@@ -173,6 +174,14 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
         // If this is not the last use of the stored value, we can restore it from this new location
         if (inst.b.kind == IrOpKind::Inst && function.instOp(inst.b).lastUse != instIdx)
             recordRestoreOp(inst.b.index, inst.a);
+        break;
+    case IrCmd::STORE_SPLIT_TVALUE:
+        if (FFlag::LuauCodeGenRestoreFromSplitStore)
+        {
+            // If this is not the last use of the stored value, we can restore it from this new location
+            if (inst.c.kind == IrOpKind::Inst && function.instOp(inst.c).lastUse != instIdx)
+                recordRestoreOp(inst.c.index, inst.a);
+        }
         break;
     default:
         break;
