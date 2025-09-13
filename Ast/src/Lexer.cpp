@@ -253,6 +253,11 @@ std::pair<AstName, Lexeme::Type> AstNameTable::getWithType(const char* name, siz
     return std::make_pair(AstName(), Lexeme::Name);
 }
 
+AstName AstNameTable::getOrAdd(const char* name, size_t len)
+{
+    return getOrAddWithType(name, len).first;
+}
+
 AstName AstNameTable::getOrAdd(const char* name)
 {
     return getOrAddWithType(name, strlen(name)).first;

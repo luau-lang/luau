@@ -22,6 +22,7 @@ std::ostream& operator<<(std::ostream& lhs, const UnknownSymbol& error);
 std::ostream& operator<<(std::ostream& lhs, const UnknownProperty& error);
 std::ostream& operator<<(std::ostream& lhs, const NotATable& error);
 std::ostream& operator<<(std::ostream& lhs, const CannotExtendTable& error);
+std::ostream& operator<<(std::ostream& lhs, const CannotCompareUnrelatedTypes& error);
 std::ostream& operator<<(std::ostream& lhs, const OnlyTablesCanHaveMethods& error);
 std::ostream& operator<<(std::ostream& lhs, const DuplicateTypeDefinition& error);
 std::ostream& operator<<(std::ostream& lhs, const CountMismatch& error);

@@ -21,19 +21,16 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
-LUAU_FASTFLAG(LuauDoNotPrototypeTableIndex)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauNormalizationLimitTyvarUnionSize)
 LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauAllowMixedTables)
 LUAU_FASTFLAG(LuauSolverAgnosticSetType)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauPushTypeConstraint)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSimplifyIntersectionForLiteralSubtypeCheck)
@@ -709,10 +706,8 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauSolverV2)
         CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
-    else if (FFlag::LuauSolverV2)
-        CHECK("({unknown}) -> ()" == toString(requireType("swap")));
     else
     {
         const FunctionType* ftv = get<FunctionType>(requireType("swap"));
@@ -2335,7 +2330,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     // compare functions inside of table properties
     ScopedFastFlag sff[] = {
         {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
-        {FFlag::LuauSubtypingReportGenericBoundMismatches, true},
+        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::LuauInstantiateInSubtyping, FFlag::LuauSolverV2},
     };
 
@@ -3711,10 +3706,6 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3853,25 +3844,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly
     if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERRORS(result);
-        if (FFlag::LuauEagerGeneralization4)
-        {
-            /*
-             * string.byte returns ...number, which cannot be passed to
-             * table.insert.
-             *
-             * Intuitively, Luau has no way to guarantee that string.byte() will
-             * always return at least 1 number and there is no table.insert overload
-             * that takes just 1 argument.
-             */
-            LUAU_REQUIRE_ERROR(result, MultipleNonviableOverloads);
-        }
-        else
-        {
-            const GenericError* err = findError<GenericError>(result);
-            REQUIRE(err);
-            CHECK(err->message == "None of the overloads for function that accept 1 arguments are compatible.");
-            LUAU_REQUIRE_ERROR(result, GenericError);
-        }
+        /*
+         * string.byte returns ...number, which cannot be passed to
+         * table.insert.
+         *
+         * Intuitively, Luau has no way to guarantee that string.byte() will
+         * always return at least 1 number and there is no table.insert overload
+         * that takes just 1 argument.
+         */
+        LUAU_REQUIRE_ERROR(result, MultipleNonviableOverloads);
     }
     else
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -4605,10 +4586,6 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     CheckResult result = check(R"(
         function oc(player, speaker)
             local head = speaker.Character:FindFirstChild('Head')
@@ -4656,17 +4633,8 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && !FFlag::LuauEagerGeneralization4)
-    {
-        LUAU_CHECK_ERROR_COUNT(1, result);
-        LUAU_CHECK_ERROR(result, NotATable);
-        CHECK_EQ("(unknown, *error-type*) -> *error-type*", toString(requireType("foo")));
-    }
-    else
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_string")
@@ -4704,10 +4672,7 @@ TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // FIXME CLI-114134.  We need to simplify types more consistently.
-    if (FFlag::LuauEagerGeneralization4)
-        CHECK("({number} & {number}, unknown) -> ()" == toString(requireType("f")));
-    else
-        CHECK_EQ("(unknown & {number} & {number}, unknown) -> ()", toString(requireType("f")));
+    CHECK("({number} & {number}, unknown) -> ()" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "write_to_union_property_not_all_present")
@@ -5872,7 +5837,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true},
         {FFlag::LuauPushTypeConstraint, true},
     };
@@ -5958,7 +5922,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_119126_regression")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1914_access_after_assignment_with_assertion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauDoNotPrototypeTableIndex, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -5993,8 +5957,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1914_access_after_assignment_with_assert
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_normalization" * doctest::timeout(1.0))
 {
-    ScopedFastFlag sff{FFlag::LuauNormalizationLimitTyvarUnionSize, true};
-
     const std::string source = format(
         R"(
         local res = { %s }

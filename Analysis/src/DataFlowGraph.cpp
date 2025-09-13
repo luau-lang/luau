@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
 
 namespace Luau
 {
@@ -872,16 +871,14 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprLocal* l)
 {
     DefId def = lookup(l->local, l->local->location);
     const RefinementKey* key = keyArena->leaf(def);
-    if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
-        graph.defToSymbol[def] = l->local;
+    graph.defToSymbol[def] = l->local;
     return {def, key};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprGlobal* g)
 {
     DefId def = lookup(g->name, g->location);
-    if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
-        graph.defToSymbol[def] = g->name;
+    graph.defToSymbol[def] = g->name;
     return {def, keyArena->leaf(def)};
 }
 

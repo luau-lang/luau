@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAG(LuauNewNonStrictSuppressesDynamicRequireErrors)
 LUAU_FASTFLAG(LuauNewNonStrictReportsOneIndexedErrors)
+LUAU_FASTFLAG(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 
 using namespace Luau;
 
@@ -882,6 +883,19 @@ getAllTheArgsWrong(3, true, "what")
     CHECK_EQ("Function 'getAllTheArgsWrong' expects 'string' at argument #1, but got 'number'", toString(result.errors[0]));
     CHECK_EQ("Function 'getAllTheArgsWrong' expects 'number' at argument #2, but got 'boolean'", toString(result.errors[1]));
     CHECK_EQ("Function 'getAllTheArgsWrong' expects 'boolean' at argument #3, but got 'string'", toString(result.errors[2]));
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "new_non_strict_skips_warnings_on_unreduced_typefunctions")
+{
+    ScopedFastFlag sff{FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings, true};
+    CheckResult result = checkNonStrict(R"(
+function foo(x)
+    local y = x + 1
+    return abs(y)
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

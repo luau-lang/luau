@@ -766,7 +766,6 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
-    case IrCmd::GET_IMPORT:
     case IrCmd::GET_CACHED_IMPORT:
     case IrCmd::CONCAT:
     case IrCmd::INTERRUPT:

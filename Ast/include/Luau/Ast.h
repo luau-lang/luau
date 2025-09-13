@@ -195,6 +195,7 @@ public:
         Checked,
         Native,
         Deprecated,
+        Unknown
     };
 
     struct DeprecatedInfo
@@ -205,6 +206,7 @@ public:
     };
 
     AstAttr(const Location& location, Type type, AstArray<AstExpr*> args);
+    AstAttr(const Location& location, Type type, AstArray<AstExpr*> args, AstName name);
 
     AstAttr* asAttr() override
     {
@@ -217,6 +219,7 @@ public:
 
     Type type;
     AstArray<AstExpr*> args;
+    AstName name;
 };
 
 class AstExpr : public AstNode

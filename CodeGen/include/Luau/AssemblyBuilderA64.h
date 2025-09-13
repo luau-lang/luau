@@ -19,6 +19,7 @@ namespace A64
 enum FeaturesA64
 {
     Feature_JSCVT = 1 << 0,
+    Feature_AdvSIMD = 1 << 1
 };
 
 class AssemblyBuilderA64
@@ -139,6 +140,7 @@ public:
     void fsqrt(RegisterA64 dst, RegisterA64 src);
     void fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void faddp(RegisterA64 dst, RegisterA64 src);
+    void fmla(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
 
     // Vector component manipulation
     void ins_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);

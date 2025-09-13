@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressesDynamicRequireErrors)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAGVARIABLE(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 
 namespace Luau
 {
@@ -717,13 +718,18 @@ struct NonStrictTypeChecker
                 AstExpr* arg = arguments[i];
                 if (auto runTimeFailureType = willRunTimeError(arg, fresh))
                 {
-                    if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+                    if (FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings)
+                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
+                    else
                     {
-                        if (!get<NeverType>(follow(*runTimeFailureType)))
+                        if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
+                        {
+                            if (!get<NeverType>(follow(*runTimeFailureType)))
+                                reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
+                        }
+                        else
                             reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                     }
-                    else
-                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                 }
             }
 
@@ -1187,6 +1193,8 @@ struct NonStrictTypeChecker
             {
 
                 TypeId actualType = lookupType(fragment);
+                if (FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings && shouldSkipRuntimeErrorTesting(actualType))
+                    continue;
                 SubtypingResult r = subtyping.isSubtype(actualType, *contextTy, scope);
                 if (r.normalizationTooComplex)
                     reportError(NormalizationTooComplex{}, fragment->location);
@@ -1227,6 +1235,12 @@ private:
         if (!cachedResult)
             cachedResult = arena->addType(NegationType{baseType});
         return cachedResult;
+    }
+
+    bool shouldSkipRuntimeErrorTesting(TypeId test)
+    {
+        TypeId t = follow(test);
+        return is<NeverType, TypeFunctionInstanceType>(t);
     }
 };
 

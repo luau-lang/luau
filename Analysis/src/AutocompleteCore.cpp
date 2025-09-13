@@ -27,14 +27,16 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
 LUAU_FASTFLAGVARIABLE(LuauIncludeBreakContinueStatements)
 LUAU_FASTFLAGVARIABLE(LuauSuggestHotComments)
+LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
 static constexpr std::array<std::string_view, 6> kHotComments = {"nolint", "nocheck", "nonstrict", "strict", "optimize", "native"};
+
+static const std::string kKnownAttributes[] = {"checked", "deprecated", "native"};
 
 namespace Luau
 {
@@ -582,39 +584,21 @@ static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node
 
     ty = follow(ty);
 
-    if (FFlag::LuauImplicitTableIndexerKeys3)
+    if (auto ss = get<StringSingleton>(get<SingletonType>(ty)))
     {
-        if (auto ss = get<StringSingleton>(get<SingletonType>(ty)))
-        {
-            // This is purposefully `try_emplace` as we don't want to override any existing entries.
-            result.try_emplace(formatKey(ss->value), AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct});
-        }
-        else if (auto uty = get<UnionType>(ty))
-        {
-            for (auto el : uty)
-            {
-                if (auto ss = get<StringSingleton>(get<SingletonType>(el)))
-                {
-                    // This is purposefully `try_emplace` as we don't want to override any existing entries.
-                    result.try_emplace(
-                        formatKey(ss->value), AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct}
-                    );
-                }
-            }
-        }
+        // This is purposefully `try_emplace` as we don't want to override any existing entries.
+        result.try_emplace(formatKey(ss->value), AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct});
     }
-    else
+    else if (auto uty = get<UnionType>(ty))
     {
-        if (auto ss = get<StringSingleton>(get<SingletonType>(ty)))
+        for (auto el : uty)
         {
-            result[formatKey(ss->value)] = AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct};
-        }
-        else if (auto uty = get<UnionType>(ty))
-        {
-            for (auto el : uty)
+            if (auto ss = get<StringSingleton>(get<SingletonType>(el)))
             {
-                if (auto ss = get<StringSingleton>(get<SingletonType>(el)))
-                    result[formatKey(ss->value)] = AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct};
+                // This is purposefully `try_emplace` as we don't want to override any existing entries.
+                result.try_emplace(
+                    formatKey(ss->value), AutocompleteEntry{AutocompleteEntryKind::String, ty, false, false, TypeCorrectKind::Correct}
+                );
             }
         }
     }
@@ -2105,12 +2089,6 @@ AutocompleteResult autocomplete_(
     {
         AutocompleteEntryMap result;
 
-        if (!FFlag::LuauImplicitTableIndexerKeys3)
-        {
-            if (auto it = module->astExpectedTypes.find(node->asExpr()))
-                autocompleteStringSingleton(*it, false, node, position, result);
-        }
-
         if (ancestry.size() >= 2)
         {
             if (auto idxExpr = ancestry.at(ancestry.size() - 2)->as<AstExprIndexExpr>())
@@ -2128,11 +2106,8 @@ AutocompleteResult autocomplete_(
             }
         }
 
-        if (FFlag::LuauImplicitTableIndexerKeys3)
-        {
-            if (auto it = module->astExpectedTypes.find(node->asExpr()))
-                autocompleteStringSingleton(*it, false, node, position, result);
-        }
+        if (auto it = module->astExpectedTypes.find(node->asExpr()))
+            autocompleteStringSingleton(*it, false, node, position, result);
 
         return {std::move(result), ancestry, AutocompleteContext::String};
     }
@@ -2142,6 +2117,22 @@ AutocompleteResult autocomplete_(
         // can't know what to format to
         AutocompleteEntryMap map;
         return {std::move(map), ancestry, AutocompleteContext::String};
+    }
+    else if (AstExprFunction* func = node->as<AstExprFunction>())
+    {
+        if (FFlag::LuauAutocompleteAttributes)
+        {
+            for (AstAttr* attr : func->attributes)
+            {
+                if (attr->location.begin <= position && position <= attr->location.end && attr->type == AstAttr::Type::Unknown)
+                {
+                    AutocompleteEntryMap ret;
+                    for (const auto& attr : kKnownAttributes)
+                        ret[attr.c_str()] = {AutocompleteEntryKind::Keyword};
+                    return {std::move(ret), std::move(ancestry), AutocompleteContext::Keyword};
+                }
+            }
+        }
     }
 
     if (node->is<AstExprConstantNumber>())

@@ -178,6 +178,7 @@ struct ConstraintSolver
         ConstraintSet constraintSet
     );
 
+    // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
         NotNull<Simplifier> simplifier,

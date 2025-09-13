@@ -20,10 +20,11 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+LUAU_FASTFLAGVARIABLE(LuauTryToOptimizeSetTypeUnification)
+LUAU_FASTFLAGVARIABLE(LuauFixNilRightPad)
 
 namespace Luau
 {
@@ -92,11 +93,8 @@ static bool areCompatible(TypeId left, TypeId right)
 // returns `true` if `ty` is irressolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypeId ty)
 {
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state != TypeFunctionInstanceState::Unsolved)
-            return false;
-    }
+    if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state != TypeFunctionInstanceState::Unsolved)
+        return false;
 
     return get<BlockedType>(ty) || get<TypeFunctionInstanceType>(ty);
 }
@@ -213,19 +211,67 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     if (subFn && superFn)
         return unify_(subTy, superFn);
 
-    auto subUnion = get<UnionType>(subTy);
-    auto superUnion = get<UnionType>(superTy);
-    if (subUnion)
-        return unify_(subUnion, superTy);
-    else if (superUnion)
-        return unify_(subTy, superUnion);
+    if (FFlag::LuauTryToOptimizeSetTypeUnification)
+    {
+        auto subUnion = get<UnionType>(subTy);
+        auto superUnion = get<UnionType>(superTy);
 
-    auto subIntersection = get<IntersectionType>(subTy);
-    auto superIntersection = get<IntersectionType>(superTy);
-    if (subIntersection)
-        return unify_(subIntersection, superTy);
-    else if (superIntersection)
-        return unify_(subTy, superIntersection);
+        auto subIntersection = get<IntersectionType>(subTy);
+        auto superIntersection = get<IntersectionType>(superTy);
+
+        // This is, effectively, arranged to avoid the following:
+        //
+        //  'a & T <: U | V => 'a & T <: U and 'a & T <: V
+        //
+
+        // For T <: U & V and T | U <: V, these two cases are entirely correct.
+
+        // We decompose T <: U & V above into T <: U and T <: V ...
+        if (superIntersection)
+            return unify_(subTy, superIntersection);
+
+        // ... and T | U <: V into T <: V and U <: V.
+        if (subUnion)
+            return unify_(subUnion, superTy);
+
+        // This, T & U <: V, erroneously is decomposed into T <: U and T <: V,
+        // even though technically we only need one of the above to hold.
+        // However, this ordering means that we avoid ...
+        if (subIntersection)
+            return unify_(subIntersection, superTy);
+
+        // T <: U | V decomposing into T <: U and T <: V is incorrect, and
+        // can result in some really strange user-visible bugs. Consider:
+        //
+        //  'a & ~(false?) <: string | number
+        //
+        // Intuitively, this should place a constraint of `string | number`
+        // on the upper bound of `'a`. But if we hit this case, then we
+        // end up with something like:
+        //
+        //  'a & ~(false?) <: string and 'a & ~(false?) <: number
+        //
+        // ... which will result in `'a` having `string & number` as its
+        // upper bound, and being inferred to `never`.
+        if (superUnion)
+            return unify_(subTy, superUnion);
+    }
+    else
+    {
+        auto subUnion = get<UnionType>(subTy);
+        auto superUnion = get<UnionType>(superTy);
+        if (subUnion)
+            return unify_(subUnion, superTy);
+        else if (superUnion)
+            return unify_(subTy, superUnion);
+
+        auto subIntersection = get<IntersectionType>(subTy);
+        auto superIntersection = get<IntersectionType>(superTy);
+        if (subIntersection)
+            return unify_(subIntersection, superTy);
+        else if (superIntersection)
+            return unify_(subTy, superIntersection);
+    }
 
     auto subNever = get<NeverType>(subTy);
     auto superNever = get<NeverType>(superTy);
@@ -371,18 +417,11 @@ UnifyResult Unifier2::unify_(TypeId subTy, const FunctionType* superFn)
 
         for (TypePackId genericPack : subFn->genericPacks)
         {
-            if (FFlag::LuauEagerGeneralization4)
-            {
-                if (FFlag::LuauEagerGeneralization4)
-                    genericPack = follow(genericPack);
+            genericPack = follow(genericPack);
 
-                // TODO: Clip this follow() with LuauEagerGeneralization4
-                const GenericTypePack* gen = get<GenericTypePack>(follow(genericPack));
-                if (gen)
-                    genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
-            }
-            else
-                genericPackSubstitutions[genericPack] = arena->freshTypePack(scope);
+            const GenericTypePack* gen = get<GenericTypePack>(genericPack);
+            if (gen)
+                genericPackSubstitutions[genericPack] = freshTypePack(scope, gen->polarity);
         }
     }
 
@@ -512,12 +551,10 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
     {
         result &= unify_(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
-        if (FFlag::LuauEagerGeneralization4)
-        {
-            // FIXME: We can probably do something more efficient here.
-            result &= unify_(superTable->indexer->indexType, subTable->indexer->indexType);
-            result &= unify_(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
-        }
+
+        // FIXME: We can probably do something more efficient here.
+        result &= unify_(superTable->indexer->indexType, subTable->indexer->indexType);
+        result &= unify_(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
     }
 
     if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)
@@ -704,10 +741,18 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     auto [superTypes, superTail] = extendTypePack(*arena, builtinTypes, superTp, maxLength);
 
     // right-pad the subpack with nils if `superPack` is larger since that's what a function call does
-    if (subTypes.size() < maxLength)
+    if (FFlag::LuauFixNilRightPad)
     {
-        for (size_t i = 0; i <= maxLength - subTypes.size(); i++)
-            subTypes.push_back(builtinTypes->nilType);
+        if (subTypes.size() < maxLength)
+            subTypes.resize(maxLength, builtinTypes->nilType);
+    }
+    else
+    {
+        if (subTypes.size() < maxLength)
+        {
+            for (size_t i = 0; i <= maxLength - subTypes.size(); i++)
+                subTypes.push_back(builtinTypes->nilType);
+        }
     }
 
     if (subTypes.size() < maxLength || superTypes.size() < maxLength)

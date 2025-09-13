@@ -12,7 +12,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauRemoveGenericErrorForParams)
 LUAU_FASTFLAG(LuauAddErrorCaseForIncompatibleTypePacks)
@@ -91,9 +90,6 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
     CheckResult result = check(R"(
         function apply(f, g, x)
             return f(g(x))

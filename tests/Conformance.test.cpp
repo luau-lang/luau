@@ -45,6 +45,7 @@ LUAU_FASTFLAG(LuauCodeGenVectorLerp)
 LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
 LUAU_FASTFLAG(LuauCodeGenBetterBytecodeAnalysis)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
+LUAU_FASTFLAG(LuauCodeGenRestoreFromSplitStore)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -3151,6 +3152,7 @@ TEST_CASE("Native")
 {
     ScopedFastFlag luauCodeGenDirectBtest{FFlag::LuauCodeGenDirectBtest, true};
     ScopedFastFlag luauCodeGenRegAutoSpillA64{FFlag::LuauCodeGenRegAutoSpillA64, true};
+    ScopedFastFlag luauCodeGenRestoreFromSplitStore{FFlag::LuauCodeGenRestoreFromSplitStore, true};
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())

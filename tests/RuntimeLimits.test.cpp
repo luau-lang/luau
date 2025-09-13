@@ -22,7 +22,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
@@ -296,7 +295,6 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
     ScopedFastFlag sff[] = {
         // These flags are required to surface the problem.
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization4, true},
 
         // And this flag is the one that fixes it.
         {FFlag::LuauSimplifyAnyAndUnion, true},
@@ -378,7 +376,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauLimitDynamicConstraintSolving3, true},
-        {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints, true},
     };
 
@@ -561,7 +558,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization4, true},
         {FFlag::LuauReduceSetTypeStackPressure, true},
     };
 
@@ -580,7 +576,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
     ScopedFastFlag sff[] = {
         // These are necessary to trigger the bug
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization4, true},
 
         // This is the fix
         {FFlag::LuauLimitUnification, true}

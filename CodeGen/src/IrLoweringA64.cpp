@@ -632,6 +632,27 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fsub(inst.regA64, temp1, inst.regA64);
         break;
     }
+    case IrCmd::MULADD_NUM:
+    {
+        RegisterA64 tempA = tempDouble(inst.a);
+        RegisterA64 tempB = tempDouble(inst.b);
+        RegisterA64 tempC = tempDouble(inst.c);
+
+        if ((build.features & Feature_AdvSIMD) != 0)
+        {
+            inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.c});
+            if (inst.regA64 != tempC)
+                build.fmov(inst.regA64, tempC);
+            build.fmla(inst.regA64, tempB, tempA);
+        }
+        else
+        {
+            inst.regA64 = regs.allocReg(KindA64::d, index);
+            build.fmul(inst.regA64, tempB, tempA);
+            build.fadd(inst.regA64, inst.regA64, tempC);
+        }
+        break;
+    }
     case IrCmd::MIN_NUM:
     {
         inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a, inst.b});
@@ -739,6 +760,27 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(inst.regA64, temp1);
         // If numbers are equal override A with B in res register.
         build.bit(inst.regA64, temp2, mask);
+        break;
+    }
+    case IrCmd::MULADD_VEC:
+    {
+        RegisterA64 tempA = regOp(inst.a);
+        RegisterA64 tempB = regOp(inst.b);
+        RegisterA64 tempC = regOp(inst.c);
+
+        if ((build.features & Feature_AdvSIMD) != 0)
+        {
+            inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.c});
+            if (inst.regA64 != tempC)
+                build.mov(inst.regA64, tempC);
+            build.fmla(inst.regA64, tempB, tempA);
+        }
+        else
+        {
+            inst.regA64 = regs.allocReg(KindA64::q, index);
+            build.fmul(inst.regA64, tempB, tempA);
+            build.fadd(inst.regA64, inst.regA64, tempC);
+        }
         break;
     }
     case IrCmd::ADD_VEC:
@@ -1416,20 +1458,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.add(x3, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
         build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_settable)));
         build.blr(x4);
-
-        emitUpdateBase(build);
-        break;
-    case IrCmd::GET_IMPORT:
-        regs.spill(index);
-        // luaV_getimport(L, cl->env, k, ra, aux, /* propagatenil= */ false)
-        build.mov(x0, rState);
-        build.ldr(x1, mem(rClosure, offsetof(Closure, env)));
-        build.mov(x2, rConstants);
-        build.add(x3, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
-        build.mov(w4, uintOp(inst.b));
-        build.mov(w5, 0);
-        build.ldr(x6, mem(rNativeContext, offsetof(NativeContext, luaV_getimport)));
-        build.blr(x6);
 
         emitUpdateBase(build);
         break;

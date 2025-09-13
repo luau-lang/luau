@@ -184,6 +184,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::ABS_NUM:
     case IrCmd::SIGN_NUM:
     case IrCmd::SELECT_NUM:
+    case IrCmd::MULADD_NUM:
         return IrValueKind::Double;
     case IrCmd::ADD_VEC:
     case IrCmd::SUB_VEC:
@@ -191,6 +192,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::UNM_VEC:
     case IrCmd::SELECT_VEC:
+    case IrCmd::MULADD_VEC:
         return IrValueKind::Tvalue;
     case IrCmd::DOT_VEC:
         return IrValueKind::Double;
@@ -243,7 +245,6 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
-    case IrCmd::GET_IMPORT:
     case IrCmd::GET_CACHED_IMPORT:
     case IrCmd::CONCAT:
     case IrCmd::GET_UPVALUE:

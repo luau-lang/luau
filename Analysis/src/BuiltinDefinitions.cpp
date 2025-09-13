@@ -32,7 +32,6 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
@@ -367,9 +366,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauEagerGeneralization4
-    if (FFlag::LuauEagerGeneralization4)
-        globalScope = globals.globalScope.get();
+    NotNull<Scope> globalScope{globals.globalScope.get()};
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
         builtinTypeFunctions().addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
@@ -513,12 +510,10 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
             TypePackId thePack = arena.addTypePack({genericTy});
             TypeId idTyWithMagic = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
             ttv->props["freeze"] = makeProperty(idTyWithMagic, "@luau/global/table.freeze");
-            if (globalScope)
-                inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTyWithMagic);
+            inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTyWithMagic);
 
             TypeId idTy = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
-            if (globalScope)
-                inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTy);
+            inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTy);
             ttv->props["clone"] = makeProperty(idTy, "@luau/global/table.clone");
         }
         else
