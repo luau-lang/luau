@@ -15,321 +15,12 @@
 #include "Luau/TypePack.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauEagerGeneralization4)
 LUAU_FASTFLAGVARIABLE(LuauReduceSetTypeStackPressure)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
-
-struct MutatingGeneralizer : TypeOnceVisitor
-{
-    NotNull<TypeArena> arena;
-    NotNull<BuiltinTypes> builtinTypes;
-
-    NotNull<Scope> scope;
-    NotNull<DenseHashSet<TypeId>> cachedTypes;
-    DenseHashMap<const void*, size_t> positiveTypes;
-    DenseHashMap<const void*, size_t> negativeTypes;
-    std::vector<TypeId> generics;
-    std::vector<TypePackId> genericPacks;
-
-    bool isWithinFunction = false;
-
-    MutatingGeneralizer(
-        NotNull<TypeArena> arena,
-        NotNull<BuiltinTypes> builtinTypes,
-        NotNull<Scope> scope,
-        NotNull<DenseHashSet<TypeId>> cachedTypes,
-        DenseHashMap<const void*, size_t> positiveTypes,
-        DenseHashMap<const void*, size_t> negativeTypes
-    )
-        : TypeOnceVisitor("MutatingGeneralizer", /* skipBoundTypes */ true)
-        , arena(arena)
-        , builtinTypes(builtinTypes)
-        , scope(scope)
-        , cachedTypes(cachedTypes)
-        , positiveTypes(std::move(positiveTypes))
-        , negativeTypes(std::move(negativeTypes))
-    {
-    }
-
-    void replace(DenseHashSet<TypeId>& seen, TypeId haystack, TypeId needle, TypeId replacement)
-    {
-        haystack = follow(haystack);
-
-        if (seen.find(haystack))
-            return;
-        seen.insert(haystack);
-
-        if (UnionType* ut = getMutable<UnionType>(haystack))
-        {
-            for (auto iter = ut->options.begin(); iter != ut->options.end();)
-            {
-                // FIXME: I bet this function has reentrancy problems
-                TypeId option = follow(*iter);
-
-                if (option == needle && get<NeverType>(replacement))
-                {
-                    iter = ut->options.erase(iter);
-                    continue;
-                }
-
-                if (option == needle)
-                {
-                    *iter = replacement;
-                    iter++;
-                    continue;
-                }
-
-                // advance the iterator, nothing after this can use it.
-                iter++;
-
-                if (seen.find(option))
-                    continue;
-                seen.insert(option);
-
-                if (get<UnionType>(option))
-                    replace(seen, option, needle, haystack);
-                else if (get<IntersectionType>(option))
-                    replace(seen, option, needle, haystack);
-            }
-
-            if (ut->options.size() == 1)
-            {
-                TypeId onlyType = ut->options[0];
-                LUAU_ASSERT(onlyType != haystack);
-                emplaceType<BoundType>(asMutable(haystack), onlyType);
-            }
-            else if (ut->options.empty())
-            {
-                emplaceType<BoundType>(asMutable(haystack), builtinTypes->neverType);
-            }
-
-            return;
-        }
-
-        if (IntersectionType* it = getMutable<IntersectionType>(needle))
-        {
-            for (auto iter = it->parts.begin(); iter != it->parts.end();)
-            {
-                // FIXME: I bet this function has reentrancy problems
-                TypeId part = follow(*iter);
-
-                if (part == needle && get<UnknownType>(replacement))
-                {
-                    iter = it->parts.erase(iter);
-                    continue;
-                }
-
-                if (part == needle)
-                {
-                    *iter = replacement;
-                    iter++;
-                    continue;
-                }
-
-                // advance the iterator, nothing after this can use it.
-                iter++;
-
-                if (seen.find(part))
-                    continue;
-                seen.insert(part);
-
-                if (get<UnionType>(part))
-                    replace(seen, part, needle, haystack);
-                else if (get<IntersectionType>(part))
-                    replace(seen, part, needle, haystack);
-            }
-
-            if (it->parts.size() == 1)
-            {
-                TypeId onlyType = it->parts[0];
-                LUAU_ASSERT(onlyType != needle);
-                emplaceType<BoundType>(asMutable(needle), onlyType);
-            }
-            else if (it->parts.empty())
-            {
-                emplaceType<BoundType>(asMutable(needle), builtinTypes->unknownType);
-            }
-
-            return;
-        }
-    }
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        if (cachedTypes->contains(ty))
-            return false;
-
-        const bool oldValue = isWithinFunction;
-
-        isWithinFunction = true;
-
-        traverse(ft.argTypes);
-        traverse(ft.retTypes);
-
-        isWithinFunction = oldValue;
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const FreeType&) override
-    {
-        LUAU_ASSERT(!cachedTypes->contains(ty));
-
-        const FreeType* ft = get<FreeType>(ty);
-        LUAU_ASSERT(ft);
-
-        traverse(ft->lowerBound);
-        traverse(ft->upperBound);
-
-        // It is possible for the above traverse() calls to cause ty to be
-        // transmuted.  We must reacquire ft if this happens.
-        ty = follow(ty);
-        ft = get<FreeType>(ty);
-        if (!ft)
-            return false;
-
-        const size_t positiveCount = getCount(positiveTypes, ty);
-        const size_t negativeCount = getCount(negativeTypes, ty);
-
-        if (!positiveCount && !negativeCount)
-            return false;
-
-        const bool hasLowerBound = !get<NeverType>(follow(ft->lowerBound));
-        const bool hasUpperBound = !get<UnknownType>(follow(ft->upperBound));
-
-        DenseHashSet<TypeId> seen{nullptr};
-        seen.insert(ty);
-
-        if (!hasLowerBound && !hasUpperBound)
-        {
-            if (!isWithinFunction || (positiveCount + negativeCount == 1))
-                emplaceType<BoundType>(asMutable(ty), builtinTypes->unknownType);
-            else
-            {
-                emplaceType<GenericType>(asMutable(ty), scope);
-                generics.push_back(ty);
-            }
-        }
-
-        // It is possible that this free type has other free types in its upper
-        // or lower bounds.  If this is the case, we must replace those
-        // references with never (for the lower bound) or unknown (for the upper
-        // bound).
-        //
-        // If we do not do this, we get tautological bounds like a <: a <: unknown.
-        else if (positiveCount && !hasUpperBound)
-        {
-            TypeId lb = follow(ft->lowerBound);
-            if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == ty)
-                lowerFree->upperBound = builtinTypes->unknownType;
-            else
-            {
-                DenseHashSet<TypeId> replaceSeen{nullptr};
-                replace(replaceSeen, lb, ty, builtinTypes->unknownType);
-            }
-
-            if (lb != ty)
-                emplaceType<BoundType>(asMutable(ty), lb);
-            else if (!isWithinFunction || (positiveCount + negativeCount == 1))
-                emplaceType<BoundType>(asMutable(ty), builtinTypes->unknownType);
-            else
-            {
-                // if the lower bound is the type in question, we don't actually have a lower bound.
-                emplaceType<GenericType>(asMutable(ty), scope);
-                generics.push_back(ty);
-            }
-        }
-        else
-        {
-            TypeId ub = follow(ft->upperBound);
-            if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == ty)
-                upperFree->lowerBound = builtinTypes->neverType;
-            else
-            {
-                DenseHashSet<TypeId> replaceSeen{nullptr};
-                replace(replaceSeen, ub, ty, builtinTypes->neverType);
-            }
-
-            if (ub != ty)
-                emplaceType<BoundType>(asMutable(ty), ub);
-            else if (!isWithinFunction || (positiveCount + negativeCount == 1))
-                emplaceType<BoundType>(asMutable(ty), builtinTypes->unknownType);
-            else
-            {
-                // if the upper bound is the type in question, we don't actually have an upper bound.
-                emplaceType<GenericType>(asMutable(ty), scope);
-                generics.push_back(ty);
-            }
-        }
-
-        return false;
-    }
-
-    size_t getCount(const DenseHashMap<const void*, size_t>& map, const void* ty)
-    {
-        if (const size_t* count = map.find(ty))
-            return *count;
-        else
-            return 0;
-    }
-
-    template<typename TID>
-    static size_t getCount(const DenseHashMap<TID, size_t>& map, TID ty)
-    {
-        if (const size_t* count = map.find(ty))
-            return *count;
-        else
-            return 0;
-    }
-
-    bool visit(TypeId ty, const TableType&) override
-    {
-        if (cachedTypes->contains(ty))
-            return false;
-
-        const size_t positiveCount = getCount(positiveTypes, ty);
-        const size_t negativeCount = getCount(negativeTypes, ty);
-
-        // FIXME: Free tables should probably just be replaced by upper bounds on free types.
-        //
-        // eg never <: 'a <: {x: number} & {z: boolean}
-
-        if (!positiveCount && !negativeCount)
-            return true;
-
-        TableType* tt = getMutable<TableType>(ty);
-        LUAU_ASSERT(tt);
-
-        tt->state = TableState::Sealed;
-
-        return true;
-    }
-
-    bool visit(TypePackId tp, const FreeTypePack& ftp) override
-    {
-        if (!subsumes(scope, ftp.scope))
-            return true;
-
-        tp = follow(tp);
-
-        const size_t positiveCount = getCount(positiveTypes, tp);
-        const size_t negativeCount = getCount(negativeTypes, tp);
-
-        if (1 == positiveCount + negativeCount)
-            emplaceTypePack<BoundTypePack>(asMutable(tp), builtinTypes->unknownTypePack);
-        else
-        {
-            emplaceTypePack<GenericTypePack>(asMutable(tp), scope);
-            genericPacks.push_back(tp);
-        }
-
-        return true;
-    }
-};
 
 struct FreeTypeSearcher : TypeVisitor
 {
@@ -409,46 +100,19 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (FFlag::LuauEagerGeneralization4)
-        {
-            if (!subsumes(scope, ft.scope))
-                return true;
+        if (!subsumes(scope, ft.scope))
+            return true;
 
-            GeneralizationParams<TypeId>& params = types[ty];
-            ++params.useCount;
+        GeneralizationParams<TypeId>& params = types[ty];
+        ++params.useCount;
 
-            if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
-                return false;
+        if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
+            return false;
 
-            if (!isWithinFunction)
-                params.foundOutsideFunctions = true;
+        if (!isWithinFunction)
+            params.foundOutsideFunctions = true;
 
-            params.polarity |= polarity;
-        }
-        else
-        {
-            if (cachedTypes->contains(ty) || seenWithCurrentPolarity(ty))
-                return false;
-
-            if (!subsumes(scope, ft.scope))
-                return true;
-
-            switch (polarity)
-            {
-            case Polarity::Positive:
-                positiveTypes[ty]++;
-                break;
-            case Polarity::Negative:
-                negativeTypes[ty]++;
-                break;
-            case Polarity::Mixed:
-                positiveTypes[ty]++;
-                negativeTypes[ty]++;
-                break;
-            default:
-                LUAU_ASSERT(!"Unreachable");
-            }
-        }
+        params.polarity |= polarity;
 
         return true;
     }
@@ -459,28 +123,7 @@ struct FreeTypeSearcher : TypeVisitor
             return false;
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
-        {
-            if (FFlag::LuauEagerGeneralization4)
-                unsealedTables.insert(ty);
-            else
-            {
-                switch (polarity)
-                {
-                case Polarity::Positive:
-                    positiveTypes[ty]++;
-                    break;
-                case Polarity::Negative:
-                    negativeTypes[ty]++;
-                    break;
-                case Polarity::Mixed:
-                    positiveTypes[ty]++;
-                    negativeTypes[ty]++;
-                    break;
-                default:
-                    LUAU_ASSERT(!"Unreachable");
-                }
-            }
-        }
+            unsealedTables.insert(ty);
 
         for (const auto& [_name, prop] : tt.props)
         {
@@ -516,27 +159,19 @@ struct FreeTypeSearcher : TypeVisitor
 
         if (tt.indexer)
         {
-            if (FFlag::LuauEagerGeneralization4)
-            {
-                // {[K]: V} is equivalent to three functions: get, set, and iterate
-                //
-                // (K) -> V
-                // (K, V) -> ()
-                // () -> {K}
-                //
-                // K and V therefore both have mixed polarity.
+            // {[K]: V} is equivalent to three functions: get, set, and iterate
+            //
+            // (K) -> V
+            // (K, V) -> ()
+            // () -> {K}
+            //
+            // K and V therefore both have mixed polarity.
 
-                const Polarity p = polarity;
-                polarity = Polarity::Mixed;
-                traverse(tt.indexer->indexType);
-                traverse(tt.indexer->indexResultType);
-                polarity = p;
-            }
-            else
-            {
-                traverse(tt.indexer->indexType);
-                traverse(tt.indexer->indexResultType);
-            }
+            const Polarity p = polarity;
+            polarity = Polarity::Mixed;
+            traverse(tt.indexer->indexType);
+            traverse(tt.indexer->indexResultType);
+            polarity = p;
         }
 
         return false;
@@ -574,34 +209,13 @@ struct FreeTypeSearcher : TypeVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        if (FFlag::LuauEagerGeneralization4)
-        {
-            GeneralizationParams<TypePackId>& params = typePacks[tp];
-            ++params.useCount;
+        GeneralizationParams<TypePackId>& params = typePacks[tp];
+        ++params.useCount;
 
-            if (!isWithinFunction)
-                params.foundOutsideFunctions = true;
+        if (!isWithinFunction)
+            params.foundOutsideFunctions = true;
 
-            params.polarity |= polarity;
-        }
-        else
-        {
-            switch (polarity)
-            {
-            case Polarity::Positive:
-                positiveTypes[tp]++;
-                break;
-            case Polarity::Negative:
-                negativeTypes[tp]++;
-                break;
-            case Polarity::Mixed:
-                positiveTypes[tp]++;
-                negativeTypes[tp]++;
-                break;
-            default:
-                LUAU_ASSERT(!"Unreachable");
-            }
-        }
+        params.polarity |= polarity;
 
         return true;
     }
@@ -1163,7 +777,7 @@ GeneralizationResult<TypeId> generalizeType(
 
     if (!hasLowerBound && !hasUpperBound)
     {
-        if (!isWithinFunction || (!FFlag::LuauEagerGeneralization4 && (params.polarity != Polarity::Mixed && params.useCount == 1)))
+        if (!isWithinFunction)
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1187,7 +801,7 @@ GeneralizationResult<TypeId> generalizeType(
 
         if (follow(lb) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), lb);
-        else if (!isWithinFunction || (!FFlag::LuauEagerGeneralization4 && params.useCount == 1))
+        else if (!isWithinFunction)
             emplaceType<BoundType>(asMutable(freeTy), builtinTypes->unknownType);
         else
         {
@@ -1293,92 +907,55 @@ std::optional<TypeId> generalize(
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    if (FFlag::LuauEagerGeneralization4)
+    FunctionType* functionTy = getMutable<FunctionType>(ty);
+    auto pushGeneric = [&](TypeId t)
     {
-        FunctionType* functionTy = getMutable<FunctionType>(ty);
-        auto pushGeneric = [&](TypeId t)
-        {
-            if (functionTy)
-                functionTy->generics.push_back(t);
-        };
+        if (functionTy)
+            functionTy->generics.push_back(t);
+    };
 
-        auto pushGenericPack = [&](TypePackId tp)
-        {
-            if (functionTy)
-                functionTy->genericPacks.push_back(tp);
-        };
-
-        for (const auto& [freeTy, params] : fts.types)
-        {
-            if (!generalizationTarget || freeTy == *generalizationTarget)
-            {
-                GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
-                if (res.resourceLimitsExceeded)
-                    return std::nullopt;
-
-                if (res && res.wasReplacedByGeneric)
-                    pushGeneric(*res.result);
-            }
-        }
-
-        for (TypeId unsealedTableTy : fts.unsealedTables)
-        {
-            if (!generalizationTarget || unsealedTableTy == *generalizationTarget)
-                sealTable(scope, unsealedTableTy);
-        }
-
-        for (const auto& [freePackId, params] : fts.typePacks)
-        {
-            TypePackId freePack = follow(freePackId);
-            if (!generalizationTarget)
-            {
-                GeneralizationResult<TypePackId> generalizedTp = generalizeTypePack(arena, builtinTypes, scope, freePack, params);
-
-                if (generalizedTp.resourceLimitsExceeded)
-                    return std::nullopt;
-
-                if (generalizedTp && generalizedTp.wasReplacedByGeneric)
-                    pushGenericPack(freePack);
-            }
-        }
-
-        TypeCacher cacher{cachedTypes};
-        cacher.traverse(ty);
-    }
-    else
+    auto pushGenericPack = [&](TypePackId tp)
     {
-        MutatingGeneralizer gen{arena, builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes)};
+        if (functionTy)
+            functionTy->genericPacks.push_back(tp);
+    };
 
-        gen.traverse(ty);
-
-        /* MutatingGeneralizer mutates types in place, so it is possible that ty has
-         * been transmuted to a BoundType. We must follow it again and verify that
-         * we are allowed to mutate it before we attach generics to it.
-         */
-        ty = follow(ty);
-
-        if (ty->owningArena != arena || ty->persistent)
-            return ty;
-
-        TypeCacher cacher{cachedTypes};
-        cacher.traverse(ty);
-
-        FunctionType* ftv = getMutable<FunctionType>(ty);
-        if (ftv)
+    for (const auto& [freeTy, params] : fts.types)
+    {
+        if (!generalizationTarget || freeTy == *generalizationTarget)
         {
-            // If we're generalizing a function type, add any of the newly inferred
-            // generics to the list of existing generic types.
-            for (const auto g : std::move(gen.generics))
-            {
-                ftv->generics.push_back(g);
-            }
-            // Ditto for generic packs.
-            for (const auto gp : std::move(gen.genericPacks))
-            {
-                ftv->genericPacks.push_back(gp);
-            }
+            GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
+            if (res.resourceLimitsExceeded)
+                return std::nullopt;
+
+            if (res && res.wasReplacedByGeneric)
+                pushGeneric(*res.result);
         }
     }
+
+    for (TypeId unsealedTableTy : fts.unsealedTables)
+    {
+        if (!generalizationTarget || unsealedTableTy == *generalizationTarget)
+            sealTable(scope, unsealedTableTy);
+    }
+
+    for (const auto& [freePackId, params] : fts.typePacks)
+    {
+        TypePackId freePack = follow(freePackId);
+        if (!generalizationTarget)
+        {
+            GeneralizationResult<TypePackId> generalizedTp = generalizeTypePack(arena, builtinTypes, scope, freePack, params);
+
+            if (generalizedTp.resourceLimitsExceeded)
+                return std::nullopt;
+
+            if (generalizedTp && generalizedTp.wasReplacedByGeneric)
+                pushGenericPack(freePack);
+        }
+    }
+
+    TypeCacher cacher{cachedTypes};
+    cacher.traverse(ty);
 
     return ty;
 }
@@ -1551,9 +1128,6 @@ void pruneUnnecessaryGenerics(
     TypeId ty
 )
 {
-    if (!FFlag::LuauEagerGeneralization4)
-        return;
-
     ty = follow(ty);
 
     if (ty->owningArena != arena || ty->persistent)

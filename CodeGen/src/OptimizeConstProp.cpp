@@ -1314,6 +1314,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::IDIV_NUM:
+    case IrCmd::MULADD_NUM:
     case IrCmd::MOD_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
@@ -1326,6 +1327,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SIGN_NUM:
     case IrCmd::SELECT_NUM:
     case IrCmd::SELECT_VEC:
+    case IrCmd::MULADD_VEC:
     case IrCmd::NOT_ANY:
         state.substituteOrRecord(inst, index);
         break;
@@ -1526,10 +1528,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateUserCall();
         break;
     case IrCmd::SET_TABLE:
-        state.invalidateUserCall();
-        break;
-    case IrCmd::GET_IMPORT:
-        state.invalidate(inst.a);
         state.invalidateUserCall();
         break;
     case IrCmd::GET_CACHED_IMPORT:

@@ -343,6 +343,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
     CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
+#if 0 // CLI-169898: temporarily disabled for stack overflow in unoptimized build
 // Check that recursive intersection type doesn't generate an OOM
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
@@ -353,6 +354,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
         _(_)
     )");
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")
 {

@@ -15,9 +15,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
@@ -231,10 +230,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
     TypeId numberArray = arena.addType(TableType{tt});
@@ -267,10 +262,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
 
@@ -404,7 +395,7 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
+        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
     };
 
     CheckResult result = check(R"(
@@ -440,10 +431,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional_inference")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     fileResolver.source["Module/ListFns"] = R"(
         local mod = {}
         function mod.findWhere(list, predicate): number?

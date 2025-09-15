@@ -4,7 +4,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
@@ -408,7 +407,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauEagerGeneralization4, true},
     };
 
     CheckResult result = check(R"(

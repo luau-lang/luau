@@ -87,6 +87,15 @@ struct CannotExtendTable
     bool operator==(const CannotExtendTable& rhs) const;
 };
 
+struct CannotCompareUnrelatedTypes
+{
+    TypeId left;
+    TypeId right;
+    AstExprBinary::Op op;
+
+    bool operator==(const CannotCompareUnrelatedTypes& rhs) const;
+};
+
 struct OnlyTablesCanHaveMethods
 {
     TypeId tableType;
@@ -547,6 +556,7 @@ using TypeErrorData = Variant<
     UnknownProperty,
     NotATable,
     CannotExtendTable,
+    CannotCompareUnrelatedTypes,
     OnlyTablesCanHaveMethods,
     DuplicateTypeDefinition,
     CountMismatch,

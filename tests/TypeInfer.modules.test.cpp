@@ -13,12 +13,10 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTINT(LuauSolverConstraintLimit)
-LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSolverAgnosticSetType)
@@ -780,10 +778,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        CHECK_EQ("(unknown) -> unknown", toString(requireTypeAtPosition({13, 23})));
-    }
+    CHECK("(unknown) -> unknown" == toString(requireTypeAtPosition({13, 23})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
@@ -857,7 +852,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_types_are_scrubbed_from_module")
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
         {FFlag::LuauLimitDynamicConstraintSolving3, true},
-        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -877,7 +871,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
         {FFlag::LuauLimitDynamicConstraintSolving3, true},
-        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
     };
 
     fileResolver.source["game/A"] = R"(

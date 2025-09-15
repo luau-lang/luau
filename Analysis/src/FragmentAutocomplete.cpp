@@ -33,7 +33,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
 LUAU_FASTFLAGVARIABLE(LuauPopulateSelfTypesInFragment)
 LUAU_FASTFLAGVARIABLE(LuauForInProvidesRecommendations)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTakesInnermostRefinement)
@@ -606,14 +605,9 @@ struct UsageFinder : public AstVisitor
             mentionedDefs.insert(ref->def);
         if (auto local = expr->as<AstExprLocal>())
         {
-            if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
-            {
-                auto def = dfg->getDef(local);
-                localBindingsReferenced.emplace_back(def, local->local);
-                symbolsToRefine.emplace_back(def, Symbol(local->local));
-            }
-            else
-                localBindingsReferenced.emplace_back(dfg->getDef(local), local->local);
+            auto def = dfg->getDef(local);
+            localBindingsReferenced.emplace_back(def, local->local);
+            symbolsToRefine.emplace_back(def, Symbol(local->local));
         }
         return true;
     }
@@ -621,11 +615,8 @@ struct UsageFinder : public AstVisitor
     bool visit(AstExprGlobal* global) override
     {
         globalDefsToPrePopulate.emplace_back(global->name, dfg->getDef(global));
-        if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
-        {
-            auto def = dfg->getDef(global);
-            symbolsToRefine.emplace_back(def, Symbol(global->name));
-        }
+        auto def = dfg->getDef(global);
+        symbolsToRefine.emplace_back(def, Symbol(global->name));
         return true;
     }
 
@@ -691,44 +682,27 @@ void cloneTypesFromFragment(
         }
     }
 
-    if (FFlag::LuauFragmentAutocompleteTracksRValueRefinements)
+    for (const auto& [d, syms] : f.symbolsToRefine)
     {
-        for (const auto& [d, syms] : f.symbolsToRefine)
+        for (const Scope* stale = staleScope; stale; stale = stale->parent.get())
         {
-            for (const Scope* stale = staleScope; stale; stale = stale->parent.get())
+            if (auto res = stale->refinements.find(syms); res != stale->refinements.end())
             {
-                if (auto res = stale->refinements.find(syms); res != stale->refinements.end())
-                {
-                    destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
-                    // If we've found a refinement, just break, otherwise we might end up doing the wrong thing for:
-                    //
-                    //  type TaggedUnion = { tag: 'a', value: number } | { tag: 'b', value: string }
-                    //  local function foobar(obj: TaggedUnion?)
-                    //      if obj then
-                    //          if obj.tag == 'a'
-                    //              obj.| -- We want the most "narrow" refinement here.
-                    //          end
-                    //      end
-                    //  end
-                    //
-                    // We could find another binding for `syms` and then set _that_.
-                    if (FFlag::LuauFragmentAutocompleteTakesInnermostRefinement)
-                        break;
-                }
-            }
-        }
-    }
-    else if (!staleModule->checkedInNewSolver)
-    {
-        for (const auto& [d, loc] : f.localBindingsReferenced)
-        {
-            for (const Scope* stale = staleScope; stale; stale = stale->parent.get())
-            {
-                if (auto res = stale->refinements.find(Symbol(loc)); res != stale->refinements.end())
-                {
-                    destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
+                destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
+                // If we've found a refinement, just break, otherwise we might end up doing the wrong thing for:
+                //
+                //  type TaggedUnion = { tag: 'a', value: number } | { tag: 'b', value: string }
+                //  local function foobar(obj: TaggedUnion?)
+                //      if obj then
+                //          if obj.tag == 'a'
+                //              obj.| -- We want the most "narrow" refinement here.
+                //          end
+                //      end
+                //  end
+                //
+                // We could find another binding for `syms` and then set _that_.
+                if (FFlag::LuauFragmentAutocompleteTakesInnermostRefinement)
                     break;
-                }
             }
         }
     }

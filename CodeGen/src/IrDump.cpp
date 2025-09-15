@@ -169,6 +169,8 @@ const char* getCmdName(IrCmd cmd)
         return "SIGN_NUM";
     case IrCmd::SELECT_NUM:
         return "SELECT_NUM";
+    case IrCmd::MULADD_NUM:
+        return "MULADD_NUM";
     case IrCmd::SELECT_VEC:
         return "SELECT_VEC";
     case IrCmd::ADD_VEC:
@@ -183,6 +185,8 @@ const char* getCmdName(IrCmd cmd)
         return "UNM_VEC";
     case IrCmd::DOT_VEC:
         return "DOT_VEC";
+    case IrCmd::MULADD_VEC:
+        return "MULADD_VEC";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::CMP_ANY:
@@ -253,8 +257,6 @@ const char* getCmdName(IrCmd cmd)
         return "GET_TABLE";
     case IrCmd::SET_TABLE:
         return "SET_TABLE";
-    case IrCmd::GET_IMPORT:
-        return "GET_IMPORT";
     case IrCmd::GET_CACHED_IMPORT:
         return "GET_CACHED_IMPORT";
     case IrCmd::CONCAT:

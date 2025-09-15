@@ -23,6 +23,8 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
+LUAU_FASTFLAG(LuauStringConstFolding)
+LUAU_FASTFLAG(LuauCompileTypeofFold)
 
 using namespace Luau;
 
@@ -359,28 +361,31 @@ RETURN R0 0
 
 TEST_CASE("ConcatChainOptimization")
 {
-    CHECK_EQ("\n" + compileFunction0("return '1' .. '2'"), R"(
-LOADK R1 K0 ['1']
-LOADK R2 K1 ['2']
-CONCAT R0 R1 R2
-RETURN R0 1
+    CHECK_EQ("\n" + compileFunction0("local a, b = ...; return a .. b"), R"(
+GETVARARGS R0 2
+MOVE R3 R0
+MOVE R4 R1
+CONCAT R2 R3 R4
+RETURN R2 1
 )");
 
-    CHECK_EQ("\n" + compileFunction0("return '1' .. '2' .. '3'"), R"(
-LOADK R1 K0 ['1']
-LOADK R2 K1 ['2']
-LOADK R3 K2 ['3']
-CONCAT R0 R1 R3
-RETURN R0 1
+    CHECK_EQ("\n" + compileFunction0("local a, b, c = ...; return a .. b .. c"), R"(
+GETVARARGS R0 3
+MOVE R4 R0
+MOVE R5 R1
+MOVE R6 R2
+CONCAT R3 R4 R6
+RETURN R3 1
 )");
 
-    CHECK_EQ("\n" + compileFunction0("return ('1' .. '2') .. '3'"), R"(
-LOADK R3 K0 ['1']
-LOADK R4 K1 ['2']
-CONCAT R1 R3 R4
-LOADK R2 K2 ['3']
-CONCAT R0 R1 R2
-RETURN R0 1
+    CHECK_EQ("\n" + compileFunction0("local a, b, c = ...; return (a .. b) .. c"), R"(
+GETVARARGS R0 3
+MOVE R6 R0
+MOVE R7 R1
+CONCAT R4 R6 R7
+MOVE R5 R2
+CONCAT R3 R4 R5
+RETURN R3 1
 )");
 }
 
@@ -7849,6 +7854,8 @@ RETURN R1 -1
 
 TEST_CASE("BuiltinFolding")
 {
+    ScopedFastFlag luauCompileTypeofFold{FFlag::LuauCompileTypeofFold, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7904,6 +7911,7 @@ return
     bit32.replace(100, 1, 0),
     math.log(100, 10),
     typeof(nil),
+    type(vector.create(1, 0, 0)),
     (type("fin"))
 )",
                    0,
@@ -7961,14 +7969,17 @@ LOADN R47 1
 LOADN R48 101
 LOADN R49 2
 LOADK R50 K3 ['nil']
-LOADK R51 K4 ['string']
-RETURN R0 52
+LOADK R51 K4 ['vector']
+LOADK R52 K5 ['string']
+RETURN R0 53
 )"
     );
 }
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
+    ScopedFastFlag luauCompileTypeofFold{FFlag::LuauCompileTypeofFold, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7982,7 +7993,8 @@ return
     bit32.band(1, true),
     bit32.bxor(1, true),
     bit32.btest(1, true),
-    math.min(1, true)
+    math.min(1, true),
+    typeof(vector.create(1, 0, 0))
 )",
                    0,
                    2
@@ -8037,7 +8049,11 @@ FASTCALL2K 19 R10 K3 L9 [true]
 LOADK R11 K3 [true]
 GETIMPORT R9 26 [math.min]
 CALL R9 2 1
-L9: RETURN R0 10
+L9: LOADK R11 K27 [1, 0, 0]
+FASTCALL1 44 R11 L10
+GETIMPORT R10 29 [typeof]
+CALL R10 1 1
+L10: RETURN R0 11
 )"
     );
 }
@@ -9381,6 +9397,18 @@ IDIV R6 R7 R0
 LOADN R8 2
 POW R7 R8 R0
 RETURN R1 7
+)"
+    );
+}
+
+TEST_CASE("ConstStringFolding")
+{
+    ScopedFastFlag sff{FFlag::LuauStringConstFolding, true};
+    CHECK_EQ(
+        "\n" + compileFunction(R"(local hello = "hello"; local world = "world"; return hello .. " " .. world)", 0, 2),
+        R"(
+LOADK R0 K0 ['hello world']
+RETURN R0 1
 )"
     );
 }

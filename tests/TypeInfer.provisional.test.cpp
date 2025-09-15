@@ -19,6 +19,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1304,6 +1305,8 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cache
 // CLI-111113
 TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently")
 {
+    ScopedFastFlag sff{FFlag::LuauNoMoreComparisonTypeFunctions, true};
+
     CheckResult result = check(R"(
         function find_first<T>(tbl: {T}, el)
             for i, e in tbl do
@@ -1327,7 +1330,7 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
 
     if (FFlag::LuauSolverV2)
     {
-        LUAU_CHECK_ERROR_COUNT(2, result);
+        LUAU_CHECK_ERROR_COUNT(1, result);
         CHECK("<T>({T}, unknown) -> number" == toString(requireType("find_first")));
     }
     else

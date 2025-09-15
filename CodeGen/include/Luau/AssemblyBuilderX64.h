@@ -18,6 +18,12 @@ namespace CodeGen
 namespace X64
 {
 
+enum FeaturesX64
+{
+    Feature_FMA3 = 1 << 0,
+    Feature_AVX = 1 << 1
+};
+
 enum class RoundingModeX64
 {
     RoundToNearestEven = 0b00,
@@ -42,8 +48,8 @@ enum class ABIX64
 class AssemblyBuilderX64
 {
 public:
-    explicit AssemblyBuilderX64(bool logText, ABIX64 abi);
-    explicit AssemblyBuilderX64(bool logText);
+    explicit AssemblyBuilderX64(bool logText, ABIX64 abi, unsigned int features = 0);
+    explicit AssemblyBuilderX64(bool logText, unsigned int features = 0);
     ~AssemblyBuilderX64();
 
     // Base two operand instructions with 9 opcode selection
@@ -172,6 +178,8 @@ public:
     void vpinsrd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t offset);
 
     void vdpps(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mask);
+    void vfmadd213ps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vfmadd213pd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     // Run final checks
     bool finalize();
@@ -215,6 +223,8 @@ public:
     const bool logText = false;
 
     const ABIX64 abi;
+
+    const unsigned int features = 0;
 
 private:
     // Instruction archetypes

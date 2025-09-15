@@ -281,6 +281,9 @@ struct NormalizedType
     /// Returns true if this type contains the primitve top table type, `table`.
     bool hasTopTable() const;
 
+    /// Returns true if this type is `nil` or `nil | *error-type*`
+    bool isNil() const;
+
     // Helpers that improve readability of the above (they just say if the component is present)
     bool hasTops() const;
     bool hasBooleans() const;

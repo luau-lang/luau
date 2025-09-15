@@ -11,9 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauSuppressErrorsForMultipleNonviableOverloads)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSolverAgnosticSetType)
 
@@ -1724,8 +1722,6 @@ TEST_CASE_FIXTURE(Fixture, "write_only_table_assertion")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_into_any")
 {
-    ScopedFastFlag _{FFlag::LuauSuppressErrorsForMultipleNonviableOverloads, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
 table.insert(1::any, 2::any)
     )"));

@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
@@ -555,10 +554,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     CheckResult result = check(R"(
         local Account = {}
         Account.__index = Account
@@ -586,10 +581,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
 
     CheckResult result = check(R"(
         local Account = {}
