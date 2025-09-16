@@ -89,7 +89,7 @@ private:
 };
 
 // compiles bytecode into bytecode builder using either a pre-parsed AST or parsing it from source; throws on errors
-void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, const AstNameTable& names, const CompileOptions& options = {});
+void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, AstNameTable& names, const CompileOptions& options = {});
 void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const CompileOptions& options = {}, const ParseOptions& parseOptions = {});
 
 // compiles bytecode into a bytecode blob, that either contains the valid bytecode or an encoded error that luau_load can decode

@@ -3465,7 +3465,7 @@ using ticks_t = timer_large_integer::type;
         MultiLaneAtomic<int> numAssertsCurrentTest_atomic;
         MultiLaneAtomic<int> numAssertsFailedCurrentTest_atomic;
 
-        std::vector<std::vector<String>> filters = decltype(filters)(9); // 9 different filters
+        std::vector<std::vector<String>> filters = decltype(filters)(10); // 10 different filters
 
         std::vector<IReporter*> reporters_currently_used;
 
@@ -6562,6 +6562,8 @@ void Context::parseArgs(int argc, const char* const* argv, bool withDefaults) {
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8]);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-path=",          p->filters[9]);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tp=",                 p->filters[9]);
     // clang-format on
 
     int    intRes = 0;
@@ -6859,6 +6861,8 @@ int Context::run() {
         if(!matchesAny(tc.m_name, p->filters[4], true, p->case_sensitive))
             skip_me = true;
         if(matchesAny(tc.m_name, p->filters[5], false, p->case_sensitive))
+            skip_me = true;
+        if(!matchesAny((String(tc.m_test_suite) + "/" + String(tc.m_name)).c_str(), p->filters[9], true, p->case_sensitive))
             skip_me = true;
 
         if(!skip_me)

@@ -2,6 +2,7 @@
 #include "Luau/TypeChecker2.h"
 
 #include "Luau/Ast.h"
+#include "Luau/AstUtils.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
@@ -32,17 +33,21 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauSuppressErrorsForMultipleNonviableOverloads)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
-LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
+LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
+LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
+LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowMixedTables)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionForLiteralSubtypeCheck)
+LUAU_FASTFLAGVARIABLE(LuauRemoveGenericErrorForParams)
+LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
+LUAU_FASTFLAGVARIABLE(LuauAddErrorCaseForIncompatibleTypePacks)
+LUAU_FASTFLAGVARIABLE(LuauAddConditionalContextForTernary)
 
 namespace Luau
 {
@@ -297,12 +302,6 @@ void check(
     TypeChecker2 typeChecker{builtinTypes, simplifier, typeFunctionRuntime, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
-
-    if (!FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
-    {
-        if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]))
-            module->errors.clear();
-    }
 
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);
@@ -567,6 +566,10 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
     }
 
     TypeId* ty = module->astResolvedTypes.find(annotation);
+
+    if (FFlag::LuauNoConstraintGenRecursionLimitIce && module->constraintGenerationDidNotComplete && !ty)
+        return builtinTypes->anyType;
+
     LUAU_ASSERT(ty);
     return checkForTypeFunctionInhabitance(follow(*ty), annotation->location);
 }
@@ -1249,6 +1252,10 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
     visit(&fake, stat);
 
     TypeId* resultTy = module->astCompoundAssignResultTypes.find(stat);
+
+    if (FFlag::LuauNoConstraintGenRecursionLimitIce && module->constraintGenerationDidNotComplete && !resultTy)
+        return;
+
     LUAU_ASSERT(resultTy);
     TypeId varTy = lookupType(stat->var);
 
@@ -1632,7 +1639,6 @@ void TypeChecker2::visitCall(AstExprCall* call)
         }
     }
 
-
     OverloadResolver resolver{
         builtinTypes,
         NotNull{&module->internalTypes},
@@ -1644,7 +1650,11 @@ void TypeChecker2::visitCall(AstExprCall* call)
         limits,
         call->location,
     };
-    resolver.resolve(fnTy, &args, call->func, &argExprs);
+    DenseHashSet<TypeId> uniqueTypes{nullptr};
+    if (FFlag::LuauTrackUniqueness)
+        findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
+
+    resolver.resolve(fnTy, &args, call->func, &argExprs, NotNull{&uniqueTypes});
 
     auto norm = normalizer.normalize(fnTy);
     if (!norm)
@@ -1661,25 +1671,10 @@ void TypeChecker2::visitCall(AstExprCall* call)
         return; // Ok. Calling an uninhabited type is no-op.
     else if (!resolver.nonviableOverloads.empty())
     {
-        if (FFlag::LuauSuppressErrorsForMultipleNonviableOverloads)
-        {
-            const bool reportedErrors =
-                reportNonviableOverloadErrors(resolver.nonviableOverloads, call->func->location, args.head.size(), call->location);
-            if (!reportedErrors)
-                return; // We did not report any errors, so we can just return.
-        }
-        else
-        {
-            if (resolver.nonviableOverloads.size() == 1 && !isErrorSuppressing(call->func->location, resolver.nonviableOverloads.front().first))
-                reportErrors(resolver.nonviableOverloads.front().second);
-            else
-            {
-                std::string s = "None of the overloads for function that accept ";
-                s += std::to_string(args.head.size());
-                s += " arguments are compatible.";
-                reportError(GenericError{std::move(s)}, call->location);
-            }
-        }
+        const bool reportedErrors =
+            reportNonviableOverloadErrors(resolver.nonviableOverloads, call->func->location, args.head.size(), call->location);
+        if (!reportedErrors)
+            return; // We did not report any errors, so we can just return.
     }
     else if (!resolver.arityMismatches.empty())
     {
@@ -1915,7 +1910,9 @@ void TypeChecker2::visit(AstExprFunction* fn)
     }
     else if (get<ErrorType>(normalizedFnTy->errors))
     {
-        // Nothing
+        // If we have an error type, we don't want to do anything else involving the normalized type
+        if (FFlag::LuauNoConstraintGenRecursionLimitIce)
+            normalizedFnTy = nullptr;
     }
     else if (!normalizedFnTy->hasFunctions())
     {
@@ -2025,29 +2022,7 @@ void TypeChecker2::visit(AstExprFunction* fn)
 
     // If the function type has a function annotation, we need to see if we can suggest an annotation
     if (normalizedFnTy)
-    {
-        if (FFlag::LuauEagerGeneralization4)
-            suggestAnnotations(fn, normalizedFnTy->functions.parts.front());
-        else
-        {
-            const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
-            LUAU_ASSERT(inferredFtv);
-
-            TypeFunctionReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
-            for (TypeId retTy : inferredFtv->retTypes)
-            {
-                if (get<TypeFunctionInstanceType>(follow(retTy)))
-                {
-                    TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
-                    if (result.shouldRecommendAnnotation && !get<UnknownType>(result.guessedReturnType))
-                        reportError(
-                            ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
-                            fn->location
-                        );
-                }
-            }
-        }
-    }
+        suggestAnnotations(fn, normalizedFnTy->functions.parts.front());
 
     functionDeclStack.pop_back();
 }
@@ -2159,10 +2134,42 @@ void TypeChecker2::visit(AstExprUnary* expr)
     }
 }
 
+// Comparisons between disjoint types is usually something we warn on, but there are some special exceptions.
+static bool isOkToCompare(
+    Normalizer& normalizer,
+    NormalizationResult typesHaveIntersection,
+    const std::shared_ptr<const NormalizedType>& normLeft,
+    const std::shared_ptr<const NormalizedType>& normRight
+)
+{
+    // We only consider warning if we know that the types are disjoint. If
+    // normalization fails here, it should have also failed elsewhere and will
+    // already have been reported.
+    if (NormalizationResult::False != typesHaveIntersection)
+        return true;
+
+    // We allow anything to be compared to nil.
+    if (normLeft->isNil() || normRight->isNil())
+        return true;
+
+    // Comparison with never is always ok.
+    else if (NormalizationResult::True != normalizer.isInhabited(normLeft.get()) ||
+                NormalizationResult::True != normalizer.isInhabited(normRight.get()))
+        return true;
+
+    // Comparisons between different string singleton types is allowed even
+    // if their intersection is technically uninhabited.
+    else if (!normLeft->strings.isNever() && !normRight->strings.isNever())
+        return true;
+
+    return false;
+};
+
 TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 {
     std::optional<InConditionalContext> inContext;
-    if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq && expr->op != AstExprBinary::CompareNe)
+    if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq &&
+        expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
     visit(expr->left, ValueContext::RValue);
@@ -2217,6 +2224,19 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     }
 
     NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
+    if (FFlag::LuauNoMoreComparisonTypeFunctions)
+    {
+        if (isEquality || isComparison)
+        {
+            // As a special exception, we allow anything to be compared to nil.
+            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
+            {
+                reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
+                return builtinTypes->errorType;
+            }
+        }
+    }
+
     if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
     {
         std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
@@ -2546,9 +2566,21 @@ void TypeChecker2::visit(AstExprIfElse* expr)
 {
     InConditionalContext inContext(&typeContext, TypeContext::Default);
 
-    visit(expr->condition, ValueContext::RValue);
-    visit(expr->trueExpr, ValueContext::RValue);
-    visit(expr->falseExpr, ValueContext::RValue);
+    if (FFlag::LuauAddConditionalContextForTernary)
+    {
+        {
+            InConditionalContext inContext(&typeContext, TypeContext::Condition);
+            visit(expr->condition, ValueContext::RValue);
+        }
+        visit(expr->trueExpr, ValueContext::RValue);
+        visit(expr->falseExpr, ValueContext::RValue);
+    }
+    else
+    {
+        visit(expr->condition, ValueContext::RValue);
+        visit(expr->trueExpr, ValueContext::RValue);
+        visit(expr->falseExpr, ValueContext::RValue);
+    }
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -2688,11 +2720,14 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
         );
 
-        if (!ty->hasParameterList)
+        if (!FFlag::LuauRemoveGenericErrorForParams)
         {
-            if ((!alias->typeParams.empty() && !hasDefaultTypes) || (!alias->typePackParams.empty() && !hasDefaultPacks))
+            if (!ty->hasParameterList)
             {
-                reportError(GenericError{"Type parameter list is required"}, ty->location);
+                if ((!alias->typeParams.empty() && !hasDefaultTypes) || (!alias->typePackParams.empty() && !hasDefaultPacks))
+                {
+                    reportError(GenericError{"Type parameter list is required"}, ty->location);
+                }
             }
         }
 
@@ -2736,6 +2771,15 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
         }
 
+        if (FFlag::LuauAddErrorCaseForIncompatibleTypePacks)
+        {
+            // If we require type parameters, but no types are provided and only packs are provided, we report an error.
+            if (typesRequired != 0 && typesProvided == 0 && packsProvided != 0)
+            {
+                reportError(GenericError{"Type parameters must come before type pack parameters"}, ty->location);
+            }
+        }
+
         if (extraTypes != 0 && packsProvided == 0)
         {
             // Extra types are only collected into a pack if a pack is expected
@@ -2761,9 +2805,16 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
         }
 
-        if (extraTypes == 0 && packsProvided + 1 == packsRequired)
+        if (FFlag::LuauRemoveGenericErrorForParams)
         {
-            packsProvided += 1;
+            // If the type parameter list is explicitly provided, allow an empty type pack to satisfy the expected pack count.
+            if (extraTypes == 0 && packsProvided + 1 == packsRequired && ty->hasParameterList)
+                packsProvided += 1;
+        }
+        else
+        {
+            if (extraTypes == 0 && packsProvided + 1 == packsRequired)
+                packsProvided += 1;
         }
 
         if (typesProvided != typesRequired || packsProvided != packsRequired)
@@ -2905,14 +2956,22 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf =
-            FFlag::LuauReturnMappedGenericPacksFromSubtyping2
-                ? traverse(subTy, reasoning.subPath, builtinTypes, NotNull{&r.mappedGenericPacks}, subtyping->arena)
-                : traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes);
-        std::optional<TypeOrPack> optSuperLeaf =
-            FFlag::LuauReturnMappedGenericPacksFromSubtyping2
-                ? traverse(superTy, reasoning.superPath, builtinTypes, NotNull{&r.mappedGenericPacks}, subtyping->arena)
-                : traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes);
+        std::optional<TypeOrPack> optSubLeaf;
+        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+            optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes, subtyping->arena);
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+            optSubLeaf = traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes, NotNull{&r.mappedGenericPacks_DEPRECATED}, subtyping->arena);
+        else
+            optSubLeaf = traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes);
+
+        std::optional<TypeOrPack> optSuperLeaf;
+        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+            optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes, subtyping->arena);
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+            optSuperLeaf =
+                traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes, NotNull{&r.mappedGenericPacks_DEPRECATED}, subtyping->arena);
+        else
+            optSuperLeaf = traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes);
 
         if (!optSubLeaf || !optSuperLeaf)
         {
@@ -2938,7 +2997,9 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         {
             if (FFlag::LuauIceLess)
             {
-                reportError(InternalError{"Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack."}, location);
+                reportError(
+                    InternalError{"Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack."}, location
+                );
                 return {}; // TODO test this?
             }
             else

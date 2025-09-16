@@ -229,15 +229,14 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
-        result.errors[0] ==
-        TypeError{
-            Location{{1, 17}, {1, 28}},
-            getMainSourceModule()->name,
-            UnknownSymbol{
-                "IDoNotExist",
-                UnknownSymbol::Context::Type,
-            },
-        }
+        result.errors[0] == TypeError{
+                                Location{{1, 17}, {1, 28}},
+                                getMainSourceModule()->name,
+                                UnknownSymbol{
+                                    "IDoNotExist",
+                                    UnknownSymbol::Context::Type,
+                                },
+                            }
     );
 }
 

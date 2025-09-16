@@ -176,9 +176,6 @@ bool isUnwindSupported()
 {
 #if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
     return true;
-#elif defined(__ANDROID__)
-    // Current unwind information is not compatible with Android
-    return false;
 #elif defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
     char ver[256];
     size_t verLength = sizeof(ver);

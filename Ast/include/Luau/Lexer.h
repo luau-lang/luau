@@ -136,6 +136,7 @@ public:
     std::pair<AstName, Lexeme::Type> getOrAddWithType(const char* name, size_t length);
     std::pair<AstName, Lexeme::Type> getWithType(const char* name, size_t length) const;
 
+    AstName getOrAdd(const char* name, size_t len);
     AstName getOrAdd(const char* name);
     AstName get(const char* name) const;
 

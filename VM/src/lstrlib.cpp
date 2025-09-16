@@ -477,7 +477,7 @@ init: // using goto's to optimize tail recursion
                 {
                     p += 4;
                     goto init; // return match(ms, s, p + 4);
-                }              // else fail (s == NULL)
+                } // else fail (s == NULL)
                 break;
             }
             case 'f':
@@ -555,7 +555,7 @@ init: // using goto's to optimize tail recursion
                 case '+':             // 1 or more repetitions
                     s++;              // 1 match already done
                     LUAU_FALLTHROUGH; // go through
-                case '*': // 0 or more repetitions
+                case '*':             // 0 or more repetitions
                     s = max_expand(ms, s, p, ep);
                     break;
                 case '-': // 0 or more repetitions (minimum)

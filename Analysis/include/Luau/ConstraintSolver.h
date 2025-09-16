@@ -108,7 +108,7 @@ struct ConstraintSolver
     std::vector<NotNull<Constraint>> constraints;
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
-    ModuleName currentModuleName;
+    ModulePtr module;
 
     // The dataflow graph of the program, used in constraint generation and for magic functions.
     NotNull<const DataFlowGraph> dfg;
@@ -169,7 +169,7 @@ struct ConstraintSolver
         NotNull<Normalizer> normalizer,
         NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
-        ModuleName moduleName,
+        ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,
@@ -178,6 +178,7 @@ struct ConstraintSolver
         ConstraintSet constraintSet
     );
 
+    // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
         NotNull<Simplifier> simplifier,
@@ -185,7 +186,7 @@ struct ConstraintSolver
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
         NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
-        ModuleName moduleName,
+        ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,

@@ -151,6 +151,9 @@ enum class IrCmd : uint8_t
     DIV_NUM,
     IDIV_NUM,
     MOD_NUM,
+    // A * B + C
+    // A, B, C: double
+    MULADD_NUM,
 
     // Get the minimum/maximum of two numbers
     // If one of the values is NaN, 'B' is returned as the result
@@ -203,6 +206,9 @@ enum class IrCmd : uint8_t
     SUB_VEC,
     MUL_VEC,
     DIV_VEC,
+    // Lanewise A * B + C
+    // A, B, C: TValue
+    MULADD_VEC,
 
     // Negate a vector
     // A: TValue
@@ -401,12 +407,6 @@ enum class IrCmd : uint8_t
     // B: Rn
     // C: Rn or unsigned int (key)
     SET_TABLE,
-
-    // TODO: remove with FFlagLuauCodeGenSimplifyImport2
-    // Lookup a value in the environment
-    // A: Rn (where to store the result)
-    // B: unsigned int (import path)
-    GET_IMPORT,
 
     // Store an import from constant or the import path
     // A: Rn (where to store the result)
@@ -1058,6 +1058,7 @@ struct IrFunction
     std::vector<BytecodeMapping> bcMapping;
     uint32_t entryBlock = 0;
     uint32_t entryLocation = 0;
+    uint32_t endLocation = 0;
 
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;

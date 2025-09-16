@@ -231,7 +231,11 @@ bool isEmpty(TypePackId tp);
 /// Flattens out a type pack.  Also returns a valid TypePackId tail if the type pack's full size is not known
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp);
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const TxnLog& log);
-std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks);
+// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten_DEPRECATED(
+    TypePackId tp,
+    const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks
+);
 
 /// Returs true if the type pack arose from a function that is declared to be variadic.
 /// Returns *false* for function argument packs that are inferred to be safe to oversaturate!
@@ -256,5 +260,17 @@ LUAU_NOINLINE T* emplaceTypePack(TypePackVar* ty, Args&&... args)
 
 template<>
 LUAU_NOINLINE Unifiable::Bound<TypePackId>* emplaceTypePack<BoundTypePack>(TypePackVar* ty, TypePackId& tyArg);
+
+/*
+ * Takes a slice of a TypePack, starting at sliceIndex, and up to and including the tail. toBeSliced should be already decomposed into head and tail.
+ */
+TypePackId sliceTypePack(
+    size_t sliceIndex,
+    TypePackId toBeSliced,
+    std::vector<TypeId>& head,
+    std::optional<TypePackId> tail,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
 
 } // namespace Luau

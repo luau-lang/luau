@@ -8,29 +8,26 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauEagerGeneralization4);
 
 TEST_SUITE_BEGIN("InferPolarity");
 
 TEST_CASE_FIXTURE(Fixture, "T where T = { m: <a>(a) -> T }")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     TypeArena arena;
     ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
 
     TypeId tType = arena.addType(BlockedType{});
     TypeId aType = arena.addType(GenericType{globalScope.get(), "a"});
 
-    TypeId mType = arena.addType(FunctionType{
-        TypeLevel{},
-        /* generics */ {aType},
-        /* genericPacks */ {},
-        /* argPack */ arena.addTypePack({aType}),
-        /* retPack */ arena.addTypePack({tType})
-    });
+    TypeId mType = arena.addType(
+        FunctionType{
+            TypeLevel{},
+            /* generics */ {aType},
+            /* genericPacks */ {},
+            /* argPack */ arena.addTypePack({aType}),
+            /* retPack */ arena.addTypePack({tType})
+        }
+    );
 
     emplaceType<TableType>(
         asMutable(tType),
@@ -52,10 +49,6 @@ TEST_CASE_FIXTURE(Fixture, "T where T = { m: <a>(a) -> T }")
 
 TEST_CASE_FIXTURE(Fixture, "<a, b>({ read x: a, write x: b }) -> ()")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     TypeArena arena;
     ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
 
@@ -66,13 +59,15 @@ TEST_CASE_FIXTURE(Fixture, "<a, b>({ read x: a, write x: b }) -> ()")
     ttv.state = TableState::Sealed;
     ttv.props["x"] = Property::create({aType}, {bType});
 
-    TypeId mType = arena.addType(FunctionType{
-        TypeLevel{},
-        /* generics */ {aType, bType},
-        /* genericPacks */ {},
-        /* argPack */ arena.addTypePack({arena.addType(std::move(ttv))}),
-        /* retPack */ builtinTypes->emptyTypePack,
-    });
+    TypeId mType = arena.addType(
+        FunctionType{
+            TypeLevel{},
+            /* generics */ {aType, bType},
+            /* genericPacks */ {},
+            /* argPack */ arena.addTypePack({arena.addType(std::move(ttv))}),
+            /* retPack */ builtinTypes->emptyTypePack,
+        }
+    );
 
     inferGenericPolarities(NotNull{&arena}, NotNull{globalScope.get()}, mType);
 

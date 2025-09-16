@@ -3814,9 +3814,7 @@ TEST_CASE_FIXTURE(Fixture, "do_not_hang_on_incomplete_attribute_list")
 function hello(x, y)
     return x + y
 end)");
-    checkFirstErrorForAttributes(
-        result.errors, 1, Location(Position(1, 0), Position(1, 3)), "Attribute list cannot be empty"
-    );
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 0), Position(1, 3)), "Attribute list cannot be empty");
 
     result = tryParse(R"(@[)");
 
@@ -3836,9 +3834,7 @@ end)");
         local function foo() end
     )");
 
-    checkFirstErrorForAttributes(
-        result.errors, 1, Location(Position(1, 8), Position(1, 13)), "Expected ']' (to close '@[' at line 1), got 'local'"
-    );
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 8), Position(1, 13)), "Expected ']' (to close '@[' at line 1), got 'local'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")

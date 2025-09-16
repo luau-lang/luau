@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/HashUtil.h"
 #include "Luau/Common.h"
 
 #include <stddef.h>
@@ -12,20 +13,9 @@
 namespace Luau
 {
 
-struct DenseHashPointer
-{
-    size_t operator()(const void* key) const
-    {
-        return (uintptr_t(key) >> 4) ^ (uintptr_t(key) >> 9);
-    }
-};
-
 // Internal implementation of DenseHashSet and DenseHashMap
 namespace detail
 {
-
-template<typename T>
-using DenseHashDefault = std::conditional_t<std::is_pointer_v<T>, DenseHashPointer, std::hash<T>>;
 
 template<typename Key, typename Item, typename MutableItem, typename ItemInterface, typename Hash, typename Eq>
 class DenseHashTable

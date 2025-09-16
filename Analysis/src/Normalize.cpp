@@ -24,7 +24,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationLimitTyvarUnionSize)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 namespace Luau
@@ -306,6 +305,15 @@ bool NormalizedType::isFalsy() const
 bool NormalizedType::isTruthy() const
 {
     return !isFalsy();
+}
+
+bool NormalizedType::isNil() const
+{
+    if (!hasNils())
+        return false;
+
+    return !hasTops() && !hasBooleans() && !hasExternTypes() && !hasNumbers() && !hasStrings() && !hasThreads() && !hasBuffers() && !hasTables() &&
+           !hasFunctions() && !hasTyvars();
 }
 
 static bool isShallowInhabited(const NormalizedType& norm)
@@ -1531,11 +1539,8 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
         return NormalizationResult::True;
     }
 
-    if (FFlag::LuauNormalizationLimitTyvarUnionSize)
-    {
-        if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
-            return NormalizationResult::HitLimits;
-    }
+    if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+        return NormalizationResult::HitLimits;
 
     for (auto it = there.tyvars.begin(); it != there.tyvars.end(); it++)
     {

@@ -11,6 +11,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauInitializeDefaultGenericParamsAtProgramPoint)
+LUAU_FASTFLAG(LuauAddErrorCaseForIncompatibleTypePacks)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -76,29 +78,27 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
     if (FFlag::LuauSolverV2)
     {
         CHECK(
-            result.errors[0] ==
-            TypeError{
-                Location{{1, 21}, {1, 26}},
-                getMainSourceModule()->name,
-                TypeMismatch{
-                    getBuiltins()->numberType,
-                    getBuiltins()->stringType,
-                },
-            }
+            result.errors[0] == TypeError{
+                                    Location{{1, 21}, {1, 26}},
+                                    getMainSourceModule()->name,
+                                    TypeMismatch{
+                                        getBuiltins()->numberType,
+                                        getBuiltins()->stringType,
+                                    },
+                                }
         );
     }
     else
     {
         CHECK(
-            result.errors[0] ==
-            TypeError{
-                Location{{1, 8}, {1, 26}},
-                getMainSourceModule()->name,
-                TypeMismatch{
-                    getBuiltins()->numberType,
-                    getBuiltins()->stringType,
-                },
-            }
+            result.errors[0] == TypeError{
+                                    Location{{1, 8}, {1, 26}},
+                                    getMainSourceModule()->name,
+                                    TypeMismatch{
+                                        getBuiltins()->numberType,
+                                        getBuiltins()->stringType,
+                                    },
+                                }
         );
     }
 }
@@ -343,6 +343,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
     CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
+#if 0 // CLI-169898: temporarily disabled for stack overflow in unoptimized build
 // Check that recursive intersection type doesn't generate an OOM
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
@@ -353,6 +354,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
         _(_)
     )");
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")
 {
@@ -1110,14 +1112,16 @@ type Foo<T> = Foo<T>
 
 TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_bad_pack_use_warns")
 {
-    if (!FFlag::LuauSolverV2)
-        return;
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAddErrorCaseForIncompatibleTypePacks, true}};
 
     CheckResult result = check(R"(
 type Foo<T> = Foo<T...>
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_CHECK_ERROR(result, GenericError);
+    CHECK_EQ(toString(result.errors[4]), "Generic type 'Foo<T>' expects 1 type argument, but none are specified");
+
     auto occursCheckFailed = get<OccursCheckFailed>(result.errors[1]);
     REQUIRE(occursCheckFailed);
 
@@ -1281,6 +1285,74 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_more_cursed_aliases")
 export type t138 = t0<t138>
 export type t0<t0,t10,t10,t109> = t0
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "evaluating_generic_default_type_shouldnt_ice")
+{
+    ScopedFastFlag sff{FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint, true};
+
+    auto result = check(R"(
+local A = {}
+type B<T = typeof(A)> = unknown
+)");
+
+    if (FFlag::LuauSolverV2)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_CHECK_ERROR(result, UnknownSymbol);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "evaluating_generic_default_type_pack_shouldnt_ice")
+{
+    ScopedFastFlag sff{FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint, true};
+
+    auto result = check(R"(
+local A = {}
+type B<T... = ...typeof(A)> = unknown
+)");
+
+    if (FFlag::LuauSolverV2)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_CHECK_ERROR(result, UnknownSymbol);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "evaluating_generic_default_type_for_symbol_before_definition_is_an_error")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint, true},
+    };
+
+    auto result = check(R"(
+type B<T = typeof(A)> = unknown
+local A = {}
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, UnknownSymbol);
+}
+
+TEST_CASE_FIXTURE(Fixture, "evaluating_generic_default_type_pack_for_symbol_before_definition_is_an_error")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint, true},
+    };
+
+    auto result = check(R"(
+type B<T... = ...typeof(A)> = unknown
+local A = {}
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, UnknownSymbol);
 }
 
 

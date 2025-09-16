@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, f
 LUAU_FASTFLAGVARIABLE(LuauParseIncompleteInterpStringsWithLocation)
 LUAU_FASTFLAGVARIABLE(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteAttributes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -934,8 +935,15 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 
         nextLexeme();
 
-        if (type)
-            attributes.push_back(allocator.alloc<AstAttr>(loc, *type, empty));
+        if (FFlag::LuauAutocompleteAttributes)
+        {
+            attributes.push_back(allocator.alloc<AstAttr>(loc, type.value_or(AstAttr::Type::Unknown), empty, AstName(name)));
+        }
+        else
+        {
+            if (type)
+                attributes.push_back(allocator.alloc<AstAttr>(loc, *type, empty));
+        }
     }
     else
     {
@@ -965,14 +973,30 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 
                     std::optional<AstAttr::Type> type = validateAttribute(nameLoc, attrName, attributes, args);
 
-                    if (type)
-                        attributes.push_back(allocator.alloc<AstAttr>(Location(nameLoc, argsLocation), *type, args));
+                    if (FFlag::LuauAutocompleteAttributes)
+                    {
+                        attributes.push_back(
+                            allocator.alloc<AstAttr>(Location(nameLoc, argsLocation), type.value_or(AstAttr::Type::Unknown), args, AstName(attrName))
+                        );
+                    }
+                    else
+                    {
+                        if (type)
+                            attributes.push_back(allocator.alloc<AstAttr>(Location(nameLoc, argsLocation), *type, args));
+                    }
                 }
                 else
                 {
                     std::optional<AstAttr::Type> type = validateAttribute(nameLoc, attrName, attributes, empty);
-                    if (type)
-                        attributes.push_back(allocator.alloc<AstAttr>(nameLoc, *type, empty));
+                    if (FFlag::LuauAutocompleteAttributes)
+                    {
+                        attributes.push_back(allocator.alloc<AstAttr>(nameLoc, type.value_or(AstAttr::Type::Unknown), empty, AstName(attrName)));
+                    }
+                    else
+                    {
+                        if (type)
+                            attributes.push_back(allocator.alloc<AstAttr>(nameLoc, *type, empty));
+                    }
                 }
 
                 if (lexer.current().type == ',')
@@ -988,6 +1012,14 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
         else
         {
             report(Location(open.location, lexer.current().location), "Attribute list cannot be empty");
+
+            if (FFlag::LuauAutocompleteAttributes)
+            {
+                // autocomplete expects at least one unknown attribute.
+                attributes.push_back(
+                    allocator.alloc<AstAttr>(Location(open.location, lexer.current().location), AstAttr::Type::Unknown, empty, nameError)
+                );
+            }
         }
 
         expectMatchAndConsume(']', open);
@@ -1452,9 +1484,11 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
                     if (chars && !containsNull)
                     {
-                        props.push_back(AstDeclaredExternTypeProperty{
-                            AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
-                        });
+                        props.push_back(
+                            AstDeclaredExternTypeProperty{
+                                AstName(chars->data), Location(nameBegin, nameEnd), type, false, Location(begin.location, lexer.previousLocation())
+                            }
+                        );
                     }
                     else
                     {
@@ -1485,9 +1519,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
                 expectAndConsume(':', "property type annotation");
                 AstType* propType = parseType();
-                props.push_back(AstDeclaredExternTypeProperty{
-                    propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())
-                });
+                props.push_back(
+                    AstDeclaredExternTypeProperty{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
+                );
             }
         }
 
@@ -2118,16 +2152,18 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                 {
                     props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
                     if (options.storeCstData)
-                        cstItems.push_back(CstTypeTable::Item{
-                            CstTypeTable::Item::Kind::StringProperty,
-                            begin.location.begin,
-                            indexerClosePosition,
-                            colonPosition,
-                            tableSeparator(),
-                            lexer.current().location.begin,
-                            allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth),
-                            stringPosition
-                        });
+                        cstItems.push_back(
+                            CstTypeTable::Item{
+                                CstTypeTable::Item::Kind::StringProperty,
+                                begin.location.begin,
+                                indexerClosePosition,
+                                colonPosition,
+                                tableSeparator(),
+                                lexer.current().location.begin,
+                                allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth),
+                                stringPosition
+                            }
+                        );
                 }
                 else
                     report(begin.location, "String literal contains malformed escape sequence or \\0");
@@ -2148,14 +2184,16 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                     auto tableIndexerResult = parseTableIndexer(access, accessLocation, begin);
                     indexer = tableIndexerResult.node;
                     if (options.storeCstData)
-                        cstItems.push_back(CstTypeTable::Item{
-                            CstTypeTable::Item::Kind::Indexer,
-                            tableIndexerResult.indexerOpenPosition,
-                            tableIndexerResult.indexerClosePosition,
-                            tableIndexerResult.colonPosition,
-                            tableSeparator(),
-                            lexer.current().location.begin,
-                        });
+                        cstItems.push_back(
+                            CstTypeTable::Item{
+                                CstTypeTable::Item::Kind::Indexer,
+                                tableIndexerResult.indexerOpenPosition,
+                                tableIndexerResult.indexerClosePosition,
+                                tableIndexerResult.colonPosition,
+                                tableSeparator(),
+                                lexer.current().location.begin,
+                            }
+                        );
                 }
             }
         }
@@ -2184,14 +2222,16 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
             props.push_back(AstTableProp{name->name, name->location, type, access, accessLocation});
             if (options.storeCstData)
-                cstItems.push_back(CstTypeTable::Item{
-                    CstTypeTable::Item::Kind::Property,
-                    Position{0, 0},
-                    Position{0, 0},
-                    colonPosition,
-                    tableSeparator(),
-                    lexer.current().location.begin
-                });
+                cstItems.push_back(
+                    CstTypeTable::Item{
+                        CstTypeTable::Item::Kind::Property,
+                        Position{0, 0},
+                        Position{0, 0},
+                        colonPosition,
+                        tableSeparator(),
+                        lexer.current().location.begin
+                    }
+                );
         }
 
         if (lexer.current().type == ',' || lexer.current().type == ';')
@@ -3859,9 +3899,8 @@ AstExpr* Parser::parseString()
             style = AstExprConstantString::QuotedRaw;
             break;
         case Lexeme::QuotedString:
-            style = lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Single
-                        ? AstExprConstantString::QuotedSingle
-                        : AstExprConstantString::QuotedSimple;
+            style = lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Single ? AstExprConstantString::QuotedSingle
+                                                                                  : AstExprConstantString::QuotedSimple;
             break;
         default:
             LUAU_ASSERT(false && "Invalid string type");

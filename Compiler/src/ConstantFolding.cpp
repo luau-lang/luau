@@ -2,9 +2,12 @@
 #include "ConstantFolding.h"
 
 #include "BuiltinFolding.h"
+#include "Luau/Lexer.h"
 
 #include <vector>
 #include <math.h>
+
+LUAU_FASTFLAGVARIABLE(LuauStringConstFolding)
 
 namespace Luau
 {
@@ -80,7 +83,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
     }
 }
 
-static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra)
+static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra, AstNameTable& names)
 {
     switch (op)
     {
@@ -283,6 +286,18 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::Concat:
+        if (FFlag::LuauStringConstFolding)
+            if (la.type == Constant::Type_String && ra.type == Constant::Type_String)
+            {
+                result.type = Constant::Type_String;
+                result.stringLength = la.stringLength + ra.stringLength;
+                std::string tmp;
+                tmp.reserve(result.stringLength + 1);
+                tmp.append(la.valueString, la.stringLength);
+                tmp.append(ra.valueString, ra.stringLength);
+                AstName name = names.getOrAdd(tmp.c_str(), result.stringLength);
+                result.valueString = name.value;
+            }
         break;
 
     case AstExprBinary::CompareNe:
@@ -361,6 +376,7 @@ struct ConstantVisitor : AstVisitor
     const DenseHashMap<AstExprCall*, int>* builtins;
     bool foldLibraryK = false;
     LibraryMemberConstantCallback libraryMemberConstantCb;
+    AstNameTable& names;
 
     bool wasEmpty = false;
 
@@ -372,7 +388,8 @@ struct ConstantVisitor : AstVisitor
         DenseHashMap<AstLocal*, Constant>& locals,
         const DenseHashMap<AstExprCall*, int>* builtins,
         bool foldLibraryK,
-        LibraryMemberConstantCallback libraryMemberConstantCb
+        LibraryMemberConstantCallback libraryMemberConstantCb,
+        AstNameTable& names
     )
         : constants(constants)
         , variables(variables)
@@ -380,6 +397,7 @@ struct ConstantVisitor : AstVisitor
         , builtins(builtins)
         , foldLibraryK(foldLibraryK)
         , libraryMemberConstantCb(libraryMemberConstantCb)
+        , names(names)
     {
         // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
         wasEmpty = constants.empty() && locals.empty();
@@ -518,7 +536,7 @@ struct ConstantVisitor : AstVisitor
 
             // note: ra doesn't need to be constant to fold and/or
             if (la.type != Constant::Type_Unknown)
-                foldBinary(result, expr->op, la, ra);
+                foldBinary(result, expr->op, la, ra, names);
         }
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
         {
@@ -628,10 +646,11 @@ void foldConstants(
     const DenseHashMap<AstExprCall*, int>* builtins,
     bool foldLibraryK,
     LibraryMemberConstantCallback libraryMemberConstantCb,
-    AstNode* root
+    AstNode* root,
+    AstNameTable& names
 )
 {
-    ConstantVisitor visitor{constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb};
+    ConstantVisitor visitor{constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb, names};
     root->visit(&visitor);
 }
 

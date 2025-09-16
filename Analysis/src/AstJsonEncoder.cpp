@@ -8,6 +8,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauAutocompleteAttributes)
+
 namespace Luau
 {
 
@@ -1153,6 +1155,8 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("native");
         case AstAttr::Type::Deprecated:
             return writeString("deprecated");
+        case AstAttr::Type::Unknown:
+            return writeString("unknown");
         }
     }
 
@@ -1163,7 +1167,10 @@ struct AstJsonEncoder : public AstVisitor
             "AstAttr",
             [&]()
             {
-                write("name", node->type);
+                if (FFlag::LuauAutocompleteAttributes)
+                    write("name", node->name);
+                else
+                    write("name", node->type);
             }
         );
     }

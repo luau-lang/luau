@@ -159,6 +159,8 @@ struct Module
     void clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
 
     void clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode);
+
+    bool constraintGenerationDidNotComplete = true;
 };
 
 } // namespace Luau

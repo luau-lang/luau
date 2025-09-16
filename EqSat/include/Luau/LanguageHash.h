@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/HashUtil.h"
+
 #include <cstddef>
 #include <functional>
 #include <unordered_set>
@@ -22,13 +24,6 @@ template<typename T>
 size_t languageHash(const T& lang)
 {
     return LanguageHash<T>{}(lang);
-}
-
-inline void hashCombine(size_t& seed, size_t hash)
-{
-    // Golden Ratio constant used for better hash scattering
-    // See https://softwareengineering.stackexchange.com/a/402543
-    seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
 template<typename T, size_t I>
