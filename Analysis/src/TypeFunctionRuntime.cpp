@@ -1125,7 +1125,10 @@ static TypeFunctionTypePackId getFunctionParametersTypePack(lua_State* L, int he
                 {
                     std::string_view str = lua_tostring(L, -1);
                     if (Luau::isIdentifier(str))
-                        argName = FunctionArgument{ .name = std::string(str), .location = Location{} };
+                        argName = FunctionArgument{ 
+                            std::string(str), 
+                            {} // Maybe get the location of the user-defined type function instead? I'm not sure how to do this or if it's possible at all. 
+                        };
                 }
                 argNames.push_back(argName);
                 lua_pop(L, 2);
@@ -1167,12 +1170,12 @@ static void pushFunctionParametersTypePack(lua_State* L, const TypeFunctionFunct
         if (!tftp->head.empty())
         {
             lua_createtable(L, int(tftp->head.size()), 0);
-            int pos = 1;
+            size_t pos = 1;
 
             for (auto el : tftp->head)
             {
                 lua_createtable(L, 0, 2);
-                if (pos <= tfft->argNames.size())
+                if (tfft->argNames.size() >= pos)
                 {
                     auto argName = tfft->argNames.at(pos - 1);
                     if (argName.has_value())
