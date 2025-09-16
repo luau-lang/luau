@@ -20,6 +20,7 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAG(LuauTypeFunctionFunctionParameterNames)
 
 namespace Luau
 {
@@ -408,10 +409,12 @@ private:
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
 
-        f2->argNames.reserve(f1->argNames.size());
-        for (auto argName : f1->argNames)
-            f2->argNames.push_back(argName ? std::optional<Name>{argName->name} 
-                                           : std::nullopt);
+        if (FFlag::LuauTypeFunctionFunctionParameterNames)
+        {
+            f2->argNames.reserve(f1->argNames.size());
+            for (const auto& argName : f1->argNames)
+                f2->argNames.push_back(argName);
+        }
     }
 
     void serializeChildren(const ExternType* c1, TypeFunctionExternType* c2)
@@ -999,10 +1002,12 @@ private:
         if (f2->retTypes)
             f1->retTypes = shallowDeserialize(f2->retTypes);
 
-        f1->argNames.reserve(f2->argNames.size());
-        for (const auto& argName : f2->argNames)
-            f1->argNames.push_back(argName ? std::optional<FunctionArgument>{{*argName, Location()}}
-                                           : std::nullopt);
+        if (FFlag::LuauTypeFunctionFunctionParameterNames)
+        {
+            f1->argNames.reserve(f2->argNames.size());
+            for (const auto& argName : f2->argNames)
+                f1->argNames.push_back(argName);
+        }
     }
 
     void deserializeChildren(TypeFunctionExternType* c2, ExternType* c1)

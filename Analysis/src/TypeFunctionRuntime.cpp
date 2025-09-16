@@ -21,6 +21,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauTypeFunctionFunctionParameterNames)
 
 namespace Luau
 {
@@ -1092,33 +1093,121 @@ static void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
     }
 }
 
-void setArgNames(lua_State* L, int namesIdx, size_t argLength, std::vector<std::optional<Name>>& argNames) 
+static TypeFunctionTypePackId getFunctionParametersTypePack(lua_State* L, int headIdx, int tailIdx, std::vector<std::optional<FunctionArgument>>& argNames)
 {
-    namesIdx = lua_absindex(L, namesIdx);
+    TypeFunctionTypePackId result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{});
 
-    argNames.resize(argLength);
+    std::vector<TypeFunctionTypeId> head;
 
-    for (size_t i = 1; i <= argLength; ++i) {
-        lua_pushinteger(L, i);
-        lua_gettable(L, namesIdx);
+    if (lua_istable(L, headIdx))
+    {
+        lua_pushvalue(L, headIdx);
 
-        std::optional<Name> argName;
-
-        if (!lua_isnil(L, -1))
+        for (int i = 1; i <= lua_objlen(L, -1); i++)
         {
-            TypeFunctionTypeId ty = getTypeUserData(L, -1);
+            lua_pushinteger(L, i);
+            lua_gettable(L, -2);
 
-            if (auto tfst = get<TypeFunctionSingletonType>(ty))
-                if (auto tfsst = get<TypeFunctionStringSingleton>(tfst); tfsst && isIdentifier(tfsst->value))
-                    argName = tfsst->value;
+            if (lua_isnil(L, -1))
+            {
+                lua_pop(L, 1);
+                break;
+            }
+            else if (lua_istable(L, -1))
+            {
+                lua_getfield(L, -1, "type");
+                head.push_back(getTypeUserData(L, -1));
+                lua_pop(L, 1);
+
+                lua_getfield(L, -1, "name");
+                std::optional<FunctionArgument> argName = std::nullopt;
+                if (lua_isstring(L, -1))
+                {
+                    std::string_view str = lua_tostring(L, -1);
+                    if (Luau::isIdentifier(str))
+                        argName = FunctionArgument{ .name = std::string(str), .location = Location{} };
+                }
+                argNames.push_back(argName);
+                lua_pop(L, 2);
+            }
+            else {
+                head.push_back(getTypeUserData(L, -1));
+                argNames.push_back(std::nullopt);
+                lua_pop(L, 1);
+            }
         }
 
-        argNames[i - 1] = argName;
         lua_pop(L, 1);
+    }
+
+    std::optional<TypeFunctionTypePackId> tail;
+
+    if (auto type = optionalTypeUserData(L, tailIdx))
+    {
+        if (auto gty = get<TypeFunctionGenericType>(*type); gty && gty->isPack)
+            tail = allocateTypeFunctionTypePack(L, TypeFunctionGenericTypePack{gty->isNamed, gty->name});
+        else
+            tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
+    }
+
+    if (head.size() == 0 && tail.has_value())
+        result = *tail;
+    else
+        result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{std::move(head), tail});
+
+    return result;
+}
+
+static void pushFunctionParametersTypePack(lua_State* L, const TypeFunctionFunctionType * tfft)
+{
+    if (auto tftp = get<TypeFunctionTypePack>(tfft->argTypes))
+    {
+        lua_createtable(L, 0, 2);
+
+        if (!tftp->head.empty())
+        {
+            lua_createtable(L, int(tftp->head.size()), 0);
+            int pos = 1;
+
+            for (auto el : tftp->head)
+            {
+                lua_createtable(L, 0, 2);
+                if (pos <= tfft->argNames.size())
+                {
+                    auto argName = tfft->argNames.at(pos - 1);
+                    if (argName.has_value())
+                    {   
+                        lua_pushstring(L, argName->name.c_str());
+                        lua_setfield(L, -2, "name");
+                    }
+                }
+                allocTypeUserData(L, el->type);
+                lua_setfield(L, -2, "type");
+                lua_rawseti(L, -2, pos++);
+            }
+
+            lua_setfield(L, -2, "head");
+        }
+
+        if (tftp->tail.has_value())
+        {
+            if (auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail))
+                allocTypeUserData(L, tfvp->type->type);
+            else if (auto tfgp = get<TypeFunctionGenericTypePack>(*tftp->tail))
+                allocTypeUserData(L, TypeFunctionGenericType{tfgp->isNamed, true, tfgp->name});
+            else
+                luaL_error(L, "unsupported type pack type");
+
+            lua_setfield(L, -2, "tail");
+        }
+    }
+    else
+    {
+        luaL_error(L, "unsupported type pack type");
     }
 }
 
-// Luau: `types.newfunction(parameters: {head: {type}?, names: { [number]: type? }?, tail: type?}, returns: {head: {type}?, tail: type?}, generics: {type}?) -> type`
+// Luau: `types.newfunction(parameters: {head: {type | { name: string?, type: type }}?, tail: type?}, returns: {head: {type}?, tail: type?}, generics: {type}?) -> type`
 // Returns the type instance representing a function
 static int createFunction(lua_State* L)
 {
@@ -1127,23 +1216,23 @@ static int createFunction(lua_State* L)
         luaL_error(L, "types.newfunction: expected 0-3 arguments, but got %d", argumentCount);
 
     TypeFunctionTypePackId argTypes = nullptr;
-    std::vector<std::optional<Name>> argNames;
+
+    std::vector<std::optional<FunctionArgument>> argNames = {};
 
     if (lua_istable(L, 1))
     {
         lua_getfield(L, 1, "head");
         lua_getfield(L, 1, "tail");
 
-        argTypes = getTypePack(L, -2, -1);
+        if (FFlag::LuauTypeFunctionFunctionParameterNames)
+        {
+            argTypes = getFunctionParametersTypePack(L, -2, -1, argNames);
+        }
+        else {
+            argTypes = getTypePack(L, -2, -1);
+        }
 
-        lua_getfield(L, 1, "names");
-
-        if (lua_istable(L, -1))
-            setArgNames(L, -1, /* argLength */ lua_objlen(L, -3), argNames);
-        else    
-            luaL_typeerrorL(L, -1, "table");
-
-        lua_pop(L, 3);
+        lua_pop(L, 2);
     }
     else if (!lua_isnoneornil(L, 1))
     {
@@ -1176,35 +1265,37 @@ static int createFunction(lua_State* L)
 
     auto [genericTypes, genericPacks] = getGenerics(L, 3, "types.newfunction");
 
-    allocTypeUserData(L, TypeFunctionFunctionType{std::move(genericTypes), std::move(genericPacks), argTypes, retTypes, argNames});
+    allocTypeUserData(L, TypeFunctionFunctionType{std::move(genericTypes), std::move(genericPacks), argTypes, retTypes});
 
     return 1;
 }
 
-// Luau: `self:setparameters(head: {type}?, tail: type?, names: { [number]: type? }?)`
+// Luau: `self:setparameters(head: {type | { name: string?, type: type }}?, tail: type?)`
 // Sets the parameters of the function
 static int setFunctionParameters(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
-    if (argumentCount > 4 || argumentCount < 1)
-        luaL_error(L, "type.setparameters: expected 1-4, but got %d", argumentCount);
+    if (argumentCount > 3 || argumentCount < 1)
+        luaL_error(L, "type.setparameters: expected 1-3, but got %d", argumentCount);
 
     TypeFunctionTypeId self = getTypeUserData(L, 1);
     auto tfft = getMutable<TypeFunctionFunctionType>(self);
     if (!tfft)
         luaL_error(L, "type.setparameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    tfft->argTypes = getTypePack(L, 2, 3);
-
-    if (lua_istable(L, 4))
-        setArgNames(L, 4, /* argLength */ lua_objlen(L, 2), tfft->argNames);
-    else if (!lua_isnoneornil(L, 4))    
-        luaL_typeerrorL(L, -1, "table");
+    if (FFlag::LuauTypeFunctionFunctionParameterNames)
+    {
+        tfft->argTypes = getFunctionParametersTypePack(L, 2, 3, tfft->argNames);
+    }
+    else 
+    {
+        tfft->argTypes = getTypePack(L, 2, 3);
+    }
 
     return 0;
 }
 
-// Luau: `self:parameters() -> {head: {type}?, names: { [number]: type? }?, tail: type?}`
+// Luau: `self:parameters() -> {head: {{ name: string?, type: type }}?, tail: type?}`
 // Returns the parameters of the function
 static int getFunctionParameters(lua_State* L)
 {
@@ -1217,25 +1308,16 @@ static int getFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.parameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    pushTypePack(L, tfft->argTypes);
 
-    size_t argLength = tfft->argNames.size();
-
-    lua_createtable(L, argLength, 0);
-
-    for (size_t i = 1; i <= argLength; ++i) {
-        lua_pushinteger(L, i);
-        
-        std::optional<Name> argName = tfft->argNames[i - 1];
-        if (argName.has_value()) 
-            lua_pushstring(L, argName.value().c_str());
-        else
-            lua_pushnil(L);
-
-        lua_settable(L, -3);
+    if (FFlag::LuauTypeFunctionFunctionParameterNames)
+    {
+        pushFunctionParametersTypePack(L, tfft);
+    }
+    else
+    {
+        pushTypePack(L, tfft->argTypes);   
     }
 
-    lua_setfield(L, -2, "names");
     return 1;
 }
 
@@ -2619,9 +2701,12 @@ private:
         f2->argTypes = shallowClone(f1->argTypes);
         f2->retTypes = shallowClone(f1->retTypes);
 
-        f2->argNames.reserve(f1->argNames.size());
-        for (auto argName : f1->argNames)
-            f2->argNames.push_back(argName);
+        if (FFlag::LuauTypeFunctionFunctionParameterNames)
+        {
+            f2->argNames.reserve(f1->argNames.size());
+            for (const auto& argName : f1->argNames)
+                f2->argNames.push_back(argName);
+        }
     }
 
     void cloneChildren(TypeFunctionExternType* c1, TypeFunctionExternType* c2)

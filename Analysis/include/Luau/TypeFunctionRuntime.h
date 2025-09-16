@@ -158,7 +158,7 @@ struct TypeFunctionFunctionType
     TypeFunctionTypePackId argTypes;
     TypeFunctionTypePackId retTypes;
 
-    std::vector<std::optional<Name>> argNames;
+    std::vector<std::optional<FunctionArgument>> argNames;
 };
 
 template<typename T>
