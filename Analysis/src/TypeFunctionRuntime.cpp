@@ -1268,7 +1268,7 @@ static int createFunction(lua_State* L)
 
     auto [genericTypes, genericPacks] = getGenerics(L, 3, "types.newfunction");
 
-    allocTypeUserData(L, TypeFunctionFunctionType{std::move(genericTypes), std::move(genericPacks), argTypes, retTypes});
+    allocTypeUserData(L, TypeFunctionFunctionType{std::move(genericTypes), std::move(genericPacks), argTypes, retTypes, argNames});
 
     return 1;
 }
