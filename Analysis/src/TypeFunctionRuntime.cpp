@@ -21,7 +21,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauTypeFunctionFunctionParameterNames)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionFunctionParameterNames)
 
 namespace Luau
 {
