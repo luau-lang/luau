@@ -1170,12 +1170,12 @@ static void pushFunctionParametersTypePack(lua_State* L, const TypeFunctionFunct
         if (!tftp->head.empty())
         {
             lua_createtable(L, int(tftp->head.size()), 0);
-            size_t pos = 1;
+            int pos = 1;
 
             for (auto el : tftp->head)
             {
                 lua_createtable(L, 0, 2);
-                if (tfft->argNames.size() >= pos)
+                if (tfft->argNames.size() >= (size_t)pos)
                 {
                     auto argName = tfft->argNames.at(pos - 1);
                     if (argName.has_value())
