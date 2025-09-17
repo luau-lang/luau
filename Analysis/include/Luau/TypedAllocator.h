@@ -49,7 +49,7 @@ public:
 
         T* block = stuff.back();
         T* res = block + currentBlockSize;
-        new (res) T(std::forward<Args&&...>(args...));
+        new (res) T(std::forward<Args>(args)...);
         ++currentBlockSize;
         return res;
     }
