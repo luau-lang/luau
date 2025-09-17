@@ -294,7 +294,7 @@ struct Compiler
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
+        if (options.optimizationLevel >= 2 && !func->self && !getfenvUsed && !setfenvUsed)
         {
             f.canInline = true;
             f.stackSize = stackSize;
@@ -594,6 +594,18 @@ struct Compiler
             return false;
         }
 
+        if (func->vararg)
+        {
+            for (AstExpr* arg : expr->args)
+            {
+                if (isExprMultRet(arg))
+                {
+                    bytecode.addDebugRemark("inlining failed: can't inline vararg function calls with multret arguments");
+                    return false;
+                }
+            }
+        }
+
         // compute constant bitvector for all arguments to feed the cost model
         bool varc[8] = {};
         for (size_t i = 0; i < func->args.size && i < expr->args.size && i < 8; ++i)
@@ -813,9 +825,7 @@ struct Compiler
             // add a debug remark for cases when we didn't even call tryCompileInlinedCall
             if (func && !(fi && fi->canInline))
             {
-                if (func->vararg)
-                    bytecode.addDebugRemark("inlining failed: function is variadic");
-                else if (!fi)
+                if (!fi)
                     bytecode.addDebugRemark("inlining failed: can't inline recursive calls");
                 else if (getfenvUsed || setfenvUsed)
                     bytecode.addDebugRemark("inlining failed: module uses getfenv/setfenv");
