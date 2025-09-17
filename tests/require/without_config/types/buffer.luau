@@ -1,1 +1,0 @@
-return buffer.create(16)
