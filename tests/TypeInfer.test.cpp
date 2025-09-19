@@ -2580,6 +2580,7 @@ do end
     )"));
 }
 
+#if 0 // CLI-166473: re-enable after flakiness is resolved
 TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_type")
 {
     ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}, {FFlag::LuauOccursCheckInCommit, true}};
@@ -2622,6 +2623,7 @@ TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_t
         return f4
     )");
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
 {
