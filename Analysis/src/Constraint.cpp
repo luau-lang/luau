@@ -5,6 +5,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 namespace Luau
 {
@@ -87,7 +88,8 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     if (auto ec = get<EqualityConstraint>(*this))
     {
         rci.traverse(ec->resultType);
-        // `EqualityConstraints` should not mutate `assignmentType`.
+        if (FFlag::LuauNoOrderingTypeFunctions)
+            rci.traverse(ec->assignmentType);
     }
     else if (auto sc = get<SubtypeConstraint>(*this))
     {

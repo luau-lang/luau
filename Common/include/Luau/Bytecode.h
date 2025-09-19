@@ -51,6 +51,7 @@
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
 // Version 2: (from bytecode version 4) Type information for arguments, upvalues, locals and some temporaries. Currently supported.
+// Version 3: (from bytecode version 5) Type information for userdata type names and their index mapping. Currently supported.
 
 // Bytecode opcode, part of the instruction header
 enum LuauOpcode
@@ -436,6 +437,23 @@ enum LuauOpcode
 
 // E encoding: one signed 24-bit value
 #define LUAU_INSN_E(insn) (int32_t(insn) >> 8)
+
+// Auxiliary AB: two 8-bit values, containing registers or small numbers
+// Used in FASTCALL3
+#define LUAU_INSN_AUX_A(aux) ((aux) & 0xff)
+#define LUAU_INSN_AUX_B(aux) (((aux) >> 8) & 0xff)
+
+// Auxiliary KV: unsigned 24-bit constant index
+// Used in LOP_JUMPXEQK* instructions
+#define LUAU_INSN_AUX_KV(aux) ((aux) & 0xffffff)
+
+// Auxiliary KB: 1-bit constant value
+// Used in LOP_JUMPXEQKB instruction
+#define LUAU_INSN_AUX_KB(aux) ((aux) & 0x1)
+
+// Auxiliary NOT: 1-bit negation flag
+// Used in LOP_JUMPXEQK* instructions
+#define LUAU_INSN_AUX_NOT(aux) ((aux) >> 31)
 
 // Bytecode tags, used internally for bytecode encoded as a string
 enum LuauBytecodeTag

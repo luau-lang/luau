@@ -2,6 +2,9 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
+#include "Luau/Error.h"
+#include "Luau/Frontend.h"
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
 
@@ -15,6 +18,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -620,6 +624,129 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
+{
+    ScopedFastFlag _{FFlag::LuauIndexInMetatableSubtyping, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local ItemContainer = {}
+        ItemContainer.__index = ItemContainer
+
+        function ItemContainer.new()
+            local self = {}
+            setmetatable(self, ItemContainer)
+            return self
+        end
+
+        function ItemContainer:removeItem(itemId, itemType)
+            self:getItem(itemId, itemType)
+        end
+
+        function ItemContainer:getItem(itemId, itemType): ()
+        end
+
+        local container = ItemContainer.new()
+
+        container:removeItem(0, "magic")
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
+{
+    ScopedFastFlag _{FFlag::LuauIndexInMetatableSubtyping, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local ItemContainer = {}
+        ItemContainer.__index = ItemContainer
+
+        function ItemContainer.new(name)
+            local self = {name = name}
+            setmetatable(self, ItemContainer)
+            return self
+        end
+
+        function ItemContainer:removeItem(itemId, itemType)
+            print(self.name)
+            self:getItem(itemId, itemType)
+        end
+
+        function ItemContainer:getItem(itemId, itemType): ()
+        end
+
+        local container = ItemContainer.new("library")
+
+        container:removeItem(0, "magic")
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauIndexInMetatableSubtyping, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Foobar = {}
+        Foobar.__index = Foobar
+        Foobar.const = 42
+
+        local foobar = setmetatable({}, Foobar)
+
+        local _: { read const: number } = foobar
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauIndexInMetatableSubtyping, true},
+    };
+
+    CheckResult results = check(R"(
+        local Foobar = {}
+        Foobar.__index = Foobar
+        Foobar.const = 42
+
+        local foobar = setmetatable({}, Foobar)
+
+        local _: { const: number } = foobar
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ const: number }", toString(err->wantedType));
+    CHECK_EQ("{ @metatable t1, {  } } where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauIndexInMetatableSubtyping, true},
+    };
+
+    CheckResult results = check(R"(
+        local function foobar1(_: { read foo: number }) end
+        local function foobar2(_: { read bar: boolean }) end
+        local function foobar3(_: { read foo: string }) end
+
+        local t = { foo = 4 }
+        setmetatable(t, { __index = { foo = "heh", bar = true }})
+        foobar1(t)
+        foobar2(t)
+        foobar3(t)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
+    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, { /* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

@@ -59,8 +59,8 @@ inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::k
  * isn't strictly lexical (see test nested_generic_argument_type_packs), and that nested generic packs can shadow existing ones
  * such as with the type <A...>(<A...>(A...) -> (), <A...>(A...) -> ()) -> (), which should result in three independent bindings for A... .
  * To handle this, we maintain a stack of frames, each of which contains a mapping for the generic packs bound in that scope, as well as a pointers to
- * its parent and child scopes. Inside each frame, we map the generic pack to an optional type pack, which is nullopt if we have not yet encountered a mapping
- * for that generic pack in this scope.
+ * its parent and child scopes. Inside each frame, we map the generic pack to an optional type pack, which is nullopt if we have not yet encountered a
+ * mapping for that generic pack in this scope.
  */
 
 struct MappedGenericEnvironment
@@ -282,7 +282,6 @@ private:
     SubtypingResult cache(SubtypingEnvironment& env, SubtypingResult res, TypeId subTy, TypeId superTy);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp, NotNull<Scope> scope);
 
     template<typename SubTy, typename SuperTy>
     SubtypingResult isContravariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy, NotNull<Scope> scope);
@@ -321,7 +320,13 @@ private:
         NotNull<Scope> scope
     );
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, bool forceCovariantTest, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const TableType* subTable,
+        const TableType* superTable,
+        bool forceCovariantTest,
+        NotNull<Scope> scope
+    );
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(
@@ -417,6 +422,31 @@ private:
         SubtypingEnvironment& env,
         const TypeId subTy,
         const TypeFunctionInstanceType* superFunctionInstance,
+        NotNull<Scope> scope
+    );
+
+    // Pack subtyping
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp, NotNull<Scope> scope);
+    std::optional<SubtypingResult> isSubTailCovariantWith(
+        SubtypingEnvironment& env,
+        std::vector<SubtypingResult>& outputResults,
+        TypePackId subTp,
+        TypePackId subTail,
+        TypePackId superTp,
+        size_t superHeadStartIndex,
+        const std::vector<TypeId>& superHead,
+        std::optional<TypePackId> superTail,
+        NotNull<Scope> scope
+    );
+    std::optional<SubtypingResult> isCovariantWithSuperTail(
+        SubtypingEnvironment& env,
+        std::vector<SubtypingResult>& outputResults,
+        TypePackId subTp,
+        size_t subHeadStartIndex,
+        const std::vector<TypeId>& subHead,
+        std::optional<TypePackId> subTail,
+        TypePackId superTp,
+        TypePackId superTail,
         NotNull<Scope> scope
     );
 

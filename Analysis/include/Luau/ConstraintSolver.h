@@ -300,7 +300,7 @@ public:
         ValueContext context,
         bool inConditional,
         bool suppressSimplification,
-        DenseHashSet<TypeId>& seen
+        Set<TypeId>& seen
     );
 
     /**

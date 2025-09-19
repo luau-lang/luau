@@ -52,6 +52,8 @@ LUAU_FASTFLAGVARIABLE(LuauInitializeDefaultGenericParamsAtProgramPoint)
 LUAU_FASTFLAGVARIABLE(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAGVARIABLE(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAGVARIABLE(LuauNoMoreComparisonTypeFunctions)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAGVARIABLE(LuauDontReferenceScopePtrFromHashTable)
 
 namespace Luau
 {
@@ -1796,7 +1798,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
     scope->typeAliasLocations[alias->name.value] = alias->location;
     scope->typeAliasNameLocations[alias->name.value] = alias->nameLocation;
 
-    ScopePtr* defnScope = astTypeAliasDefiningScopes.find(alias);
+    ScopePtr* defnScopePtr = astTypeAliasDefiningScopes.find(alias);
 
     std::unordered_map<Name, TypeFun>* typeBindings;
     if (alias->exported)
@@ -1807,13 +1809,20 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
     // These will be undefined if the alias was a duplicate definition, in which
     // case we just skip over it.
     auto bindingIt = typeBindings->find(alias->name.value);
-    if (bindingIt == typeBindings->end() || defnScope == nullptr)
+    if (bindingIt == typeBindings->end() || defnScopePtr == nullptr)
         return ControlFlow::None;
 
-    if (FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint)
-        resolveGenericDefaultParameters(*defnScope, alias, bindingIt->second);
+    ScopePtr defnScope = *defnScopePtr;
 
-    TypeId ty = resolveType(*defnScope, alias->type, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false);
+    if (FFlag::LuauInitializeDefaultGenericParamsAtProgramPoint)
+        resolveGenericDefaultParameters(FFlag::LuauDontReferenceScopePtrFromHashTable ? defnScope : *defnScopePtr, alias, bindingIt->second);
+
+    TypeId ty = resolveType(
+        FFlag::LuauDontReferenceScopePtrFromHashTable ? defnScope : *defnScopePtr,
+        alias->type,
+        /* inTypeArguments */ false,
+        /* replaceErrorWithFresh */ false
+    );
 
     TypeId aliasTy = bindingIt->second.type;
     LUAU_ASSERT(get<BlockedType>(aliasTy));
@@ -1826,12 +1835,28 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
         emplaceType<BoundType>(asMutable(aliasTy), ty);
 
     std::vector<TypeId> typeParams;
-    for (auto tyParam : createGenerics(*defnScope, alias->generics, /* useCache */ true, /* addTypes */ false))
-        typeParams.push_back(tyParam.second.ty);
+    if (FFlag::LuauDontReferenceScopePtrFromHashTable)
+    {
+        for (const auto& tyParam : createGenerics(defnScope, alias->generics, /* useCache */ true, /* addTypes */ false))
+            typeParams.push_back(tyParam.second.ty);
+    }
+    else
+    {
+        for (auto tyParam : createGenerics(*defnScopePtr, alias->generics, /* useCache */ true, /* addTypes */ false))
+            typeParams.push_back(tyParam.second.ty);
+    }
 
     std::vector<TypePackId> typePackParams;
-    for (auto tpParam : createGenericPacks(*defnScope, alias->genericPacks, /* useCache */ true, /* addTypes */ false))
-        typePackParams.push_back(tpParam.second.tp);
+    if (FFlag::LuauDontReferenceScopePtrFromHashTable)
+    {
+        for (const auto& tpParam : createGenericPacks(defnScope, alias->genericPacks, /* useCache */ true, /* addTypes */ false))
+            typePackParams.push_back(tpParam.second.tp);
+    }
+    else
+    {
+        for (auto tpParam : createGenericPacks(*defnScopePtr, alias->genericPacks, /* useCache */ true, /* addTypes */ false))
+            typePackParams.push_back(tpParam.second.tp);
+    }
 
     addConstraint(
         scope,
@@ -2520,7 +2545,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             scope->bindings[targetLocal->local].typeId = resultTy;
 
             DefId def = dfg->getDef(targetLocal);
-            scope->lvalueTypes[def] = resultTy; // TODO: typestates: track this as an assignment
+            scope->lvalueTypes[def] = resultTy;            // TODO: typestates: track this as an assignment
             updateRValueRefinements(scope, def, resultTy); // TODO: typestates: track this as an assignment
 
             // HACK: If we have a targetLocal, it has already been added to the
@@ -2839,7 +2864,7 @@ Inference ConstraintGenerator::checkIndexName(
 
     if (FFlag::LuauCacheDuplicateHasPropConstraints)
     {
-        if (auto cachedHasPropResult = propIndexPairsSeen.find({obj,index}))
+        if (auto cachedHasPropResult = propIndexPairsSeen.find({obj, index}))
             result = *cachedHasPropResult;
     }
 
@@ -3074,41 +3099,69 @@ Inference ConstraintGenerator::checkAstExprBinary(
     {
         addConstraint(scope, location, EqualityConstraint{leftType, rightType});
 
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().ltFunc, {leftType, rightType}, {}, scope, location);
-        return Inference{resultType, std::move(refinement)};
+        if (FFlag::LuauNoOrderingTypeFunctions)
+        {
+            return Inference{builtinTypes->booleanType, std::move(refinement)};
+        }
+        else
+        {
+            TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().ltFunc, {leftType, rightType}, {}, scope, location);
+            return Inference{resultType, std::move(refinement)};
+        }
     }
     case AstExprBinary::Op::CompareGe:
     {
         addConstraint(scope, location, EqualityConstraint{leftType, rightType});
 
-        TypeId resultType = createTypeFunctionInstance(
-            builtinTypeFunctions().ltFunc,
-            {rightType, leftType}, // lua decided that `__ge(a, b)` is instead just `__lt(b, a)`
-            {},
-            scope,
-            location
-        );
-        return Inference{resultType, std::move(refinement)};
+        if (FFlag::LuauNoOrderingTypeFunctions)
+        {
+            return Inference{builtinTypes->booleanType, std::move(refinement)};
+        }
+        else
+        {
+            TypeId resultType = createTypeFunctionInstance(
+                builtinTypeFunctions().ltFunc,
+                {rightType, leftType}, // lua decided that `__ge(a, b)` is instead just `__lt(b, a)`
+                {},
+                scope,
+                location
+            );
+            return Inference{resultType, std::move(refinement)};
+        }
     }
     case AstExprBinary::Op::CompareLe:
     {
         addConstraint(scope, location, EqualityConstraint{leftType, rightType});
 
-        TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().leFunc, {leftType, rightType}, {}, scope, location);
-        return Inference{resultType, std::move(refinement)};
+        if (FFlag::LuauNoOrderingTypeFunctions)
+        {
+            return Inference{builtinTypes->booleanType, std::move(refinement)};
+        }
+        else
+        {
+            TypeId resultType = createTypeFunctionInstance(builtinTypeFunctions().leFunc, {leftType, rightType}, {}, scope, location);
+            return Inference{resultType, std::move(refinement)};
+        }
     }
     case AstExprBinary::Op::CompareGt:
     {
         addConstraint(scope, location, EqualityConstraint{leftType, rightType});
 
-        TypeId resultType = createTypeFunctionInstance(
-            builtinTypeFunctions().leFunc,
-            {rightType, leftType}, // lua decided that `__gt(a, b)` is instead just `__le(b, a)`
-            {},
-            scope,
-            location
-        );
-        return Inference{resultType, std::move(refinement)};
+        if (FFlag::LuauNoOrderingTypeFunctions)
+        {
+            return Inference{builtinTypes->booleanType, std::move(refinement)};
+        }
+        else
+        {
+            TypeId resultType = createTypeFunctionInstance(
+                builtinTypeFunctions().leFunc,
+                {rightType, leftType}, // lua decided that `__gt(a, b)` is instead just `__le(b, a)`
+                {},
+                scope,
+                location
+            );
+            return Inference{resultType, std::move(refinement)};
+        }
     }
     case AstExprBinary::Op::CompareEq:
     case AstExprBinary::Op::CompareNe:

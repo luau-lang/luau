@@ -14,7 +14,8 @@ struct AstExprTableFinder : AstVisitor
     explicit AstExprTableFinder(NotNull<DenseHashSet<TypeId>> result, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes)
         : result(result)
         , astTypes(astTypes)
-    {}
+    {
+    }
 
     bool visit(AstExpr* expr) override
     {
@@ -38,8 +39,13 @@ void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstExpr* expr, N
     expr->visit(&finder);
 }
 
-template <typename Iter>
-void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, Iter startIt, Iter endIt, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes)
+template<typename Iter>
+void findUniqueTypes(
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    Iter startIt,
+    Iter endIt,
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+)
 {
     while (startIt != endIt)
     {
@@ -51,14 +57,22 @@ void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, Iter startIt, It
 }
 
 
-void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstArray<AstExpr*> exprs, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes)
+void findUniqueTypes(
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    AstArray<AstExpr*> exprs,
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+)
 {
     findUniqueTypes(uniqueTypes, exprs.begin(), exprs.end(), astTypes);
 }
 
-void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, const std::vector<AstExpr*>& exprs, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes)
+void findUniqueTypes(
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    const std::vector<AstExpr*>& exprs,
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+)
 {
     findUniqueTypes(uniqueTypes, exprs.begin(), exprs.end(), astTypes);
 }
 
-}
+} // namespace Luau

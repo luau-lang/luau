@@ -25,6 +25,7 @@ LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
+LUAU_FASTFLAG(LuauInterpStringConstFolding)
 
 namespace Luau
 {
@@ -39,6 +40,23 @@ static const uint32_t kMaxInstructionCount = 1'000'000'000;
 static const uint8_t kInvalidReg = 255;
 
 static const uint32_t kDefaultAllocPc = ~0u;
+
+void escapeAndAppend(std::string& buffer, const char* str, size_t len)
+{
+    if (memchr(str, '%', len))
+    {
+        for (size_t characterIndex = 0; characterIndex < len; ++characterIndex)
+        {
+            char character = str[characterIndex];
+            buffer.push_back(character);
+
+            if (character == '%')
+                buffer.push_back('%');
+        }
+    }
+    else
+        buffer.append(str, len);
+}
 
 CompileError::CompileError(const Location& location, std::string message)
     : location(location)
@@ -1781,31 +1799,68 @@ struct Compiler
             formatCapacity += string.size + std::count(string.data, string.data + string.size, '%');
         }
 
+        size_t skippedSubExpr = 0;
+        if (FFlag::LuauInterpStringConstFolding)
+        {
+            for (size_t index = 0; index < expr->expressions.size; ++index)
+            {
+                const Constant* c = constants.find(expr->expressions.data[index]);
+                if (c && c->type == Constant::Type::Type_String)
+                {
+                    formatCapacity += c->stringLength + std::count(c->valueString, c->valueString + c->stringLength, '%');
+                    skippedSubExpr++;
+                }
+                else
+                    formatCapacity += 2; // "%*"
+            }
+        }
+
         std::string formatString;
         formatString.reserve(formatCapacity);
 
-        size_t stringsLeft = expr->strings.size;
-
-        for (AstArray<char> string : expr->strings)
+        if (FFlag::LuauInterpStringConstFolding)
         {
-            if (memchr(string.data, '%', string.size))
+            LUAU_ASSERT(expr->strings.size == expr->expressions.size + 1);
+            for (size_t idx = 0; idx < expr->strings.size; idx++)
             {
-                for (size_t characterIndex = 0; characterIndex < string.size; ++characterIndex)
-                {
-                    char character = string.data[characterIndex];
-                    formatString.push_back(character);
+                AstArray<char> string = expr->strings.data[idx];
+                escapeAndAppend(formatString, string.data, string.size);
 
-                    if (character == '%')
-                        formatString.push_back('%');
+                if (idx < expr->expressions.size)
+                {
+                    const Constant* c = constants.find(expr->expressions.data[idx]);
+                    if (c && c->type == Constant::Type::Type_String)
+                        escapeAndAppend(formatString, c->valueString, c->stringLength);
+                    else
+                        formatString += "%*";
                 }
             }
-            else
-                formatString.append(string.data, string.size);
+        }
+        else
+        {
+            size_t stringsLeft = expr->strings.size;
 
-            stringsLeft--;
+            for (AstArray<char> string : expr->strings)
+            {
+                if (memchr(string.data, '%', string.size))
+                {
+                    for (size_t characterIndex = 0; characterIndex < string.size; ++characterIndex)
+                    {
+                        char character = string.data[characterIndex];
+                        formatString.push_back(character);
 
-            if (stringsLeft > 0)
-                formatString += "%*";
+                        if (character == '%')
+                            formatString.push_back('%');
+                    }
+                }
+                else
+                    formatString.append(string.data, string.size);
+
+                stringsLeft--;
+
+                if (stringsLeft > 0)
+                    formatString += "%*";
+            }
         }
 
         size_t formatStringSize = formatString.size();
@@ -1824,12 +1879,26 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t baseReg = allocReg(expr, unsigned(2 + expr->expressions.size));
+        uint8_t baseReg = allocReg(expr, unsigned(2 + expr->expressions.size - skippedSubExpr));
 
         emitLoadK(baseReg, formatStringIndex);
 
-        for (size_t index = 0; index < expr->expressions.size; ++index)
-            compileExprTempTop(expr->expressions.data[index], uint8_t(baseReg + 2 + index));
+        if (FFlag::LuauInterpStringConstFolding)
+        {
+            size_t skipped = 0;
+            for (size_t index = 0; index < expr->expressions.size; ++index)
+            {
+                AstExpr* subExpr = expr->expressions.data[index];
+                const Constant* c = constants.find(subExpr);
+                if (!c || c->type != Constant::Type::Type_String)
+                    compileExprTempTop(subExpr, uint8_t(baseReg + 2 + index - skipped));
+                else
+                    skipped++;
+            }
+        }
+        else
+            for (size_t index = 0; index < expr->expressions.size; ++index)
+                compileExprTempTop(expr->expressions.data[index], uint8_t(baseReg + 2 + index));
 
         BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
 
@@ -1839,7 +1908,7 @@ struct Compiler
 
         bytecode.emitABC(LOP_NAMECALL, baseReg, baseReg, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
         bytecode.emitAux(formatMethodIndex);
-        bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2), 2);
+        bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2 - skippedSubExpr), 2);
         bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
     }
 
@@ -3386,7 +3455,7 @@ struct Compiler
         resolveAssignConflicts(stat, vars, stat->values);
 
         // compute rhs into (mostly) fresh registers
-        // note that when the lhs assigment is a local, we evaluate directly into that register
+        // note that when the lhs assignment is a local, we evaluate directly into that register
         // this is possible because resolveAssignConflicts renamed conflicting locals into temporaries
         // after this, vars[i].valueReg is set to a register with the value for *all* vars, but some have already been assigned
         for (size_t i = 0; i < stat->vars.size && i < stat->values.size; ++i)

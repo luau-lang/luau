@@ -30,9 +30,13 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
 void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos, IrCondition cond);
 void translateInstJumpX(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpxEqNil(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstJumpxEqNilShortcut(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpxEqB(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstJumpxEqBShortcut(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstJumpxEqNShortcut(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstJumpxEqSShortcut(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstBinary(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);
 void translateInstBinaryK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);
 void translateInstBinaryRK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);

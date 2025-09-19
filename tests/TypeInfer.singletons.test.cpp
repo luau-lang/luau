@@ -411,7 +411,10 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        CHECK(R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" == toString(result.errors[0]));
+        CHECK(
+            R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" ==
+            toString(result.errors[0])
+        );
     else
     {
         const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
