@@ -320,6 +320,7 @@ enum class ConstantNumberParseResult
     Malformed,
     BinOverflow,
     HexOverflow,
+    OctOverflow,
 };
 
 class AstExprConstantNumber : public AstExpr
