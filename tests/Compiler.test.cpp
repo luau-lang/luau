@@ -6335,7 +6335,7 @@ RETURN R1 1
 
 TEST_CASE("InlineProhibited")
 {
-    // we can't inline variadic functions
+    // we can inline variadic functions with fixedret arguments
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -6351,9 +6351,32 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-MOVE R1 R0
-CALL R1 0 1
+LOADN R1 42
 RETURN R1 1
+)"
+    );
+
+    // we can't inline variadic functions with multret arguments
+        CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(...)
+    return 42
+end
+
+function bar(...)
+    local x = foo(...)
+    return x
+end
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETUPVAL R0 0
+GETVARARGS R1 -1
+CALL R0 -1 1
+RETURN R0 1
 )"
     );
 
