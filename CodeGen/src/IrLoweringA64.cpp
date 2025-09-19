@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(LuauCodeGenUnassignedBcTargetAbort)
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
+LUAU_FASTFLAG(LuauCodegenDirectCompare)
 
 namespace Luau
 {
@@ -261,7 +262,7 @@ IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, 
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
-    valueTracker.setRestoreCallack(
+    valueTracker.setRestoreCallback(
         this,
         [](void* context, IrInst& inst)
         {
@@ -845,12 +846,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         else
         {
-            Label notbool, exit;
+            Label notBool, exit;
 
             // use the fact that NIL is the only value less than BOOLEAN to do two tag comparisons at once
             CODEGEN_ASSERT(LUA_TNIL == 0 && LUA_TBOOLEAN == 1);
             build.cmp(regOp(inst.a), LUA_TBOOLEAN);
-            build.b(ConditionA64::NotEqual, notbool);
+            build.b(ConditionA64::NotEqual, notBool);
 
             if (inst.b.kind == IrOpKind::Constant)
                 build.mov(inst.regA64, intOp(inst.b) == 0 ? 1 : 0);
@@ -860,7 +861,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.b(exit);
 
             // not boolean => result is true iff tag was nil
-            build.setLabel(notbool);
+            build.setLabel(notBool);
             build.cset(inst.regA64, ConditionA64::Less);
 
             build.setLabel(exit);
@@ -916,6 +917,127 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         inst.regA64 = regs.takeReg(w0, index);
         break;
     }
+    case IrCmd::CMP_TAG:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
+
+        IrCondition cond = conditionOp(inst.c);
+        CODEGEN_ASSERT(cond == IrCondition::Equal || cond == IrCondition::NotEqual);
+        RegisterA64 aReg = noreg;
+        RegisterA64 bReg = noreg;
+
+        if (inst.a.kind == IrOpKind::Inst)
+        {
+            aReg = regOp(inst.a);
+        }
+        else if (inst.a.kind == IrOpKind::VmReg)
+        {
+            aReg = regs.allocTemp(KindA64::w);
+            AddressA64 addr = tempAddr(inst.a, offsetof(TValue, tt));
+            build.ldr(aReg, addr);
+        }
+        else
+        {
+            CODEGEN_ASSERT(inst.a.kind == IrOpKind::Constant);
+        }
+
+        if (inst.b.kind == IrOpKind::Inst)
+        {
+            bReg = regOp(inst.b);
+        }
+        else if (inst.b.kind == IrOpKind::VmReg)
+        {
+            bReg = regs.allocTemp(KindA64::w);
+            AddressA64 addr = tempAddr(inst.b, offsetof(TValue, tt));
+            build.ldr(bReg, addr);
+        }
+        else
+        {
+            CODEGEN_ASSERT(inst.b.kind == IrOpKind::Constant);
+        }
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            build.cmp(bReg, tagOp(inst.a));
+            build.cset(inst.regA64, getInverseCondition(getConditionInt(cond)));
+        }
+        else if (inst.b.kind == IrOpKind::Constant)
+        {
+            build.cmp(aReg, tagOp(inst.b));
+            build.cset(inst.regA64, getConditionInt(cond));
+        }
+        else
+        {
+            build.cmp(aReg, bReg);
+            build.cset(inst.regA64, getConditionInt(cond));
+        }
+        break;
+    }
+    case IrCmd::CMP_SPLIT_TVALUE:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
+
+        // Second operand of this instruction must be a constant
+        // Without a constant type, we wouldn't know the correct way to compare the values at lowering time
+        CODEGEN_ASSERT(inst.b.kind == IrOpKind::Constant);
+
+        IrCondition cond = conditionOp(inst.e);
+        CODEGEN_ASSERT(cond == IrCondition::Equal || cond == IrCondition::NotEqual);
+
+        // Check tag equality first
+        RegisterA64 temp = regs.allocTemp(KindA64::w);
+
+        if (inst.a.kind != IrOpKind::Constant)
+        {
+            build.cmp(regOp(inst.a), tagOp(inst.b));
+            build.cset(temp, getConditionInt(cond));
+        }
+        else
+        {
+            // Constant folding had to handle different constant tags
+            CODEGEN_ASSERT(tagOp(inst.a) == tagOp(inst.b));
+        }
+
+        if (tagOp(inst.b) == LUA_TBOOLEAN)
+        {
+            if (inst.c.kind == IrOpKind::Constant)
+                build.cmp(regOp(inst.d), intOp(inst.c)); // swapped arguments
+            else if (inst.d.kind == IrOpKind::Constant)
+                build.cmp(regOp(inst.c), intOp(inst.d));
+            else
+                build.cmp(regOp(inst.c), regOp(inst.d));
+
+            build.cset(inst.regA64, getConditionInt(cond));
+        }
+        else if (tagOp(inst.b) == LUA_TSTRING)
+        {
+            build.cmp(regOp(inst.c), regOp(inst.d));
+            build.cset(inst.regA64, getConditionInt(cond));
+        }
+        else if (tagOp(inst.b) == LUA_TNUMBER)
+        {
+            RegisterA64 temp1 = tempDouble(inst.c);
+            RegisterA64 temp2 = tempDouble(inst.d);
+
+            build.fcmp(temp1, temp2);
+            build.cset(inst.regA64, getConditionFP(cond));
+        }
+        else
+        {
+            CODEGEN_ASSERT(!"unsupported type tag in CMP_SPLIT_TVALUE");
+        }
+
+        if (inst.a.kind != IrOpKind::Constant)
+        {
+            if (cond == IrCondition::Equal)
+                build.and_(inst.regA64, inst.regA64, temp);
+            else
+                build.orr(inst.regA64, inst.regA64, temp);
+        }
+        break;
+    }
     case IrCmd::JUMP:
         if (inst.a.kind == IrOpKind::Undef || inst.a.kind == IrOpKind::VmExit)
         {
@@ -964,18 +1086,67 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         RegisterA64 zr = noreg;
 
-        if (inst.a.kind == IrOpKind::Constant && tagOp(inst.a) == 0)
-            zr = regOp(inst.b);
-        else if (inst.b.kind == IrOpKind::Constant && tagOp(inst.b) == 0)
-            zr = regOp(inst.a);
-        else if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
-            build.cmp(regOp(inst.a), tagOp(inst.b));
-        else if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Inst)
-            build.cmp(regOp(inst.a), regOp(inst.b));
-        else if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Inst)
-            build.cmp(regOp(inst.b), tagOp(inst.a));
+        if (FFlag::LuauCodegenDirectCompare)
+        {
+            RegisterA64 aReg = noreg;
+            RegisterA64 bReg = noreg;
+
+            if (inst.a.kind == IrOpKind::Inst)
+            {
+                aReg = regOp(inst.a);
+            }
+            else if (inst.a.kind == IrOpKind::VmReg)
+            {
+                aReg = regs.allocTemp(KindA64::w);
+                AddressA64 addr = tempAddr(inst.a, offsetof(TValue, tt));
+                build.ldr(aReg, addr);
+            }
+            else
+            {
+                CODEGEN_ASSERT(inst.a.kind == IrOpKind::Constant);
+            }
+
+            if (inst.b.kind == IrOpKind::Inst)
+            {
+                bReg = regOp(inst.b);
+            }
+            else if (inst.b.kind == IrOpKind::VmReg)
+            {
+                bReg = regs.allocTemp(KindA64::w);
+                AddressA64 addr = tempAddr(inst.b, offsetof(TValue, tt));
+                build.ldr(bReg, addr);
+            }
+            else
+            {
+                CODEGEN_ASSERT(inst.b.kind == IrOpKind::Constant);
+            }
+
+            if (inst.a.kind == IrOpKind::Constant && tagOp(inst.a) == 0)
+                zr = bReg;
+            else if (inst.b.kind == IrOpKind::Constant && tagOp(inst.b) == 0)
+                zr = aReg;
+            else if (inst.b.kind == IrOpKind::Constant)
+                build.cmp(aReg, tagOp(inst.b));
+            else if (inst.a.kind == IrOpKind::Constant)
+                build.cmp(bReg, tagOp(inst.a));
+            else
+                build.cmp(aReg, bReg);
+        }
         else
-            CODEGEN_ASSERT(!"Unsupported instruction form");
+        {
+            if (inst.a.kind == IrOpKind::Constant && tagOp(inst.a) == 0)
+                zr = regOp(inst.b);
+            else if (inst.b.kind == IrOpKind::Constant && tagOp(inst.b) == 0)
+                zr = regOp(inst.a);
+            else if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
+                build.cmp(regOp(inst.a), tagOp(inst.b));
+            else if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Inst)
+                build.cmp(regOp(inst.a), regOp(inst.b));
+            else if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Inst)
+                build.cmp(regOp(inst.b), tagOp(inst.a));
+            else
+                CODEGEN_ASSERT(!"Unsupported instruction form");
+        }
 
         if (isFallthroughBlock(blockOp(inst.d), next))
         {
@@ -1702,7 +1873,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp1w = castReg(KindA64::w, temp1);
         RegisterA64 temp2 = regs.allocTemp(KindA64::x);
 
-        CODEGEN_ASSERT(offsetof(LuaNode, key.value) == offsetof(LuaNode, key) && kOffsetOfTKeyTagNext >= 8 && kOffsetOfTKeyTagNext < 16);
+        static_assert(offsetof(LuaNode, key.value) == offsetof(LuaNode, key) && kOffsetOfTKeyTagNext >= 8 && kOffsetOfTKeyTagNext < 16);
         build.ldp(temp1, temp2, mem(regOp(inst.a), offsetof(LuaNode, key))); // load key.value into temp1 and key.tt (alongside other bits) into temp2
         build.ubfx(temp2, temp2, (kOffsetOfTKeyTagNext - 8) * 8, kTKeyTagBits); // .tt is right before .next, and 8 bytes are skipped by ldp
         build.cmp(temp2, LUA_TSTRING);
@@ -1832,7 +2003,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp1 = regs.allocTemp(KindA64::x);
         RegisterA64 temp2 = regs.allocTemp(KindA64::x);
 
-        CODEGEN_ASSERT(offsetof(global_State, totalbytes) == offsetof(global_State, GCthreshold) + 8);
+        static_assert(offsetof(global_State, totalbytes) == offsetof(global_State, GCthreshold) + sizeof(global_State::GCthreshold));
         Label skip;
         build.ldp(temp1, temp2, mem(rGlobalState, offsetof(global_State, GCthreshold)));
         build.cmp(temp1, temp2);
@@ -1938,7 +2109,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ldr(temp1, mem(rState, offsetof(lua_State, openupval)));
         build.cbz(temp1, skip);
 
-        // ra <= L->openuval->v
+        // ra <= L->openupval->v
         build.ldr(temp1, mem(temp1, offsetof(UpVal, v)));
         build.add(temp2, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
         build.cmp(temp2, temp1);

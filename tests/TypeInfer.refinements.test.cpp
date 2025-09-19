@@ -19,10 +19,11 @@ LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauAddConditionalContextForTernary)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 using namespace Luau;
 
@@ -2248,6 +2249,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauNoMoreComparisonTypeFunctions, true},
         {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
+        {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
     CheckResult result = check(R"(
@@ -2259,11 +2261,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         end
     )");
 
-    LUAU_CHECK_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
-    // For some reason we emit three error here.
-    for (const auto& e : result.errors)
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(e));
+TEST_CASE_FIXTURE(BuiltinsFixture, "check_refinement_to_primitive_and_compare")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNoMoreComparisonTypeFunctions, true},
+        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
+        {FFlag::LuauNoOrderingTypeFunctions, true},
+    };
+
+    CheckResult result = check(R"(
+        local function comesAfterLuau(word)
+            return type(word) == "string" and word > "luau"
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(unknown) -> boolean", toString(requireType("comesAfterLuau")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_variant")
@@ -2271,6 +2288,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
     ScopedFastFlag _[] = {
         {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true},
         {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
+        {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
     // FIXME CLI-141364: An underlying bug in normalization means the type of
@@ -2283,15 +2301,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
                 and math.floor(k) == k -- no float keys
         end
     )");
-    if (FFlag::LuauSolverV2)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        // For some reason we emit two errors here.
-        for (const auto& e : result.errors)
-            CHECK(get<ExplicitFunctionAnnotationRecommended>(e));
-    }
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ex")

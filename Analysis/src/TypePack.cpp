@@ -5,7 +5,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 
 namespace Luau
@@ -460,7 +460,7 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten_DEPRECATED(
     const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks
 )
 {
-    LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping2);
+    LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping3);
     LUAU_ASSERT(!FFlag::LuauSubtypingGenericPacksDoesntUseVariance);
 
     tp = mappedGenericPacks.contains(tp) ? *mappedGenericPacks.find(tp) : tp;
@@ -547,7 +547,7 @@ LUAU_NOINLINE Unifiable::Bound<TypePackId>* emplaceTypePack<BoundTypePack>(TypeP
 TypePackId sliceTypePack(
     const size_t sliceIndex,
     const TypePackId toBeSliced,
-    std::vector<TypeId>& head,
+    const std::vector<TypeId>& head,
     const std::optional<TypePackId> tail,
     const NotNull<BuiltinTypes> builtinTypes,
     const NotNull<TypeArena> arena

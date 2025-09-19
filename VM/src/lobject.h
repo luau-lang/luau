@@ -294,9 +294,9 @@ typedef struct Proto
     uint8_t maxstacksize;
     uint8_t flags;
 
-
     TValue* k;              // constants used by the function
     Instruction* code;      // function bytecode
+
     struct Proto** p;       // functions defined inside the function
     const Instruction* codeentry;
 

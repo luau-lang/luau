@@ -1888,10 +1888,7 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_degenerate_refinement")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_functions_should_not_get_stuck_or")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNoMoreComparisonTypeFunctions, false}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoMoreComparisonTypeFunctions, false}};
 
     CheckResult result = check(R"(
         local function init(data)

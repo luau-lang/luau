@@ -23,8 +23,9 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauStringConstFolding)
+LUAU_FASTFLAG(LuauStringConstFolding2)
 LUAU_FASTFLAG(LuauCompileTypeofFold)
+LUAU_FASTFLAG(LuauInterpStringConstFolding)
 
 using namespace Luau;
 
@@ -1415,11 +1416,11 @@ TEST_CASE("InterpStringWithNoExpressions")
 TEST_CASE("InterpStringZeroCost")
 {
     CHECK_EQ(
-        "\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
+        "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"),
         R"(
 LOADK R1 K0 ['hello, %*!']
-LOADK R3 K1 ['world']
-NAMECALL R1 R1 K2 ['format']
+LOADN R3 42
+NAMECALL R1 R1 K1 ['format']
 CALL R1 2 1
 MOVE R0 R1
 RETURN R0 0
@@ -1432,7 +1433,7 @@ TEST_CASE("InterpStringRegisterCleanup")
     CHECK_EQ(
         "\n" + compileFunction0(R"(
             local a, b, c = nil, "um", "uh oh"
-            a = `foo{"bar"}`
+            a = `foo{42}`
             print(a)
         )"),
 
@@ -1441,11 +1442,11 @@ LOADNIL R0
 LOADK R1 K0 ['um']
 LOADK R2 K1 ['uh oh']
 LOADK R3 K2 ['foo%*']
-LOADK R5 K3 ['bar']
-NAMECALL R3 R3 K4 ['format']
+LOADN R5 42
+NAMECALL R3 R3 K3 ['format']
 CALL R3 2 1
 MOVE R0 R3
-GETIMPORT R3 6 [print]
+GETIMPORT R3 5 [print]
 MOVE R4 R0
 CALL R3 1 0
 RETURN R0 0
@@ -1457,6 +1458,51 @@ TEST_CASE("InterpStringRegisterLimit")
 {
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str()), std::exception);
+}
+
+TEST_CASE("InterpStringConstFold")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringConstFolding, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(local empty = ""; return `{empty}`)"),
+        R"(
+LOADK R0 K0 ['']
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(local world = "world"; return `hello, {world}!`)"),
+        R"(
+LOADK R0 K0 ['hello, world!']
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(local not_string = 42; local world = "world"; return `hello, {world} {not_string}!`)"),
+        R"(
+LOADK R1 K0 ['hello, world %*!']
+LOADN R3 42
+NAMECALL R1 R1 K1 ['format']
+CALL R1 2 1
+MOVE R0 R1
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(local not_string = 42; local str = "%s%s%s"; return `hello, {str} {not_string}!`)"),
+        R"(
+LOADK R1 K0 ['hello, %%s%%s%%s %*!']
+LOADN R3 42
+NAMECALL R1 R1 K1 ['format']
+CALL R1 2 1
+MOVE R0 R1
+RETURN R0 1
+)"
+    );
 }
 
 TEST_CASE("ConstantFoldArith")
@@ -9403,7 +9449,32 @@ RETURN R1 7
 
 TEST_CASE("ConstStringFolding")
 {
-    ScopedFastFlag sff{FFlag::LuauStringConstFolding, true};
+    ScopedFastFlag sff{FFlag::LuauStringConstFolding2, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(R"(return "" .. "")", 0, 2),
+        R"(
+LOADK R0 K0 ['']
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(R"(return "a" .. "")", 0, 2),
+        R"(
+LOADK R0 K0 ['a']
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(R"(return "" .. "a")", 0, 2),
+        R"(
+LOADK R0 K0 ['a']
+RETURN R0 1
+)"
+    );
+
     CHECK_EQ(
         "\n" + compileFunction(R"(local hello = "hello"; local world = "world"; return hello .. " " .. world)", 0, 2),
         R"(

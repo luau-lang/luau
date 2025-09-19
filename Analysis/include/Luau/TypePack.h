@@ -267,7 +267,7 @@ LUAU_NOINLINE Unifiable::Bound<TypePackId>* emplaceTypePack<BoundTypePack>(TypeP
 TypePackId sliceTypePack(
     size_t sliceIndex,
     TypePackId toBeSliced,
-    std::vector<TypeId>& head,
+    const std::vector<TypeId>& head,
     std::optional<TypePackId> tail,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena

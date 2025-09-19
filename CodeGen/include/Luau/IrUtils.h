@@ -113,6 +113,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
     case IrCmd::CMP_INT:
+    case IrCmd::CMP_TAG:
+    case IrCmd::CMP_SPLIT_TVALUE:
     case IrCmd::TABLE_LEN:
     case IrCmd::TABLE_SETNUM:
     case IrCmd::STRING_LEN:

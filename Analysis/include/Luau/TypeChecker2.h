@@ -200,6 +200,12 @@ private:
 
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location);
     bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location);
+
+    void maybeReportSubtypingError(TypeId subTy, TypeId superTy, const Location& location);
+    // Tests whether subTy is a subtype of superTy in the context of a function iterator for a for-in statement.
+    // Includes some extra logic to help locate errors to the values and variables of the for-in statement.
+    void testIsSubtypeForInStat(TypeId iterFunc, TypeId prospectiveFunc, const AstStatForIn& forInStat);
+
     void reportError(TypeError e);
     void reportErrors(ErrorVec errors);
     PropertyTypes lookupProp(
