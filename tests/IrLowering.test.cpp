@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp)
 LUAU_FASTFLAG(LuauCodeGenFMA)
+LUAU_FASTFLAG(LuauCodegenDirectCompare)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -475,13 +476,13 @@ TEST_CASE("VectorLerp")
     };
     if (FFlag::LuauCodeGenFMA)
     {
-      CHECK_EQ(
-        "\n" + getCodegenAssembly(R"(
+        CHECK_EQ(
+            "\n" + getCodegenAssembly(R"(
 local function vec3lerp(a: vector, b: vector, t: number)
     return vector.lerp(a, b, t)
 end
 )"),
-        R"(
+            R"(
 ; function vec3lerp($arg0, $arg1, $arg2) line 2
 bb_0:
   CHECK_TAG R0, tvector, exit(entry)
@@ -509,13 +510,13 @@ bb_bytecode_1:
     }
     else
     {
-      CHECK_EQ(
-        "\n" + getCodegenAssembly(R"(
+        CHECK_EQ(
+            "\n" + getCodegenAssembly(R"(
 local function vec3lerp(a: vector, b: vector, t: number)
     return vector.lerp(a, b, t)
 end
 )"),
-        R"(
+            R"(
 ; function vec3lerp($arg0, $arg1, $arg2) line 2
 bb_0:
   CHECK_TAG R0, tvector, exit(entry)
@@ -633,6 +634,372 @@ bb_bytecode_0:
   FASTCALL 14u, R1, R0, 2i
   INTERRUPT 5u
   RETURN R0, 1i
+)"
+    );
+}
+
+TEST_CASE("StringCompare")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return a == "test"
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  %0 = LOAD_TAG R0
+  %1 = LOAD_POINTER R0
+  %2 = LOAD_POINTER K0 ('test')
+  %3 = CMP_SPLIT_TVALUE %0, tstring, %1, %2, eq
+  STORE_TAG R1, tboolean
+  STORE_INT R1, %3
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  INTERRUPT 4u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("StringCompareAnnotated")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a: string)
+    return a == "test"
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tstring, exit(entry)
+  JUMP bb_4
+bb_4:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %5 = LOAD_POINTER R0
+  %6 = LOAD_POINTER K0 ('test')
+  %7 = CMP_SPLIT_TVALUE tstring, tstring, %5, %6, eq
+  STORE_TAG R1, tboolean
+  STORE_INT R1, %7
+  JUMP bb_bytecode_3
+bb_bytecode_3:
+  INTERRUPT 4u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("NilCompare")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return a == nil
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  %0 = LOAD_TAG R0
+  %1 = CMP_TAG %0, tnil, eq
+  STORE_TAG R1, tboolean
+  STORE_INT R1, %1
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  INTERRUPT 4u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("BooleanCompare")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return { a == true, a == false, a ~= true, a ~= false }
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  SET_SAVEDPC 1u
+  %1 = NEW_TABLE 4u, 0u
+  STORE_POINTER R1, %1
+  STORE_TAG R1, ttable
+  CHECK_GC
+  %5 = LOAD_TAG R0
+  %6 = LOAD_INT R0
+  %7 = CMP_SPLIT_TVALUE %5, tboolean, %6, 1i, eq
+  STORE_TAG R2, tboolean
+  STORE_INT R2, %7
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  %14 = LOAD_TAG R0
+  %15 = LOAD_INT R0
+  %16 = CMP_SPLIT_TVALUE %14, tboolean, %15, 0i, eq
+  STORE_TAG R3, tboolean
+  STORE_INT R3, %16
+  JUMP bb_bytecode_4
+bb_bytecode_4:
+  %23 = LOAD_TAG R0
+  %24 = LOAD_INT R0
+  %25 = CMP_SPLIT_TVALUE %23, tboolean, %24, 1i, not_eq
+  STORE_TAG R4, tboolean
+  STORE_INT R4, %25
+  JUMP bb_bytecode_6
+bb_bytecode_6:
+  %32 = LOAD_TAG R0
+  %33 = LOAD_INT R0
+  %34 = CMP_SPLIT_TVALUE %32, tboolean, %33, 0i, not_eq
+  STORE_TAG R5, tboolean
+  STORE_INT R5, %34
+  JUMP bb_bytecode_8
+bb_bytecode_8:
+  SETLIST 18u, R1, R2, 4i, 1u, 4u
+  INTERRUPT 20u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("NumberCompare")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return { a == 4.0, a ~= 3.0 }
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  SET_SAVEDPC 1u
+  %1 = NEW_TABLE 2u, 0u
+  STORE_POINTER R1, %1
+  STORE_TAG R1, ttable
+  CHECK_GC
+  %5 = LOAD_TAG R0
+  %6 = LOAD_DOUBLE R0
+  %7 = CMP_SPLIT_TVALUE %5, tnumber, %6, 4, eq
+  STORE_TAG R2, tboolean
+  STORE_INT R2, %7
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  %14 = LOAD_TAG R0
+  %15 = LOAD_DOUBLE R0
+  %16 = CMP_SPLIT_TVALUE %14, tnumber, %15, 3, not_eq
+  STORE_TAG R3, tboolean
+  STORE_INT R3, %16
+  JUMP bb_bytecode_4
+bb_bytecode_4:
+  SETLIST 10u, R1, R2, 2i, 1u, 2u
+  INTERRUPT 12u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("TypeCompare")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return type(a) == "number"
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  %1 = LOAD_TAG R0
+  %2 = GET_TYPE %1
+  STORE_POINTER R2, %2
+  STORE_TAG R2, tstring
+  %8 = CMP_TAG %1, tnumber, eq
+  STORE_TAG R1, tboolean
+  STORE_INT R1, %8
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  INTERRUPT 9u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("TypeofCompare")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return typeof(a) == "number"
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  %1 = GET_TYPEOF R0
+  STORE_POINTER R2, %1
+  STORE_TAG R2, tstring
+  %7 = CMP_TAG R0, tnumber, eq
+  STORE_TAG R1, tboolean
+  STORE_INT R1, %7
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  INTERRUPT 9u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("TypeofCompareCustom")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    return typeof(a) == "User"
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  %1 = GET_TYPEOF R0
+  STORE_POINTER R2, %1
+  STORE_TAG R2, tstring
+  %6 = LOAD_POINTER K2 ('User')
+  %7 = CMP_SPLIT_TVALUE tstring, tstring, %1, %6, eq
+  STORE_TAG R1, tboolean
+  STORE_INT R1, %7
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  INTERRUPT 9u
+  RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE("TypeCondition")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a, b)
+    if type(a) == "number" then
+        return a + b
+    end
+    return nil
+end
+)"
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  %1 = LOAD_TAG R0
+  %2 = GET_TYPE %1
+  STORE_POINTER R2, %2
+  STORE_TAG R2, tstring
+  JUMP bb_4
+bb_4:
+  %7 = LOAD_POINTER R2
+  %8 = LOAD_POINTER K2 ('number')
+  JUMP_EQ_POINTER %7, %8, bb_3, bb_bytecode_1
+bb_3:
+  CHECK_TAG R0, tnumber, bb_fallback_5
+  CHECK_TAG R1, tnumber, bb_fallback_5
+  %14 = LOAD_DOUBLE R0
+  %16 = ADD_NUM %14, R1
+  STORE_DOUBLE R2, %16
+  STORE_TAG R2, tnumber
+  JUMP bb_6
+bb_6:
+  INTERRUPT 8u
+  RETURN R2, 1i
+bb_bytecode_1:
+  STORE_TAG R2, tnil
+  INTERRUPT 10u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE("AssertTypeGuard")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(a)
+    assert(type(a) == "number")
+    return a * 2
+end
+)"
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  %1 = LOAD_TAG R0
+  %2 = GET_TYPE %1
+  STORE_POINTER R3, %2
+  STORE_TAG R3, tstring
+  %8 = CMP_TAG %1, tnumber, eq
+  STORE_TAG R2, tboolean
+  STORE_INT R2, %8
+  JUMP bb_bytecode_2
+bb_bytecode_2:
+  CHECK_TRUTHY tboolean, R2, exit(10)
+  JUMP bb_5
+bb_5:
+  CHECK_TAG R0, tnumber, bb_fallback_6
+  %28 = LOAD_DOUBLE R0
+  %29 = ADD_NUM %28, %28
+  STORE_DOUBLE R1, %29
+  STORE_TAG R1, tnumber
+  JUMP bb_7
+bb_7:
+  INTERRUPT 14u
+  RETURN R1, 1i
 )"
     );
 }

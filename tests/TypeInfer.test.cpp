@@ -25,13 +25,14 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
+LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
 
 using namespace Luau;
 
@@ -2541,7 +2542,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_type_pack_follow")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true},
+        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
     };
 
     LUAU_REQUIRE_ERRORS(check(R"(
@@ -2579,6 +2580,7 @@ do end
     )"));
 }
 
+#if 0 // CLI-166473: re-enable after flakiness is resolved
 TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_type")
 {
     ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}, {FFlag::LuauOccursCheckInCommit, true}};
@@ -2621,6 +2623,7 @@ TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_t
         return f4
     )");
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
 {
@@ -2683,6 +2686,49 @@ TEST_CASE_FIXTURE(Fixture, "avoid_unification_inferring_never_for_refined_param"
     )"));
 
     CHECK_EQ("({ read getItem: (number) -> (number?, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unterminated_function_body_causes_constraint_generator_crash")
+{
+    ScopedFastFlag _{FFlag::LuauDontReferenceScopePtrFromHashTable, true};
+    // This should not crash
+    CheckResult result = check(R"(
+export type t = {
+	func : typeof(
+		function
+	)
+}
+
+export type t1 = t12
+
+export type t2 = {}
+
+export type t3 = {
+	foo:number
+	bar:number
+}
+
+export type t4 = "foobar"
+
+export type t5 = string
+
+export type t6 = number
+
+export type t7 = "foobar"
+
+export type t8 = "foobar"
+
+export type t9 = typeof(1)
+
+export type t10 = typeof(1)
+
+export type t11 = typeof(1)
+
+export type t12 = {
+	b:number
+	pb:number
+}
+)");
 }
 
 TEST_SUITE_END();

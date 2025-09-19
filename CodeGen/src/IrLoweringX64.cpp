@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauCodeGenUnassignedBcTargetAbort)
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenVBlendpdReorder)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
+LUAU_FASTFLAG(LuauCodegenDirectCompare)
 
 namespace Luau
 {
@@ -37,7 +38,7 @@ IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, 
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
-    valueTracker.setRestoreCallack(
+    valueTracker.setRestoreCallback(
         &regs,
         [](void* context, IrInst& inst)
         {
@@ -832,7 +833,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // TODO: if we have a single user which is a STORE_INT, we are missing the opportunity to write directly to target
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a, inst.b});
 
-        Label saveone, savezero, exit;
+        Label saveOne, saveZero, exit;
 
         if (inst.a.kind == IrOpKind::Constant)
         {
@@ -842,29 +843,29 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
         {
             build.cmp(regOp(inst.a), LUA_TNIL);
-            build.jcc(ConditionX64::Equal, saveone);
+            build.jcc(ConditionX64::Equal, saveOne);
 
             build.cmp(regOp(inst.a), LUA_TBOOLEAN);
-            build.jcc(ConditionX64::NotEqual, savezero);
+            build.jcc(ConditionX64::NotEqual, saveZero);
         }
 
         if (inst.b.kind == IrOpKind::Constant)
         {
             // If value is 1, we fallthrough to storing 0
             if (intOp(inst.b) == 0)
-                build.jmp(saveone);
+                build.jmp(saveOne);
         }
         else
         {
             build.cmp(regOp(inst.b), 0);
-            build.jcc(ConditionX64::Equal, saveone);
+            build.jcc(ConditionX64::Equal, saveOne);
         }
 
-        build.setLabel(savezero);
+        build.setLabel(saveZero);
         build.mov(inst.regX64, 0);
         build.jmp(exit);
 
-        build.setLabel(saveone);
+        build.setLabel(saveOne);
         build.mov(inst.regX64, 1);
 
         build.setLabel(exit);
@@ -919,6 +920,112 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         emitUpdateBase(build);
 
         inst.regX64 = regs.takeReg(eax, index);
+        break;
+    }
+    case IrCmd::CMP_TAG:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        // Cannot reuse operand registers as a target because we have to modify it before the comparison
+        inst.regX64 = regs.allocReg(SizeX64::dword, index);
+
+        // We are going to operate on byte register, those do not clear high bits on write
+        build.xor_(inst.regX64, inst.regX64);
+
+        IrCondition cond = conditionOp(inst.c);
+        CODEGEN_ASSERT(cond == IrCondition::Equal || cond == IrCondition::NotEqual);
+        ConditionX64 condX64 = getConditionInt(cond);
+
+        if (tagOp(inst.b) == LUA_TNIL && inst.a.kind == IrOpKind::Inst)
+            build.test(regOp(inst.a), regOp(inst.a));
+        else
+            build.cmp(memRegTagOp(inst.a), tagOp(inst.b));
+
+        build.setcc(condX64, byteReg(inst.regX64));
+
+        break;
+    }
+    case IrCmd::CMP_SPLIT_TVALUE:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        // Cannot reuse operand registers as a target because we have to modify it before the comparison
+        inst.regX64 = regs.allocReg(SizeX64::dword, index);
+
+        // Second operand of this instruction must be a constant
+        // Without a constant type, we wouldn't know the correct way to compare the values at lowering time
+        CODEGEN_ASSERT(inst.b.kind == IrOpKind::Constant);
+
+        // We are going to operate on byte registers, those do not clear high bits on write
+        build.xor_(inst.regX64, inst.regX64);
+
+        IrCondition cond = conditionOp(inst.e);
+        CODEGEN_ASSERT(cond == IrCondition::Equal || cond == IrCondition::NotEqual);
+
+        // Check tag equality first
+        ScopedRegX64 tmp1{regs, SizeX64::byte};
+
+        if (inst.a.kind != IrOpKind::Constant)
+        {
+            build.cmp(regOp(inst.a), tagOp(inst.b));
+            build.setcc(getConditionInt(cond), byteReg(tmp1.reg));
+        }
+        else
+        {
+            // Constant folding had to handle different constant tags
+            CODEGEN_ASSERT(tagOp(inst.a) == tagOp(inst.b));
+        }
+
+        if (tagOp(inst.b) == LUA_TBOOLEAN)
+        {
+            if (inst.c.kind == IrOpKind::Constant)
+                build.cmp(regOp(inst.d), intOp(inst.c)); // swapped arguments
+            else if (inst.d.kind == IrOpKind::Constant)
+                build.cmp(regOp(inst.c), intOp(inst.d));
+            else
+                build.cmp(regOp(inst.c), regOp(inst.d));
+
+            build.setcc(getConditionInt(cond), byteReg(inst.regX64));
+        }
+        else if (tagOp(inst.b) == LUA_TSTRING)
+        {
+            build.cmp(regOp(inst.c), regOp(inst.d));
+            build.setcc(getConditionInt(cond), byteReg(inst.regX64));
+        }
+        else if (tagOp(inst.b) == LUA_TNUMBER)
+        {
+            if (inst.c.kind == IrOpKind::Constant)
+                build.vucomisd(regOp(inst.d), memRegDoubleOp(inst.c)); // swapped arguments
+            else if (inst.d.kind == IrOpKind::Constant)
+                build.vucomisd(regOp(inst.c), memRegDoubleOp(inst.d));
+            else
+                build.vucomisd(regOp(inst.c), regOp(inst.d));
+
+            ScopedRegX64 tmp2{regs, SizeX64::dword};
+
+            if (cond == IrCondition::Equal)
+            {
+                build.mov(tmp2.reg, 0);
+                build.setcc(ConditionX64::NotParity, byteReg(inst.regX64));
+                build.cmov(ConditionX64::NotEqual, inst.regX64, tmp2.reg);
+            }
+            else
+            {
+                build.mov(tmp2.reg, 1);
+                build.setcc(ConditionX64::Parity, byteReg(inst.regX64));
+                build.cmov(ConditionX64::NotEqual, inst.regX64, tmp2.reg);
+            }
+        }
+        else
+        {
+            CODEGEN_ASSERT(!"unsupported type tag in CMP_SPLIT_TVALUE");
+        }
+
+        if (inst.a.kind != IrOpKind::Constant)
+        {
+            if (cond == IrCondition::Equal)
+                build.and_(byteReg(inst.regX64), byteReg(tmp1.reg));
+            else
+                build.or_(byteReg(inst.regX64), byteReg(tmp1.reg));
+        }
         break;
     }
     case IrCmd::JUMP:
@@ -1688,7 +1795,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.test(tmp1.reg, tmp1.reg);
         build.jcc(ConditionX64::Zero, next);
 
-        // ra <= L->openuval->v
+        // ra <= L->openupval->v
         build.lea(tmp2.reg, addr[rBase + vmRegOp(inst.a) * sizeof(TValue)]);
         build.cmp(tmp2.reg, qword[tmp1.reg + offsetof(UpVal, v)]);
         build.jcc(ConditionX64::Above, next);

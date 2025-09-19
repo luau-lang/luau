@@ -7,6 +7,8 @@
 #include "Luau/IrUtils.h"
 
 #include "lua.h"
+#include "lobject.h"
+#include "lstate.h"
 
 #include <limits.h>
 #include <math.h>
@@ -22,6 +24,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+LUAU_FASTFLAG(LuauCodegenDirectCompare)
 
 namespace Luau
 {
@@ -58,6 +61,42 @@ struct NumberedInstruction
     uint32_t startPos = 0;
     uint32_t finishPos = 0;
 };
+
+static uint8_t tryGetTagForTypename(std::string_view name, bool forTypeof)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+
+    if (name == "nil")
+        return LUA_TNIL;
+
+    if (name == "boolean")
+        return LUA_TBOOLEAN;
+
+    if (name == "number")
+        return LUA_TNUMBER;
+
+    // typeof(vector) can be changed by environment
+    // TODO: support the environment option
+    if (name == "vector" && !forTypeof)
+        return LUA_TVECTOR;
+
+    if (name == "string")
+        return LUA_TSTRING;
+
+    if (name == "table")
+        return LUA_TTABLE;
+
+    if (name == "function")
+        return LUA_TFUNCTION;
+
+    if (name == "thread")
+        return LUA_TTHREAD;
+
+    if (name == "buffer")
+        return LUA_TBUFFER;
+
+    return 0xff;
+}
 
 // Data we know about the current VM state
 struct ConstPropState
@@ -1337,8 +1376,80 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CMP_ANY:
         state.invalidateUserCall();
         break;
+    case IrCmd::CMP_TAG:
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        break;
+    case IrCmd::CMP_SPLIT_TVALUE:
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+
+        if (function.proto)
+        {
+            uint8_t tagA = inst.a.kind == IrOpKind::Constant ? function.tagOp(inst.a) : state.tryGetTag(inst.a);
+            uint8_t tagB = inst.b.kind == IrOpKind::Constant ? function.tagOp(inst.b) : state.tryGetTag(inst.b);
+
+            // Try to find pattern like type(x) == 'tagname' or typeof(x) == 'tagname'
+            if (tagA == LUA_TSTRING && tagB == LUA_TSTRING && inst.c.kind == IrOpKind::Inst && inst.d.kind == IrOpKind::Inst)
+            {
+                const IrInst& lhs = function.instOp(inst.c);
+                const IrInst& rhs = function.instOp(inst.d);
+
+                if (rhs.cmd == IrCmd::LOAD_POINTER && rhs.a.kind == IrOpKind::VmConst)
+                {
+                    TValue name = function.proto->k[vmConstOp(rhs.a)];
+                    CODEGEN_ASSERT(name.tt == LUA_TSTRING);
+                    std::string_view nameStr{svalue(&name), tsvalue(&name)->len};
+
+                    if (int tag = tryGetTagForTypename(nameStr, lhs.cmd == IrCmd::GET_TYPEOF); tag != 0xff)
+                    {
+                        if (lhs.cmd == IrCmd::GET_TYPE)
+                        {
+                            replace(function, block, index, {IrCmd::CMP_TAG, lhs.a, build.constTag(tag), inst.e});
+                            foldConstants(build, function, block, index);
+                        }
+                        else if (lhs.cmd == IrCmd::GET_TYPEOF)
+                        {
+                            replace(function, block, index, {IrCmd::CMP_TAG, lhs.a, build.constTag(tag), inst.e});
+                            foldConstants(build, function, block, index);
+                        }
+                    }
+                }
+            }
+        }
+        break;
     case IrCmd::JUMP:
+        break;
     case IrCmd::JUMP_EQ_POINTER:
+        if (FFlag::LuauCodegenDirectCompare && function.proto)
+        {
+            // Try to find pattern like type(x) == 'tagname' or typeof(x) == 'tagname'
+            if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Inst)
+            {
+                const IrInst& lhs = function.instOp(inst.a);
+                const IrInst& rhs = function.instOp(inst.b);
+
+                if (rhs.cmd == IrCmd::LOAD_POINTER && rhs.a.kind == IrOpKind::VmConst)
+                {
+                    TValue name = function.proto->k[vmConstOp(rhs.a)];
+                    CODEGEN_ASSERT(name.tt == LUA_TSTRING);
+                    std::string_view nameStr{svalue(&name), tsvalue(&name)->len};
+
+                    if (int tag = tryGetTagForTypename(nameStr, lhs.cmd == IrCmd::GET_TYPEOF); tag != 0xff)
+                    {
+                        if (lhs.cmd == IrCmd::GET_TYPE)
+                        {
+                            replace(function, block, index, {IrCmd::JUMP_EQ_TAG, lhs.a, build.constTag(tag), inst.c, inst.d});
+                            foldConstants(build, function, block, index);
+                        }
+                        else if (lhs.cmd == IrCmd::GET_TYPEOF)
+                        {
+                            replace(function, block, index, {IrCmd::JUMP_EQ_TAG, lhs.a, build.constTag(tag), inst.c, inst.d});
+                            foldConstants(build, function, block, index);
+                        }
+                    }
+                }
+            }
+        }
+        break;
     case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::TABLE_LEN:
         break;

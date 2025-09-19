@@ -14,7 +14,7 @@ struct IrValueLocationTracking
 {
     IrValueLocationTracking(IrFunction& function);
 
-    void setRestoreCallack(void* context, void (*callback)(void* context, IrInst& inst));
+    void setRestoreCallback(void* context, void (*callback)(void* context, IrInst& inst));
 
     void beforeInstLowering(IrInst& inst);
     void afterInstLowering(IrInst& inst, uint32_t instIdx);

@@ -18,7 +18,7 @@ using namespace Luau::TypePath;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
 
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2);
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3);
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 
 struct TypePathFixture : Fixture
@@ -470,7 +470,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "tail")
 
 TEST_CASE_FIXTURE(TypePathFixture, "pack_slice_has_tail")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true};
+    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
 
     TypeArena& arena = getFrontend().globals.globalTypes;
     unfreeze(arena);
@@ -487,7 +487,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "pack_slice_has_tail")
 
 TEST_CASE_FIXTURE(TypePathFixture, "pack_slice_finite_pack")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true};
+    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
 
     TypeArena& arena = getFrontend().globals.globalTypes;
     unfreeze(arena);

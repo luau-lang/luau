@@ -12,7 +12,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauLimitUnification)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
@@ -45,7 +45,12 @@ OverloadResolver::OverloadResolver(
 {
 }
 
-std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(TypeId ty, TypePackId argsPack, NotNull<DenseHashSet<TypeId>> uniqueTypes, bool useFreeTypeBounds)
+std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(
+    TypeId ty,
+    TypePackId argsPack,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    bool useFreeTypeBounds
+)
 {
     auto tryOne = [&](TypeId f)
     {
@@ -100,7 +105,13 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(T
     return {Analysis::OverloadIsNonviable, ty};
 }
 
-void OverloadResolver::resolve(TypeId fnTy, const TypePack* args, AstExpr* selfExpr, const std::vector<AstExpr*>* argExprs, NotNull<DenseHashSet<TypeId>> uniqueTypes)
+void OverloadResolver::resolve(
+    TypeId fnTy,
+    const TypePack* args,
+    AstExpr* selfExpr,
+    const std::vector<AstExpr*>* argExprs,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
+)
 {
     fnTy = follow(fnTy);
 
@@ -341,7 +352,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             return {Analysis::Ok, {}};
         }
 
-        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
         {
             if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
             {
@@ -451,27 +462,29 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                           : argExprs->size() != 0        ? argExprs->back()->location
                                                          : fnExpr->location;
 
-            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance and LuauReturnMappedGenericPacksFromSubtyping2
+            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance and
+            // LuauReturnMappedGenericPacksFromSubtyping3
             std::optional<TypeId> failedSubTy;
             if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
                 failedSubTy = traverseForType(fnTy, reason.subPath, builtinTypes, arena);
-            else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+            else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
                 failedSubTy = traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena);
             else
                 failedSubTy = traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes);
 
-            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance and LuauReturnMappedGenericPacksFromSubtyping2
+            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance and
+            // LuauReturnMappedGenericPacksFromSubtyping3
             std::optional<TypeId> failedSuperTy;
             if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
                 failedSuperTy = traverseForType(prospectiveFunction, reason.superPath, builtinTypes, arena);
-            else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+            else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
                 failedSuperTy = traverseForType_DEPRECATED(
                     prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena
                 );
             else
                 failedSuperTy = traverseForType_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes);
 
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
                 maybeEmplaceError(&errors, argLocation, &reason, failedSubTy, failedSuperTy);
             else if (failedSubTy && failedSuperTy)
             {
@@ -501,7 +514,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 }
             }
         }
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2 && reason.superPath.components.size() > 1)
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && reason.superPath.components.size() > 1)
         {
             // traverseForIndex only has a value if path is of form [...PackSlice, Index]
             if (const auto index =
@@ -534,7 +547,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
         std::optional<TypePackId> failedSubPack;
         if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
             failedSubPack = traverseForPack(fnTy, reason.subPath, builtinTypes, arena);
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
             failedSubPack = traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena);
         else
             failedSubPack = traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes);
@@ -542,7 +555,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
         std::optional<TypePackId> failedSuperPack;
         if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
             failedSuperPack = traverseForPack(prospectiveFunction, reason.superPath, builtinTypes, arena);
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
             failedSuperPack =
                 traverseForPack_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena);
         else

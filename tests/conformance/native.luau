@@ -674,4 +674,48 @@ end
 
 assert(splitStoreRestore(2).ad() == 15)
 
+local function guard1(a)
+  local c = 0
+  if type(a) == "number" then
+    c = a * 2
+  end
+  return c
+end
+
+assert(guard1(4) == 8)
+assert(guard1({}) == 0)
+
+local function guard2(a)
+  local c = 0
+  if type(a) ~= "number" then
+    c = 4
+  end
+  return c
+end
+
+assert(guard2(4) == 0)
+assert(guard2({}) == 4)
+
+local function guard3(a)
+  local c = 0
+  if typeof(a) == "number" then
+    c = a * 2
+  end
+  return c
+end
+
+assert(guard3(4) == 8)
+assert(guard3({}) == 0)
+
+local function guard4(a)
+  local c = 0
+  if typeof(a) ~= "number" then
+    c = 4
+  end
+  return c
+end
+
+assert(guard4(4) == 0)
+assert(guard4({}) == 4)
+
 return('OK')

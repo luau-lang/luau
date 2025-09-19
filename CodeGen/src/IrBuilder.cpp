@@ -12,6 +12,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenDirectCompare)
+
 namespace Luau
 {
 namespace CodeGen
@@ -252,6 +254,31 @@ void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
     buildBytecodeBlocks(function, jumpTargets);
 }
 
+static bool isDirectCompare(Proto* proto, const Instruction* pc, int i)
+{
+    // Matching the compiler sequence for generating 0 or 1 based on a comparison between values:
+    // LOP_JUMP** Lx
+    // [aux]
+    // LOADB Rx, 0 +1
+    // Lx: LOADB Rx, 1
+    if (i + 3 < proto->sizecode && LUAU_INSN_D(*pc) == 2)
+    {
+        const Instruction loadTrue = pc[2];
+        const Instruction loadFalse = pc[3];
+
+        if (LUAU_INSN_OP(loadTrue) == LOP_LOADB && LUAU_INSN_OP(loadFalse) == LOP_LOADB)
+        {
+            bool sameTarget = LUAU_INSN_A(loadTrue) == LUAU_INSN_A(loadFalse);
+            bool zeroAndOne = LUAU_INSN_B(loadTrue) == 0 && LUAU_INSN_B(loadFalse) == 1;
+            bool correctJumps = LUAU_INSN_C(loadTrue) == 1 && LUAU_INSN_C(loadFalse) == 0;
+
+            return sameTarget && zeroAndOne && correctJumps;
+        }
+    }
+
+    return false;
+}
+
 void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
 {
     switch (int(op))
@@ -354,15 +381,55 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpX(*this, pc, i);
         break;
     case LOP_JUMPXEQKNIL:
+        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpxEqNilShortcut(*this, pc, i);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpxEqNil(*this, pc, i);
         break;
     case LOP_JUMPXEQKB:
+        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpxEqBShortcut(*this, pc, i);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpxEqB(*this, pc, i);
         break;
     case LOP_JUMPXEQKN:
+        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpxEqNShortcut(*this, pc, i);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpxEqN(*this, pc, i);
         break;
     case LOP_JUMPXEQKS:
+        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpxEqSShortcut(*this, pc, i);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpxEqS(*this, pc, i);
         break;
     case LOP_ADD:

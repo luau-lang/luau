@@ -50,9 +50,32 @@ LUAU_FASTFLAGVARIABLE(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauPushTypeConstraint)
+LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
 
 namespace Luau
 {
+
+struct SeenScope
+{
+    Set<TypeId>& seen;
+    TypeId ty;
+
+    SeenScope(Set<TypeId>& seen, TypeId ty)
+        : seen(seen)
+        , ty(ty)
+    {
+        seen.insert(ty);
+    }
+
+    ~SeenScope()
+    {
+        seen.erase(ty);
+    }
+
+    // Delete copy constructor and copy assignment operator to prevent copying
+    SeenScope(const SeenScope&) = delete;
+    SeenScope& operator=(const SeenScope&) = delete;
+};
 
 bool SubtypeConstraintRecord::operator==(const SubtypeConstraintRecord& other) const
 {
@@ -464,9 +487,7 @@ void ConstraintSolver::run()
 
     if (FFlag::DebugLuauLogSolver)
     {
-        printf(
-            "Starting solver for module %s (%s)\n", module->humanReadableName.c_str(), module->name.c_str()
-        );
+        printf("Starting solver for module %s (%s)\n", module->humanReadableName.c_str(), module->name.c_str());
         dump(this, opts);
         printf("Bindings:\n");
         dumpBindings(rootScope, opts);
@@ -3090,7 +3111,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     bool suppressSimplification
 )
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    Set<TypeId> seen{nullptr};
     return lookupTableProp(constraint, subjectType, propName, context, inConditional, suppressSimplification, seen);
 }
 
@@ -3101,12 +3122,17 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     ValueContext context,
     bool inConditional,
     bool suppressSimplification,
-    DenseHashSet<TypeId>& seen
+    Set<TypeId>& seen
 )
 {
     if (seen.contains(subjectType))
         return {};
-    seen.insert(subjectType);
+
+    std::optional<SeenScope> ss;
+    if (FFlag::LuauScopedSeenSetInLookupTableProp)
+        ss.emplace(seen, subjectType);
+    else
+        seen.insert(subjectType);
 
     subjectType = follow(subjectType);
 
