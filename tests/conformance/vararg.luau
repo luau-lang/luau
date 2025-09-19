@@ -167,5 +167,11 @@ f = loadstring[[
 assert(f("a", "b", nil, {}, assert))
 assert(f())
 
+-- pass to another variadic function
+local function passmc(...)
+  assert(true, ...)
+end
+passmc(nil)
+
 return('OK')
 

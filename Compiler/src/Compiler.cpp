@@ -403,7 +403,41 @@ struct Compiler
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprVarargs can be called directly
 
-        bytecode.emitABC(LOP_GETVARARGS, target, multRet ? 0 : uint8_t(targetCount + 1), 0);
+        /*
+        bool doVararg = true;
+        if (inlineFrames.size() > 0)
+        {
+            bool foundArg = false;
+
+            for (AstNode* arg : inlineFrames.back().call->args)
+                if (arg == expr)
+                {
+                    foundArg = true;
+                    break;
+                }
+
+            if (!foundArg)
+                doVararg = false;
+        }
+        */
+
+        if (inlineFrames.size() == 0)
+            bytecode.emitABC(LOP_GETVARARGS, target, multRet ? 0 : uint8_t(targetCount + 1), 0);
+        else
+        {
+            const InlineFrame& frame = inlineFrames.back();
+            LUAU_ASSERT(frame.call);
+
+            // we need to compile the arguments themselves instead of a vararg
+
+            for (size_t index = 0; index < frame.call->args.size; index++)
+            {
+                AstExpr* arg = frame.call->args.data[index]->asExpr();
+                LUAU_ASSERT(arg);
+
+                compileExpr(arg, target + index);
+            }
+        }
     }
 
     void compileExprSelectVararg(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop, bool multRet, uint8_t regs)
@@ -590,12 +624,18 @@ struct Compiler
         // - additionally, we can't easily compile multret expressions into designated target as computed call arguments will get clobbered
         if (multRet)
         {
-            bytecode.addDebugRemark("inlining failed: can't convert fixed returns to multret");
+            bytecode.addDebugRemark("inlining failed: can't convert multret to fixed returns");
             return false;
         }
 
         if (func->vararg)
         {
+            if (func->args.size > expr->args.size)
+            {
+                bytecode.addDebugRemark("inlining failed: not enough arguments");
+                return false;
+            }
+
             for (AstExpr* arg : expr->args)
             {
                 if (isExprMultRet(arg))
@@ -743,7 +783,7 @@ struct Compiler
         }
 
         // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
-        inlineFrames.push_back({func, oldLocals, target, targetCount});
+        inlineFrames.push_back({func, expr, oldLocals, target, targetCount});
 
         // fold constant values updated above into expressions in the function body
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
@@ -989,7 +1029,7 @@ struct Compiler
                 CompileError::raise(expr->func->location, "Exceeded jump distance limit; simplify the code to compile");
         }
 
-        bytecode.emitABC(LOP_CALL, regs, multCall ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
+        bytecode.emitABC(LOP_CALL, regs, (multCall && inlineFrames.size() == 0) ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
 
         // if we didn't output results directly to target, we need to move them
         if (!targetTop)
@@ -4136,6 +4176,7 @@ struct Compiler
     struct InlineFrame
     {
         AstExprFunction* func;
+        AstExprCall* call;
 
         size_t localOffset;
 
