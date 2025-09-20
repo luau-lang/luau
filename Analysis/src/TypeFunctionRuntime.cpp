@@ -1161,55 +1161,6 @@ static TypeFunctionTypePackId getFunctionParametersTypePack(lua_State* L, int he
     return result;
 }
 
-static void pushFunctionParametersTypePack(lua_State* L, const TypeFunctionFunctionType * tfft)
-{
-    if (auto tftp = get<TypeFunctionTypePack>(tfft->argTypes))
-    {
-        lua_createtable(L, 0, 2);
-
-        if (!tftp->head.empty())
-        {
-            lua_createtable(L, int(tftp->head.size()), 0);
-            int pos = 1;
-
-            for (auto el : tftp->head)
-            {
-                lua_createtable(L, 0, 2);
-                if (tfft->argNames.size() >= (size_t)pos)
-                {
-                    auto argName = tfft->argNames.at(pos - 1);
-                    if (argName.has_value())
-                    {   
-                        lua_pushstring(L, argName->name.c_str());
-                        lua_setfield(L, -2, "name");
-                    }
-                }
-                allocTypeUserData(L, el->type);
-                lua_setfield(L, -2, "type");
-                lua_rawseti(L, -2, pos++);
-            }
-
-            lua_setfield(L, -2, "head");
-        }
-
-        if (tftp->tail.has_value())
-        {
-            if (auto tfvp = get<TypeFunctionVariadicTypePack>(*tftp->tail))
-                allocTypeUserData(L, tfvp->type->type);
-            else if (auto tfgp = get<TypeFunctionGenericTypePack>(*tftp->tail))
-                allocTypeUserData(L, TypeFunctionGenericType{tfgp->isNamed, true, tfgp->name});
-            else
-                luaL_error(L, "unsupported type pack type");
-
-            lua_setfield(L, -2, "tail");
-        }
-    }
-    else
-    {
-        luaL_error(L, "unsupported type pack type");
-    }
-}
-
 // Luau: `types.newfunction(parameters: {head: {type | { name: string?, type: type }}?, tail: type?}, returns: {head: {type}?, tail: type?}, generics: {type}?) -> type`
 // Returns the type instance representing a function
 static int createFunction(lua_State* L)
@@ -1311,14 +1262,27 @@ static int getFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.parameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
+    pushTypePack(L, tfft->argTypes);
 
     if (FFlag::LuauTypeFunctionFunctionParameterNames)
     {
-        pushFunctionParametersTypePack(L, tfft);
-    }
-    else
-    {
-        pushTypePack(L, tfft->argTypes);   
+        int pos = 1;
+
+        for (const auto& arg : tfft->argNames)
+        {
+            lua_createtable(L, 0, 2);
+
+            if (arg)
+            {
+                lua_pushstring(L, arg->name.c_str());
+                lua_setfield(L, -2, "name");
+            }
+
+            lua_rawgeti(L, -2, pos);
+            lua_setfield(L, -2, "type");
+
+            lua_rawseti(L, -2, pos++);
+        }
     }
 
     return 1;
