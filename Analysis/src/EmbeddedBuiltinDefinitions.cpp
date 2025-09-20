@@ -456,7 +456,33 @@ export type type = {
 
 )BUILTIN_SRC";
 
+static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
+
+declare types: {
+    unknown: type,
+    never: type,
+    any: type,
+    boolean: type,
+    number: type,
+    string: type,
+    thread: type,
+    buffer: type,
+
+    singleton: @checked (arg: string | boolean | nil) -> type,
+    optional: @checked (arg: type) -> type,
+    generic: @checked (name: string, ispack: boolean?) -> type,
+    negationof: @checked (arg: type) -> type,
+    unionof: @checked (...type) -> type,
+    intersectionof: @checked (...type) -> type,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
 static constexpr const char* kBuiltinDefinitionTypeMethodSrc_PARAMETER_NAMES = R"BUILTIN_SRC(
+
+type Parameter = { name: string?, type: type }
 
 export type type = {
     tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
@@ -490,9 +516,9 @@ export type type = {
     metatable: (self: type) -> type?,
 
     -- for function type
-    setparameters: (self: type, head: {type | { name: string?, type: type }}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {{ name: string?, type: type }}?, tail: type? },
-    setreturns: (self: type, head: {type | { type: type }}?, tail: type? ) -> (),
+    setparameters: (self: type, head: {type | { type: type } | Parameter}?, tail: type?) -> (),
+    parameters: (self: type) -> { head: {Parameter}?, tail: type? },
+    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
     returns: (self: type) -> { head: {type}?, tail: type? },
     setgenerics: (self: type, {type}?) -> (),
     generics: (self: type) -> {type},
@@ -507,30 +533,6 @@ export type type = {
     ispack: (self: type) -> boolean,
 }
 
-)BUILTIN_SRC";
-
-static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
-
-declare types: {
-    unknown: type,
-    never: type,
-    any: type,
-    boolean: type,
-    number: type,
-    string: type,
-    thread: type,
-    buffer: type,
-
-    singleton: @checked (arg: string | boolean | nil) -> type,
-    optional: @checked (arg: type) -> type,
-    generic: @checked (name: string, ispack: boolean?) -> type,
-    negationof: @checked (arg: type) -> type,
-    unionof: @checked (...type) -> type,
-    intersectionof: @checked (...type) -> type,
-    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
-    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
-    copy: @checked (arg: type) -> type,
-}
 )BUILTIN_SRC";
 
 static constexpr const char* kBuiltinDefinitionTypesLibSrc_PARAMETER_NAMES = R"BUILTIN_SRC(
@@ -552,9 +554,10 @@ declare types: {
     unionof: @checked (...type) -> type,
     intersectionof: @checked (...type) -> type,
     newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
-    newfunction: @checked (parameters: { head: {type | { name: string?, type: type }}?, tail: type? }?, returns: { head: {type | { type: type }}?, tail: type? }?, generics: {type}?) -> type,
+    newfunction: @checked (parameters: { head: {type | Parameter}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
     copy: @checked (arg: type) -> type,
 }
+
 )BUILTIN_SRC";
 
 std::string getTypeFunctionDefinitionSource()
