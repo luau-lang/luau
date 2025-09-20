@@ -1103,7 +1103,7 @@ static void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
 
 static void getArgNames(lua_State* L, int headIdx, std::vector<std::optional<FunctionArgument>>& argNames)
 {
-    if (!lua_istable(L, -2)) 
+    if (!lua_istable(L, headIdx)) 
         return;
 
     int headLen = lua_objlen(L, headIdx);
@@ -1124,7 +1124,7 @@ static void getArgNames(lua_State* L, int headIdx, std::vector<std::optional<Fun
             {
                 const char* str = lua_tostring(L, -1);
                 if (Luau::isIdentifier(str))
-                    argName = FunctionArgument{str, {}};
+                    argName = FunctionArgument{std::string(str), {}};
             }
             lua_pop(L, 1);
         }
@@ -1236,6 +1236,8 @@ static int getFunctionParameters(lua_State* L)
 
     if (FFlag::LuauTypeFunctionFunctionParameterNames)
     {
+        lua_getfield(L, -1, "head");
+
         int pos = 1;
 
         for (const auto& arg : tfft->argNames)
@@ -1253,6 +1255,8 @@ static int getFunctionParameters(lua_State* L)
 
             lua_rawseti(L, -2, pos++);
         }
+
+        lua_pop(L, 1);
     }
 
     return 1;
