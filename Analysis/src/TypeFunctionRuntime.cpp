@@ -995,7 +995,7 @@ static std::tuple<std::vector<TypeFunctionTypeId>, std::vector<TypeFunctionTypeP
     return {types, packs};
 }
 
-static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx)
+static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx, bool namedTypePack = false)
 {
     TypeFunctionTypePackId result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{});
 
@@ -1015,7 +1015,7 @@ static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx
                 lua_pop(L, 1);
                 break;
             }
-            else if (FFlag::LuauTypeFunctionFunctionParameterNames && lua_istable(L, -1))
+            else if (FFlag::LuauTypeFunctionFunctionParameterNames && namedTypePack && lua_istable(L, -1))
             {
                 lua_getfield(L, -1, "type");
                 head.push_back(getTypeUserData(L, -1));
@@ -1151,7 +1151,7 @@ static int createFunction(lua_State* L)
         lua_getfield(L, 1, "head");
         lua_getfield(L, 1, "tail");
 
-        argTypes = getTypePack(L, -2, -1);
+        argTypes = getTypePack(L, -2, -1, /* namedTypePack */ true);
 
         if (FFlag::LuauTypeFunctionFunctionParameterNames)
         {
@@ -1209,7 +1209,7 @@ static int setFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setparameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
-    tfft->argTypes = getTypePack(L, 2, 3);
+    tfft->argTypes = getTypePack(L, 2, 3, /* namedTypePack */ true);
     
     if (FFlag::LuauTypeFunctionFunctionParameterNames)
     {
@@ -1262,7 +1262,7 @@ static int getFunctionParameters(lua_State* L)
     return 1;
 }
 
-// Luau: `self:setreturns(head: {type | {type: type}}?, tail: type?)`
+// Luau: `self:setreturns(head: {type}?, tail: type?)`
 // Sets the returns of the function
 static int setFunctionReturns(lua_State* L)
 {
