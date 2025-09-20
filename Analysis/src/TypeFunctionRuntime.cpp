@@ -1015,9 +1015,17 @@ static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx
                 lua_pop(L, 1);
                 break;
             }
-
-            head.push_back(getTypeUserData(L, -1));
-            lua_pop(L, 1);
+            else if (FFlag::LuauTypeFunctionFunctionParameterNames && lua_istable(L, -1))
+            {
+                lua_getfield(L, -1, "type");
+                head.push_back(getTypeUserData(L, -1));
+                lua_pop(L, 2);
+            }
+            else 
+            {
+                head.push_back(getTypeUserData(L, -1));
+                lua_pop(L, 1);
+            }
         }
 
         lua_pop(L, 1);
@@ -1093,75 +1101,40 @@ static void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
     }
 }
 
-static TypeFunctionTypePackId getFunctionParametersTypePack(lua_State* L, int headIdx, int tailIdx, std::vector<std::optional<FunctionArgument>>& argNames)
+static void getArgNames(lua_State* L, int headIdx, std::vector<std::optional<FunctionArgument>>& argNames)
 {
-    TypeFunctionTypePackId result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{});
+    if (!lua_istable(L, -2)) 
+        return;
 
-    std::vector<TypeFunctionTypeId> head;
+    int headLen = lua_objlen(L, headIdx);
+    argNames.resize(headLen);
+    headIdx = lua_absindex(L, headIdx);
 
-    if (lua_istable(L, headIdx))
+    for (int i = 1; i <= headLen; i++)
     {
-        lua_pushvalue(L, headIdx);
+        lua_pushinteger(L, i);
+        lua_gettable(L, headIdx);
 
-        for (int i = 1; i <= lua_objlen(L, -1); i++)
+        std::optional<FunctionArgument> argName;
+
+        if (lua_istable(L, -1))
         {
-            lua_pushinteger(L, i);
-            lua_gettable(L, -2);
-
-            if (lua_isnil(L, -1))
+            lua_getfield(L, -1, "name");
+            if (lua_isstring(L, -1))
             {
-                lua_pop(L, 1);
-                break;
+                const char* str = lua_tostring(L, -1);
+                if (Luau::isIdentifier(str))
+                    argName = FunctionArgument{str, {}};
             }
-            else if (lua_istable(L, -1))
-            {
-                lua_getfield(L, -1, "type");
-                head.push_back(getTypeUserData(L, -1));
-                lua_pop(L, 1);
-
-                lua_getfield(L, -1, "name");
-                std::optional<FunctionArgument> argName = std::nullopt;
-                if (lua_isstring(L, -1))
-                {
-                    std::string_view str = lua_tostring(L, -1);
-                    if (Luau::isIdentifier(str))
-                        argName = FunctionArgument{ 
-                            std::string(str), 
-                            {} // Maybe get the location of the user-defined type function instead? I'm not sure how to do this or if it's possible at all. 
-                        };
-                }
-                argNames.push_back(argName);
-                lua_pop(L, 2);
-            }
-            else {
-                head.push_back(getTypeUserData(L, -1));
-                argNames.push_back(std::nullopt);
-                lua_pop(L, 1);
-            }
+            lua_pop(L, 1);
         }
 
+        argNames[i - 1] = argName;
         lua_pop(L, 1);
     }
-
-    std::optional<TypeFunctionTypePackId> tail;
-
-    if (auto type = optionalTypeUserData(L, tailIdx))
-    {
-        if (auto gty = get<TypeFunctionGenericType>(*type); gty && gty->isPack)
-            tail = allocateTypeFunctionTypePack(L, TypeFunctionGenericTypePack{gty->isNamed, gty->name});
-        else
-            tail = allocateTypeFunctionTypePack(L, TypeFunctionVariadicTypePack{*type});
-    }
-
-    if (head.size() == 0 && tail.has_value())
-        result = *tail;
-    else
-        result = allocateTypeFunctionTypePack(L, TypeFunctionTypePack{std::move(head), tail});
-
-    return result;
 }
 
-// Luau: `types.newfunction(parameters: {head: {type | { name: string?, type: type }}?, tail: type?}, returns: {head: {type}?, tail: type?}, generics: {type}?) -> type`
+// Luau: `types.newfunction(parameters: {head: {type | {name: string?, type: type}}?, tail: type?}, returns: {head: {type | {type: type}}?, tail: type?}, generics: {type}?) -> type`
 // Returns the type instance representing a function
 static int createFunction(lua_State* L)
 {
@@ -1171,19 +1144,18 @@ static int createFunction(lua_State* L)
 
     TypeFunctionTypePackId argTypes = nullptr;
 
-    std::vector<std::optional<FunctionArgument>> argNames = {};
+    std::vector<std::optional<FunctionArgument>> argNames{};
 
     if (lua_istable(L, 1))
     {
         lua_getfield(L, 1, "head");
         lua_getfield(L, 1, "tail");
 
+        argTypes = getTypePack(L, -2, -1);
+
         if (FFlag::LuauTypeFunctionFunctionParameterNames)
         {
-            argTypes = getFunctionParametersTypePack(L, -2, -1, argNames);
-        }
-        else {
-            argTypes = getTypePack(L, -2, -1);
+            getArgNames(L, -2, argNames);
         }
 
         lua_pop(L, 2);
@@ -1224,7 +1196,7 @@ static int createFunction(lua_State* L)
     return 1;
 }
 
-// Luau: `self:setparameters(head: {type | { name: string?, type: type }}?, tail: type?)`
+// Luau: `self:setparameters(head: {type | {name: string?, type: type}}?, tail: type?)`
 // Sets the parameters of the function
 static int setFunctionParameters(lua_State* L)
 {
@@ -1237,19 +1209,17 @@ static int setFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setparameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
+    tfft->argTypes = getTypePack(L, 2, 3);
+    
     if (FFlag::LuauTypeFunctionFunctionParameterNames)
     {
-        tfft->argTypes = getFunctionParametersTypePack(L, 2, 3, tfft->argNames);
-    }
-    else 
-    {
-        tfft->argTypes = getTypePack(L, 2, 3);
+        getArgNames(L, -2, tfft->argNames);
     }
 
     return 0;
 }
 
-// Luau: `self:parameters() -> {head: {{ name: string?, type: type }}?, tail: type?}`
+// Luau: `self:parameters() -> {head: {{name: string?, type: type}}?, tail: type?}`
 // Returns the parameters of the function
 static int getFunctionParameters(lua_State* L)
 {
@@ -1288,7 +1258,7 @@ static int getFunctionParameters(lua_State* L)
     return 1;
 }
 
-// Luau: `self:setreturns(head: {type}?, tail: type?)`
+// Luau: `self:setreturns(head: {type | {type: type}}?, tail: type?)`
 // Sets the returns of the function
 static int setFunctionReturns(lua_State* L)
 {
