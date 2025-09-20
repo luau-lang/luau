@@ -13,7 +13,15 @@ namespace Luau
 // uniquely held references. Append these types to 'uniqueTypes'.
 void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstExpr* expr, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes);
 
-void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstArray<AstExpr*> exprs, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes);
-void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, const std::vector<AstExpr*>& exprs, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes);
+void findUniqueTypes(
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    AstArray<AstExpr*> exprs,
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+);
+void findUniqueTypes(
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    const std::vector<AstExpr*>& exprs,
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+);
 
-}
+} // namespace Luau

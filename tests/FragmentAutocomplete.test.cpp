@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauFragmentAutocompleteTakesInnermostRefinement)
 LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
+LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -4549,6 +4550,32 @@ local function whatever() end
     );
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "in_place_edit_of_for_loop_before_in_keyword_returns_fragment_starting_from_for")
+{
+    ScopedFastFlag sff{FFlag::LuauForInRangesConsiderInLocation, true};
+    std::string source = R"(
+local x = {}
+for i, value in x do
+    print(i)
+end
+)";
+
+    std::string dest = R"(
+local x = {}
+for @1, value in x do
+    print(i)
+end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+        }
+    );
+}
 
 // NOLINTEND(bugprone-unchecked-optional-access)
 

@@ -336,7 +336,7 @@ struct GenericTypeVisitor
                 {
                     if (auto ty = prop.readTy)
                         traverse(*ty);
-                    
+
                     // In the case that the readType and the writeType are
                     // the same pointer, just traverse once. Traversing each
                     // property twice would have pretty significant

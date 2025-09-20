@@ -37,6 +37,7 @@ LUAU_FASTFLAGVARIABLE(LuauPopulateSelfTypesInFragment)
 LUAU_FASTFLAGVARIABLE(LuauForInProvidesRecommendations)
 LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTakesInnermostRefinement)
 LUAU_FASTFLAG(LuauSuggestHotComments)
+LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
 {
@@ -197,7 +198,13 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                         if (!forIn->hasIn)
                             return nonEmpty;
                         else
-                            return Location{forIn->inLocation.begin, cursorPosition};
+                        {
+                            // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
+                            if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
+                                return nonEmpty;
+                            else
+                                return Location{forIn->inLocation.begin, cursorPosition};
+                        }
                     }
                 }
                 return empty;

@@ -210,7 +210,7 @@ bool isSupported()
 #endif
 
     // We require AVX1 support for VEX encoded XMM operations
-    // We also requre SSE4.1 support for ROUNDSD but the AVX check below covers it
+    // We also require SSE4.1 support for ROUNDSD but the AVX check below covers it
     // https://en.wikipedia.org/wiki/CPUID#EAX=1:_Processor_Info_and_Feature_Bits
     if ((cpuinfo[2] & (1 << 28)) == 0)
         return false;

@@ -242,18 +242,13 @@ std::string toString(const TypePath::Path& path, bool prefixDot = false);
 std::string toStringHuman(const TypePath::Path& path);
 
 // To keep my head straight when clipping:
-// LuauReturnMappedGenericPacksFromSubtyping2 expects mappedGenericPacks AND arena
+// LuauReturnMappedGenericPacksFromSubtyping3 expects mappedGenericPacks AND arena
 // LuauSubtypingGenericPacksDoesntUseVariance expects just arena. this is the final state
 
-// TODO: clip below two along with `LuauReturnMappedGenericPacksFromSubtyping2`
+// TODO: clip below two along with `LuauReturnMappedGenericPacksFromSubtyping3`
 std::optional<TypeOrPack> traverse_DEPRECATED(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse_DEPRECATED(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
-std::optional<TypeOrPack> traverse(
-    TypePackId root,
-    const Path& path,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
-);
+std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
 std::optional<TypeOrPack> traverse_DEPRECATED(
     TypePackId root,
@@ -262,12 +257,7 @@ std::optional<TypeOrPack> traverse_DEPRECATED(
     NotNull<const DenseHashMap<TypePackId, TypePackId>> mappedGenericPacks,
     NotNull<TypeArena> arena
 );
-std::optional<TypeOrPack> traverse(
-    TypeId root,
-    const Path& path,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
-);
+std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
 std::optional<TypeOrPack> traverse_DEPRECATED(
     TypeId root,
@@ -306,12 +296,7 @@ std::optional<TypeId> traverseForType_DEPRECATED(
 /// @param builtinTypes the built-in types in use (used to acquire the string metatable)
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypeId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypeId> traverseForType(
-    TypeId root,
-    const Path& path,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
-);
+std::optional<TypeId> traverseForType(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 
 /// Traverses a path from a type pack to its end point, which must be a type.
 /// @param root the entry point of the traversal
@@ -341,12 +326,7 @@ std::optional<TypeId> traverseForType_DEPRECATED(
 /// @param builtinTypes the built-in types in use (used to acquire the string metatable)
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypeId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypeId> traverseForType(
-    TypePackId root,
-    const Path& path,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
-);
+std::optional<TypeId> traverseForType(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 
 /// Traverses a path from a type to its end point, which must be a type pack. This overload will fail if the path contains a PackSlice component or a
 /// mapped generic pack.
@@ -377,12 +357,7 @@ std::optional<TypePackId> traverseForPack_DEPRECATED(
 /// @param builtinTypes the built-in types in use (used to acquire the string metatable)
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypePackId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypePackId> traverseForPack(
-    TypeId root,
-    const Path& path,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
-);
+std::optional<TypePackId> traverseForPack(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 
 /// Traverses a path from a type pack to its end point, which must be a type pack.
 /// @param root the entry point of the traversal
@@ -412,12 +387,7 @@ std::optional<TypePackId> traverseForPack_DEPRECATED(
 /// @param builtinTypes the built-in types in use (used to acquire the string metatable)
 /// @param arena a TypeArena, required if path has a PackSlice component
 /// @returns the TypePackId at the end of the path, or nullopt if the traversal failed.
-std::optional<TypePackId> traverseForPack(
-    TypePackId root,
-    const Path& path,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
-);
+std::optional<TypePackId> traverseForPack(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 
 /// Traverses a path of Index and PackSlices to compute the index of the type the path points to
 /// Returns std::nullopt if the path isn't n PackSlice components followed by an Index component

@@ -6121,4 +6121,17 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "string_indexer_satisfies_read_only_property")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    // NOTE: Unclear if this should be allowed, but for the type solver's
+    // current state I think it's reasonable.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(t: { [string]: number }): { read X: number }
+            return t
+        end
+    )"));
+}
+
 TEST_SUITE_END();

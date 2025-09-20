@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -293,6 +294,8 @@ TEST_CASE_FIXTURE(Fixture, "compare_strings")
 
 TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_metatable")
 {
+    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
+
     CheckResult result = check(R"(
         local a = {}
         local b = {}
@@ -303,9 +306,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
 
     if (FFlag::LuauSolverV2)
     {
-        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
-        REQUIRE(utf);
-        REQUIRE_EQ(toString(utf->ty), "lt<a, b>");
+        REQUIRE(get<CannotCompareUnrelatedTypes>(result.errors[0]));
     }
     else
     {
@@ -317,6 +318,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
 {
+    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
+
     CheckResult result = check(R"(
         local M = {}
         function M.new()
@@ -333,9 +336,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_
 
     if (FFlag::LuauSolverV2)
     {
-        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
-        REQUIRE(utf);
-        REQUIRE_EQ(toString(utf->ty), "lt<M, M>");
+        REQUIRE(get<CannotCompareUnrelatedTypes>(result.errors[0]));
     }
     else
     {
@@ -865,6 +866,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators")
 {
+    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
+
     CheckResult result = check(R"(
         local a: boolean = true
         local b: boolean = false
@@ -875,9 +878,9 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     if (FFlag::LuauSolverV2)
     {
-        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
-        REQUIRE(utf);
-        REQUIRE_EQ(toString(utf->ty), "lt<boolean, boolean>");
+        GenericError* ge = get<GenericError>(result.errors[0]);
+        REQUIRE(ge);
+        CHECK_EQ("Types 'boolean' and 'boolean' cannot be compared with relational operator <", ge->message);
     }
     else
     {
@@ -889,6 +892,8 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators2")
 {
+    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
+
     CheckResult result = check(R"(
         local a: number | string = ""
         local b: number | string = 1
@@ -906,9 +911,9 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     if (FFlag::LuauSolverV2)
     {
-        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
-        REQUIRE(utf);
-        REQUIRE_EQ(toString(utf->ty), "lt<number | string, number | string>");
+        GenericError* ge = get<GenericError>(result.errors[0]);
+        REQUIRE(ge);
+        CHECK_EQ("Types 'number | string' and 'number | string' cannot be compared with relational operator <", ge->message);
     }
     else
     {

@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -575,6 +576,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauNoMoreComparisonTypeFunctions, true},
+        {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
     CheckResult result = check(R"(
@@ -596,10 +598,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
         end
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    // There are three errors in the above snippet, but they should all be where
-    // clause needed errors.
-    for (const auto& e : result.errors)
-        CHECK(get<WhereClauseNeeded>(e));
+    auto err1 = get<CannotInferBinaryOperation>(result.errors[0]);
+    REQUIRE(err1);
+    CHECK_EQ(err1->suggestedToAnnotate, "item");
+    CHECK_EQ(err1->op, AstExprBinary::Op::CompareLe);
 }
 
 TEST_CASE_FIXTURE(Fixture, "vector3_overflow")

@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauPushTypeConstraint)
 LUAU_FASTFLAGVARIABLE(LuauMorePreciseExternTableRelation)
+LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
 
 namespace Luau
 {
@@ -1414,9 +1415,12 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
         if (1 == lt->props.size())
         {
             const auto [propName, leftProp] = *begin(lt->props);
+            const bool leftPropIsRefinable = FFlag::LuauSimplifyRefinementOfReadOnlyProperty
+                ? leftProp.isShared() || leftProp.isReadOnly()
+                : leftProp.isShared();
 
             auto it = rt->props.find(propName);
-            if (it != rt->props.end() && leftProp.isShared() && it->second.isShared())
+            if (it != rt->props.end() && leftPropIsRefinable && it->second.isShared())
             {
                 Relation r = relate(*leftProp.readTy, *it->second.readTy);
 
@@ -1428,7 +1432,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
                 case Relation::Coincident:
                     return right;
                 case Relation::Subset:
-                    if (1 == rt->props.size())
+                    if (1 == rt->props.size() && leftProp.isShared())
                         return left;
                     break;
                 default:

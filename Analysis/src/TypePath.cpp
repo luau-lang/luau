@@ -16,7 +16,7 @@
 #include <sstream>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 
@@ -366,7 +366,7 @@ struct TraversalState
     NotNull<BuiltinTypes> builtinTypes;
     // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
     const DenseHashMap<TypePackId, TypePackId>* mappedGenericPacks_DEPRECATED = nullptr;
-    // TODO: make NotNull when LuauReturnMappedGenericPacksFromSubtyping2 is clipped
+    // TODO: make NotNull when LuauReturnMappedGenericPacksFromSubtyping3 is clipped
     TypeArena* arena = nullptr;
     int steps = 0;
 
@@ -497,7 +497,7 @@ struct TraversalState
         {
             auto currentPack = get<TypePackId>(current);
             LUAU_ASSERT(currentPack);
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
             {
                 if (const auto tp = get<TypePack>(*currentPack))
                 {
@@ -656,7 +656,7 @@ struct TraversalState
 
                 if (auto tail = it.tail())
                 {
-                    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance &&
+                    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance &&
                         mappedGenericPacks_DEPRECATED && mappedGenericPacks_DEPRECATED->contains(*tail))
                         updateCurrent(*mappedGenericPacks_DEPRECATED->find(*tail));
 
@@ -674,9 +674,9 @@ struct TraversalState
 
     bool traverse(const TypePath::PackSlice slice)
     {
-        // TODO: clip these checks once LuauReturnMappedGenericPacksFromSubtyping2 is clipped
+        // TODO: clip these checks once LuauReturnMappedGenericPacksFromSubtyping3 is clipped
         // arena and mappedGenericPacks_DEPRECATED should be NonNull once that happens
-        LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping2);
+        LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping3);
         if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
         {
             LUAU_ASSERT(arena);
@@ -688,11 +688,11 @@ struct TraversalState
         if (checkInvariants())
             return false;
 
-        // TODO: clip this check once LuauReturnMappedGenericPacksFromSubtyping2 is clipped
+        // TODO: clip this check once LuauReturnMappedGenericPacksFromSubtyping3 is clipped
         // arena and mappedGenericPacks should be NonNull once that happens
         if (!FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
         {
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping2)
+            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
                 LUAU_ASSERT(arena && mappedGenericPacks_DEPRECATED);
             else if (!arena || !mappedGenericPacks_DEPRECATED)
                 return false;

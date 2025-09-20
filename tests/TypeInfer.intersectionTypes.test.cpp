@@ -10,7 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 
@@ -1155,7 +1155,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_3")
 {
     ScopedFastFlag sff1{FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true};
-    ScopedFastFlag sff2{FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true};
+    ScopedFastFlag sff2{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
 
     CheckResult result = check(R"(
         function f<a...>()
@@ -1187,7 +1187,7 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true};
+    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
     ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true};
 
     CheckResult result = check(R"(

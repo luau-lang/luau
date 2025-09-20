@@ -30,8 +30,10 @@ LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
+LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauFixNilRightPad)
+LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1439,6 +1441,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
+        {FFlag::LuauNoOrderingTypeFunctions, true},
+        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
+        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
     };
 
     CheckResult result = check(R"(
@@ -1446,14 +1452,10 @@ local a = {{x=4}, {x=7}, {x=1}}
 table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
-    if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
-    {
-        // FIXME CLI-161355
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(get<GenericBoundsMismatch>(result.errors[0]));
-    }
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    // FIXME CLI-161355
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<CannotInferBinaryOperation>(result.errors[0]));
+    CHECK(get<GenericBoundsMismatch>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
@@ -2393,7 +2395,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true},
+        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
     };
 
     CheckResult result = check(R"(
@@ -2609,19 +2611,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
     if (!FFlag::LuauSolverV2)
         return;
 
+    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
+
     CheckResult result = check(R"(
         function fib(n, u)
             return (n or u) and (n < u and n + fib(n,u))
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
-    LUAU_ASSERT(err);
-    CHECK("number" == toString(err->recommendedReturn));
-    REQUIRE(err->recommendedArgs.size() == 2);
-    CHECK("number" == toString(err->recommendedArgs[0].second));
-    CHECK("number" == toString(err->recommendedArgs[1].second));
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<CannotInferBinaryOperation>(result.errors[0]));
+    auto err2 = get<ExplicitFunctionAnnotationRecommended>(result.errors[1]);
+    LUAU_ASSERT(err2);
+    CHECK("number" == toString(err2->recommendedReturn));
+    REQUIRE(err2->recommendedArgs.size() == 2);
+    CHECK("number" == toString(err2->recommendedArgs[0].second));
+    CHECK("number" == toString(err2->recommendedArgs[1].second));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type_2")

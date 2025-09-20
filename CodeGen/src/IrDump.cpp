@@ -193,6 +193,10 @@ const char* getCmdName(IrCmd cmd)
         return "CMP_ANY";
     case IrCmd::CMP_INT:
         return "CMP_INT";
+    case IrCmd::CMP_TAG:
+        return "CMP_TAG";
+    case IrCmd::CMP_SPLIT_TVALUE:
+        return "CMP_SPLIT_TVALUE";
     case IrCmd::JUMP:
         return "JUMP";
     case IrCmd::JUMP_IF_TRUTHY:

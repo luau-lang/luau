@@ -154,7 +154,7 @@ static BytecodeRegTypeInfo* findRegType(BytecodeTypeInfo& info, uint8_t reg, int
     auto b = info.regTypes.begin() + info.regTypeOffsets[reg];
     auto e = info.regTypes.begin() + info.regTypeOffsets[reg + 1];
 
-    // Doen't have info
+    // Doesn't have info
     if (b == e)
         return nullptr;
 
@@ -636,7 +636,7 @@ void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpT
 
         int target = getJumpTarget(*pc, uint32_t(i));
 
-        // Implicit fallthroughs terminate the block and might start a new one
+        // Implicit fallthrough terminate the block and might start a new one
         if (target >= 0 && !isFastCall(op))
         {
             bcBlocks.back().finishpc = i;
@@ -1225,8 +1225,8 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                 applyBuiltinCall(LuauBuiltinFunction(bfid), bcType);
 
                 regTags[LUAU_INSN_B(*pc)] = bcType.a;
-                regTags[aux & 0xff] = bcType.b;
-                regTags[(aux >> 8) & 0xff] = bcType.c;
+                regTags[LUAU_INSN_AUX_A(aux)] = bcType.b;
+                regTags[LUAU_INSN_AUX_B(aux)] = bcType.c;
                 regTags[ra] = bcType.result;
 
                 refineRegType(bcTypeInfo, ra, i, bcType.result);

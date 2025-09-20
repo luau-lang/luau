@@ -233,6 +233,18 @@ enum class IrCmd : uint8_t
     // C: condition
     CMP_INT,
 
+    // Perform a comparison of two tags. Result is an integer register containing 0 or 1
+    CMP_TAG,
+    // A, B: tag
+    // C: condition (eq/neq)
+
+    // Perform tag and value comparison. Result is an integer register containing 0 or 1
+    CMP_SPLIT_TVALUE,
+    // A: tag
+    // B: tag (constant: boolean/string)
+    // C, D: value
+    // E: condition (eq/neq)
+
     // Unconditional jump
     // A: block/vmexit/undef
     JUMP,
@@ -462,7 +474,7 @@ enum class IrCmd : uint8_t
     CHECK_NO_METATABLE,
 
     // Guard against executing in unsafe environment, exits to VM on check failure
-    // A: vmexit/vmexit/undef
+    // A: block/vmexit/undef
     // When undef is specified, execution is aborted on check failure
     CHECK_SAFE_ENV,
 
@@ -653,7 +665,7 @@ enum class IrCmd : uint8_t
     // C: Kn (prototype)
     FALLBACK_DUPCLOSURE,
 
-    // Prepare loop variables for a generic for loop, jump to the loop backedge unconditionally
+    // Prepare loop variables for a generic for loop, jump to the loop back edge unconditionally
     // A: unsigned int (bytecode instruction index)
     // B: Rn (loop state start, updates Rn Rn+1 Rn+2)
     // C: block

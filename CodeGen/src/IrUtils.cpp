@@ -17,6 +17,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+LUAU_FASTFLAG(LuauCodegenDirectCompare)
 
 namespace Luau
 {
@@ -199,6 +200,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
     case IrCmd::CMP_INT:
+    case IrCmd::CMP_TAG:
+    case IrCmd::CMP_SPLIT_TVALUE:
         return IrValueKind::Int;
     case IrCmd::JUMP:
     case IrCmd::JUMP_IF_TRUTHY:
@@ -804,6 +807,59 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 substitute(function, inst, build.constInt(1));
             else
                 substitute(function, inst, build.constInt(0));
+        }
+        break;
+    case IrCmd::CMP_TAG:
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            substitute(function, inst, build.constInt(function.tagOp(inst.a) == function.tagOp(inst.b) ? 1 : 0));
+        }
+        break;
+    case IrCmd::CMP_SPLIT_TVALUE:
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            IrCondition cond = conditionOp(inst.e);
+
+            if (cond == IrCondition::Equal)
+            {
+                if (function.tagOp(inst.a) != function.tagOp(inst.b))
+                {
+                    substitute(function, inst, build.constInt(0));
+                }
+                else if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+                {
+                    if (function.tagOp(inst.a) == LUA_TBOOLEAN)
+                        substitute(function, inst, build.constInt(compare(function.intOp(inst.c), function.intOp(inst.d), cond) ? 1 : 0));
+                    else if (function.tagOp(inst.a) == LUA_TNUMBER)
+                        substitute(function, inst, build.constInt(compare(function.doubleOp(inst.c), function.doubleOp(inst.d), cond) ? 1 : 0));
+                    else
+                        CODEGEN_ASSERT(!"unsupported type");
+                }
+            }
+            else if (cond == IrCondition::NotEqual)
+            {
+                if (function.tagOp(inst.a) != function.tagOp(inst.b))
+                {
+                    substitute(function, inst, build.constInt(1));
+                }
+                else if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+                {
+                    if (function.tagOp(inst.a) == LUA_TBOOLEAN)
+                        substitute(function, inst, build.constInt(compare(function.intOp(inst.c), function.intOp(inst.d), cond) ? 1 : 0));
+                    else if (function.tagOp(inst.a) == LUA_TNUMBER)
+                        substitute(function, inst, build.constInt(compare(function.doubleOp(inst.c), function.doubleOp(inst.d), cond) ? 1 : 0));
+                    else
+                        CODEGEN_ASSERT(!"unsupported type");
+                }
+            }
+            else
+            {
+                CODEGEN_ASSERT(!"unsupported condition");
+            }
         }
         break;
     case IrCmd::JUMP_EQ_TAG:

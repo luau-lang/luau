@@ -117,7 +117,7 @@ static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     build.mov(rClosure, x0);
 
-    CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     build.br(x2);
@@ -184,12 +184,12 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     if (DFFlag::AddReturnExectargetCheck)
     {
         // Get new instruction location
-        CODEGEN_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+        static_assert(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + sizeof(Proto::execdata));
         build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
         build.cbz(x4, helpers.exitContinueVmClearNativeFlag);
     }
 
-    CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     // Get instruction index from instruction pointer
@@ -201,7 +201,7 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     if (!DFFlag::AddReturnExectargetCheck)
     {
         // Get new instruction location and jump to it
-        CODEGEN_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+        static_assert(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + sizeof(Proto::execdata));
         build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
     }
     build.ldr(w2, mem(x3, x2));
@@ -240,7 +240,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
     build.ldr(rBase, mem(x0, offsetof(lua_State, base))); // L->base
 
-    CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     build.ldr(x9, mem(x0, offsetof(lua_State, ci)));          // L->ci
@@ -300,7 +300,7 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
         return false;
     }
 
-    // Set the offset at the begining so that functions in new blocks will not overlay the locations
+    // Set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
     unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
 
