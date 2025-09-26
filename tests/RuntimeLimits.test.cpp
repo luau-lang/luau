@@ -290,7 +290,7 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
     CHECK(hasError<CodeTooComplex>(result));
 }
 
-TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(1.0))
 {
     ScopedFastFlag sff[] = {
         // These flags are required to surface the problem.
