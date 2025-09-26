@@ -24,16 +24,15 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -248,6 +247,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 
 TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_count")
 {
+    ScopedFastFlag _{FFlag::LuauFilterOverloadsByArity, true};
+
     CheckResult result = check(R"(
         local multiply: ((number)->number) & ((number)->string) & ((number, number)->number)
         multiply("")
@@ -273,7 +274,10 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
     REQUIRE(ei);
 
     if (FFlag::LuauSolverV2)
-        CHECK("Available overloads: (number) -> number; (number) -> string; and (number, number) -> number" == ei->message);
+    {
+        // TODO CLI-170535: Improve message so we show overloads with matching and non-matching arities
+        CHECK("Available overloads: (number) -> number; and (number) -> string" == ei->message);
+    }
     else
         CHECK_EQ("Other overloads are also not viable: (number) -> string", ei->message);
 }
@@ -1377,7 +1381,6 @@ f(function(x) return x * 2 end)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     // FIXME: CLI-116133 bidirectional type inference needs to push expected types in for higher-order function calls
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
@@ -2243,7 +2246,6 @@ TEST_CASE_FIXTURE(Fixture, "inner_frees_become_generic_in_dcr")
 
 TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_not_enclosing")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local foo
         local bar
@@ -2267,7 +2269,6 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function foo<a>(x: a, y: a?)
             return x
@@ -2360,7 +2361,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
 
 TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function f(t: { x: number } & { y: string })
             t()
@@ -3325,6 +3325,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1640")
             end
 
             return table.concat({})
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1854")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function bug()
+            local counter = 1
+            local work = buffer.create(64)
+            local function get_block()
+                buffer.writeu32(work, 48, counter)
+                counter = (counter + 1) % 0x100000000
+                return work
+            end
         end
     )"));
 }

@@ -496,6 +496,7 @@ if(TARGET Luau.UnitTest)
         tests/NonStrictTypeChecker.test.cpp
         tests/Normalize.test.cpp
         tests/NotNull.test.cpp
+        tests/OverloadResolver.test.cpp
         tests/Parser.test.cpp
         tests/RegisterCallbacks.cpp
         tests/RegisterCallbacks.h

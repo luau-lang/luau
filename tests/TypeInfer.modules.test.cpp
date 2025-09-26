@@ -18,8 +18,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauSolverAgnosticSetType)
 
 using namespace Luau;
 
@@ -162,7 +160,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
 {
-    ScopedFastFlag sff = {FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/A"] = R"(
         --!strict
         return {
@@ -270,7 +267,6 @@ a = tbl.abc.def
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_type_mismatch")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/A"] = R"(
 return { def = 4 }
     )";

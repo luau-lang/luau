@@ -2,6 +2,7 @@
 #include "Luau/Type.h"
 
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DenseHash.h"
@@ -16,6 +17,7 @@
 #include "Luau/VisitType.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <unordered_map>
@@ -30,8 +32,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticVisitType)
-LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticSetType)
 
 namespace Luau
 {
@@ -719,8 +719,7 @@ TypeId Property::type_DEPRECATED() const
 void Property::setType(TypeId ty)
 {
     readTy = ty;
-    if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticSetType)
-        writeTy = ty;
+    writeTy = ty;
 }
 
 void Property::makeShared()
@@ -1004,6 +1003,7 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode);
 BuiltinTypes::BuiltinTypes()
     : arena(new TypeArena)
     , debugFreezeArena(FFlag::DebugLuauFreezeArena)
+    , typeFunctions(std::make_unique<BuiltinTypeFunctions>())
     , nilType(arena->addType(Type{PrimitiveType{PrimitiveType::NilType}, /*persistent*/ true}))
     , numberType(arena->addType(Type{PrimitiveType{PrimitiveType::Number}, /*persistent*/ true}))
     , stringType(arena->addType(Type{PrimitiveType{PrimitiveType::String}, /*persistent*/ true}))

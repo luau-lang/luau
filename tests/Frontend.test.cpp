@@ -16,7 +16,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauBatchedExecuteTask)
 
 namespace
 {
@@ -127,7 +127,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "real_source")
 
 TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = R"(
         local Modules = game:GetService('Gui').Modules
@@ -260,7 +259,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_detection_between_check_and_nocheck")
 
 TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!nocheck
         local Modules = game:GetService('Gui').Modules
@@ -374,7 +372,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_error_paths")
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/A"] = R"(
         return {hello = 2}
     )";
@@ -435,7 +432,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_exports")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/A"] = R"(
 local b = require(game.B)
 export type atype = { x: b.btype }
@@ -528,7 +524,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "dont_recheck_script_that_hasnt_been_marked_d
 
 TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = R"(
         local Modules = game:GetService('Gui').Modules
@@ -868,7 +863,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     Frontend fe{&fileResolver, &configResolver, {false}};
 
     fileResolver.source["Module/A"] = R"(
@@ -1741,6 +1735,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_simple")
 {
+    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
+
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!strict
         return {hello=5, world=true}
@@ -1762,6 +1758,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "queue_check_simple")
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_instant")
 {
+    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
+
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!strict
         local Modules = game:GetService('Gui').Modules
@@ -1787,6 +1785,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_instant")
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_delayed")
 {
+    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
+
     fileResolver.source["game/Gui/Modules/C"] = R"(
         --!strict
         return {c_value = 5}
@@ -1818,6 +1818,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_delayed")
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_propagates_ice")
 {
+    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
     ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 
     ModuleName mm = fromString("MainModule");

@@ -18,6 +18,9 @@
 #include "Luau/TypePath.h"
 #include "Luau/TypeUtils.h"
 
+LUAU_FASTFLAGVARIABLE(LuauIndividualRecursionLimits)
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
+
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauReturnMappedGenericPacksFromSubtyping3)
@@ -30,6 +33,8 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingGenericPacksDoesntUseVariance)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
 LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingPrimitiveAndGenericTableTypes)
+LUAU_FASTFLAGVARIABLE(LuauPassBindableGenericsByReference)
 
 namespace Luau
 {
@@ -822,9 +827,62 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
 
     return result;
 }
-
-SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, std::optional<std::vector<TypeId>> bindableGenerics)
+SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, const std::vector<TypeId>& bindableGenerics)
 {
+    LUAU_ASSERT(FFlag::LuauPassBindableGenericsByReference);
+
+    SubtypingEnvironment env;
+    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
+    {
+        for (TypeId g : bindableGenerics)
+            env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
+    }
+
+    SubtypingResult result = isCovariantWith(env, subTp, superTp, scope);
+
+    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+    {
+        if (!env.mappedGenericPacks_DEPRECATED.empty())
+            result.mappedGenericPacks_DEPRECATED = std::move(env.mappedGenericPacks_DEPRECATED);
+    }
+
+    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
+    {
+        for (TypeId bg : bindableGenerics)
+        {
+            bg = follow(bg);
+
+            LUAU_ASSERT(env.mappedGenerics.contains(bg));
+
+            if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env.mappedGenerics.find(bg))
+            {
+                // Bounds should have exactly one entry
+                LUAU_ASSERT(bounds->size() == 1);
+                if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
+                {
+                    if (bounds->empty())
+                        continue;
+                    if (const GenericType* gen = get<GenericType>(bg))
+                        result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
+                }
+                else if (!bounds->empty())
+                    result.andAlso(checkGenericBounds_DEPRECATED(bounds->back(), env, scope));
+            }
+        }
+    }
+
+    return result;
+}
+
+SubtypingResult Subtyping::isSubtype_DEPRECATED(
+    TypePackId subTp,
+    TypePackId superTp,
+    NotNull<Scope> scope,
+    std::optional<std::vector<TypeId>> bindableGenerics
+)
+{
+    LUAU_ASSERT(!FFlag::LuauPassBindableGenericsByReference);
+
     SubtypingEnvironment env;
     if (FFlag::LuauSubtypingGenericsDoesntUseVariance && bindableGenerics)
     {
@@ -931,9 +989,16 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 {
     UnifierCounters& counters = normalizer->sharedState->counters;
     RecursionCounter rc(&counters.recursionCount);
-
-    if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
-        return SubtypingResult{false, true};
+    if (FFlag::LuauIndividualRecursionLimits)
+    {
+        if (DFInt::LuauSubtypingRecursionLimit > 0 && DFInt::LuauSubtypingRecursionLimit < counters.recursionCount)
+            return SubtypingResult{false, true};
+    }
+    else
+    {
+        if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
+            return SubtypingResult{false, true};
+    }
 
     subTy = follow(subTy);
     superTy = follow(superTy);
@@ -1298,8 +1363,16 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     {
         rc.emplace(&counters.recursionCount);
 
-        if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
-            return SubtypingResult{false, true};
+        if (FFlag::LuauIndividualRecursionLimits)
+        {
+            if (DFInt::LuauSubtypingRecursionLimit > 0 && counters.recursionCount > DFInt::LuauSubtypingRecursionLimit)
+                return SubtypingResult{false, true};
+        }
+        else
+        {
+            if (counters.recursionLimit > 0 && counters.recursionLimit < counters.recursionCount)
+                return SubtypingResult{false, true};
+        }
     }
 
     subTp = follow(subTp);
@@ -2680,7 +2753,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
     }
     else if (subPrim->type == PrimitiveType::Table)
     {
-        const bool isSubtype = superTable->props.empty() && !superTable->indexer.has_value();
+        const bool isSubtype = FFlag::LuauSubtypingPrimitiveAndGenericTableTypes
+                                   ? superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic)
+                                   : superTable->props.empty() && !superTable->indexer.has_value();
         return {isSubtype};
     }
 

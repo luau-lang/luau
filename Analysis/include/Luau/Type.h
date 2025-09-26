@@ -38,6 +38,7 @@ struct TypeFun;
 struct Constraint;
 struct Subtyping;
 struct TypeChecker2;
+struct BuiltinTypeFunctions;
 
 enum struct SolverMode
 {
@@ -1000,6 +1001,7 @@ private:
     bool debugFreezeArena = false;
 
 public:
+    std::unique_ptr<BuiltinTypeFunctions> typeFunctions;
     const TypeId nilType;
     const TypeId numberType;
     const TypeId stringType;

@@ -15,6 +15,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauResumeFix)
+
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
  *
@@ -1093,10 +1095,17 @@ int lua_cpcall(lua_State* L, lua_CFunction func, void* ud)
     c.func = func;
     c.ud = ud;
 
-    int status = luaD_pcall(L, f_Ccall, &c, savestack(L, L->top), 0);
+    if (FFlag::LuauResumeFix)
+    {
+        return luaD_pcall(L, f_Ccall, &c, savestack(L, L->top), 0);
+    }
+    else
+    {
+        int status = luaD_pcall(L, f_Ccall, &c, savestack(L, L->top), 0);
 
-    adjustresults(L, 0);
-    return status;
+        adjustresults(L, 0);
+        return status;
+    }
 }
 
 int lua_status(lua_State* L)

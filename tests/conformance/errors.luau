@@ -139,7 +139,7 @@ X=2;assert(lineerror(p) == 1)
 
 lineerror = nil
 
-if not limitedstack then
+do
   C = 0
   -- local l = debug.getinfo(1, "l").currentline
   function y () C=C+1; y() end
@@ -264,7 +264,7 @@ local function f (x)
   end
 end
 
-if not limitedstack then
+do
   f(3)
 end
 

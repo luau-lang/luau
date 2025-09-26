@@ -20,6 +20,9 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
+LUAU_FASTFLAG(LuauIndividualRecursionLimits)
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
+
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
@@ -111,7 +114,7 @@ Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes,
     , scope(scope)
     , ice(ice)
     , limits(TypeCheckLimits{}) // TODO: typecheck limits in unifier2
-    , recursionLimit(FInt::LuauTypeInferRecursionLimit)
+    , recursionLimit(FFlag::LuauIndividualRecursionLimits ? DFInt::LuauUnifierRecursionLimit : FInt::LuauTypeInferRecursionLimit)
     , uninhabitedTypeFunctions(nullptr)
 {
 }
@@ -128,7 +131,7 @@ Unifier2::Unifier2(
     , scope(scope)
     , ice(ice)
     , limits(TypeCheckLimits{}) // TODO: typecheck limits in unifier2
-    , recursionLimit(FInt::LuauTypeInferRecursionLimit)
+    , recursionLimit(FFlag::LuauIndividualRecursionLimits ? DFInt::LuauUnifierRecursionLimit : FInt::LuauTypeInferRecursionLimit)
     , uninhabitedTypeFunctions(uninhabitedTypeFunctions)
 {
 }

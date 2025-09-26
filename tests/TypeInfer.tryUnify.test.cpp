@@ -13,7 +13,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauUnifierRecursionOnRestart);
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 struct TryUnifyFixture : Fixture
 {
@@ -276,7 +275,6 @@ TEST_CASE_FIXTURE(Fixture, "variadics_should_use_reversed_properly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
 
     CheckResult result = check(R"(
         --!strict

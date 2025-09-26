@@ -15,9 +15,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 using namespace Luau;
 
@@ -295,7 +293,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "mismatched_indexers")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "cyclic_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};    
     check(R"(
         type A = {method: (A) -> ()}
         local a: A
@@ -794,7 +791,6 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local Cyclic = {}
         function Cyclic.get()
@@ -855,7 +851,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_extern_types_with_intersect
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CHECK("{ @metatable *error-type*, {  } }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
 }
 
@@ -948,7 +943,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "extern_types_and_never")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CHECK("table" == toString(normal("{} | tbl")));
     CHECK("{  }" == toString(normal("{} & tbl")));
     CHECK("never" == toString(normal("number & tbl")));
@@ -1119,10 +1113,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true}, // Affects stringification of free types.
-        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true}; // Affects stringification of free types.
 
     TypeId freeTy = arena.freshType(getBuiltins(), getGlobalScope());
     TypeId orderA = arena.addType(IntersectionType{{freeTy, getBuiltins()->stringType}});
@@ -1133,7 +1124,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
     TypeId orderB = arena.addType(IntersectionType{{getBuiltins()->stringType, freeTy}});
     auto normB = normalize(orderB);
     REQUIRE(normB);
-    // Prior to LuauNormalizationReorderFreeTypeIntersect this became `never` :skull:
     CHECK_EQ("'a & string", toString(typeFromNormal(*normB)));
 }
 

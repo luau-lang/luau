@@ -132,4 +132,51 @@ passthroughcheckyield(passthroughCallArgReuse)
 passthroughcheckyield(passthroughCallVaradic)
 passthroughcheckyield(passthroughCallWithState)
 
+-- yieldable C function that acts as a pass-through (regular, pcall to Luau)
+local function nonyieldablepcall(x, y)
+    local status, result = pcall(nonyieldable, x, y)
+    assert(status)
+    return result
+end
+
+local function passthroughcheckpcall(f)
+    local x = f(nonyieldablepcall, 1, 2)
+    assert(x == 0.5)
+end
+
+passthroughcheckpcall(passthroughCall)
+passthroughcheckpcall(passthroughCallMoreResults)
+passthroughcheckpcall(passthroughCallArgReuse)
+passthroughcheckpcall(passthroughCallVaradic)
+passthroughcheckpcall(passthroughCallWithState)
+
+-- yieldable C function that acts as a pass-through (regular, pcall to C)
+local function nonyieldablepcallc(x, y)
+    local status, result = pcall(assert, x / y)
+    assert(status)
+    return result
+end
+
+local function passthroughcheckpcallc(f)
+    local x = f(nonyieldablepcallc, 1, 2)
+    assert(x == 0.5)
+end
+
+passthroughcheckpcallc(passthroughCall)
+passthroughcheckpcallc(passthroughCallMoreResults)
+passthroughcheckpcallc(passthroughCallArgReuse)
+passthroughcheckpcallc(passthroughCallVaradic)
+passthroughcheckpcallc(passthroughCallWithState)
+
+-- yieldable C function that acts as a pass-through (regular, direct pcall)
+local function passthroughcheckpcallcdirect(f)
+    local status, x = f(pcall, function(y) return 1 / y end, 2)
+    assert(status)
+    assert(x == 0.5)
+end
+
+-- only variadic functions are tested here because pcall returns status as well
+passthroughcheckpcallcdirect(passthroughCallVaradic)
+passthroughcheckpcallcdirect(passthroughCallWithState)
+
 return "OK"

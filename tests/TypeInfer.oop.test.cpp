@@ -17,7 +17,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
@@ -336,7 +335,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "flag_when_index_metamethod_returns_0_values"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatable")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local A = {number = 8}
 

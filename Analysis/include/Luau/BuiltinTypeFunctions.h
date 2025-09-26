@@ -9,6 +9,8 @@ namespace Luau
 struct BuiltinTypeFunctions
 {
     BuiltinTypeFunctions();
+    BuiltinTypeFunctions(const BuiltinTypeFunctions&) = delete;
+    void operator=(const BuiltinTypeFunctions&) = delete;
 
     TypeFunction userFunc;
 
@@ -51,6 +53,6 @@ struct BuiltinTypeFunctions
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };
 
-const BuiltinTypeFunctions& builtinTypeFunctions();
+const BuiltinTypeFunctions& builtinTypeFunctions_DEPRECATED();
 
 } // namespace Luau

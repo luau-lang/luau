@@ -186,6 +186,7 @@ struct Fixture
     LoadDefinitionFileResult loadDefinition(const std::string& source, bool forAutocomplete = false);
     // TODO: test theory about dynamic dispatch
     NotNull<BuiltinTypes> getBuiltins();
+    const BuiltinTypeFunctions& getBuiltinTypeFunctions();
     virtual Frontend& getFrontend();
 
 private:

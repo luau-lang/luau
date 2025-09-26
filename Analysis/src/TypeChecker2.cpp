@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauAddErrorCaseForIncompatibleTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauAddConditionalContextForTernary)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 
 namespace Luau
 {
@@ -3380,7 +3381,8 @@ bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location
 bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location location)
 {
     NotNull<Scope> scope{findInnermostScope(location)};
-    SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
+    SubtypingResult r = FFlag::LuauPassBindableGenericsByReference ? subtyping->isSubtype(subTy, superTy, scope, {})
+                                                                   : subtyping->isSubtype_DEPRECATED(subTy, superTy, scope);
 
     if (!isErrorSuppressing(location, subTy))
     {

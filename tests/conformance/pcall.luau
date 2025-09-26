@@ -56,14 +56,14 @@ checkresults({ true, 42 }, pcall(setmetatable({}, { __call = function(self, arg)
 checkerror(pcall(function() local a = nil / 5 end))
 checkerror(pcall(function() select(-100) end))
 
-if not limitedstack then
+do
 	-- complex error tests - stack overflow, and stack overflow through pcall
 	function stackinfinite() return stackinfinite() end
 	checkerror(pcall(stackinfinite))
 
 	function stackover() return pcall(stackover) end
 	local res = {pcall(stackover)}
-	assert(#res == 200) -- stack limit (MAXCCALLS) is 200
+	assert(#res == 10000) -- stack limit (LUAI_MAXCALLS is 20000 and we use 2 calls per recursion)
 end
 
 -- yield tests
@@ -292,7 +292,26 @@ if not limitedstack then
 		coroutine.wrap(foo)()   -- call another coroutine
 	end
 	checkerror(pcall(foo)) -- triggers C stack overflow
-	assert(count + 1 == 200) -- stack limit (MAXCCALLS) is 200, -1 for first pcall
+	assert(count == 200) -- stack limit (MAXCCALLS) is 200
+end
+
+-- protected and regular calls without C stack limit
+do
+	local function regularadd(depth: number, a: number, b: number): number
+		if depth == 0 then return 1 end
+
+		return a + regularadd(depth - 1, b, a + b)
+	end
+
+	local function protectedadd(depth: number, a: number, b: number): number
+		if depth == 0 then return 1 end
+
+		local result, s = pcall(protectedadd, depth - 1, b, a + b)
+		assert(result)
+		return a + s
+	end
+
+	assert(regularadd(2000, 0, 1) == protectedadd(2000, 0, 1))
 end
 
 return 'OK'
