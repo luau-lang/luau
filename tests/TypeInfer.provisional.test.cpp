@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
@@ -279,7 +278,6 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 // Just needs to fully support equality refinement. Which is annoying without type states.
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type T = {x: string, y: number} | {x: nil, y: nil}
 
@@ -536,7 +534,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
-    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
@@ -840,7 +837,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity_but_any_is
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t: {x: number?} = {x = nil}
 
@@ -966,7 +962,6 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
-    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;

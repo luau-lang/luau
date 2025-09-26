@@ -49,8 +49,9 @@ LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAGVARIABLE(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
-LUAU_FASTFLAG(LuauPushTypeConstraint)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
+LUAU_FASTFLAGVARIABLE(LuauIterableBindNotUnify)
 
 namespace Luau
 {
@@ -1088,8 +1089,16 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
 
     if (0 == iterator.head.size())
     {
-        for (TypeId ty : c.variables)
-            unify(constraint, builtinTypes->errorType, ty);
+        if (FFlag::LuauIterableBindNotUnify)
+        {
+            for (TypeId ty : c.variables)
+                bind(constraint, ty, builtinTypes->errorType);
+        }
+        else
+        {
+            for (TypeId ty : c.variables)
+                unify(constraint, builtinTypes->errorType, ty);
+        }
 
         return true;
     }
@@ -1642,48 +1651,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     return true;
 }
 
-struct ContainsGenerics_DEPRECATED : public TypeOnceVisitor
-{
-    DenseHashSet<const void*> generics{nullptr};
-
-    bool found = false;
-
-    ContainsGenerics_DEPRECATED()
-        : TypeOnceVisitor("ContainsGenerics_DEPRECATED", FFlag::LuauExplicitSkipBoundTypes)
-    {
-    }
-
-    bool visit(TypeId ty) override
-    {
-        return !found;
-    }
-
-    bool visit(TypeId ty, const GenericType&) override
-    {
-        found |= generics.contains(ty);
-        return true;
-    }
-
-    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
-    {
-        return !found;
-    }
-
-    bool visit(TypePackId tp, const GenericTypePack&) override
-    {
-        found |= generics.contains(tp);
-        return !found;
-    }
-
-    bool hasGeneric(TypeId ty)
-    {
-        traverse(ty);
-        auto ret = found;
-        found = false;
-        return ret;
-    }
-};
-
 namespace
 {
 struct ContainsGenerics : public TypeOnceVisitor
@@ -1844,11 +1811,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                     expectedArgTy = *res;
                 }
             }
-            if (FFlag::LuauPushTypeConstraint)
+            if (FFlag::LuauPushTypeConstraint2)
             {
                 Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
                 PushTypeResult result =
-                    pushTypeInto(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr);
+                    pushTypeInto(c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr);
 
                 // Consider:
                 //
@@ -2866,7 +2833,7 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
 
 bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    LUAU_ASSERT(FFlag::LuauPushTypeConstraint);
+    LUAU_ASSERT(FFlag::LuauPushTypeConstraint2);
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
     Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
 
@@ -2875,10 +2842,12 @@ bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Co
     if (isBlocked(c.expectedType))
     {
         block(c.expectedType, constraint);
-        return false;
+        // If we're forcing this constraint and the expected type is blocked, we
+        // should just bail.
+        return force;
     }
 
-    auto result = pushTypeInto(c.astTypes, c.astExpectedTypes, builtinTypes, arena, NotNull{&u2}, NotNull{&subtyping}, c.expectedType, c.expr);
+    auto result = pushTypeInto(c.astTypes, c.astExpectedTypes, NotNull{this}, NotNull{constraint}, NotNull{&u2}, NotNull{&subtyping}, c.expectedType, c.expr);
 
     // If we're forcing this constraint, just early exit: we can continue
     // inferring the rest of the file, we might just error when we shouldn't.

@@ -16,7 +16,6 @@ inline bool isAnalysisFlagExperimental(const char* flag)
         "LuauFixIndexerSubtypingOrdering",           // requires some small fixes to lua-apps code since this fixes a false negative
         "StudioReportLuauAny2",                      // takes telemetry data for usage of any types
         "LuauTableCloneClonesType3",                 // requires fixes in lua-apps code, terrifyingly
-        "LuauNormalizationReorderFreeTypeIntersect", // requires fixes in lua-apps code, also terrifyingly
         "LuauSolverV2",
         "UseNewLuauTypeSolverDefaultEnabled", // This can change the default solver used in cli applications, so it also needs to be disabled. Will
                                               // require fixes in lua-apps code

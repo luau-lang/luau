@@ -22,9 +22,9 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
+LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 
 namespace Luau
 {
@@ -2925,20 +2925,17 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     if (here.functions.parts.size() * there.functions.parts.size() >= size_t(FInt::LuauNormalizeIntersectionLimit))
         return NormalizationResult::HitLimits;
 
-    if (FFlag::LuauNormalizationReorderFreeTypeIntersect)
+    for (auto& [tyvar, inter] : there.tyvars)
     {
-        for (auto& [tyvar, inter] : there.tyvars)
+        int index = tyvarIndex(tyvar);
+        if (ignoreSmallerTyvars < index)
         {
-            int index = tyvarIndex(tyvar);
-            if (ignoreSmallerTyvars < index)
+            auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
+            if (fresh)
             {
-                auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
-                if (fresh)
-                {
-                    NormalizationResult res = unionNormals(*found->second, here, index);
-                    if (res != NormalizationResult::True)
-                        return res;
-                }
+                NormalizationResult res = unionNormals(*found->second, here, index);
+                if (res != NormalizationResult::True)
+                    return res;
             }
         }
     }
@@ -2954,24 +2951,6 @@ NormalizationResult Normalizer::intersectNormals(NormalizedType& here, const Nor
     here.buffers = (get<NeverType>(there.buffers) ? there.buffers : here.buffers);
     intersectFunctions(here.functions, there.functions);
     intersectTables(here.tables, there.tables);
-
-    if (!FFlag::LuauNormalizationReorderFreeTypeIntersect)
-    {
-        for (auto& [tyvar, inter] : there.tyvars)
-        {
-            int index = tyvarIndex(tyvar);
-            if (ignoreSmallerTyvars < index)
-            {
-                auto [found, fresh] = here.tyvars.emplace(tyvar, std::make_unique<NormalizedType>(NormalizedType{builtinTypes}));
-                if (fresh)
-                {
-                    NormalizationResult res = unionNormals(*found->second, here, index);
-                    if (res != NormalizationResult::True)
-                        return res;
-                }
-            }
-        }
-    }
 
     for (auto it = here.tyvars.begin(); it != here.tyvars.end();)
     {
@@ -3456,7 +3435,8 @@ bool isSubtype(
         {
             Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-            return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+            return FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype
+                                                              : subtyping.isSubtype_DEPRECATED(subPack, superPack, scope).isSubtype;
         }
         else
         {
@@ -3473,7 +3453,8 @@ bool isSubtype(
         {
             Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-            return subtyping.isSubtype(subPack, superPack, scope).isSubtype;
+            return FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype
+                                                              : subtyping.isSubtype_DEPRECATED(subPack, superPack, scope).isSubtype;
         }
         else
         {

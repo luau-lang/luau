@@ -11,13 +11,11 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauNormalizationReorderFreeTypeIntersect)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
@@ -692,10 +690,6 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
-    };
-
     CheckResult result = check(R"(
         local function f(a, b: string?)
             if a == b then
@@ -725,7 +719,6 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_equal")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function f(a: any, b: {x: number}?)
             if a ~= b then
@@ -854,7 +847,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_not_to_be_string")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function f(x: string | {x: number} | {y: boolean})
             if type(x) == "table" then
@@ -891,7 +883,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_can_filter_for_intersection_of_tables")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type XYCoord = {x: number} & {y: number}
         local function f(t: XYCoord?)
@@ -1046,7 +1037,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "either_number_or_string")
 
 TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local function f(t: {x: boolean}?)
             if not t or t.x then
@@ -1299,7 +1289,6 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
 
@@ -1434,7 +1423,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersect
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "discriminate_from_isa_of_x")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type T = {tag: "Part", x: Part} | {tag: "Folder", x: Folder}
 
@@ -2248,7 +2236,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauNoMoreComparisonTypeFunctions, true},
-        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
         {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
@@ -2269,7 +2256,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "check_refinement_to_primitive_and_compare")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauNoMoreComparisonTypeFunctions, true},
-        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
         {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
@@ -2287,7 +2273,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true},
-        {FFlag::LuauNormalizationReorderFreeTypeIntersect, true},
         {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
@@ -2355,7 +2340,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "mutate_prop_of_some_refined_symb
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_t_after_return_references_all_reachable_points")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t = {}
 

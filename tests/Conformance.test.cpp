@@ -46,6 +46,8 @@ LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
 LUAU_FASTFLAG(LuauCodeGenBetterBytecodeAnalysis)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
 LUAU_FASTFLAG(LuauCodeGenRestoreFromSplitStore)
+LUAU_FASTFLAG(LuauStacklessPcall)
+LUAU_FASTFLAG(LuauResumeFix)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -196,7 +198,7 @@ using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 static StateRef runConformance(
     const char* name,
     void (*setup)(lua_State* L) = nullptr,
-    void (*yield)(lua_State* L) = nullptr,
+    bool (*yield)(lua_State* L) = nullptr,
     lua_State* initialLuaState = nullptr,
     lua_CompileOptions* options = nullptr,
     bool skipCodegen = false,
@@ -291,8 +293,12 @@ static StateRef runConformance(
 
     while (yield && (status == LUA_YIELD || status == LUA_BREAK))
     {
-        yield(L);
-        status = lua_resume(L, nullptr, 0);
+        bool resumeError = yield(L);
+
+        if (resumeError)
+            status = lua_resumeerror(L, nullptr);
+        else
+            status = lua_resume(L, nullptr, 0);
     }
 
     luaC_validate(L);
@@ -739,6 +745,9 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
+    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
+    ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
+
     runConformance("errors.luau");
 }
 
@@ -838,6 +847,7 @@ static int cxxthrow(lua_State* L)
 TEST_CASE("PCall")
 {
     ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
+    ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
 
     runConformance(
         "pcall.luau",
@@ -1380,7 +1390,7 @@ TEST_CASE("Debugger")
             );
             lua_setglobal(L, "breakpoint");
         },
-        [](lua_State* L)
+        [](lua_State* L) -> bool
         {
             CHECK(breakhits % 2 == 1);
 
@@ -1478,6 +1488,8 @@ TEST_CASE("Debugger")
                 lua_resume(interruptedthread, nullptr, 0);
                 interruptedthread = nullptr;
             }
+
+            return false;
         },
         nullptr,
         &copts,
@@ -1514,7 +1526,7 @@ TEST_CASE("InterruptInspection")
                 skipbreak = !skipbreak;
             };
         },
-        [](lua_State* L)
+        [](lua_State* L) -> bool
         {
             // Debug info can be retrieved from every location
             lua_Debug ar = {};
@@ -1529,6 +1541,8 @@ TEST_CASE("InterruptInspection")
                 },
                 nullptr
             );
+
+            return false;
         },
         nullptr,
         nullptr,
@@ -1609,7 +1623,7 @@ TEST_CASE("NDebugGetUpValue")
     runConformance(
         "ndebug_upvalues.luau",
         nullptr,
-        [](lua_State* L)
+        [](lua_State* L) -> bool
         {
             lua_checkstack(L, LUA_MINSTACK);
 
@@ -1624,6 +1638,8 @@ TEST_CASE("NDebugGetUpValue")
             CHECK(strcmp(u, "") == 0);
             CHECK(lua_tointeger(L, -1) == 5);
             lua_pop(L, 2);
+
+            return false;
         },
         nullptr,
         &copts,
@@ -1855,6 +1871,8 @@ static int cpcallTest(lua_State* L)
 
 TEST_CASE("ApiCalls")
 {
+    ScopedFastFlag luauResumeFix{FFlag::LuauResumeFix, true};
+
     StateRef globalState = runConformance("apicalls.luau", nullptr, nullptr, lua_newstate(limitedRealloc, nullptr));
     lua_State* L = globalState.get();
 
@@ -1869,14 +1887,46 @@ TEST_CASE("ApiCalls")
         lua_pop(L, 1);
     }
 
+    // lua_call variadic
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L, 200);
+        lua_call(L, 1, LUA_MULTRET);
+        CHECK(lua_gettop(L) == 200);
+        lua_pop(L, 200);
+    }
+
     // lua_pcall
     {
         lua_getfield(L, LUA_GLOBALSINDEX, "add");
         lua_pushnumber(L, 40);
         lua_pushnumber(L, 2);
-        lua_pcall(L, 2, 1, 0);
+        int status = lua_pcall(L, 2, 1, 0);
+        CHECK(status == LUA_OK);
         CHECK(lua_isnumber(L, -1));
         CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
+
+    // lua_pcall variadic
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L, 200);
+        int status = lua_pcall(L, 1, LUA_MULTRET, 0);
+        CHECK(status == LUA_OK);
+        CHECK(lua_gettop(L) == 200);
+        lua_pop(L, 200);
+    }
+
+    // baselib pcall variadic
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "pcall");
+        lua_getfield(L, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L, 200);
+        lua_call(L, 2, LUA_MULTRET);
+        CHECK(lua_gettop(L) == 201);
+        lua_pop(L, 200);
+        CHECK(lua_toboolean(L, -1) == 1);
         lua_pop(L, 1);
     }
 
@@ -1923,6 +1973,46 @@ TEST_CASE("ApiCalls")
         lua_pop(L, LUAI_MAXCSTACK - 1);
     }
 
+    // lua_resume does not make thread yieldable
+    {
+        lua_State* L2 = lua_newthread(L);
+
+        lua_pushcclosurek(
+            L2,
+            [](lua_State* L)
+            {
+                CHECK(lua_isyieldable(L) == 0);
+                return 0;
+            },
+            nullptr,
+            0,
+            nullptr
+        );
+        lua_call(L2, 0, 0);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L2, 1);
+        int status = lua_resume(L2, nullptr, 1);
+        REQUIRE(status == LUA_OK);
+        CHECK(lua_gettop(L2) == 1);
+        lua_pop(L2, 1);
+
+        lua_pushcclosurek(
+            L2,
+            [](lua_State* L)
+            {
+                CHECK(lua_isyieldable(L) == 0);
+                return 0;
+            },
+            nullptr,
+            0,
+            nullptr
+        );
+        lua_call(L2, 0, 0);
+
+        lua_pop(L, 1);
+    }
+
     // lua_equal with a sleeping thread wake up
     {
         lua_State* L2 = lua_newthread(L);
@@ -1944,6 +2034,8 @@ TEST_CASE("ApiCalls")
 
         CHECK(lua_equal(L2, -1, -2) == 1);
         lua_pop(L2, 2);
+
+        lua_pop(L, 1);
     }
 
     // lua_clonefunction + fenv
@@ -2003,6 +2095,7 @@ TEST_CASE("ApiCalls")
         lua_getfield(L, LUA_GLOBALSINDEX, "largealloc");
         int res = lua_pcall(L, 0, 0, 0);
         CHECK(res == LUA_ERRMEM);
+        lua_pop(L, 1);
     }
 
     // lua_pcall on OOM with an error handler
@@ -2012,7 +2105,7 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRMEM);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "oops") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
 
     // lua_pcall on OOM with an error handler that errors
@@ -2022,7 +2115,7 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRERR);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "error in error handling") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
 
     // lua_pcall on OOM with an error handler that OOMs
@@ -2032,7 +2125,7 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRMEM);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "not enough memory") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
 
     // lua_pcall on error with an error handler that OOMs
@@ -2042,8 +2135,10 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRERR);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "error in error handling") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
+
+    CHECK(lua_gettop(L) == 0);
 }
 
 TEST_CASE("ApiAtoms")
@@ -2305,17 +2400,18 @@ TEST_CASE("TagMethodError")
     //   when doLuaBreak is true the test additionally calls lua_break to ensure breaking the debugger doesn't cause the VM to crash
     for (bool doLuaBreak : {false, true})
     {
-        expectedHits = {22, 32};
+        expectedHits = {37, 54, 73};
 
         static int index;
         static bool luaBreak;
         index = 0;
         luaBreak = doLuaBreak;
 
-        // 'yieldCallback' doesn't do anything, but providing the callback to runConformance
-        // ensures that the call to lua_break doesn't cause an error to be generated because
-        // runConformance doesn't expect the VM to be in the state LUA_BREAK.
-        auto yieldCallback = [](lua_State* L) {};
+        // To restore from a protected error break, we return 'true' so that test runner will use lua_resumeerror
+        auto yieldCallback = [](lua_State* L) -> bool
+        {
+            return true;
+        };
 
         runConformance(
             "tmerror.luau",

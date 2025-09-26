@@ -421,9 +421,10 @@ int main(int argc, char** argv)
 
         checkedModules = frontend.checkQueuedModules(
             std::nullopt,
-            [&](std::function<void()> f)
+            [&](std::vector<std::function<void()>> tasks)
             {
-                scheduler.push(std::move(f));
+                for (auto& task : tasks)
+                    scheduler.push(std::move(task));
             }
         );
     }

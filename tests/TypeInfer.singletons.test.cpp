@@ -8,8 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauPushTypeConstraint)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -292,7 +291,6 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
 
 TEST_CASE_FIXTURE(Fixture, "table_has_a_boolean")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t={a=1,b=false}
     )");
@@ -399,7 +397,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
-    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
 
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
@@ -678,7 +676,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_union_in_ternary")
 
 TEST_CASE_FIXTURE(Fixture, "table_literal_with_singleton_union_values")
 {
-    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
 
     CheckResult result = check(R"(
         local t1: {[string]: "a" | "b"} = { a = "a", b = "b" }
@@ -691,7 +689,7 @@ TEST_CASE_FIXTURE(Fixture, "table_literal_with_singleton_union_values")
 
 TEST_CASE_FIXTURE(Fixture, "singleton_type_mismatch_via_variable")
 {
-    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
 
     CheckResult result = check(R"(
         local c = "c"
@@ -711,7 +709,7 @@ TEST_CASE_FIXTURE(Fixture, "singleton_type_mismatch_via_variable")
 
 TEST_CASE_FIXTURE(Fixture, "cli_163481_any_indexer_pushes_type")
 {
-    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict

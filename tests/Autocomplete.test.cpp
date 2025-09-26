@@ -16,11 +16,12 @@
 
 #include <map>
 
+LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
+
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIncludeBreakContinueStatements)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
@@ -2203,7 +2204,6 @@ local abc = bar(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_sealed_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
 
     check(R"(
 local function f(a: { x: number, y: number }) return a.x + a.y end
@@ -3908,6 +3908,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
         return;
 
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
+    ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, 10};
 
     const int parts = 100;
     std::string source;

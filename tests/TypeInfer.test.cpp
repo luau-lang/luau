@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 #include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -13,6 +14,9 @@
 #include "doctest.h"
 
 #include <algorithm>
+
+LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
+LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
 LUAU_FASTFLAG(LuauSolverV2)
@@ -422,6 +426,8 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+    ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+    ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(rep("do ", limit) + "local a = 1" + rep(" end", limit));
 
@@ -440,6 +446,8 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #endif
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+    ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+    ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
@@ -2630,6 +2638,7 @@ TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
     ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoConstraintGenRecursionLimitIce, true}};
     // Lowers the recursion limit for the constraint generator
     ScopedFastInt i{FInt::LuauCheckRecursionLimit, 5};
+    ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, 5};
 
     // This shouldn't ICE
     CheckResult result = check(R"(

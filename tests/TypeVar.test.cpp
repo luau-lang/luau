@@ -11,7 +11,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("TypeTests");
 
@@ -221,7 +220,6 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_only_cyclic_union")
  */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     Type ftv11{FreeType{TypeLevel{}, getBuiltins()->neverType, getBuiltins()->unknownType}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};

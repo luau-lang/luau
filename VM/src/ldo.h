@@ -45,16 +45,27 @@
 #define saveci(L, p) ((char*)(p) - (char*)L->base_ci)
 #define restoreci(L, n) ((CallInfo*)((char*)L->base_ci + (n)))
 
+#define isyielded(L) ((L)->status == LUA_YIELD || (L)->status == LUA_BREAK || (L)->status == SCHEDULED_REENTRY)
+
 // results from luaD_precall
 #define PCRLUA 0   // initiated a call to a Lua function
 #define PCRC 1     // did a call to a C function
 #define PCRYIELD 2 // C function yielded
+
+// return value for a yielded C call
+#define C_CALL_YIELD -1
+
+// luaD_call can 'yield' into an immediate reentry
+// reentry will remove extra call frames from C call stack and continue execution
+// this lua_State::status code is internal and should not be used by users
+#define SCHEDULED_REENTRY 0x7f
 
 // type of protected functions, to be ran by `runprotected'
 typedef void (*Pfunc)(lua_State* L, void* ud);
 
 LUAI_FUNC CallInfo* luaD_growCI(lua_State* L);
 
+LUAI_FUNC void luaD_callint(lua_State* L, StkId func, int nresults, bool forreentry);
 LUAI_FUNC void luaD_call(lua_State* L, StkId func, int nresults);
 LUAI_FUNC void luaD_callny(lua_State* L, StkId func, int nresults);
 LUAI_FUNC int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t oldtop, ptrdiff_t ef);

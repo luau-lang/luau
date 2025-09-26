@@ -23,9 +23,10 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
-LUAU_FASTFLAG(LuauPushTypeConstraint)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauMorePreciseExternTableRelation)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
+LUAU_FASTFLAGVARIABLE(LuauExternTableIndexersIntersect)
 
 namespace Luau
 {
@@ -269,6 +270,11 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen);
 
 Relation relateTableToExternType(const TableType* table, const ExternType* cls, SimplifierSeenSet& seen)
 {
+    // If either the table or the extern type have an indexer, just bail.
+    // There's rapidly diminishing returns on doing something smart for
+    // indexers compared to refining exact members.
+    if (FFlag::LuauExternTableIndexersIntersect && (table->indexer || cls->indexer))
+        return Relation::Intersects;
 
     for (auto& [name, prop] : table->props)
     {
@@ -472,7 +478,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
 
     if (auto ut = get<UnionType>(left))
     {
-        if (FFlag::LuauPushTypeConstraint)
+        if (FFlag::LuauPushTypeConstraint2)
         {
             for (TypeId part : ut)
             {
