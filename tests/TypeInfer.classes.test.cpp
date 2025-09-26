@@ -16,7 +16,8 @@ using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauMorePreciseExternTableRelation)
-LUAU_FASTFLAG(LuauPushTypeConstraint)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
+LUAU_FASTFLAG(LuauExternTableIndexersIntersect)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -1046,7 +1047,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraint, true},
+        {FFlag::LuauPushTypeConstraint2, true},
         {FFlag::LuauMorePreciseExternTableRelation, true},
     };
 
@@ -1089,6 +1090,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauMorePreciseExternTableRelation, true},
+        {FFlag::LuauExternTableIndexersIntersect, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(obj: { [any]: any }, functionName: string)
+            if typeof(obj) == "userdata" then
+                local _ = obj[functionName]
+            end
+        end
+    )"));
+
+    CHECK_EQ("class & { [any]: any }", toString(requireTypeAtPosition({3, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauMorePreciseExternTableRelation, true},
+        {FFlag::LuauExternTableIndexersIntersect, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Foobar with
+            [string]: unknown
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function update(obj: Foobar)
+            assert(typeof(obj.Baz) == "number")
+            return obj
+        end
+    )"));
+
+    CHECK_EQ("(Foobar) -> Foobar & { read Baz: number }", toString(requireType("update")));
 }
 
 TEST_SUITE_END();

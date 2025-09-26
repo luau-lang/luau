@@ -18,7 +18,6 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 
@@ -408,17 +407,7 @@ struct ErrorConverter
         auto it = mtt->props.find("__call");
         if (it != mtt->props.end())
         {
-            if (FFlag::LuauSolverAgnosticStringification)
-            {
-                return it->second.readTy;
-            }
-            else
-            {
-                if (FFlag::LuauSolverV2)
-                    return it->second.readTy;
-                else
-                    return it->second.type_DEPRECATED();
-            }
+            return it->second.readTy;
         }
         else
             return std::nullopt;

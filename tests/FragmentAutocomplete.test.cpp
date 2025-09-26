@@ -27,7 +27,6 @@ using namespace Luau;
 LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauPopulateSelfTypesInFragment)
 LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
@@ -1614,7 +1613,6 @@ TEST_SUITE_BEGIN("FragmentAutocompleteTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_fragment_autocomplete")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -2991,7 +2989,6 @@ end)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -4573,6 +4570,69 @@ end
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "bidirectionally_inferred_table_member")
+{
+    std::string source = R"(
+type Foo = { foo1: string, bar1: number }
+type Bar = { foo2: boolean, bar2: string }
+type Baz = { foo3: number, bar3: boolean }
+
+local X: Foo & Bar & Baz = {}
+)";
+
+    std::string dest = R"(
+type Foo = { foo1: string, bar1: number }
+type Bar = { foo2: boolean, bar2: string }
+type Baz = { foo3: number, bar3: boolean }
+
+local X: Foo & Bar & Baz = { f@1 }
+
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("foo1") > 0);
+            CHECK(result.result->acResults.entryMap.count("foo2") > 0);
+            CHECK(result.result->acResults.entryMap.count("foo3") > 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "oss_1850")
+{
+    std::string source = R"(
+type t = { name: "t", } | { name: "ts", person: "dog" }
+
+local t:t
+if t.name == "ts" then
+end
+    )";
+    std::string dest = R"(
+type t = { name: "t", } | { name: "ts", person: "dog" }
+
+local t:t
+if t.name == "ts" then
+    t.@1
+end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("name") > 0);
+            CHECK(result.result->acResults.entryMap.count("person") > 0);
         }
     );
 }

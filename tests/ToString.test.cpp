@@ -14,10 +14,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
-LUAU_FASTFLAG(LuauSolverAgnosticSetType)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -49,7 +47,6 @@ TEST_CASE_FIXTURE(Fixture, "bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "free_types")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     CheckResult result = check("local a");
@@ -60,7 +57,6 @@ TEST_CASE_FIXTURE(Fixture, "free_types")
 
 TEST_CASE_FIXTURE(Fixture, "free_types_stringify_the_same_regardless_of_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TypeArena a;
     TypeId t =
         a.addType(FreeType{getFrontend().globals.globalScope.get(), getFrontend().builtinTypes->neverType, getFrontend().builtinTypes->unknownType});
@@ -70,7 +66,6 @@ TEST_CASE_FIXTURE(Fixture, "free_types_stringify_the_same_regardless_of_solver")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     Type cyclicTable{TypeVariant(TableType())};
     TableType* tableOne = getMutable<TableType>(&cyclicTable);
     tableOne->props["self"] = {&cyclicTable};
@@ -89,7 +84,6 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
 
 TEST_CASE_FIXTURE(Fixture, "empty_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local a: {}
     )");
@@ -104,7 +98,6 @@ TEST_CASE_FIXTURE(Fixture, "empty_table")
 
 TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local a: { prop: string, anotherProp: number, thirdProp: boolean }
     )");
@@ -146,7 +139,6 @@ TEST_CASE_FIXTURE(Fixture, "long_disjunct_of_nil_is_nil_not_question_mark")
 
 TEST_CASE_FIXTURE(Fixture, "metatable")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     Type table{TypeVariant(TableType())};
     Type metatable{TypeVariant(TableType())};
     Type mtv{TypeVariant(MetatableType{&table, &metatable})};
@@ -180,10 +172,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverAgnosticStringification, true},
-        {FFlag::LuauSolverAgnosticSetType, true},
-    };
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -337,7 +325,6 @@ TEST_CASE_FIXTURE(Fixture, "complex_unions_printed_on_multiple_lines")
 
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TableType ttv{};
     for (char c : std::string("abcdefghijklmno"))
         ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
@@ -352,7 +339,6 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaustive")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TableType ttv{};
     for (char c : std::string("abcdefg"))
         ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
@@ -367,7 +353,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaust
 
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         function f0() end
         function f1(f) return f or f0 end
@@ -437,7 +422,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TableType ttv{TableState::Sealed, TypeLevel{}};
     for (char c : std::string("abcdefghij"))
         ttv.props[std::string(1, c)] = {getBuiltins()->numberType};
@@ -471,7 +455,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_intersection_type_bails_early")
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TableType ttv{TableState::Sealed, TypeLevel{}};
     ttv.indexer = TableIndexer{getBuiltins()->numberType, getBuiltins()->stringType};
 
@@ -618,7 +601,6 @@ function foo(a, b) return a(b) end
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     Type tv1{TableType{}};
     TableType* ttv = getMutable<TableType>(&tv1);
     ttv->state = TableState::Sealed;
@@ -862,7 +844,6 @@ TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
 
 TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         --!strict
         function f1(t: {a : number, b: string, c: {d: string}}) : {a : number, b : string, c : { d : number}}
@@ -935,7 +916,6 @@ TEST_CASE_FIXTURE(Fixture, "read_only_properties")
 
 TEST_CASE_FIXTURE(Fixture, "cycle_rooted_in_a_pack")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     TypeArena arena;
 
     TypePackId thePack = arena.addTypePack({getBuiltins()->numberType, getBuiltins()->numberType});

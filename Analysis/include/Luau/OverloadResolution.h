@@ -107,6 +107,18 @@ private:
         std::optional<TypeId> failedSubTy,
         std::optional<TypeId> failedSuperTy
     ) const;
+
+    // Checks if the candidate args are arity-compatible with the desired parameters.
+    // Used during overload selection to do arity-based filtering of overloads.
+    // We do not accept nil in place of a generic unless that generic is explicitly optional.
+    bool isArityCompatible(TypePackId candidate, TypePackId desired, NotNull<BuiltinTypes> builtinTypes) const;
+
+    bool testFunctionTypeForOverloadSelection(
+        const FunctionType* ftv,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes,
+        TypePackId argsPack,
+        bool useFreeTypeBounds
+    );
 };
 
 struct SolveResult

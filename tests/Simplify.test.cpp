@@ -683,4 +683,14 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
     CHECK("{ read x: Child } & { x: Parent }" == toString(intersect(leftTy, rightTy)));
 }
 
+TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
+{
+    TypeId emptyTable = arena->addType(TableType{});
+    TableType nonEmpty;
+    nonEmpty.props["p"] = arena->addType(UnionType{{getBuiltins()->numberType, getBuiltins()->stringType}});
+    TypeId nonEmptyTable = arena->addType(std::move(nonEmpty));
+    // FIXME CLI-170522: This is wrong.
+    CHECK("never" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
+}
+
 TEST_SUITE_END();

@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 
 using namespace Luau;
 
@@ -75,6 +76,7 @@ struct SubtypeFixture : Fixture
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff1{FFlag::LuauPassBindableGenericsByReference, true};
 
     ScopePtr rootScope{new Scope(getBuiltins()->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -198,7 +200,7 @@ struct SubtypeFixture : Fixture
 
     SubtypingResult isSubtype(TypePackId subTy, TypePackId superTy)
     {
-        return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()});
+        return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()}, {});
     }
 
     TypeId helloType = arena.addType(SingletonType{StringSingleton{"hello"}});

@@ -269,7 +269,9 @@ struct Subtyping
     // TODO recursion limits
 
     SubtypingResult isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope);
-    SubtypingResult isSubtype(
+    SubtypingResult isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, const std::vector<TypeId>& bindableGenerics);
+    // Clip with FFlagLuauPassBindableGenericsByReference
+    SubtypingResult isSubtype_DEPRECATED(
         TypePackId subTp,
         TypePackId superTp,
         NotNull<Scope> scope,

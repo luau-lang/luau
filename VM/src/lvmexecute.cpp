@@ -140,7 +140,7 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
     ptrdiff_t ci_top = savestack(L, L->ci->top);
     int status = L->status;
 
-    // if the hook is called externally on a paused thread, we need to make sure the paused thread can emit Lua calls
+    // if the hook is called externally on a paused thread, we need to make sure the paused thread can emit Luau calls
     if (status == LUA_YIELD || status == LUA_BREAK)
     {
         L->status = 0;

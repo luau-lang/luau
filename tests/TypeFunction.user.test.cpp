@@ -9,7 +9,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauTypeFunNoScopeMapRef)
 LUAU_FASTFLAG(LuauInstantiateResolvedTypeFunctions)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -2447,7 +2446,6 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_fuzz_environment_scope_crash")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag luauTypeFunNoScopeMapRef{FFlag::LuauTypeFunNoScopeMapRef, true};
 
     CheckResult result = check(R"(
 local _, running = ...

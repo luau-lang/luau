@@ -336,6 +336,9 @@ bool isApproximatelyTruthyType(TypeId ty);
 // Unwraps any grouping expressions iteratively.
 AstExpr* unwrapGroup(AstExpr* expr);
 
+// Returns true if ty is optional, ie if it is a supertype of nil
+bool isOptionalType(TypeId ty, NotNull<BuiltinTypes> builtinTypes);
+
 // These are magic types used in `TypeChecker2` and `NonStrictTypeChecker`
 //
 // `_luau_print` causes it's argument to be printed out, as in:

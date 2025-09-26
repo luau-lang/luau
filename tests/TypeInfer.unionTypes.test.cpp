@@ -10,8 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-
 TEST_SUITE_BEGIN("UnionTypes");
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_union_with_one_part_assertion")
@@ -403,7 +401,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors")
 
 TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type A = { x: number } & { y: number }
         function f(a: A?)
@@ -524,7 +521,6 @@ local oh : boolean = t.y
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
