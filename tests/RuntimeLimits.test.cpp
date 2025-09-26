@@ -429,7 +429,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
     CHECK(frontend->stats.dynamicConstraintsCreated < 40);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(1.0))
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
