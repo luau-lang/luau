@@ -47,6 +47,7 @@ LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAGVARIABLE(LuauBatchedExecuteTask)
+LUAU_FASTFLAGVARIABLE(LuauAccumulateErrorsInOrder)
 
 namespace Luau
 {
@@ -286,18 +287,39 @@ ErrorVec accumulateErrors(
 
         Module& module = *modulePtr;
 
-        std::sort(
-            module.errors.begin(),
-            module.errors.end(),
-            [](const TypeError& e1, const TypeError& e2) -> bool
-            {
-                return e1.location.begin > e2.location.begin;
-            }
-        );
+        if (FFlag::LuauAccumulateErrorsInOrder)
+        {
+            size_t prevSize = result.size();
 
-        result.insert(result.end(), module.errors.begin(), module.errors.end());
+            // Append module errors in reverse order
+            result.insert(result.end(), module.errors.rbegin(), module.errors.rend());
+
+            // Sort them in the reverse order as well
+            std::stable_sort(
+                result.begin() + prevSize,
+                result.end(),
+                [](const TypeError& e1, const TypeError& e2) -> bool
+                {
+                    return e1.location.begin > e2.location.begin;
+                }
+            );
+        }
+        else
+        {
+            std::sort(
+                module.errors.begin(),
+                module.errors.end(),
+                [](const TypeError& e1, const TypeError& e2) -> bool
+                {
+                    return e1.location.begin > e2.location.begin;
+                }
+            );
+
+            result.insert(result.end(), module.errors.begin(), module.errors.end());
+        }
     }
 
+    // Now we reverse errors from all modules and since they were inserted and sorted in reverse, it should be in order
     std::reverse(result.begin(), result.end());
 
     return result;

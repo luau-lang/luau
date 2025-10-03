@@ -24,7 +24,9 @@ LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
+LUAU_FASTFLAGVARIABLE(LuauImproveNormalizeExternTypeCheck)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAGVARIABLE(LuauNormalizerUnionTyvarsTakeMaxSize)
 
 namespace Luau
 {
@@ -144,7 +146,8 @@ bool NormalizedFunctionType::isNever() const
 }
 
 NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
-    : tops(builtinTypes->neverType)
+    : builtinTypes(builtinTypes)
+    , tops(builtinTypes->neverType)
     , booleans(builtinTypes->neverType)
     , errors(builtinTypes->neverType)
     , nils(builtinTypes->neverType)
@@ -170,10 +173,21 @@ bool NormalizedType::isUnknown() const
     {
         if (auto ct = get<ExternType>(t))
         {
-            if (ct->name == "class" && disj.empty())
+            if (FFlag::LuauImproveNormalizeExternTypeCheck)
             {
-                isTopExternType = true;
-                break;
+                if (t == builtinTypes->externType && disj.empty())
+                {
+                    isTopExternType = true;
+                    break;
+                }
+            }
+            else
+            {
+                if (ct->name == "userdata" && disj.empty())
+                {
+                    isTopExternType = true;
+                    break;
+                }
             }
         }
     }
@@ -1539,8 +1553,17 @@ NormalizationResult Normalizer::unionNormals(NormalizedType& here, const Normali
         return NormalizationResult::True;
     }
 
-    if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
-        return NormalizationResult::HitLimits;
+    if (FFlag::LuauNormalizerUnionTyvarsTakeMaxSize)
+    {
+        auto maxSize = std::max(here.tyvars.size(), there.tyvars.size());
+        if (maxSize * maxSize >= size_t(FInt::LuauNormalizeUnionLimit))
+            return NormalizationResult::HitLimits;
+    }
+    else
+    {
+        if (here.tyvars.size() * there.tyvars.size() >= size_t(FInt::LuauNormalizeUnionLimit))
+            return NormalizationResult::HitLimits;
+    }
 
     for (auto it = there.tyvars.begin(); it != there.tyvars.end(); it++)
     {

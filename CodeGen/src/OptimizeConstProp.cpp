@@ -23,8 +23,8 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
-LUAU_FASTFLAG(LuauCodegenDirectCompare)
+LUAU_FASTFLAG(LuauCodegenDirectCompare2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNilStoreInvalidateValue2)
 
 namespace Luau
 {
@@ -64,7 +64,7 @@ struct NumberedInstruction
 
 static uint8_t tryGetTagForTypename(std::string_view name, bool forTypeof)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
 
     if (name == "nil")
         return LUA_TNIL;
@@ -730,9 +730,19 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 std::tie(activeLoadCmd, activeLoadValue) = state.getPreviousVersionedLoadForTag(value, source);
 
                 if (state.tryGetTag(source) == value)
+                {
                     kill(function, inst);
+                }
                 else
+                {
                     state.saveTag(source, value);
+
+                    // Storing 'nil' implicitly kills the known value in the register
+                    // This is required for dead store elimination to correctly establish tag+value pairs as it treats 'nil' write as a full TValue
+                    // store
+                    if (FFlag::LuauCodegenNilStoreInvalidateValue2 && value == LUA_TNIL)
+                        state.invalidateValue(source);
+                }
             }
             else
             {
@@ -1371,16 +1381,15 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.substituteOrRecord(inst, index);
         break;
     case IrCmd::CMP_INT:
-        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
         break;
     case IrCmd::CMP_ANY:
         state.invalidateUserCall();
         break;
     case IrCmd::CMP_TAG:
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
         break;
     case IrCmd::CMP_SPLIT_TVALUE:
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
 
         if (function.proto)
         {
@@ -1419,7 +1428,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::JUMP:
         break;
     case IrCmd::JUMP_EQ_POINTER:
-        if (FFlag::LuauCodegenDirectCompare && function.proto)
+        if (FFlag::LuauCodegenDirectCompare2 && function.proto)
         {
             // Try to find pattern like type(x) == 'tagname' or typeof(x) == 'tagname'
             if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Inst)
@@ -1890,7 +1899,18 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     constPropInBlock(build, startingBlock, state);
 
     // Verify that target hasn't changed
-    CODEGEN_ASSERT(function.instructions[startingBlock.finish].a.index == targetBlockIdx);
+    if (FFlag::LuauCodegenNilStoreInvalidateValue2)
+    {
+        if (function.instructions[startingBlock.finish].a.index != targetBlockIdx)
+        {
+            CODEGEN_ASSERT(!"Running same optimization pass on the linear chain head block changed the jump target");
+            return;
+        }
+    }
+    else
+    {
+        CODEGEN_ASSERT(function.instructions[startingBlock.finish].a.index == targetBlockIdx);
+    }
 
     // Note: using startingBlock after this line is unsafe as the reference may be reallocated by build.block() below
     const uint32_t startingSortKey = startingBlock.sortkey;

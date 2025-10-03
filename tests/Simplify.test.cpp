@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauSimplifyRefinementOfReadOnlyProperty)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
@@ -624,8 +623,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "cyclic_never_union_and_string")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "any & (error | string)")
 {
-    ScopedFastFlag sff{FFlag::LuauSimplifyAnyAndUnion, true};
-
     TypeId errStringTy = arena->addType(UnionType{{getBuiltins()->errorType, getBuiltins()->stringType}});
 
     auto res = intersect(builtinTypes->anyType, errStringTy);
@@ -635,8 +632,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "any & (error | string)")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "(error | string) & any")
 {
-    ScopedFastFlag sff{FFlag::LuauSimplifyAnyAndUnion, true};
-
     TypeId errStringTy = arena->addType(UnionType{{getBuiltins()->errorType, getBuiltins()->stringType}});
 
     auto res = intersect(errStringTy, builtinTypes->anyType);

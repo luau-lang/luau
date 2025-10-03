@@ -9,6 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
+LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -726,5 +727,25 @@ TEST_CASE_FIXTURE(Fixture, "cli_163481_any_indexer_pushes_type")
         }
     )"));
 }
+
+TEST_CASE_FIXTURE(Fixture, "oss_2010")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintSingleton, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo<T>(my_enum: "" | T): T
+            return my_enum :: T
+        end
+
+        local var = foo("meow")
+    )"));
+
+    CHECK_EQ("\"meow\"", toString(requireType("var")));
+}
+
 
 TEST_SUITE_END();

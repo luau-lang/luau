@@ -58,12 +58,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expectedWithNewSolver = R"(
+    const std::string expectedWithNewSolver =
+        R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
+                local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|string|thread|buffer|table)=a
             end
         end
     )";

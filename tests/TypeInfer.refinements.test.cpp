@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauAddConditionalContextForTernary)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
 
@@ -521,13 +522,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    if (FFlag::LuauSolverV2 && FFlag::LuauConsiderErrorSuppressionInTypes)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
-    CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
+        CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
-    CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
+        CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
+
+        CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
+        CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")

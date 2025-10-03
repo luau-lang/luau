@@ -52,6 +52,7 @@ LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
 LUAU_FASTFLAGVARIABLE(LuauIterableBindNotUnify)
+LUAU_FASTFLAGVARIABLE(LuauAvoidOverloadSelectionForFunctionType)
 
 namespace Luau
 {
@@ -1579,10 +1580,15 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     if (FFlag::LuauTrackUniqueness && c.callSite)
         findUniqueTypes(NotNull{&uniqueTypes}, c.callSite->args, NotNull{&module->astTypes});
 
-    auto [status, overload] = resolver.selectOverload(fn, argsPack, NotNull{&uniqueTypes}, /*useFreeTypeBounds*/ force);
     TypeId overloadToUse = fn;
-    if (status == OverloadResolver::Analysis::Ok)
-        overloadToUse = overload;
+    // NOTE: This probably ends up capturing union types as well, but
+    // that should be fairly uncommon.
+    if (!FFlag::LuauAvoidOverloadSelectionForFunctionType || !is<FunctionType>(fn))
+    {
+        auto [status, overload] = resolver.selectOverload(fn, argsPack, NotNull{&uniqueTypes}, /*useFreeTypeBounds*/ force);
+        if (status == OverloadResolver::Analysis::Ok)
+            overloadToUse = overload;
+    }
 
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, c.result});
     Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};

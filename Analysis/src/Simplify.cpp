@@ -21,12 +21,12 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAGVARIABLE(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauMorePreciseExternTableRelation)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
 LUAU_FASTFLAGVARIABLE(LuauExternTableIndexersIntersect)
+LUAU_FASTFLAGVARIABLE(LuauSimplifyMoveTableProps)
 
 namespace Luau
 {
@@ -1467,11 +1467,25 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 
             if (areDisjoint)
             {
-                TableType::Props mergedProps = lt->props;
-                for (const auto& [name, rightProp] : rt->props)
-                    mergedProps[name] = rightProp;
 
-                return arena->addType(TableType{mergedProps, std::nullopt, TypeLevel{}, lt->scope, TableState::Sealed});
+                if (FFlag::LuauSimplifyMoveTableProps)
+                {
+                    TableType merged{TableState::Sealed, TypeLevel{}, lt->scope};
+                    merged.props = lt->props;
+
+                    for (const auto& [name, rightProp] : rt->props)
+                        merged.props[name] = rightProp;
+
+                    return arena->addType(std::move(merged));
+                }
+                else
+                {
+                    TableType::Props mergedProps = lt->props;
+                    for (const auto& [name, rightProp] : rt->props)
+                        mergedProps[name] = rightProp;
+
+                    return arena->addType(TableType{mergedProps, std::nullopt, TypeLevel{}, lt->scope, TableState::Sealed});
+                }
             }
         }
 
@@ -1527,9 +1541,9 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
         return right;
     if (get<UnknownType>(right) && !get<ErrorType>(left))
         return left;
-    if (FFlag::LuauSimplifyAnyAndUnion && get<AnyType>(left) && get<UnionType>(right))
+    if (get<AnyType>(left) && get<UnionType>(right))
         return union_(builtinTypes->errorType, right);
-    if (FFlag::LuauSimplifyAnyAndUnion && get<UnionType>(left) && get<AnyType>(right))
+    if (get<UnionType>(left) && get<AnyType>(right))
         return union_(builtinTypes->errorType, left);
     if (get<AnyType>(left))
         return arena->addType(UnionType{{right, builtinTypes->errorType}});

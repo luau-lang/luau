@@ -8,6 +8,7 @@
 #include "Luau/UnifierSharedState.h"
 
 LUAU_FASTFLAG(LuauFilterOverloadsByArity)
+LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
 

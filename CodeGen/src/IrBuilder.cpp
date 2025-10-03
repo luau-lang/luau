@@ -12,7 +12,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenDirectCompare)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDirectCompare2)
 
 namespace Luau
 {
@@ -381,7 +381,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpX(*this, pc, i);
         break;
     case LOP_JUMPXEQKNIL:
-        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        if (FFlag::LuauCodegenDirectCompare2 && isDirectCompare(function.proto, pc, i))
         {
             translateInstJumpxEqNilShortcut(*this, pc, i);
 
@@ -394,7 +394,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpxEqNil(*this, pc, i);
         break;
     case LOP_JUMPXEQKB:
-        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        if (FFlag::LuauCodegenDirectCompare2 && isDirectCompare(function.proto, pc, i))
         {
             translateInstJumpxEqBShortcut(*this, pc, i);
 
@@ -407,7 +407,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpxEqB(*this, pc, i);
         break;
     case LOP_JUMPXEQKN:
-        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        if (FFlag::LuauCodegenDirectCompare2 && isDirectCompare(function.proto, pc, i))
         {
             translateInstJumpxEqNShortcut(*this, pc, i);
 
@@ -420,7 +420,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpxEqN(*this, pc, i);
         break;
     case LOP_JUMPXEQKS:
-        if (FFlag::LuauCodegenDirectCompare && isDirectCompare(function.proto, pc, i))
+        if (FFlag::LuauCodegenDirectCompare2 && isDirectCompare(function.proto, pc, i))
         {
             translateInstJumpxEqSShortcut(*this, pc, i);
 
