@@ -35,6 +35,7 @@ LUAU_FASTFLAG(LuauSimplifyIntersectionForLiteralSubtypeCheck)
 LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAG(LuauFilterOverloadsByArity)
+LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6051,6 +6052,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1924")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintSingleton, true},
     };
 
     CheckResult result = check(R"(
@@ -6063,7 +6065,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1924")
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("\"s\"", toString(err->wantedType));
-    CHECK_EQ("string", toString(err->givenType));
+    CHECK_EQ("\"t\"", toString(err->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_167052")

@@ -1108,7 +1108,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
         end
     )"));
 
-    CHECK_EQ("class & { [any]: any }", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("userdata & { [any]: any }", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")

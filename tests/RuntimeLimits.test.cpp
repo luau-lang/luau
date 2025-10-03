@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIceLess)
-LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauLimitUnification)
@@ -293,11 +292,7 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(1.0))
 {
     ScopedFastFlag sff[] = {
-        // These flags are required to surface the problem.
         {FFlag::LuauSolverV2, true},
-
-        // And this flag is the one that fixes it.
-        {FFlag::LuauSimplifyAnyAndUnion, true},
     };
 
     constexpr const char* src = R"LUAU(

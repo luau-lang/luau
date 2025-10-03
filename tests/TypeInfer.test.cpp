@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
+LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
 
@@ -2738,6 +2739,23 @@ export type t12 = {
 	pb:number
 }
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_error")
+{
+    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
+    CheckResult result = check(R"(
+--!strict
+local function f(u: string) end
+
+local t: {[any]: any} = {}
+
+for k in t do
+	f(k)
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

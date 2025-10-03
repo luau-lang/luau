@@ -36,14 +36,12 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
-LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
+LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp)
 LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
-LUAU_FASTFLAG(LuauCodeGenBetterBytecodeAnalysis)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
 LUAU_FASTFLAG(LuauCodeGenRestoreFromSplitStore)
 LUAU_FASTFLAG(LuauStacklessPcall)
@@ -1167,10 +1165,9 @@ TEST_CASE("VectorLibrary")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauTypeCheckerVectorLerp, true},
+        {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
-        {FFlag::LuauCodeGenVectorLerp, true},
-        {FFlag::LuauCodeGenBetterBytecodeAnalysis, true}
+        {FFlag::LuauCodeGenVectorLerp, true}
     };
 
     lua_CompileOptions copts = defaultOptions();
@@ -3246,7 +3243,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodeGenDirectBtest{FFlag::LuauCodeGenDirectBtest, true};
     ScopedFastFlag luauCodeGenRegAutoSpillA64{FFlag::LuauCodeGenRegAutoSpillA64, true};
     ScopedFastFlag luauCodeGenRestoreFromSplitStore{FFlag::LuauCodeGenRestoreFromSplitStore, true};
 

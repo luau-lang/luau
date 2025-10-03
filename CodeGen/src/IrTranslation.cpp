@@ -12,7 +12,7 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenDirectCompare)
+LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 
 namespace Luau
 {
@@ -272,7 +272,7 @@ void translateInstJumpxEqNil(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqNilShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -320,7 +320,7 @@ void translateInstJumpxEqB(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqBShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -377,7 +377,7 @@ void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqNShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -433,7 +433,7 @@ void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqSShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);

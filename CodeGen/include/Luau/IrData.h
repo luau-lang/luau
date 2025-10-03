@@ -236,14 +236,14 @@ enum class IrCmd : uint8_t
     // Perform a comparison of two tags. Result is an integer register containing 0 or 1
     CMP_TAG,
     // A, B: tag
-    // C: condition (eq/neq)
+    // C: condition (eq/not_eq)
 
     // Perform tag and value comparison. Result is an integer register containing 0 or 1
     CMP_SPLIT_TVALUE,
     // A: tag
-    // B: tag (constant: boolean/string)
+    // B: tag (constant: boolean/number/string)
     // C, D: value
-    // E: condition (eq/neq)
+    // E: condition (eq/not_eq)
 
     // Unconditional jump
     // A: block/vmexit/undef

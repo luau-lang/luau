@@ -13,6 +13,8 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodegenDirectCompare2)
+LUAU_FASTFLAG(LuauCodegenNilStoreInvalidateValue2)
 
 using namespace Luau::CodeGen;
 
@@ -1766,6 +1768,124 @@ bb_0:
    %19 = DIV_NUM %0, 6
    STORE_DOUBLE R10, %19
    RETURN R1, 9i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "CmpTagSimplification")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp eq = build.cond(IrCondition::Equal);
+    IrOp neq = build.cond(IrCondition::NotEqual);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::CMP_TAG, build.constTag(tnil), build.constTag(tnumber), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.inst(IrCmd::CMP_TAG, build.constTag(tnumber), build.constTag(tnumber), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(2), build.inst(IrCmd::CMP_TAG, build.constTag(tnil), build.constTag(tnumber), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(3), build.inst(IrCmd::CMP_TAG, build.constTag(tnumber), build.constTag(tnumber), neq));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(4));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 0i
+   STORE_INT R1, 1i
+   STORE_INT R2, 1i
+   STORE_INT R3, 0i
+   RETURN R0, 4i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "CmpSplitTagValueSimplification")
+{
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+    IrOp valueBoolean = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
+    IrOp valueNan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
+
+    IrOp opTag = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+    IrOp opNil = build.constTag(tnil);
+    IrOp opBool = build.constTag(tboolean);
+    IrOp opNum = build.constTag(tnumber);
+
+    IrOp eq = build.cond(IrCondition::Equal);
+    IrOp neq = build.cond(IrCondition::NotEqual);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(2), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNil, opBool, build.constInt(0), valueBoolean, eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(3), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(4), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(1), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(5), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(6), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(1), eq));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(7), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNil, opBool, build.constInt(0), valueBoolean, neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(8), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(9), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(1), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(11), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(1), neq));
+
+    // When we compare known values, but unknown tags, cases can either be fully folded or simplified to a tag check
+    build.inst(IrCmd::STORE_INT, build.vmReg(12), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(13), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(1), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(14), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(15), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(1), eq));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(16), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(17), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(1), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(18), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(19), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(1), neq));
+
+    // NaN is always fun to consider
+    build.inst(IrCmd::STORE_INT, build.vmReg(20), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, valueNan, valueNan, eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(21), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, valueNan, valueNan, neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(22), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, valueNan, valueNan, eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(23), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, valueNan, valueNan, neq));
+
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(21));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %2 = LOAD_TAG R0
+   STORE_INT R2, 0i
+   STORE_INT R3, 1i
+   STORE_INT R4, 0i
+   STORE_INT R5, 1i
+   STORE_INT R6, 0i
+   STORE_INT R7, 1i
+   STORE_INT R8, 0i
+   STORE_INT R9, 1i
+   STORE_INT R10, 0i
+   STORE_INT R11, 1i
+   %23 = CMP_TAG %2, tboolean, eq
+   STORE_INT R12, %23
+   STORE_INT R13, 0i
+   %27 = CMP_TAG %2, tnumber, eq
+   STORE_INT R14, %27
+   STORE_INT R15, 0i
+   %31 = CMP_TAG %2, tboolean, not_eq
+   STORE_INT R16, %31
+   STORE_INT R17, 1i
+   %35 = CMP_TAG %2, tnumber, not_eq
+   STORE_INT R18, %35
+   STORE_INT R19, 1i
+   STORE_INT R20, 0i
+   STORE_INT R21, 1i
+   STORE_INT R22, 0i
+   STORE_INT R23, 1i
+   RETURN R2, 21i
 
 )");
 }
@@ -4649,6 +4769,63 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverCombinedNumber")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    STORE_VECTOR R0, 8, 16, 32, tvector
+   RETURN R0, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NilStoreImplicitValueClear1")
+{
+    ScopedFastFlag luauCodegenNilStoreInvalidateValue2{FFlag::LuauCodegenNilStoreInvalidateValue2, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_TAG R0, tnil
+   STORE_INT R0, 1i
+   STORE_TAG R0, tboolean
+   RETURN R0, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NilStoreImplicitValueClear2")
+{
+    ScopedFastFlag luauCodegenNilStoreInvalidateValue2{FFlag::LuauCodegenNilStoreInvalidateValue2, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+    IrOp value = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), value);
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
+    build.inst(IrCmd::CHECK_TAG, tag, build.constTag(tnil), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_TAG R0, tnil
    RETURN R0, 1i
 
 )");

@@ -17,6 +17,9 @@ LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
+LUAU_FASTFLAG(LuauVectorLerp)
+LUAU_FASTFLAG(LuauCompileVectorLerp)
+LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1825,6 +1828,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_with_refined_any")
     CHECK_EQ(toString(requireTypeAtPosition(Position{5, 23})), "({+ [unknown]: unknown +}, unknown?) -> (unknown?, unknown)");
     CHECK_EQ(toString(requireTypeAtPosition(Position{6, 23})), "{+ [unknown]: unknown +}");
     CHECK_EQ(toString(requireTypeAtPosition(Position{7, 23})), "nil");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
+{
+    ScopedFastFlag _[]{
+        {FFlag::LuauCompileVectorLerp, true},
+        {FFlag::LuauTypeCheckerVectorLerp2, true},
+        {FFlag::LuauVectorLerp, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function half(x: number, y: number, z: number): vector
+            return vector.lerp(vector.zero, vector.create(x, y, z), 0.5)
+        end
+    )"));
 }
 
 TEST_SUITE_END();
