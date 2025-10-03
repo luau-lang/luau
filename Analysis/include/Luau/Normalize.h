@@ -202,6 +202,8 @@ enum class NormalizationResult
 // * G is a union of generic/free/blocked types, intersected with a normalized type
 struct NormalizedType
 {
+    NotNull<BuiltinTypes> builtinTypes;
+
     // The top part of the type.
     // This type is either never, unknown, or any.
     // If this type is not never, all the other fields are null.

@@ -48,7 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauRemoveGenericErrorForParams)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAGVARIABLE(LuauAddErrorCaseForIncompatibleTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauAddConditionalContextForTernary)
-LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping2)
 LUAU_FASTFLAGVARIABLE(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 
@@ -1000,11 +1000,11 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
 
-            if (FFlag::LuauCheckForInWithSubtyping)
+            if (FFlag::LuauCheckForInWithSubtyping2)
                 return;
         }
 
-        if (!FFlag::LuauCheckForInWithSubtyping)
+        if (!FFlag::LuauCheckForInWithSubtyping2)
         {
             for (size_t i = 0; i < std::min(expectedVariableTypes.head.size(), variableTypes.size()); ++i)
                 testIsSubtype(variableTypes[i], expectedVariableTypes.head[i], forInStatement->vars.data[i]->location);
@@ -1039,7 +1039,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
 
-            if (FFlag::LuauCheckForInWithSubtyping)
+            if (FFlag::LuauCheckForInWithSubtyping2)
                 return;
         }
         else if (actualArgCount < minCount)
@@ -1049,11 +1049,11 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
 
-            if (FFlag::LuauCheckForInWithSubtyping)
+            if (FFlag::LuauCheckForInWithSubtyping2)
                 return;
         }
 
-        if (FFlag::LuauCheckForInWithSubtyping)
+        if (FFlag::LuauCheckForInWithSubtyping2)
         {
             const TypeId iterFunc = follow(iterTys[0]);
 
@@ -3401,7 +3401,7 @@ bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location 
 
 void TypeChecker2::maybeReportSubtypingError(const TypeId subTy, const TypeId superTy, const Location& location)
 {
-    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping);
+    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping2);
     switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
     {
     case ErrorSuppression::Suppress:
@@ -3420,7 +3420,7 @@ void TypeChecker2::maybeReportSubtypingError(const TypeId subTy, const TypeId su
 
 void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId prospectiveFunc, const AstStatForIn& forInStat)
 {
-    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping);
+    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping2);
     LUAU_ASSERT(get<FunctionType>(follow(iterFunc)));
     LUAU_ASSERT(get<FunctionType>(follow(prospectiveFunc)));
 
@@ -3481,7 +3481,9 @@ void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId pr
         if (*pf == TypePath::PackField::Arguments)
         {
             // The first component of `forInStat.values` is the iterator function itself
-            Location loc = index->index >= forInStat.values.size ? iterFuncLocation : forInStat.values.data[index->index + 1]->location;
+            Location loc = index->index + 1 >= forInStat.values.size
+                               ? iterFuncLocation
+                               : forInStat.values.data[index->index + 1]->location;
             maybeReportSubtypingError(*subLeaf, *superLeaf, loc);
         }
         else if (*pf == TypePath::PackField::Returns)

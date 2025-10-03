@@ -16,13 +16,12 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
-LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
+LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp)
 LUAU_FASTFLAG(LuauCodeGenFMA)
-LUAU_FASTFLAG(LuauCodegenDirectCompare)
+LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -470,7 +469,7 @@ TEST_CASE("VectorLerp")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauTypeCheckerVectorLerp, true},
+        {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
         {FFlag::LuauCodeGenVectorLerp, true}
     };
@@ -640,7 +639,7 @@ bb_bytecode_0:
 
 TEST_CASE("StringCompare")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -669,7 +668,7 @@ bb_bytecode_2:
 
 TEST_CASE("StringCompareAnnotated")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -702,7 +701,7 @@ bb_bytecode_3:
 
 TEST_CASE("NilCompare")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -729,7 +728,7 @@ bb_bytecode_2:
 
 TEST_CASE("BooleanCompare")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -784,7 +783,7 @@ bb_bytecode_8:
 
 TEST_CASE("NumberCompare")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -825,7 +824,7 @@ bb_bytecode_4:
 
 TEST_CASE("TypeCompare")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -856,7 +855,7 @@ bb_bytecode_2:
 
 TEST_CASE("TypeofCompare")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -886,7 +885,7 @@ bb_bytecode_2:
 
 TEST_CASE("TypeofCompareCustom")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -917,7 +916,7 @@ bb_bytecode_2:
 
 TEST_CASE("TypeCondition")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -964,7 +963,7 @@ bb_bytecode_1:
 
 TEST_CASE("AssertTypeGuard")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare, true};
+    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -2654,8 +2653,6 @@ bb_bytecode_0:
 
 TEST_CASE("Bit32BtestDirect")
 {
-    ScopedFastFlag luauCodeGenDirectBtest{FFlag::LuauCodeGenDirectBtest, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: number)

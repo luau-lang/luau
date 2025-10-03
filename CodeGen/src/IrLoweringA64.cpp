@@ -13,9 +13,8 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCodeGenUnassignedBcTargetAbort)
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
-LUAU_FASTFLAG(LuauCodegenDirectCompare)
+LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 
 namespace Luau
 {
@@ -870,8 +869,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_INT:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
-
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
 
         IrCondition cond = conditionOp(inst.c);
@@ -919,7 +916,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_TAG:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
 
         IrCondition cond = conditionOp(inst.c);
@@ -976,7 +973,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_SPLIT_TVALUE:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
+        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
 
         // Second operand of this instruction must be a constant
@@ -1086,7 +1083,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         RegisterA64 zr = noreg;
 
-        if (FFlag::LuauCodegenDirectCompare)
+        if (FFlag::LuauCodegenDirectCompare2)
         {
             RegisterA64 aReg = noreg;
             RegisterA64 bReg = noreg;

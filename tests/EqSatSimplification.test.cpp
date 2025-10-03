@@ -228,7 +228,7 @@ TEST_CASE_FIXTURE(ESFixture, "\"hello\" | \"world\" | \"hello\"")
     );
 }
 
-TEST_CASE_FIXTURE(ESFixture, "nil | boolean | number | string | thread | function | table | class | buffer")
+TEST_CASE_FIXTURE(ESFixture, "nil | boolean | number | string | thread | function | table | userdata | buffer")
 {
     CHECK(
         "unknown" == simplifyStr(arena->addType(
@@ -267,14 +267,14 @@ TEST_CASE_FIXTURE(ESFixture, "Child | Parent")
     CHECK("Parent" == simplifyStr(arena->addType(UnionType{{childClass, parentClass}})));
 }
 
-TEST_CASE_FIXTURE(ESFixture, "class | Child")
+TEST_CASE_FIXTURE(ESFixture, "userdata | Child")
 {
-    CHECK("class" == simplifyStr(arena->addType(UnionType{{getBuiltins()->externType, childClass}})));
+    CHECK("userdata" == simplifyStr(arena->addType(UnionType{{getBuiltins()->externType, childClass}})));
 }
 
-TEST_CASE_FIXTURE(ESFixture, "Parent | class | Child")
+TEST_CASE_FIXTURE(ESFixture, "Parent | userdata | Child")
 {
-    CHECK("class" == simplifyStr(arena->addType(UnionType{{parentClass, getBuiltins()->externType, childClass}})));
+    CHECK("userdata" == simplifyStr(arena->addType(UnionType{{parentClass, getBuiltins()->externType, childClass}})));
 }
 
 TEST_CASE_FIXTURE(ESFixture, "Parent | Unrelated")

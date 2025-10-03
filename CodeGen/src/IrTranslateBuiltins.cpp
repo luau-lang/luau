@@ -8,7 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenDirectBtest)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorLerp)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFMA)
 
@@ -460,30 +459,9 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
 
     if (btest)
     {
-        if (FFlag::LuauCodeGenDirectBtest)
-        {
-            IrOp value = build.inst(IrCmd::CMP_INT, res, build.constInt(0), build.cond(IrCondition::NotEqual));
-            build.inst(IrCmd::STORE_INT, build.vmReg(ra), value);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-        }
-        else
-        {
-            IrOp falsey = build.block(IrBlockKind::Internal);
-            IrOp truthy = build.block(IrBlockKind::Internal);
-            IrOp exit = build.block(IrBlockKind::Internal);
-            build.inst(IrCmd::JUMP_CMP_INT, res, build.constInt(0), build.cond(IrCondition::Equal), falsey, truthy);
-
-            build.beginBlock(falsey);
-            build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(0));
-            build.inst(IrCmd::JUMP, exit);
-
-            build.beginBlock(truthy);
-            build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(1));
-            build.inst(IrCmd::JUMP, exit);
-
-            build.beginBlock(exit);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-        }
+        IrOp value = build.inst(IrCmd::CMP_INT, res, build.constInt(0), build.cond(IrCondition::NotEqual));
+        build.inst(IrCmd::STORE_INT, build.vmReg(ra), value);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
     }
     else
     {

@@ -27,7 +27,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauIncludeBreakContinueStatements)
 LUAU_FASTFLAGVARIABLE(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
@@ -1203,7 +1202,6 @@ static bool isBindingLegalAtCurrentPosition(const Symbol& symbol, const Binding&
 
 static bool isValidBreakContinueContext(const std::vector<AstNode*>& ancestry, Position position)
 {
-    LUAU_ASSERT(FFlag::LuauIncludeBreakContinueStatements);
     for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
     {
         if ((*it)->is<AstStatFunction>() || (*it)->is<AstStatLocalFunction>() || (*it)->is<AstExprFunction>() || (*it)->is<AstStatTypeFunction>() ||
@@ -1267,18 +1265,10 @@ static AutocompleteEntryMap autocompleteStatement(
         scope = scope->parent;
     }
 
-    if (FFlag::LuauIncludeBreakContinueStatements)
+    bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
+    for (const std::string_view kw : kStatementStartingKeywords)
     {
-        bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
-        for (const std::string_view kw : kStatementStartingKeywords)
-        {
-            if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
-                result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        }
-    }
-    else
-    {
-        for (const std::string_view kw : kStatementStartingKeywords)
+        if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
             result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
     }
 

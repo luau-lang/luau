@@ -14,6 +14,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIntersection)
+LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintSingleton)
 
 namespace Luau
 {
@@ -124,6 +125,23 @@ struct BidirectionalTypePusher
             if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->stringType, ft->upperBound) &&
                 fastIsSubtype(ft->lowerBound, solver->builtinTypes->stringType))
             {
+                if (FFlag::LuauPushTypeConstraintSingleton && maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
+                {
+                    // If we see a pattern like:
+                    //
+                    //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
+                    //      return my_enum
+                    //  end
+                    //  local var = foo("meow")
+                    //
+                    // ... where we are attempting to push a singleton onto any string
+                    // literal, and the lower bound is still a singleton, then snap
+                    // to said lower bound.
+                    emplaceType<BoundType>(asMutable(exprType), ft->lowerBound);
+                    solver->unblock(exprType, expr->location);
+                    return exprType;
+                }
+
                 // if the upper bound is a subtype of the expected type, we can push the expected type in
                 Relation upperBoundRelation = relate(ft->upperBound, expectedType);
                 if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
