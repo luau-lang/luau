@@ -104,9 +104,11 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
     CHECK(!isSubtype(a, b));
 }
 
-#if 0
+
 TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_function_with_head")
 {
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     check(R"(
         local a: (...number) -> ()
         local b: (number, number) -> ()
@@ -118,7 +120,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_function_with_head")
     CHECK(!isSubtype(b, a));
     CHECK(isSubtype(a, b));
 }
-#endif
+
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "union")
 {
@@ -253,9 +255,11 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     CHECK(!isSubtype(b, d));
 }
 
-#if 0
+
 TEST_CASE_FIXTURE(IsSubtypeFixture, "table_indexers_are_invariant")
 {
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     check(R"(
         local a: {[string]: number}
         local b: {[string]: any}
@@ -275,6 +279,8 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_indexers_are_invariant")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "mismatched_indexers")
 {
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     check(R"(
         local a: {x: number}
         local b: {[string]: number}
@@ -292,6 +298,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "mismatched_indexers")
     CHECK(isSubtype(b, c));
 }
 
+#if 0
 TEST_CASE_FIXTURE(IsSubtypeFixture, "cyclic_table")
 {
     check(R"(

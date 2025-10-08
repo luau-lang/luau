@@ -300,18 +300,13 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_tr
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-#if 0
-// CLI-29798
 TEST_CASE_FIXTURE(Fixture, "crazy_complexity")
 {
     CheckResult result = check(R"(
         --!nonstrict
         A:A():A():A():A():A():A():A():A():A():A():A()
     )");
-
-    MESSAGE("OK!  Allocated ", typeChecker.types.size(), " types");
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
 {
@@ -2092,8 +2087,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
     LUAU_REQUIRE_NO_ERROR(result, ConstraintSolvingIncompleteError);
 }
 
-#if 0
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
 {
     ScopedFastFlag sffs[] = {
@@ -2110,8 +2103,6 @@ _ = {[(_G)]=_,[_[_[_]][_[_]][nil][_]]={_G=_,},_[_[_]][_][_],n0={[_]=_,_G=_,},248
 local _
     )"));
 }
-
-#endif
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_missing_follow_table_freeze")
 {

@@ -5650,18 +5650,14 @@ TEST_CASE_FIXTURE(Fixture, "large_table_inference_does_not_bleed")
 }
 
 
-#if 0
-
-TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(2.0))
+TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(1.0))
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
-    const std::string source = "local res = {\n" + rep("\"foo\",\n", 100'000) + "}";
+    const std::string source = "local res = {\n" + rep("\"foo\",\n", 10'000) + "}";
     LUAU_REQUIRE_NO_ERRORS(check(source));
     CHECK_EQ("{string}", toString(requireType("res"), {true}));
 }
-
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "oss_1838")
 {

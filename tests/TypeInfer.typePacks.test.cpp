@@ -259,7 +259,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")
     CHECK_EQ(toString(requireType("foo")), "(...number) -> ()");
 }
 
-#if 0
 TEST_CASE_FIXTURE(Fixture, "type_pack_hidden_free_tail_infinite_growth")
 {
     CheckResult result = check(R"(
@@ -276,7 +275,6 @@ end
 
     LUAU_REQUIRE_ERRORS(result);
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "variadic_argument_tail")
 {
