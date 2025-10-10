@@ -42,7 +42,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
@@ -1873,37 +1872,34 @@ ModulePtr check(
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.
-    if (FFlag::LuauLimitDynamicConstraintSolving3)
+    if (FFlag::DebugLuauForbidInternalTypes)
     {
-        if (FFlag::DebugLuauForbidInternalTypes)
-        {
-            InternalTypeFinder finder;
+        InternalTypeFinder finder;
 
-            // `result->returnType` is not filled in yet, so we
-            // traverse the return type of the root module.
-            finder.traverse(module->getModuleScope()->returnType);
+        // `result->returnType` is not filled in yet, so we
+        // traverse the return type of the root module.
+        finder.traverse(module->getModuleScope()->returnType);
 
-            for (const auto& [_, binding] : module->exportedTypeBindings)
-                finder.traverse(binding.type);
+        for (const auto& [_, binding] : module->exportedTypeBindings)
+            finder.traverse(binding.type);
 
-            for (const auto& [_, ty] : module->astTypes)
-                finder.traverse(ty);
+        for (const auto& [_, ty] : module->astTypes)
+            finder.traverse(ty);
 
-            for (const auto& [_, ty] : module->astExpectedTypes)
-                finder.traverse(ty);
+        for (const auto& [_, ty] : module->astExpectedTypes)
+            finder.traverse(ty);
 
-            for (const auto& [_, tp] : module->astTypePacks)
-                finder.traverse(tp);
+        for (const auto& [_, tp] : module->astTypePacks)
+            finder.traverse(tp);
 
-            for (const auto& [_, ty] : module->astResolvedTypes)
-                finder.traverse(ty);
+        for (const auto& [_, ty] : module->astResolvedTypes)
+            finder.traverse(ty);
 
-            for (const auto& [_, ty] : module->astOverloadResolvedTypes)
-                finder.traverse(ty);
+        for (const auto& [_, ty] : module->astOverloadResolvedTypes)
+            finder.traverse(ty);
 
-            for (const auto& [_, tp] : module->astResolvedTypePacks)
-                finder.traverse(tp);
-        }
+        for (const auto& [_, tp] : module->astResolvedTypePacks)
+            finder.traverse(tp);
     }
 
 
@@ -1912,37 +1908,6 @@ ModulePtr check(
         module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
     else
         module->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
-
-    if (!FFlag::LuauLimitDynamicConstraintSolving3)
-    {
-        if (FFlag::DebugLuauForbidInternalTypes)
-        {
-            InternalTypeFinder finder;
-
-            finder.traverse(module->returnType);
-
-            for (const auto& [_, binding] : module->exportedTypeBindings)
-                finder.traverse(binding.type);
-
-            for (const auto& [_, ty] : module->astTypes)
-                finder.traverse(ty);
-
-            for (const auto& [_, ty] : module->astExpectedTypes)
-                finder.traverse(ty);
-
-            for (const auto& [_, tp] : module->astTypePacks)
-                finder.traverse(tp);
-
-            for (const auto& [_, ty] : module->astResolvedTypes)
-                finder.traverse(ty);
-
-            for (const auto& [_, ty] : module->astOverloadResolvedTypes)
-                finder.traverse(ty);
-
-            for (const auto& [_, tp] : module->astResolvedTypePacks)
-                finder.traverse(tp);
-        }
-    }
 
     // It would be nice if we could freeze the arenas before doing type
     // checking, but we'll have to do some work to get there.

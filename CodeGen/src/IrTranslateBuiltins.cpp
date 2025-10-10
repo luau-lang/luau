@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorLerp)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFMA)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
@@ -286,7 +286,7 @@ static BuiltinImplResult translateBuiltinMathClamp(
 
 static BuiltinImplResult translateBuiltinVectorLerp(IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
 {
-    if (!FFlag::LuauCodeGenVectorLerp || nparams < 3 || nresults > 1)
+    if (!FFlag::LuauCodeGenVectorLerp2 || nparams < 3 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
     IrOp arg1 = build.vmReg(arg);

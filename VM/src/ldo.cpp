@@ -17,7 +17,6 @@
 
 #include <string.h>
 
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 LUAU_FASTFLAGVARIABLE(LuauStacklessPcall)
 LUAU_FASTFLAGVARIABLE(LuauResumeFix)
 
@@ -599,8 +598,7 @@ static void resume_handle(lua_State* L, void* ud)
     // close eventual pending closures; this means it's now safe to restore stack
     luaF_close(L, L->ci->base);
 
-    if (DFFlag::LuauXpcallContErrorHandling)
-        restore_stack_limit(L);
+    restore_stack_limit(L);
 
     // finish cont call and restore stack to previous ci top
     luau_poscall(L, L->top - n);

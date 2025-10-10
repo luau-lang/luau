@@ -31,8 +31,6 @@ LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauPopulateSelfTypesInFragment)
 LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
 LUAU_FASTFLAG(LuauForInProvidesRecommendations)
-LUAU_FASTFLAG(LuauFragmentAutocompleteTakesInnermostRefinement)
-LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
 LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
@@ -4363,8 +4361,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "correctly_grab_innermost_refinement")
 {
-    ScopedFastFlag _{FFlag::LuauFragmentAutocompleteTakesInnermostRefinement, true};
-
     const std::string source = R"(
 --!strict
 type Type1 = { Type: "Type1", CommonKey: string, Type1Key: string }
@@ -4407,7 +4403,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "hot_comment_should_rec")
 {
-    ScopedFastFlag sff{FFlag::LuauSuggestHotComments, true};
     const std::string source = R"(--!@1)";
     autocompleteFragmentInBothSolvers(
         source,

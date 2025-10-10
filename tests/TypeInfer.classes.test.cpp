@@ -15,7 +15,6 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauMorePreciseExternTableRelation)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAG(LuauExternTableIndexersIntersect)
 
@@ -921,10 +920,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_type_check_missing_key")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -957,10 +953,7 @@ TEST_CASE_FIXTURE(Fixture, "extern_type_check_missing_key")
 
 TEST_CASE_FIXTURE(Fixture, "extern_type_check_present_key_in_superclass")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type FoobarParent with
@@ -993,10 +986,7 @@ TEST_CASE_FIXTURE(Fixture, "extern_type_check_present_key_in_superclass")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1021,10 +1011,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1048,7 +1035,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauPushTypeConstraint2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
     };
 
     loadDefinition(R"(
@@ -1070,10 +1056,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1096,7 +1079,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
         {FFlag::LuauExternTableIndexersIntersect, true},
     };
 
@@ -1115,7 +1097,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauMorePreciseExternTableRelation, true},
         {FFlag::LuauExternTableIndexersIntersect, true},
     };
 

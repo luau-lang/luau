@@ -15,7 +15,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
@@ -847,7 +846,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_types_are_scrubbed_from_module")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauLimitDynamicConstraintSolving3, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -866,7 +864,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauLimitDynamicConstraintSolving3, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -882,7 +879,7 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauLimitDynamicConstraintSolving3, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
 

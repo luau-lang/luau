@@ -16,7 +16,7 @@ LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 LUAU_FASTFLAGVARIABLE(LuauFilterOverloadsByArity)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 
@@ -483,7 +483,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 
         if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
         {
-            if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+            if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
             {
                 const bool subPathArgTail = matchesPrefix(Path({TypePath::PackField::Arguments, TypePath::PackField::Tail}), reason.subPath);
                 const bool superPathArgs = matchesPrefix(Path(TypePath::PackField::Arguments), reason.superPath);
@@ -591,20 +591,20 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                           : argExprs->size() != 0        ? argExprs->back()->location
                                                          : fnExpr->location;
 
-            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance and
+            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance2 and
             // LuauReturnMappedGenericPacksFromSubtyping3
             std::optional<TypeId> failedSubTy;
-            if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+            if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
                 failedSubTy = traverseForType(fnTy, reason.subPath, builtinTypes, arena);
             else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
                 failedSubTy = traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena);
             else
                 failedSubTy = traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes);
 
-            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance and
+            // TODO: This optional can be unwrapped once we clip LuauSubtypingGenericPacksDoesntUseVariance2 and
             // LuauReturnMappedGenericPacksFromSubtyping3
             std::optional<TypeId> failedSuperTy;
-            if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+            if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
                 failedSuperTy = traverseForType(prospectiveFunction, reason.superPath, builtinTypes, arena);
             else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
                 failedSuperTy = traverseForType_DEPRECATED(
@@ -660,11 +660,11 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                     argLocation = fnExpr->location;
                 }
                 std::optional<TypeId> failedSubTy =
-                    FFlag::LuauSubtypingGenericPacksDoesntUseVariance
+                    FFlag::LuauSubtypingGenericPacksDoesntUseVariance2
                         ? traverseForType(fnTy, reason.subPath, builtinTypes, arena)
                         : traverseForType_DEPRECATED(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena);
                 std::optional<TypeId> failedSuperTy =
-                    FFlag::LuauSubtypingGenericPacksDoesntUseVariance
+                    FFlag::LuauSubtypingGenericPacksDoesntUseVariance2
                         ? traverseForType(prospectiveFunction, reason.superPath, builtinTypes, arena)
                         : traverseForType_DEPRECATED(
                               prospectiveFunction, reason.superPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena
@@ -674,7 +674,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
         }
 
         std::optional<TypePackId> failedSubPack;
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
             failedSubPack = traverseForPack(fnTy, reason.subPath, builtinTypes, arena);
         else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
             failedSubPack = traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes, NotNull{&sr.mappedGenericPacks_DEPRECATED}, arena);
@@ -682,7 +682,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
             failedSubPack = traverseForPack_DEPRECATED(fnTy, reason.subPath, builtinTypes);
 
         std::optional<TypePackId> failedSuperPack;
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
             failedSuperPack = traverseForPack(prospectiveFunction, reason.superPath, builtinTypes, arena);
         else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
             failedSuperPack =

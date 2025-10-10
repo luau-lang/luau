@@ -20,7 +20,6 @@
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
-LUAU_FASTFLAGVARIABLE(LuauRefineOccursCheckDirectRecursion)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
@@ -1184,7 +1183,7 @@ struct RefineTypeScrubber : public Substitution
                     return true;
             }
         }
-        return FFlag::LuauRefineOccursCheckDirectRecursion ? ty == needle : false;
+        return ty == needle;
     }
 
     bool ignoreChildren(TypeId ty) override
@@ -1226,7 +1225,7 @@ struct RefineTypeScrubber : public Substitution
             else
                 return ctx->arena->addType(IntersectionType{newParts.take()});
         }
-        else if (FFlag::LuauRefineOccursCheckDirectRecursion && ty == needle)
+        else if (ty == needle)
             return ctx->builtins->unknownType;
         else
             return ty;

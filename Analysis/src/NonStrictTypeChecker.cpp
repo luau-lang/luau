@@ -20,8 +20,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictMoreUnknownSymbols)
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictSuppressesDynamicRequireErrors)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauUnreducedTypeFunctionsDontTriggerWarnings)
@@ -350,24 +348,11 @@ struct NonStrictTypeChecker
         NonStrictContext condB = visit(ifStatement->condition, ValueContext::RValue);
         NonStrictContext branchContext;
 
-        if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
+        NonStrictContext thenBody = visit(ifStatement->thenbody);
+        if (ifStatement->elsebody)
         {
-            NonStrictContext thenBody = visit(ifStatement->thenbody);
-            if (ifStatement->elsebody)
-            {
-                NonStrictContext elseBody = visit(ifStatement->elsebody);
-                branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
-            }
-        }
-        else
-        {
-            // If there is no else branch, don't bother generating warnings for the then branch - we can't prove there is an error
-            if (ifStatement->elsebody)
-            {
-                NonStrictContext thenBody = visit(ifStatement->thenbody);
-                NonStrictContext elseBody = visit(ifStatement->elsebody);
-                branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
-            }
+            NonStrictContext elseBody = visit(ifStatement->elsebody);
+            branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
         }
 
         return NonStrictContext::disjunction(builtinTypes, arena, condB, branchContext);
@@ -624,12 +609,9 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprCall* call)
     {
-        if (FFlag::LuauNewNonStrictMoreUnknownSymbols)
-        {
-            visit(call->func, ValueContext::RValue);
-            for (auto arg : call->args)
-                visit(arg, ValueContext::RValue);
-        }
+        visit(call->func, ValueContext::RValue);
+        for (auto arg : call->args)
+            visit(arg, ValueContext::RValue);
 
         NonStrictContext fresh{};
         TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
@@ -722,12 +704,7 @@ struct NonStrictTypeChecker
                         reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                     else
                     {
-                        if (FFlag::LuauNewNonStrictNoErrorsPassingNever)
-                        {
-                            if (!get<NeverType>(follow(*runTimeFailureType)))
-                                reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
-                        }
-                        else
+                        if (!get<NeverType>(follow(*runTimeFailureType)))
                             reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                     }
                 }

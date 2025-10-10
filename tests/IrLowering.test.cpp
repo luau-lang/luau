@@ -19,7 +19,7 @@
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
-LUAU_FASTFLAG(LuauCodeGenVectorLerp)
+LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenFMA)
 LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 
@@ -471,7 +471,7 @@ TEST_CASE("VectorLerp")
         {FFlag::LuauCompileVectorLerp, true},
         {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
-        {FFlag::LuauCodeGenVectorLerp, true}
+        {FFlag::LuauCodeGenVectorLerp2, true}
     };
     if (FFlag::LuauCodeGenFMA)
     {

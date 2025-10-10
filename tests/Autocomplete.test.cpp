@@ -21,7 +21,6 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
@@ -1604,9 +1603,6 @@ return target(a.@1
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_in_table")
 {
-    if (FFlag::LuauSolverV2) // CLI-116815 Autocomplete cannot suggest keys while autocompleting inside of a table
-        return;
-
     check(R"(
 type Foo = { a: number, b: string }
 local a = { one = 4, two = "hello" }
@@ -4862,8 +4858,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_incomplete_
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_suggest_hot_comments")
 {
-    ScopedFastFlag sff{FFlag::LuauSuggestHotComments, true};
-
     check("--!@1");
 
     auto ac = autocomplete('1');

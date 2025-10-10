@@ -35,8 +35,6 @@ LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAGVARIABLE(LuauPopulateSelfTypesInFragment)
 LUAU_FASTFLAGVARIABLE(LuauForInProvidesRecommendations)
-LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTakesInnermostRefinement)
-LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
@@ -708,8 +706,7 @@ void cloneTypesFromFragment(
                 //  end
                 //
                 // We could find another binding for `syms` and then set _that_.
-                if (FFlag::LuauFragmentAutocompleteTakesInnermostRefinement)
-                    break;
+                break;
             }
         }
     }
@@ -1486,61 +1483,31 @@ FragmentAutocompleteStatusResult tryFragmentAutocomplete(
     StringCompletionCallback stringCompletionCB
 )
 {
-    if (FFlag::LuauSuggestHotComments)
+    bool isInHotComment = isWithinHotComment(context.freshParse.hotcomments, cursorPosition);
+    if (isWithinComment(context.freshParse.commentLocations, cursorPosition) && !isInHotComment)
+        return {FragmentAutocompleteStatus::Success, std::nullopt};
+    // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
+    try
     {
-        bool isInHotComment = isWithinHotComment(context.freshParse.hotcomments, cursorPosition);
-        if (isWithinComment(context.freshParse.commentLocations, cursorPosition) && !isInHotComment)
-            return {FragmentAutocompleteStatus::Success, std::nullopt};
-        // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
-        try
-        {
-            Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
-                frontend,
-                context.newSrc,
-                moduleName,
-                cursorPosition,
-                context.opts,
-                std::move(stringCompletionCB),
-                context.DEPRECATED_fragmentEndPosition,
-                context.freshParse.root,
-                context.reporter,
-                isInHotComment
-            );
-            return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
-        }
-        catch (const Luau::InternalCompilerError& e)
-        {
-            if (FFlag::DebugLogFragmentsFromAutocomplete)
-                logLuau("tryFragmentAutocomplete exception", e.what());
-            return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
-        }
+        Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
+            frontend,
+            context.newSrc,
+            moduleName,
+            cursorPosition,
+            context.opts,
+            std::move(stringCompletionCB),
+            context.DEPRECATED_fragmentEndPosition,
+            context.freshParse.root,
+            context.reporter,
+            isInHotComment
+        );
+        return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
     }
-    else
+    catch (const Luau::InternalCompilerError& e)
     {
-        if (isWithinComment(context.freshParse.commentLocations, cursorPosition))
-            return {FragmentAutocompleteStatus::Success, std::nullopt};
-        // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
-        try
-        {
-            Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
-                frontend,
-                context.newSrc,
-                moduleName,
-                cursorPosition,
-                context.opts,
-                std::move(stringCompletionCB),
-                context.DEPRECATED_fragmentEndPosition,
-                context.freshParse.root,
-                context.reporter
-            );
-            return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
-        }
-        catch (const Luau::InternalCompilerError& e)
-        {
-            if (FFlag::DebugLogFragmentsFromAutocomplete)
-                logLuau("tryFragmentAutocomplete exception", e.what());
-            return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
-        }
+        if (FFlag::DebugLogFragmentsFromAutocomplete)
+            logLuau("tryFragmentAutocomplete exception", e.what());
+        return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
     }
 }
 
@@ -1579,7 +1546,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
         cursorPosition,
         frontend.fileResolver,
         std::move(callback),
-        FFlag::LuauSuggestHotComments && isInHotComment
+        isInHotComment
     );
     freeze(tcResult.incrementalModule->internalTypes);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);

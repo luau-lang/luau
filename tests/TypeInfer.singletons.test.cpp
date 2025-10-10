@@ -664,6 +664,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
 
 TEST_CASE_FIXTURE(Fixture, "tagged_union_in_ternary")
 {
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Result = { type: "ok", value: unknown } | { type: "error" }
 

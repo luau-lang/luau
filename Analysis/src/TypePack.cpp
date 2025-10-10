@@ -6,7 +6,7 @@
 #include "Luau/TypeArena.h"
 
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 
 namespace Luau
 {
@@ -461,7 +461,7 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten_DEPRECATED(
 )
 {
     LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping3);
-    LUAU_ASSERT(!FFlag::LuauSubtypingGenericPacksDoesntUseVariance);
+    LUAU_ASSERT(!FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
 
     tp = mappedGenericPacks.contains(tp) ? *mappedGenericPacks.find(tp) : tp;
 
@@ -553,7 +553,7 @@ TypePackId sliceTypePack(
     const NotNull<TypeArena> arena
 )
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance);
+    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
 
     if (sliceIndex == 0)
         return toBeSliced;
