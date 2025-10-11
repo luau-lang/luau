@@ -942,10 +942,10 @@ void AssemblyBuilderX64::vcmpeqps(OperandX64 dst, OperandX64 src1, OperandX64 sr
     placeAvx("vcmpeqps", dst, src1, src2, 0x00, 0xc2, false, AVX_0F, AVX_NP);
 }
 
-void AssemblyBuilderX64::vblendvps(RegisterX64 dst, RegisterX64 src1, RegisterX64 src2, OperandX64 mask)
+void AssemblyBuilderX64::vblendvps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, RegisterX64 mask)
 {
     // bits [7:4] of imm8 are used to select register for operand 4
-    placeAvx("vblendvpd", dst, src1, mask, src2.index << 4, 0x4a, false, AVX_0F3A, AVX_66);
+    placeAvx("vblendvps", dst, src1, src2, mask.index << 4, 0x4a, false, AVX_0F3A, AVX_66);
 }
 
 void AssemblyBuilderX64::vblendvpd_DEPRECATED(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3)
@@ -954,10 +954,10 @@ void AssemblyBuilderX64::vblendvpd_DEPRECATED(RegisterX64 dst, RegisterX64 src1,
     placeAvx("vblendvpd", dst, src1, mask, src3.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
 }
 
-void AssemblyBuilderX64::vblendvpd(RegisterX64 dst, RegisterX64 src1, RegisterX64 src2, OperandX64 mask)
+void AssemblyBuilderX64::vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, RegisterX64 mask)
 {
     // bits [7:4] of imm8 are used to select register for operand 4
-    placeAvx("vblendvpd", dst, src1, mask, src2.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
+    placeAvx("vblendvpd", dst, src1, src2, mask.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
 }
 
 void AssemblyBuilderX64::vpshufps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t shuffle)

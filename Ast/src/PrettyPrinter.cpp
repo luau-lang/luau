@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Transpiler.h"
+#include "Luau/PrettyPrinter.h"
 
 #include "Luau/Parser.h"
 #include "Luau/StringUtils.h"
@@ -1865,14 +1865,14 @@ void dump(AstNode* node)
     printf("%s\n", toString(node).c_str());
 }
 
-std::string transpile(AstStatBlock& block, const CstNodeMap& cstNodeMap)
+std::string prettyPrint(AstStatBlock& block, const CstNodeMap& cstNodeMap)
 {
     StringWriter writer;
     Printer(writer, cstNodeMap).visualizeBlock(block);
     return writer.str();
 }
 
-std::string transpileWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap)
+std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap)
 {
     StringWriter writer;
     Printer printer(writer, cstNodeMap);
@@ -1881,12 +1881,12 @@ std::string transpileWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap
     return writer.str();
 }
 
-std::string transpileWithTypes(AstStatBlock& block)
+std::string prettyPrintWithTypes(AstStatBlock& block)
 {
-    return transpileWithTypes(block, CstNodeMap{nullptr});
+    return prettyPrintWithTypes(block, CstNodeMap{nullptr});
 }
 
-TranspileResult transpile(std::string_view source, ParseOptions options, bool withTypes)
+PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options, bool withTypes)
 {
     options.storeCstData = true;
 
@@ -1896,20 +1896,20 @@ TranspileResult transpile(std::string_view source, ParseOptions options, bool wi
 
     if (!parseResult.errors.empty())
     {
-        // TranspileResult keeps track of only a single error
+        // PrettyPrintResult keeps track of only a single error
         const ParseError& error = parseResult.errors.front();
 
-        return TranspileResult{"", error.getLocation(), error.what()};
+        return PrettyPrintResult{"", error.getLocation(), error.what()};
     }
 
     LUAU_ASSERT(parseResult.root);
     if (!parseResult.root)
-        return TranspileResult{"", {}, "Internal error: Parser yielded empty parse tree"};
+        return PrettyPrintResult{"", {}, "Internal error: Parser yielded empty parse tree"};
 
     if (withTypes)
-        return TranspileResult{transpileWithTypes(*parseResult.root, parseResult.cstNodeMap)};
+        return PrettyPrintResult{prettyPrintWithTypes(*parseResult.root, parseResult.cstNodeMap)};
 
-    return TranspileResult{transpile(*parseResult.root, parseResult.cstNodeMap)};
+    return PrettyPrintResult{prettyPrint(*parseResult.root, parseResult.cstNodeMap)};
 }
 
 } // namespace Luau

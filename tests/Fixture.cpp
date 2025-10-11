@@ -9,10 +9,10 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
+#include "Luau/PrettyPrinter.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/Transpiler.h"
 
 #include "doctest.h"
 
@@ -579,7 +579,7 @@ std::string Fixture::decorateWithTypes(const std::string& code)
     SourceModule* sourceModule = getFrontend().getSourceModule(mainModuleName);
     attachTypeData(*sourceModule, *getFrontend().moduleResolver.getModule(mainModuleName));
 
-    return transpileWithTypes(*sourceModule->root);
+    return prettyPrintWithTypes(*sourceModule->root);
 }
 
 void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)

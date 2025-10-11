@@ -23,7 +23,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAGVARIABLE(LuauMorePreciseExternTableRelation)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
 LUAU_FASTFLAGVARIABLE(LuauExternTableIndexersIntersect)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyMoveTableProps)
@@ -648,31 +647,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
         }
 
         if (auto re = get<ExternType>(right))
-        {
-            if (FFlag::LuauMorePreciseExternTableRelation)
-                return relateTableToExternType(lt, re, seen);
-
-            Relation overall = Relation::Coincident;
-
-            for (auto& [name, prop] : lt->props)
-            {
-                if (auto propInExternType = re->props.find(name); propInExternType != re->props.end())
-                {
-                    LUAU_ASSERT(prop.readTy && propInExternType->second.readTy);
-                    Relation propRel = relate(*prop.readTy, *propInExternType->second.readTy, seen);
-
-                    if (propRel == Relation::Disjoint)
-                        return Relation::Disjoint;
-
-                    if (propRel == Relation::Coincident)
-                        continue;
-
-                    overall = Relation::Intersects;
-                }
-            }
-
-            return overall;
-        }
+            return relateTableToExternType(lt, re, seen);
 
         // TODO metatables
 
@@ -692,22 +667,8 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
             return Relation::Disjoint;
         }
 
-        if (FFlag::LuauMorePreciseExternTableRelation)
-        {
-            if (auto tbl = get<TableType>(right))
-                return flip(relateTableToExternType(tbl, ct, seen));
-        }
-        else
-        {
-            if (is<TableType>(right))
-            {
-                // FIXME: This could be better in that we can say a table only
-                // intersects with an extern type if they share a property, but
-                // for now it is within the contract of the function to claim
-                // the two intersect.
-                return Relation::Intersects;
-            }
-        }
+        if (auto tbl = get<TableType>(right))
+            return flip(relateTableToExternType(tbl, ct, seen));
 
         return Relation::Disjoint;
     }

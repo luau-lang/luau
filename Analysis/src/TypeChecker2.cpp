@@ -34,17 +34,14 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
-LUAU_FASTFLAGVARIABLE(LuauAllowMixedTables)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionForLiteralSubtypeCheck)
-LUAU_FASTFLAGVARIABLE(LuauRemoveGenericErrorForParams)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAGVARIABLE(LuauAddErrorCaseForIncompatibleTypePacks)
 LUAU_FASTFLAGVARIABLE(LuauAddConditionalContextForTernary)
@@ -743,10 +740,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
     {
         if (idx < head.size())
         {
-            if (FFlag::LuauInferActualIfElseExprType2)
-                isSubtype &= testLiteralOrAstTypeIsSubtype(ret->list.data[idx], head[idx]);
-            else
-                isSubtype &= testPotentialLiteralIsSubtype(ret->list.data[idx], head[idx]);
+            isSubtype &= testLiteralOrAstTypeIsSubtype(ret->list.data[idx], head[idx]);
             actualHead.push_back(head[idx]);
         }
         else
@@ -777,10 +771,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
     else
     {
         auto lastType = head[ret->list.size - 1];
-        if (FFlag::LuauInferActualIfElseExprType2)
-            isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
-        else
-            isSubtype &= testPotentialLiteralIsSubtype(lastExpr, lastType);
+        isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
         actualHead.push_back(lastType);
     }
 
@@ -2780,35 +2771,6 @@ void TypeChecker2::visit(AstTypeReference* ty)
         size_t typesRequired = alias->typeParams.size();
         size_t packsRequired = alias->typePackParams.size();
 
-        bool hasDefaultTypes = std::any_of(
-            alias->typeParams.begin(),
-            alias->typeParams.end(),
-            [](auto&& el)
-            {
-                return el.defaultValue.has_value();
-            }
-        );
-
-        bool hasDefaultPacks = std::any_of(
-            alias->typePackParams.begin(),
-            alias->typePackParams.end(),
-            [](auto&& el)
-            {
-                return el.defaultValue.has_value();
-            }
-        );
-
-        if (!FFlag::LuauRemoveGenericErrorForParams)
-        {
-            if (!ty->hasParameterList)
-            {
-                if ((!alias->typeParams.empty() && !hasDefaultTypes) || (!alias->typePackParams.empty() && !hasDefaultPacks))
-                {
-                    reportError(GenericError{"Type parameter list is required"}, ty->location);
-                }
-            }
-        }
-
         size_t typesProvided = 0;
         size_t extraTypes = 0;
         size_t packsProvided = 0;
@@ -2883,17 +2845,9 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
         }
 
-        if (FFlag::LuauRemoveGenericErrorForParams)
-        {
-            // If the type parameter list is explicitly provided, allow an empty type pack to satisfy the expected pack count.
-            if (extraTypes == 0 && packsProvided + 1 == packsRequired && ty->hasParameterList)
-                packsProvided += 1;
-        }
-        else
-        {
-            if (extraTypes == 0 && packsProvided + 1 == packsRequired)
-                packsProvided += 1;
-        }
+        // If the type parameter list is explicitly provided, allow an empty type pack to satisfy the expected pack count.
+        if (extraTypes == 0 && packsProvided + 1 == packsRequired && ty->hasParameterList)
+            packsProvided += 1;
 
         if (typesProvided != typesRequired || packsProvided != packsRequired)
         {
@@ -3035,7 +2989,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             continue;
 
         std::optional<TypeOrPack> optSubLeaf;
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
             optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes, subtyping->arena);
         else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
             optSubLeaf = traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes, NotNull{&r.mappedGenericPacks_DEPRECATED}, subtyping->arena);
@@ -3043,7 +2997,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             optSubLeaf = traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes);
 
         std::optional<TypeOrPack> optSuperLeaf;
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance)
+        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
             optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes, subtyping->arena);
         else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
             optSuperLeaf =
@@ -3197,29 +3151,26 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     auto exprType = follow(lookupType(expr));
     expectedType = follow(expectedType);
 
-    if (FFlag::LuauInferActualIfElseExprType2)
+    if (auto group = expr->as<AstExprGroup>())
     {
-        if (auto group = expr->as<AstExprGroup>())
-        {
-            return testPotentialLiteralIsSubtype(group->expr, expectedType);
-        }
-        else if (auto ifElse = expr->as<AstExprIfElse>())
-        {
-            bool passes = testPotentialLiteralIsSubtype(ifElse->trueExpr, expectedType);
-            passes &= testPotentialLiteralIsSubtype(ifElse->falseExpr, expectedType);
-            return passes;
-        }
-        else if (auto binExpr = expr->as<AstExprBinary>(); binExpr && binExpr->op == AstExprBinary::Or)
-        {
-            // In this case: `{ ... } or { ... }` is literal _enough_ that
-            // we should do this covariant check.
-            auto relaxedExpectedLhs = module->internalTypes.addType(UnionType{{builtinTypes->falsyType, expectedType}});
-            bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
-            passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
-            return passes;
-        }
-        // FIXME: We probably should do a check for `and` here.
+        return testPotentialLiteralIsSubtype(group->expr, expectedType);
     }
+    else if (auto ifElse = expr->as<AstExprIfElse>())
+    {
+        bool passes = testPotentialLiteralIsSubtype(ifElse->trueExpr, expectedType);
+        passes &= testPotentialLiteralIsSubtype(ifElse->falseExpr, expectedType);
+        return passes;
+    }
+    else if (auto binExpr = expr->as<AstExprBinary>(); binExpr && binExpr->op == AstExprBinary::Or)
+    {
+        // In this case: `{ ... } or { ... }` is literal _enough_ that
+        // we should do this covariant check.
+        auto relaxedExpectedLhs = module->internalTypes.addType(UnionType{{builtinTypes->falsyType, expectedType}});
+        bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
+        passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
+        return passes;
+    }
+    // FIXME: We probably should do a check for `and` here.
 
     auto exprTable = expr->as<AstExprTable>();
     auto exprTableType = get<TableType>(exprType);
@@ -3274,16 +3225,8 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         NotNull<Scope> scope{findInnermostScope(expr->location)};
 
-        if (FFlag::LuauAllowMixedTables)
-        {
-            auto result = subtyping->isSubtype(/* subTy */ builtinTypes->numberType, /* superTy */ expectedTableType->indexer->indexType, scope);
-            isArrayLike = result.isSubtype || isErrorSuppressing(expr->location, expectedTableType->indexer->indexType);
-        }
-        else
-        {
-            auto result = subtyping->isSubtype(/* subTy */ expectedTableType->indexer->indexType, /* superTy */ builtinTypes->numberType, scope);
-            isArrayLike = result.isSubtype;
-        }
+        auto result = subtyping->isSubtype(/* subTy */ builtinTypes->numberType, /* superTy */ expectedTableType->indexer->indexType, scope);
+        isArrayLike = result.isSubtype || isErrorSuppressing(expr->location, expectedTableType->indexer->indexType);
     }
 
     bool isSubtype = true;
@@ -3466,13 +3409,13 @@ void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId pr
             return;
         }
 
-        std::optional<TypeId> subLeaf = FFlag::LuauSubtypingGenericPacksDoesntUseVariance
+        std::optional<TypeId> subLeaf = FFlag::LuauSubtypingGenericPacksDoesntUseVariance2
                                             ? traverseForType(iterFunc, reasoning.subPath, builtinTypes, subtyping->arena)
                                             : traverseForType_DEPRECATED(iterFunc, reasoning.subPath, builtinTypes);
         if (!subLeaf)
             continue;
 
-        std::optional<TypeId> superLeaf = FFlag::LuauSubtypingGenericPacksDoesntUseVariance
+        std::optional<TypeId> superLeaf = FFlag::LuauSubtypingGenericPacksDoesntUseVariance2
                                               ? traverseForType(prospectiveFunc, reasoning.superPath, builtinTypes, subtyping->arena)
                                               : traverseForType_DEPRECATED(prospectiveFunc, reasoning.superPath, builtinTypes);
         if (!superLeaf)

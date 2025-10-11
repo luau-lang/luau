@@ -27,7 +27,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
@@ -1824,16 +1823,13 @@ AutocompleteResult autocomplete_(
 {
     LUAU_TIMETRACE_SCOPE("Luau::autocomplete_", "AutocompleteCore");
 
-    if (FFlag::LuauSuggestHotComments)
+    if (isInHotComment)
     {
-        if (isInHotComment)
-        {
-            AutocompleteEntryMap result;
+        AutocompleteEntryMap result;
 
-            for (const std::string_view hc : kHotComments)
-                result.emplace(hc, AutocompleteEntry{AutocompleteEntryKind::HotComment});
-            return {std::move(result), ancestry, AutocompleteContext::HotComment};
-        }
+        for (const std::string_view hc : kHotComments)
+            result.emplace(hc, AutocompleteEntry{AutocompleteEntryKind::HotComment});
+        return {std::move(result), ancestry, AutocompleteContext::HotComment};
     }
 
     AstNode* node = ancestry.back();

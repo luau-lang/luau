@@ -15,7 +15,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauRefineOccursCheckDirectRecursion)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauRawGetHandlesNil)
@@ -1870,10 +1869,7 @@ TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_stuck_tf_is_stuck")
 // We want to make sure that `t1 where t1 = refine<t1, unknown>` becomes `unknown`, not a cyclic type.
 TEST_CASE_FIXTURE(TFFixture, "reduce_degenerate_refinement")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineOccursCheckDirectRecursion, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     TypeId root = arena->addType(BlockedType{});
     TypeId refinement = arena->addType(

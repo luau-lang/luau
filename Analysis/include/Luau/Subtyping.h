@@ -178,8 +178,9 @@ struct SubtypingEnvironment
     GenericBounds& getMappedTypeBounds(TypeId ty, NotNull<InternalErrorReporter> iceReporter);
     // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
     GenericBounds_DEPRECATED& getMappedTypeBounds_DEPRECATED(TypeId ty);
-    // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+    // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance2
     TypePackId* getMappedPackBounds_DEPRECATED(TypePackId tp);
+    MappedGenericEnvironment::LookupResult lookupGenericPack(TypePackId tp) const;
 
     /*
      * When we encounter a generic over the course of a subtyping test, we need
@@ -192,7 +193,7 @@ struct SubtypingEnvironment
     DenseHashMap<TypeId, GenericBounds_DEPRECATED> mappedGenerics_DEPRECATED{nullptr};
 
     MappedGenericEnvironment mappedGenericPacks;
-    // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+    // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance2
     DenseHashMap<TypePackId, TypePackId> mappedGenericPacks_DEPRECATED{nullptr};
 
     /*
@@ -452,8 +453,19 @@ private:
         NotNull<Scope> scope
     );
 
+    // Markers to help overload selection.
+    struct Anything{};
+    struct Nothing{};
+
+    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const VariadicTypePack* sub, TypePackId superTp, const VariadicTypePack* super);
+    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, TypePackId superTp, const GenericTypePack* super);
+    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const VariadicTypePack* sub, TypePackId superTp, const GenericTypePack* super);
+    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, TypePackId superTp, const VariadicTypePack* super);
+    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, Nothing);
+    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, Nothing, TypePackId superTp, const GenericTypePack* super);
+
     bool bindGeneric(SubtypingEnvironment& env, TypeId subTp, TypeId superTp);
-    // Clip with LuauSubtypingGenericPacksDoesntUseVariance
+    // Clip with LuauSubtypingGenericPacksDoesntUseVariance2
     bool bindGeneric_DEPRECATED(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp) const;
 
     template<typename T, typename Container>

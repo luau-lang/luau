@@ -243,13 +243,13 @@ std::string toStringHuman(const TypePath::Path& path);
 
 // To keep my head straight when clipping:
 // LuauReturnMappedGenericPacksFromSubtyping3 expects mappedGenericPacks AND arena
-// LuauSubtypingGenericPacksDoesntUseVariance expects just arena. this is the final state
+// LuauSubtypingGenericPacksDoesntUseVariance2 expects just arena. this is the final state
 
 // TODO: clip below two along with `LuauReturnMappedGenericPacksFromSubtyping3`
 std::optional<TypeOrPack> traverse_DEPRECATED(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse_DEPRECATED(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
-// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance2
 std::optional<TypeOrPack> traverse_DEPRECATED(
     TypePackId root,
     const Path& path,
@@ -258,7 +258,7 @@ std::optional<TypeOrPack> traverse_DEPRECATED(
     NotNull<TypeArena> arena
 );
 std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
-// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance
+// TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance2
 std::optional<TypeOrPack> traverse_DEPRECATED(
     TypeId root,
     const Path& path,
