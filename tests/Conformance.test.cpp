@@ -284,7 +284,9 @@ static StateRef runConformance(
         Luau::CodeGen::compile(L, -1, nativeOpts);
 
     // Extra test for lowering on both platforms with assembly generation
+    if (luau_codegen_supported())
     {
+
         Luau::CodeGen::AssemblyOptions assemblyOptions;
         assemblyOptions.compilationOptions = nativeOpts;
 
