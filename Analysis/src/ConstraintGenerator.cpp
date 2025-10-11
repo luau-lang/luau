@@ -37,10 +37,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauConstraintGeneratorRecursionLimit, 300)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAGVARIABLE(LuauEnableWriteOnlyProperties)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
-LUAU_FASTFLAGVARIABLE(LuauInferActualIfElseExprType2)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
@@ -2080,13 +2077,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 }
             );
 
-            if (FFlag::LuauLimitDynamicConstraintSolving3)
-            {
-                // If we don't emplace an error type here, then later we'll be
-                // exposing a blocked type in this file's type interface. This
-                // is _normally_ harmless.
-                emplaceType<BoundType>(asMutable(bindingIt->second.type), builtinTypes->errorType);
-            }
+            // If we don't emplace an error type here, then later we'll be
+            // exposing a blocked type in this file's type interface. This
+            // is _normally_ harmless.
+            emplaceType<BoundType>(asMutable(bindingIt->second.type), builtinTypes->errorType);
 
             return ControlFlow::None;
         }
@@ -3333,10 +3327,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
     applyRefinements(elseScope, ifElse->falseExpr->location, refinementArena.negation(refinement));
     TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
 
-    if (FFlag::LuauInferActualIfElseExprType2)
-        return Inference{makeUnion(scope, ifElse->location, thenType, elseType)};
-    else
-        return Inference{expectedType ? *expectedType : makeUnion(scope, ifElse->location, thenType, elseType)};
+    return Inference{makeUnion(scope, ifElse->location, thenType, elseType)};
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
@@ -3987,7 +3978,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
             else
                 return resolveType_(scope, ref->parameters.data[0].type, inTypeArguments);
         }
-        else if (FFlag::LuauLimitDynamicConstraintSolving3 && ref->name == "_luau_blocked_type")
+        else if (ref->name == "_luau_blocked_type")
         {
             return arena->addType(BlockedType{});
         }

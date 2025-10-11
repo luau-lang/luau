@@ -27,7 +27,7 @@ LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
@@ -2394,7 +2394,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true},
+        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true},
         {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
     };
 
@@ -3342,6 +3342,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1854")
                 return work
             end
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_119545_pass_lambda_inside_table")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type foo1 = { foo: (number) -> () }
+        type foo2 = { read foo: (number) -> () }
+        local function bar1(foo: foo1) end
+        local function bar2(foo: foo2) end
+
+        local baz = { foo = function(number: number) end, }
+        bar1(baz)
+        bar2(baz)
     )"));
 }
 

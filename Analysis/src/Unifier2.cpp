@@ -26,7 +26,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
-LUAU_FASTFLAGVARIABLE(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAGVARIABLE(LuauFixNilRightPad)
 
 namespace Luau
@@ -214,67 +213,19 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     if (subFn && superFn)
         return unify_(subTy, superFn);
 
-    if (FFlag::LuauTryToOptimizeSetTypeUnification)
-    {
-        auto subUnion = get<UnionType>(subTy);
-        auto superUnion = get<UnionType>(superTy);
+    auto subUnion = get<UnionType>(subTy);
+    auto superUnion = get<UnionType>(superTy);
+    if (subUnion)
+        return unify_(subUnion, superTy);
+    else if (superUnion)
+        return unify_(subTy, superUnion);
 
-        auto subIntersection = get<IntersectionType>(subTy);
-        auto superIntersection = get<IntersectionType>(superTy);
-
-        // This is, effectively, arranged to avoid the following:
-        //
-        //  'a & T <: U | V => 'a & T <: U and 'a & T <: V
-        //
-
-        // For T <: U & V and T | U <: V, these two cases are entirely correct.
-
-        // We decompose T <: U & V above into T <: U and T <: V ...
-        if (superIntersection)
-            return unify_(subTy, superIntersection);
-
-        // ... and T | U <: V into T <: V and U <: V.
-        if (subUnion)
-            return unify_(subUnion, superTy);
-
-        // This, T & U <: V, erroneously is decomposed into T <: U and T <: V,
-        // even though technically we only need one of the above to hold.
-        // However, this ordering means that we avoid ...
-        if (subIntersection)
-            return unify_(subIntersection, superTy);
-
-        // T <: U | V decomposing into T <: U and T <: V is incorrect, and
-        // can result in some really strange user-visible bugs. Consider:
-        //
-        //  'a & ~(false?) <: string | number
-        //
-        // Intuitively, this should place a constraint of `string | number`
-        // on the upper bound of `'a`. But if we hit this case, then we
-        // end up with something like:
-        //
-        //  'a & ~(false?) <: string and 'a & ~(false?) <: number
-        //
-        // ... which will result in `'a` having `string & number` as its
-        // upper bound, and being inferred to `never`.
-        if (superUnion)
-            return unify_(subTy, superUnion);
-    }
-    else
-    {
-        auto subUnion = get<UnionType>(subTy);
-        auto superUnion = get<UnionType>(superTy);
-        if (subUnion)
-            return unify_(subUnion, superTy);
-        else if (superUnion)
-            return unify_(subTy, superUnion);
-
-        auto subIntersection = get<IntersectionType>(subTy);
-        auto superIntersection = get<IntersectionType>(superTy);
-        if (subIntersection)
-            return unify_(subIntersection, superTy);
-        else if (superIntersection)
-            return unify_(subTy, superIntersection);
-    }
+    auto subIntersection = get<IntersectionType>(subTy);
+    auto superIntersection = get<IntersectionType>(superTy);
+    if (subIntersection)
+        return unify_(subIntersection, superTy);
+    else if (superIntersection)
+        return unify_(subTy, superIntersection);
 
     auto subNever = get<NeverType>(subTy);
     auto superNever = get<NeverType>(superTy);

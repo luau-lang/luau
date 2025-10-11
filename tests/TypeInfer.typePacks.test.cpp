@@ -12,7 +12,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauRemoveGenericErrorForParams)
 LUAU_FASTFLAG(LuauAddErrorCaseForIncompatibleTypePacks)
 
 TEST_SUITE_BEGIN("TypePackTests");
@@ -259,7 +258,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")
     CHECK_EQ(toString(requireType("foo")), "(...number) -> ()");
 }
 
-#if 0
 TEST_CASE_FIXTURE(Fixture, "type_pack_hidden_free_tail_infinite_growth")
 {
     CheckResult result = check(R"(
@@ -276,7 +274,6 @@ end
 
     LUAU_REQUIRE_ERRORS(result);
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "variadic_argument_tail")
 {
@@ -616,8 +613,6 @@ type Other = Packed<number, string>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_instantiated_but_missing_parameter_list")
 {
-    ScopedFastFlag sff{FFlag::LuauRemoveGenericErrorForParams, true};
-
     CheckResult result = check(R"(
 type Packed<T...> = (T...) -> T...
 local a: Packed
@@ -808,8 +803,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors4")
 {
-    ScopedFastFlag sff{FFlag::LuauRemoveGenericErrorForParams, true};
-
     CheckResult result = check(R"(
         type Packed<T> = (T) -> T
         local a: Packed

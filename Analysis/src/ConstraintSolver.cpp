@@ -14,6 +14,7 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/OverloadResolution.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/ScopedSeenSet.h"
 #include "Luau/Simplify.h"
 #include "Luau/TableLiteralInference.h"
 #include "Luau/TimeTrace.h"
@@ -40,8 +41,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauCollapseShouldNotCrash)
-LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericFollowBeforeChecking)
-LUAU_FASTFLAGVARIABLE(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTFLAGVARIABLE(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAGVARIABLE(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
@@ -56,28 +55,6 @@ LUAU_FASTFLAGVARIABLE(LuauAvoidOverloadSelectionForFunctionType)
 
 namespace Luau
 {
-
-struct SeenScope
-{
-    Set<TypeId>& seen;
-    TypeId ty;
-
-    SeenScope(Set<TypeId>& seen, TypeId ty)
-        : seen(seen)
-        , ty(ty)
-    {
-        seen.insert(ty);
-    }
-
-    ~SeenScope()
-    {
-        seen.erase(ty);
-    }
-
-    // Delete copy constructor and copy assignment operator to prevent copying
-    SeenScope(const SeenScope&) = delete;
-    SeenScope& operator=(const SeenScope&) = delete;
-};
 
 bool SubtypeConstraintRecord::operator==(const SubtypeConstraintRecord& other) const
 {
@@ -530,7 +507,7 @@ void ConstraintSolver::run()
 
             // If we were _given_ a limit, and the current limit has hit zero, ]
             // then early exit from constraint solving.
-            if (FFlag::LuauLimitDynamicConstraintSolving3 && FInt::LuauSolverConstraintLimit > 0 && solverConstraintLimit == 0)
+            if (FInt::LuauSolverConstraintLimit > 0 && solverConstraintLimit == 0)
                 break;
 
             std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
@@ -2756,10 +2733,7 @@ struct ContainsAnyGeneric final : public TypeOnceVisitor
 
     bool visit(TypePackId ty) override
     {
-        if (FFlag::LuauContainsAnyGenericFollowBeforeChecking)
-            found = found || is<GenericTypePack>(follow(ty));
-        else
-            found = found || is<GenericTypePack>(ty);
+        found = found || is<GenericTypePack>(follow(ty));
         return !found;
     }
 
@@ -3103,7 +3077,8 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     if (seen.contains(subjectType))
         return {};
 
-    std::optional<SeenScope> ss;
+    std::optional<ScopedSeenSet<Set<TypeId>, TypeId>> ss; // This won't be needed once LuauScopedSeenSetInLookupTableProp is clipped.
+
     if (FFlag::LuauScopedSeenSetInLookupTableProp)
         ss.emplace(seen, subjectType);
     else
@@ -3673,15 +3648,12 @@ NotNull<Constraint> ConstraintSolver::pushConstraint(NotNull<Scope> scope, const
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
 
-    if (FFlag::LuauLimitDynamicConstraintSolving3)
+    if (solverConstraintLimit > 0)
     {
-        if (solverConstraintLimit > 0)
-        {
-            --solverConstraintLimit;
+        --solverConstraintLimit;
 
-            if (solverConstraintLimit == 0)
-                reportError(CodeTooComplex{}, location);
-        }
+        if (solverConstraintLimit == 0)
+            reportError(CodeTooComplex{}, location);
     }
 
     return borrow;

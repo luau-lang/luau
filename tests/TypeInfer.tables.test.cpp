@@ -23,11 +23,9 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauAllowMixedTables)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
@@ -5649,19 +5647,14 @@ TEST_CASE_FIXTURE(Fixture, "large_table_inference_does_not_bleed")
         CHECK(err.location.begin.line == 2);
 }
 
-
-#if 0
-
-TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(2.0))
+TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(1.0))
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
-    const std::string source = "local res = {\n" + rep("\"foo\",\n", 100'000) + "}";
+    const std::string source = "local res = {\n" + rep("\"foo\",\n", 10'000) + "}";
     LUAU_REQUIRE_NO_ERRORS(check(source));
     CHECK_EQ("{string}", toString(requireType("res"), {true}));
 }
-
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "oss_1838")
 {
@@ -5976,8 +5969,6 @@ TEST_CASE_FIXTURE(Fixture, "free_types_with_sealed_table_upper_bounds_can_still_
 
 TEST_CASE_FIXTURE(Fixture, "mixed_tables_are_ok_when_explicit")
 {
-    ScopedFastFlag _{FFlag::LuauAllowMixedTables, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local foo: { [number | string]: unknown } = {
             Key = "sorry",
@@ -5989,8 +5980,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_are_ok_when_explicit")
 
 TEST_CASE_FIXTURE(Fixture, "mixed_tables_are_ok_for_any_key")
 {
-    ScopedFastFlag _{FFlag::LuauAllowMixedTables, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local foo: { [any]: unknown } = {
             Key = "sorry",

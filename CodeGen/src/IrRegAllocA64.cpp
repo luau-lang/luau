@@ -152,7 +152,6 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
             // Try to find and spill a register that is not used in the current instruction and has the furthest next use
             if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
             {
-                CODEGEN_ASSERT(currInstIdx == index);
                 spill(set, index, furthestUseTarget);
                 CODEGEN_ASSERT(set.free != 0);
             }

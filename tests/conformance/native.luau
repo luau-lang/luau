@@ -248,6 +248,13 @@ end
 
 assert(pcall(fuzzfail24) == false)
 
+local function fuzzfail25(...)
+  _,_.n0,_,_,_[_ // _],_[_ + _ % _],_,_,_,_,l255,_,_,_,_,_,_,_,_,_[_],_,_,_ = table.insert("")
+  _,_.n0,_,_,_[_ // _],_[_ + _ % _],_,_,_,_,l255,_,_,_,_,_,_,_,_,_[_],_,_,_ = table.insert("")
+end
+
+assert(pcall(fuzzfail25) == false)
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 

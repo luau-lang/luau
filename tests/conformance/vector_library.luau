@@ -178,6 +178,7 @@ assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5)
 assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
 assert(vector.lerp(vector.create(1, 2, 3), vector.create(3, 2, 1), 0.5) == vector.create(2, 2, 2))
 assert(vector.lerp(vector.create(-1, -1, -3), vector.zero, 0.5) == vector.create(-0.5, -0.5, -1.5))
+assert(vector.lerp(vector.create(10, 8, 3), vector.create(-3, 8, 3), 0.43) == vector.create(4.41, 8, 3))
 assert(ecall(function() return vector.lerp(vector.zero, vector.one, vector.one) end) == "invalid argument #3 to 'lerp' (number expected, got vector)")
 
 -- validate component access

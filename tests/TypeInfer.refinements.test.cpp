@@ -14,7 +14,6 @@ LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
-LUAU_FASTFLAG(LuauNewNonStrictNoErrorsPassingNever)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
@@ -1716,9 +1715,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_propertie
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "x_is_not_instance_or_else_not_part")
 {
-    // CLI-117135 - RefinementTests.x_is_not_instance_or_else_not_part not correctly applying refinements to a function parameter
-    if (FFlag::LuauSolverV2)
-        return;
+    ScopedFastFlag sff{FFlag::LuauRefineDistributesOverUnions, true};
 
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
@@ -2738,6 +2735,23 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_single")
     CHECK_EQ("The type function is not precise enough for us to determine the appropriate result type of this call.", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cli_140033_refine_union_of_extern_types")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function getImageLabel(vars: { Instance }): Folder | Part | nil
+            for _, item in vars do
+                if item:IsA("Folder") or item:IsA("Part") then
+                    return item
+                end
+            end
+            return nil
+        end
+    )"));
+
+    CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({5, 28})));
+}
+
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_union")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
@@ -3013,6 +3027,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "inline_if_conditional_context")
             return if typeof(state) == "table" and state.kind == "value"
                 then (state :: Value<T>).value :: T
                 else state :: T
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1517_equality_doesnt_add_nil")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type MyType = {
+            data: any
+        }
+
+        local function createMyType(): MyType
+            local obj = { data = {} }
+            return obj
+        end
+
+        local function testTypeInference()
+            local a: MyType = createMyType()
+            local b: MyType = createMyType()
+
+            if a == b then
+                local c: MyType = b
+                local value = b.data
+            end
         end
     )"));
 }

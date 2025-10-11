@@ -34,14 +34,12 @@ void luaC_validate(lua_State* L);
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
-LUAU_FASTFLAG(LuauCodeGenVectorLerp)
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
+LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
 LUAU_FASTFLAG(LuauCodeGenRestoreFromSplitStore)
 LUAU_FASTFLAG(LuauStacklessPcall)
@@ -280,11 +278,28 @@ static StateRef runConformance(
     int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
 
-    if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
-    {
-        Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
+    Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
 
+    if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
         Luau::CodeGen::compile(L, -1, nativeOpts);
+
+    // Extra test for lowering on both platforms with assembly generation
+    {
+        Luau::CodeGen::AssemblyOptions assemblyOptions;
+        assemblyOptions.compilationOptions = nativeOpts;
+
+        assemblyOptions.includeAssembly = true;
+        assemblyOptions.includeIr = true;
+        assemblyOptions.includeOutlinedCode = true;
+        assemblyOptions.includeIrTypes = true;
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::A64;
+        std::string a64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions);
+        CHECK(!a64.empty());
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::X64_SystemV;
+        std::string x64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions);
+        CHECK(!x64.empty());
     }
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
@@ -743,7 +758,6 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
     ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
 
     runConformance("errors.luau");
@@ -828,8 +842,6 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
-    ScopedFastFlag luauXpcallContNoYield{DFFlag::LuauXpcallContNoYield, true};
-
     runConformance("coroutine.luau");
 }
 
@@ -844,7 +856,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
     ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
 
     runConformance(
@@ -1167,7 +1178,7 @@ TEST_CASE("VectorLibrary")
         {FFlag::LuauCompileVectorLerp, true},
         {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
-        {FFlag::LuauCodeGenVectorLerp, true}
+        {FFlag::LuauCodeGenVectorLerp2, true}
     };
 
     lua_CompileOptions copts = defaultOptions();

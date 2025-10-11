@@ -19,7 +19,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
+LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
@@ -1407,7 +1407,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_function_instance")
 {
     ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-    ScopedFastFlag sff1{FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true};
+    ScopedFastFlag sff1{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
 
     TypeId longTy = arena.addType(
         UnionType{
@@ -1441,11 +1441,19 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
     }
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "(number, number...) <!: (number, string...)")
+{
+    TypePackId leftTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->numberType}));
+    TypePackId rightTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->stringType}));
+
+    CHECK_IS_NOT_SUBTYPE(leftTp, rightTp);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_union_type_path")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauConsiderErrorSuppressionInTypes, true},
-        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true},
+        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true},
     };
 
     TypeId subTy = arena.addType(UnionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
@@ -1473,7 +1481,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppress
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauConsiderErrorSuppressionInTypes, true},
-        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true},
+        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true},
     };
 
     TypeId subTy = getBuiltins()->booleanType;
@@ -1552,7 +1560,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>(x: T, y: T, f: (T, T) -> T) -> T <: (numb
 
 TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> (<A...>(A...) -> ()) <: (string -> ((number) -> ())")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true};
+    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
 
     // <A...>(A...) -> ()
     TypeId asToNothing = arena.addType(FunctionType({}, {genericAs}, genericAs, getBuiltins()->emptyTypePack, std::nullopt, false));
