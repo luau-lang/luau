@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauNegationTypes)
 
 namespace Luau
 {
@@ -5967,6 +5968,11 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
             types.push_back(resolveType(scope, *ann));
 
         return addType(IntersectionType{std::move(types)});
+    }
+    else if (const auto& n = annotation.as<AstTypeNegation>(); n && FFlag::LuauNegationTypes)
+    {
+        reportError(TypeError{annotation.location, GenericError{"Negation types are illegal here"}});
+        return errorRecoveryType(scope);
     }
     else if (const auto& g = annotation.as<AstTypeGroup>())
     {

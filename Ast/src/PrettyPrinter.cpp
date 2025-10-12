@@ -1858,6 +1858,15 @@ struct Printer
                     writer.symbol(")");
             }
         }
+        else if (const auto& a = typeAnnotation.as<AstTypeNegation>())
+        {
+            const auto cstNode = lookupCstNode<CstTypeNegation>(a);
+
+            advance(cstNode->tildePosition);
+            writer.write("~");
+
+            visualizeTypeAnnotation(*a->inner);
+        }
         else if (const auto& a = typeAnnotation.as<AstTypeGroup>())
         {
             writer.symbol("(");

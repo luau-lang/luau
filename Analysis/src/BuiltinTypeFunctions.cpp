@@ -1805,6 +1805,59 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
     return {resultTy, Reduction::MaybeOk, {}, {}};
 }
 
+static bool isTestable(TypeId ty)
+{
+    ty = follow(ty);
+    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType, FreeType, PendingExpansionType, BlockedType>(ty
+    );
+}
+
+TypeFunctionReductionResult<TypeId> negateTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    if (typeParams.size() != 1 && !packParams.empty())
+    {
+        ctx->ice->ice("negate type function: encountered a type function instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId inner = follow(typeParams[0]);
+
+    // Russell's paradox: `type T = ~T`.
+    if (inner == instance)
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}, "Detected an illegal cyclic negation type"};
+
+    if (isPending(inner, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {inner}};
+
+    // No need to pull in the complex `tryDistributeTypeFunctionApp` for this (also need to handle intersections).
+    bool ok;
+    if (auto ut = get<UnionType>(inner))
+        ok = std::all_of(begin(ut), end(ut), isTestable);
+    else if (auto it = get<IntersectionType>(inner))
+        ok = std::all_of(begin(it), end(it), isTestable);
+    else
+        ok = isTestable(inner);
+
+    // Types that are not testable are turned into errors.
+    if (!ok)
+    {
+        return {
+            ctx->builtins->errorType,
+            Reduction::MaybeOk,
+            {},
+            {},
+            "Cannot negate function types nor table types",
+        };
+    }
+
+    return {ctx->arena->addType(NegationType{inner}), Reduction::MaybeOk};
+}
+
 namespace
 {
 
@@ -2724,6 +2777,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}
+    , negateFunc{"negate", negateTypeFunction}
     , keyofFunc{"keyof", keyofTypeFunction}
     , rawkeyofFunc{"rawkeyof", rawkeyofTypeFunction}
     , indexFunc{"index", indexTypeFunction}

@@ -2969,6 +2969,11 @@ void TypeChecker2::visit(AstTypeIntersection* ty)
         visit(type);
 }
 
+void TypeChecker2::visit(AstTypeNegation* ty)
+{
+    return visit(ty->inner);
+}
+
 void TypeChecker2::visit(AstTypePack* pack)
 {
     if (auto p = pack->as<AstTypePackExplicit>())

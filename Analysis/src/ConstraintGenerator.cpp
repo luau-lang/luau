@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAGVARIABLE(LuauUdtfIndirectAliases)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAGVARIABLE(LuauNegationTypes)
 
 namespace Luau
 {
@@ -4196,6 +4197,13 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
 
             result = arena->addType(IntersectionType{std::move(parts)});
         }
+    }
+    else if (auto negationAnnotation = ty->as<AstTypeNegation>(); negationAnnotation && FFlag::LuauNegationTypes)
+    {
+        // Can't do syntactic optimization here where `~~T == T` because semantically `T` was negated at least _once_,
+        // otherwise `~~(string) -> string == (string) -> string` which is nonsense.
+        TypeId inner = resolveType_(scope, negationAnnotation->inner, inTypeArguments);
+        result = arena->addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->negateFunc, {inner}});
     }
     else if (auto typeGroupAnnotation = ty->as<AstTypeGroup>())
     {

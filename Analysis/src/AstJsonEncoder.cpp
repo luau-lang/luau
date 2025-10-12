@@ -1094,6 +1094,18 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
+    void write(AstTypeNegation* node)
+    {
+        writeNode(
+            node,
+            "AstTypeNegation",
+            [&]
+            {
+                PROP(inner);
+            }
+        );
+    }
+
     void write(class AstTypeError* node)
     {
         writeNode(
