@@ -1261,6 +1261,18 @@ void AstTypeIntersection::visit(AstVisitor* visitor)
     }
 }
 
+AstTypeNegation::AstTypeNegation(const Location& location, AstType* inner)
+    : AstType(ClassIndex(), location)
+    , inner(inner)
+{
+}
+
+void AstTypeNegation::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+        inner->visit(visitor);
+}
+
 AstTypeSingletonBool::AstTypeSingletonBool(const Location& location, bool value)
     : AstType(ClassIndex(), location)
     , value(value)

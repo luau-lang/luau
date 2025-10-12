@@ -489,10 +489,20 @@ class CstTypeIntersection : public CstNode
 public:
     LUAU_CST_RTTI(CstTypeIntersection)
 
-    explicit CstTypeIntersection(std::optional<Position> leadingPosition, AstArray<Position> separatorPositions);
+    CstTypeIntersection(std::optional<Position> leadingPosition, AstArray<Position> separatorPositions);
 
     std::optional<Position> leadingPosition;
     AstArray<Position> separatorPositions;
+};
+
+class CstTypeNegation : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypeNegation)
+
+    explicit CstTypeNegation(Position tildePosition);
+
+    Position tildePosition;
 };
 
 class CstTypeSingletonString : public CstNode
