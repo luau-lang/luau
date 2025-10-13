@@ -1829,7 +1829,7 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
 
     // Russell's paradox: `type T = ~T`.
     if (inner == instance)
-        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}, "Detected an illegal cyclic negation type"};
+        return {ctx->builtins->errorType, Reduction::Erroneous};
 
     if (isPending(inner, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {inner}};
@@ -1845,15 +1845,7 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
 
     // Types that are not testable are turned into errors.
     if (!ok)
-    {
-        return {
-            ctx->builtins->errorType,
-            Reduction::MaybeOk,
-            {},
-            {},
-            "Cannot negate function types nor table types",
-        };
-    }
+        return {ctx->builtins->errorType, Reduction::Erroneous};
 
     return {ctx->arena->addType(NegationType{inner}), Reduction::MaybeOk};
 }
