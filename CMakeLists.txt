@@ -194,6 +194,11 @@ if(MSVC AND LUAU_BUILD_CLI)
     set_target_properties(Luau.Repl.CLI PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
 endif()
 
+if(MSVC AND LUAU_BUILD_TESTS)
+    # Luau.CLI.Test also needs increased stack size in Debug due to complex repl functionality and metatable traversals
+    set_target_properties(Luau.CLI.Test PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
+endif()
+
 # embed .natvis inside the library debug information
 if(MSVC)
     target_link_options(Luau.Ast INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/Ast.natvis)
