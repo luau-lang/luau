@@ -12,8 +12,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodeGenUnassignedBcTargetAbort)
-LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
 LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 
 namespace Luau
@@ -273,8 +271,7 @@ IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, 
 
 void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 {
-    if (FFlag::LuauCodeGenRegAutoSpillA64)
-        regs.currInstIdx = index;
+    regs.currInstIdx = index;
 
     valueTracker.beforeInstLowering(inst);
 
@@ -2726,8 +2723,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     valueTracker.afterInstLowering(inst, index);
 
-    if (FFlag::LuauCodeGenRegAutoSpillA64)
-        regs.currInstIdx = kInvalidInstIdx;
+    regs.currInstIdx = kInvalidInstIdx;
 
     regs.freeLastUseRegs(inst, index);
     regs.freeTempRegs();
@@ -2772,12 +2768,9 @@ void IrLoweringA64::finishFunction()
         build.b(helpers.updatePcAndContinueInVm);
     }
 
-    if (FFlag::LuauCodeGenUnassignedBcTargetAbort)
-    {
-        // An undefined instruction is placed after the function to be used as an aborting jump offset
-        function.endLocation = build.setLabel().location;
-        build.udf();
-    }
+    // An undefined instruction is placed after the function to be used as an aborting jump offset
+    function.endLocation = build.setLabel().location;
+    build.udf();
 
     if (stats)
     {

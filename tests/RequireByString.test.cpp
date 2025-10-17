@@ -406,6 +406,25 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithFileAmbiguity")
     );
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithAmbiguityInAliasDiscovery")
+{
+    char executable[] = "luau";
+    std::vector<std::string> paths = {
+        getLuauDirectory(PathType::Relative) + "/tests/require/with_config/parent_ambiguity/folder/requirer.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/with_config/parent_ambiguity/folder/requirer.luau",
+    };
+
+    for (const std::string& path : paths)
+    {
+        std::vector<char> pathStr(path.size() + 1);
+        strncpy(pathStr.data(), path.c_str(), path.size());
+        pathStr[path.size()] = '\0';
+
+        char* argv[2] = {executable, pathStr.data()};
+        CHECK_EQ(replMain(2, argv), 0);
+    }
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithDirectoryAmbiguity")
 {
     std::string ambiguousPath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/ambiguous_directory_requirer";

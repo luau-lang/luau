@@ -4,6 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/AstUtils.h"
 #include "Luau/AstQuery.h"
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/DenseHash.h"
@@ -48,6 +49,8 @@ LUAU_FASTFLAGVARIABLE(LuauAddConditionalContextForTernary)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping2)
 LUAU_FASTFLAGVARIABLE(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
+LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 
 namespace Luau
 {
@@ -1765,13 +1768,36 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
 void TypeChecker2::visit(AstExprCall* call)
 {
+    std::optional<InConditionalContext> flipper;
+    if (FFlag::LuauAddRefinementToAssertions)
+    {
+        // We want to preserve the existing conditional context if we are in a `typeof` call.
+        if (!matchTypeOf(*call))
+            flipper.emplace(&typeContext, TypeContext::Default);
+
+        visit(call->func, ValueContext::RValue);
+    }
+    else
     {
         InConditionalContext flipper(&typeContext, TypeContext::Default);
         visit(call->func, ValueContext::RValue);
     }
 
-    for (AstExpr* arg : call->args)
-        visit(arg, ValueContext::RValue);
+    if (FFlag::LuauAddRefinementToAssertions && matchAssert(*call) && call->args.size > 0)
+    {
+        {
+            InConditionalContext flipper(&typeContext);
+            visit(call->args.data[0], ValueContext::RValue);
+        }
+
+        for (size_t i = 1; i < call->args.size; ++i)
+            visit(call->args.data[i], ValueContext::RValue);
+    }
+    else
+    {
+        for (AstExpr* arg : call->args)
+            visit(arg, ValueContext::RValue);
+    }
 
     visitCall(call);
 }
@@ -3200,10 +3226,22 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             {
                 // If we _happen_ to have an intersection of tables, let's try to
                 // construct it and use it as the input to this algorithm.
-                std::set<TypeId> parts{begin(itv), end(itv)};
-                TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
-                if (is<TableType>(simplified))
-                    return testPotentialLiteralIsSubtype(expr, simplified);
+                if (FFlag::LuauSimplifyIntersectionNoTreeSet)
+                {
+                    TypeIds parts;
+                    parts.insert(begin(itv), end(itv));
+                    TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+                    if (is<TableType>(simplified))
+                        return testPotentialLiteralIsSubtype(expr, simplified);
+                }
+                else
+                {
+
+                    std::set<TypeId> parts{begin(itv), end(itv)};
+                    TypeId simplified = simplifyIntersection_DEPRECATED(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+                    if (is<TableType>(simplified))
+                        return testPotentialLiteralIsSubtype(expr, simplified);
+                }
             }
         }
 

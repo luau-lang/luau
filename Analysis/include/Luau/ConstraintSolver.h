@@ -462,7 +462,12 @@ public:
     void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
-    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+
+    // Clip with LuauSimplifyIntersectionNoTreeSet
+    TypeId simplifyIntersection_DEPRECATED(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+
+    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeIds parts);
+
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);

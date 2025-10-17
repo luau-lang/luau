@@ -208,7 +208,6 @@ void requireConfigInit(luarequire_Configuration* config)
     config->get_chunkname = get_chunkname;
     config->get_loadname = get_loadname;
     config->get_cache_key = get_cache_key;
-    config->get_alias = nullptr;
     config->get_config = get_config;
     config->load = load;
 }

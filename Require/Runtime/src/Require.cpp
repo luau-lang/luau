@@ -7,6 +7,8 @@
 #include "lua.h"
 #include "lualib.h"
 
+#include <new>
+
 static void validateConfig(lua_State* L, const luarequire_Configuration& config)
 {
     if (!config.is_require_allowed)
@@ -45,10 +47,11 @@ static int pushrequireclosureinternal(
     const char* debugname
 )
 {
-    luarequire_Configuration* config = static_cast<luarequire_Configuration*>(lua_newuserdata(L, sizeof(luarequire_Configuration)));
-    if (!config)
+    void* ud = (lua_newuserdata(L, sizeof(luarequire_Configuration)));
+    if (!ud)
         luaL_error(L, "failed to allocate memory for require configuration");
 
+    luarequire_Configuration* config = new (ud) luarequire_Configuration{};
     config_init(config);
     validateConfig(L, *config);
 

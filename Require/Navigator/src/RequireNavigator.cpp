@@ -173,8 +173,11 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias)
 
     while (!foundAliasValue)
     {
-        if (navigationContext.toParent() != NavigationContext::NavigateResult::Success)
-            break;
+        NavigationContext::NavigateResult result = navigationContext.toParent();
+        if (result == NavigationContext::NavigateResult::Ambiguous)
+            return "could not navigate up the ancestry chain during search for alias \"" + desiredAlias + "\" (ambiguous)";
+        if (result == NavigationContext::NavigateResult::NotFound)
+            break; // Not treated as an error: interpreted as reaching the root.
 
         if (navigationContext.isConfigPresent())
         {

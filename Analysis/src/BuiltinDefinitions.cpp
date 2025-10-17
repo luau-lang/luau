@@ -1880,6 +1880,18 @@ bool matchAssert(const AstExprCall& call)
     return true;
 }
 
+bool matchTypeOf(const AstExprCall& call)
+{
+    if (call.args.size != 1)
+        return false;
+
+    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    if (!funcAsGlobal || (funcAsGlobal->name != "typeof" && funcAsGlobal->name != "type"))
+        return false;
+
+    return true;
+}
+
 bool shouldTypestateForFirstArgument(const AstExprCall& call)
 {
     // TODO: magic function for setmetatable and assert and then add them

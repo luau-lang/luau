@@ -168,7 +168,9 @@ struct SubtypingEnvironment
     // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
     std::optional<TypeId> applyMappedGenerics_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
 
-    const TypeId* tryFindSubstitution(TypeId ty) const;
+    // TODO: Clip with LuauTryFindSubstitutionReturnOptional
+    const TypeId* tryFindSubstitution_DEPRECATED(TypeId ty) const;
+    std::optional<TypeId> tryFindSubstitution(TypeId ty) const;
     // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
     const SubtypingResult* tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const;
 
