@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 LUAU_FASTFLAG(LuauCodegenNilStoreInvalidateValue2)
+LUAU_FASTFLAG(LuauCodegenStorePriority)
 
 using namespace Luau::CodeGen;
 
@@ -2912,6 +2913,49 @@ bb_0:
    CHECK_TAG %1, tnumber, exit(1)
    %3 = LOAD_TVALUE R0
    STORE_TVALUE R1, %3
+   RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore3")
+{
+    ScopedFastFlag luauCodegenStorePriority{FFlag::LuauCodegenStorePriority, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+
+    // Obscure the R0 state by only storing the value (tag was established in a previous block not visible here)
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(2));
+
+    // In the future, STORE_INT might imply that the tag is LUA_TBOOLEAN, but today it is used for other integer stores too
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), build.vmExit(1));
+
+    // Secondary load for store propagation
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0)));
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(2));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 2i
+   %1 = LOAD_TAG R0
+   CHECK_TAG %1, tnumber, exit(1)
+   STORE_TAG R2, tnumber
+   %4 = LOAD_DOUBLE R0
+   STORE_DOUBLE R2, %4
+   %6 = LOAD_TVALUE R0
+   STORE_TVALUE R1, %6
+   STORE_TAG R1, tboolean
    RETURN R1, 1i
 
 )");

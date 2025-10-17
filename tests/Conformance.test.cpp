@@ -40,8 +40,6 @@ LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
-LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
-LUAU_FASTFLAG(LuauCodeGenRestoreFromSplitStore)
 LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauResumeFix)
 
@@ -3254,9 +3252,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodeGenRegAutoSpillA64{FFlag::LuauCodeGenRegAutoSpillA64, true};
-    ScopedFastFlag luauCodeGenRestoreFromSplitStore{FFlag::LuauCodeGenRestoreFromSplitStore, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;

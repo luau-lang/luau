@@ -54,6 +54,8 @@ LUAU_FASTFLAGVARIABLE(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
+LUAU_FASTFLAGVARIABLE(LuauMetatableAvoidSingletonUnion)
+LUAU_FASTFLAGVARIABLE(LuauAddRefinementToAssertions)
 
 namespace Luau
 {
@@ -710,7 +712,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
             discriminants.clear();
             return resultType;
         }
-        
+
     };
 
     for (auto& [def, partition] : refinements)
@@ -2471,9 +2473,19 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             {
                 expectedType = expectedTypesForCall[i];
             }
-            auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
-            args.push_back(ty);
-            argumentRefinements.push_back(refinement);
+            if (FFlag::LuauAddRefinementToAssertions && i == 0 && matchAssert(*call))
+            {
+                InConditionalContext flipper{&typeContext};
+                auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
+                args.push_back(ty);
+                argumentRefinements.push_back(refinement);
+            }
+            else
+            {
+                auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
+                args.push_back(ty);
+                argumentRefinements.push_back(refinement);
+            }
         }
         else
         {
@@ -2535,13 +2547,26 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
         if (isTableUnion(target))
         {
-            const UnionType* targetUnion = get<UnionType>(target);
-            std::vector<TypeId> newParts;
+            if (FFlag::LuauMetatableAvoidSingletonUnion)
+            {
+                const UnionType* targetUnion = get<UnionType>(target);
+                UnionBuilder ub{arena, builtinTypes};
 
-            for (TypeId ty : targetUnion)
-                newParts.push_back(arena->addType(MetatableType{ty, mt}));
+                for (TypeId ty : targetUnion)
+                    ub.add(arena->addType(MetatableType{ty, mt}));
 
-            resultTy = arena->addType(UnionType{std::move(newParts)});
+                resultTy = ub.build();
+            }
+            else
+            {
+                const UnionType* targetUnion = get<UnionType>(target);
+                std::vector<TypeId> newParts;
+
+                for (TypeId ty : targetUnion)
+                    newParts.push_back(arena->addType(MetatableType{ty, mt}));
+
+                resultTy = arena->addType(UnionType{std::move(newParts)});
+            }
         }
         else
             resultTy = arena->addType(MetatableType{target, mt});

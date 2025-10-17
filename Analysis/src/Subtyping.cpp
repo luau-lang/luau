@@ -35,6 +35,7 @@ LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPrimitiveAndGenericTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAGVARIABLE(LuauTryFindSubstitutionReturnOptional)
 
 namespace Luau
 {
@@ -625,15 +626,30 @@ std::optional<TypeId> SubtypingEnvironment::applyMappedGenerics_DEPRECATED(NotNu
     return amg.substitute(ty);
 }
 
-const TypeId* SubtypingEnvironment::tryFindSubstitution(TypeId ty) const
+const TypeId* SubtypingEnvironment::tryFindSubstitution_DEPRECATED(TypeId ty) const
 {
+    LUAU_ASSERT(!FFlag::LuauTryFindSubstitutionReturnOptional);
+
     if (auto it = substitutions.find(ty))
         return it;
 
     if (parent)
-        return parent->tryFindSubstitution(ty);
+        return parent->tryFindSubstitution_DEPRECATED(ty);
 
     return nullptr;
+}
+
+std::optional<TypeId> SubtypingEnvironment::tryFindSubstitution(TypeId ty) const
+{
+    LUAU_ASSERT(FFlag::LuauTryFindSubstitutionReturnOptional);
+
+    if (const TypeId* it = substitutions.find(ty))
+        return *it;
+
+    if (parent)
+        return parent->tryFindSubstitution(ty);
+
+    return std::nullopt;
 }
 
 const SubtypingResult* SubtypingEnvironment::tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const
@@ -977,11 +993,22 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     subTy = follow(subTy);
     superTy = follow(superTy);
 
-    if (const TypeId* subIt = env.tryFindSubstitution(subTy); subIt && *subIt)
-        subTy = *subIt;
+    if (FFlag::LuauTryFindSubstitutionReturnOptional)
+    {
+        if (std::optional<TypeId> subIt = env.tryFindSubstitution(subTy); subIt && *subIt)
+            subTy = *subIt;
 
-    if (const TypeId* superIt = env.tryFindSubstitution(superTy); superIt && *superIt)
-        superTy = *superIt;
+        if (std::optional<TypeId> superIt = env.tryFindSubstitution(superTy); superIt && *superIt)
+            subTy = *superIt;
+    }
+    else
+    {
+        if (const TypeId* subIt = env.tryFindSubstitution_DEPRECATED(subTy); subIt && *subIt)
+            subTy = *subIt;
+
+        if (const TypeId* superIt = env.tryFindSubstitution_DEPRECATED(superTy); superIt && *superIt)
+            superTy = *superIt;
+    }
 
     const SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
     if (cachedResult)

@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauAddConditionalContextForTernary)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
+LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 
 using namespace Luau;
 
@@ -3053,6 +3054,108 @@ TEST_CASE_FIXTURE(Fixture, "oss_1517_equality_doesnt_add_nil")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_refinement_context")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        local x = {} :: unknown
+
+        if typeof(x) == "table" then
+            if typeof(x.transform) == "function" then
+            	local y = x.transform
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_typeof_refinement_context")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        local x = {} :: unknown
+
+        if typeof(x) == "table" then
+            assert(typeof(x.transform) == "function")
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "foo_call_should_not_refine")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local x = {} :: unknown
+        local function foo(_: boolean) end
+
+        if typeof(x) == "table" then
+            foo(typeof(x.transform) == "function")
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'table' does not have key 'transform'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_should_not_refine_despite_typeof")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function foo(_: any) end
+
+        local function f(x: unknown)
+            if typeof(x) == "table" then
+                assert(foo(typeof(x.bar)))
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'table' does not have key 'bar'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "non_conditional_context_in_if_should_not_refine")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    CheckResult result = check(R"(
+        local function bing(_: any) end
+        local function foobar(x: unknown)
+            assert(typeof(x) == "table")
+            if bing(x.foo) then
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'table' does not have key 'foo'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

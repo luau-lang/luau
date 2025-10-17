@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintSingleton)
+LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIndexer)
 
 namespace Luau
 {
@@ -256,15 +257,23 @@ struct BidirectionalTypePusher
                     {
                         // If we have some type:
                         //
-                        //  { [string]: T }
+                        //  { [T]: U }
                         //
                         // ... that we're trying to push into ...
                         //
                         //  { foo = bar }
                         //
-                        // Then the intent is probably to push `T` into `bar`.
-                        if (expectedTableTy->indexer && fastIsSubtype(solver->builtinTypes->stringType, expectedTableTy->indexer->indexType))
-                            (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
+                        // Then the intent is probably to push `U` into `bar`.
+                        if (FFlag::LuauPushTypeConstraintIndexer)
+                        {
+                            if (expectedTableTy->indexer)
+                                (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
+                        }
+                        else
+                        {
+                            if (expectedTableTy->indexer && fastIsSubtype(solver->builtinTypes->stringType, expectedTableTy->indexer->indexType))
+                                (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
+                        }
 
                         // If it's just an extra property and the expected type
                         // has no indexer, there's no work to do here.
