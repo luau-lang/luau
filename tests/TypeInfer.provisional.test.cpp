@@ -19,6 +19,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
+LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1425,6 +1426,24 @@ TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
     // TODO CLI-168953: This is not correct. We should not be inferring `never`
     // for the second return type of `getItem`.
     CHECK_EQ("({ read getItem: (number) -> (never, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    CheckResult result = check(R"(
+        local foo: unknown = nil :: any
+        assert(typeof(foo) == "table")
+        if typeof(typeof(foo.x)) == "string" then
+        end
+    )");
+
+    // TODO CLI-174351: We should expect a TypeError: Type 'table' does not have key 'x' error here.
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

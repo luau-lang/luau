@@ -25,6 +25,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNilStoreInvalidateValue2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenStorePriority)
 
 namespace Luau
 {
@@ -865,7 +866,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
             // If we know the tag, we can try extracting the value from a register used by LOAD_TVALUE
             // To do that, we have to ensure that the register link of the source value is still valid
-            if (tag != 0xff && state.tryGetRegLink(inst.b) != nullptr)
+            if (tag != 0xff && (!FFlag::LuauCodegenStorePriority || value.kind == IrOpKind::None) && state.tryGetRegLink(inst.b) != nullptr)
             {
                 if (IrInst* arg = function.asInstOp(inst.b); arg && arg->cmd == IrCmd::LOAD_TVALUE && arg->a.kind == IrOpKind::VmReg)
                 {

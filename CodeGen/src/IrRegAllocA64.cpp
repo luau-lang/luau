@@ -11,7 +11,6 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
-LUAU_FASTFLAGVARIABLE(LuauCodeGenRegAutoSpillA64)
 
 namespace Luau
 {
@@ -147,19 +146,11 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 
     if (set.free == 0)
     {
-        if (FFlag::LuauCodeGenRegAutoSpillA64)
+        // Try to find and spill a register that is not used in the current instruction and has the furthest next use
+        if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
         {
-            // Try to find and spill a register that is not used in the current instruction and has the furthest next use
-            if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
-            {
-                spill(set, index, furthestUseTarget);
-                CODEGEN_ASSERT(set.free != 0);
-            }
-            else
-            {
-                error = true;
-                return RegisterA64{kind, 0};
-            }
+            spill(set, index, furthestUseTarget);
+            CODEGEN_ASSERT(set.free != 0);
         }
         else
         {
@@ -185,19 +176,11 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 
     if (set.free == 0)
     {
-        if (FFlag::LuauCodeGenRegAutoSpillA64)
+        // Try to find and spill a register that is not used in the current instruction and has the furthest next use
+        if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
         {
-            // Try to find and spill a register that is not used in the current instruction and has the furthest next use
-            if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(set); furthestUseTarget != kInvalidInstIdx)
-            {
-                spill(set, currInstIdx, furthestUseTarget);
-                CODEGEN_ASSERT(set.free != 0);
-            }
-            else
-            {
-                error = true;
-                return RegisterA64{kind, 0};
-            }
+            spill(set, currInstIdx, furthestUseTarget);
+            CODEGEN_ASSERT(set.free != 0);
         }
         else
         {
@@ -351,79 +334,16 @@ size_t IrRegAllocA64::spill(uint32_t index, std::initializer_list<RegisterA64> l
 
         while (regs)
         {
-            if (FFlag::LuauCodeGenRegAutoSpillA64)
-            {
-                int reg = 31 - countlz(regs);
+            int reg = 31 - countlz(regs);
 
-                uint32_t targetInstIdx = set.defs[reg];
+            uint32_t targetInstIdx = set.defs[reg];
 
-                CODEGEN_ASSERT(targetInstIdx != kInvalidInstIdx);
-                CODEGEN_ASSERT(function.instructions[targetInstIdx].regA64.index == reg);
+            CODEGEN_ASSERT(targetInstIdx != kInvalidInstIdx);
+            CODEGEN_ASSERT(function.instructions[targetInstIdx].regA64.index == reg);
 
-                spill(set, index, targetInstIdx);
+            spill(set, index, targetInstIdx);
 
-                regs &= ~(1u << reg);
-            }
-            else
-            {
-                int reg = 31 - countlz(regs);
-
-                uint32_t inst = set.defs[reg];
-                CODEGEN_ASSERT(inst != kInvalidInstIdx);
-
-                IrInst& def = function.instructions[inst];
-                CODEGEN_ASSERT(def.regA64.index == reg);
-                CODEGEN_ASSERT(!def.reusedReg);
-                CODEGEN_ASSERT(!def.spilled);
-                CODEGEN_ASSERT(!def.needsReload);
-
-                if (def.lastUse == index)
-                {
-                    // instead of spilling the register to never reload it, we assume the register is not needed anymore
-                }
-                else if (getReloadAddress(function, def, /*limitToCurrentBlock*/ true).base != xzr)
-                {
-                    // instead of spilling the register to stack, we can reload it from VM stack/constants
-                    // we still need to record the spill for restore(start) to work
-                    Spill s = {inst, def.regA64, -1};
-                    spills.push_back(s);
-
-                    def.needsReload = true;
-
-                    if (stats)
-                        stats->spillsToRestore++;
-                }
-                else
-                {
-                    int slot = allocSpill(freeSpillSlots, def.regA64.kind);
-                    if (slot < 0)
-                    {
-                        slot = kInvalidSpill;
-                        error = true;
-                    }
-
-                    build.str(def.regA64, mem(sp, sSpillArea.data + slot * 8));
-
-                    Spill s = {inst, def.regA64, int8_t(slot)};
-                    spills.push_back(s);
-
-                    def.spilled = true;
-
-                    if (stats)
-                    {
-                        stats->spillsToSlot++;
-
-                        if (slot != kInvalidSpill && unsigned(slot + 1) > stats->maxSpillSlotsUsed)
-                            stats->maxSpillSlotsUsed = slot + 1;
-                    }
-                }
-
-                def.regA64 = noreg;
-
-                regs &= ~(1u << reg);
-                set.free |= 1u << reg;
-                set.defs[reg] = kInvalidInstIdx;
-            }
+            regs &= ~(1u << reg);
         }
 
         CODEGEN_ASSERT(set.free == set.base);
@@ -485,8 +405,6 @@ void IrRegAllocA64::restoreReg(IrInst& inst)
 
 void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodeGenRegAutoSpillA64);
-
     IrInst& def = function.instructions[targetInstIdx];
     int reg = def.regA64.index;
 
@@ -543,8 +461,6 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
 
 uint32_t IrRegAllocA64::findInstructionWithFurthestNextUse(Set& set) const
 {
-    CODEGEN_ASSERT(FFlag::LuauCodeGenRegAutoSpillA64);
-
     if (currInstIdx == kInvalidInstIdx)
         return kInvalidInstIdx;
 

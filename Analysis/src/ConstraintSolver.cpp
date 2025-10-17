@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
 LUAU_FASTFLAGVARIABLE(LuauIterableBindNotUnify)
 LUAU_FASTFLAGVARIABLE(LuauAvoidOverloadSelectionForFunctionType)
+LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 
 namespace Luau
 {
@@ -2412,46 +2413,95 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
 
     if (auto lhsIntersection = getMutable<IntersectionType>(lhsType))
     {
-        std::set<TypeId> parts;
 
-        for (TypeId t : lhsIntersection)
+        if (FFlag::LuauSimplifyIntersectionNoTreeSet)
         {
-            if (auto tbl = getMutable<TableType>(follow(t)))
-            {
-                if (tbl->indexer)
-                {
-                    unify(constraint, indexType, tbl->indexer->indexType);
-                    parts.insert(tbl->indexer->indexResultType);
-                }
 
-                if (tbl->state == TableState::Unsealed || tbl->state == TableState::Free)
-                {
-                    tbl->indexer = TableIndexer{indexType, rhsType};
-                    parts.insert(rhsType);
-                }
-            }
-            else if (auto cls = get<ExternType>(follow(t)))
+            TypeIds parts;
+
+            for (TypeId t : lhsIntersection)
             {
-                while (true)
+                if (auto tbl = getMutable<TableType>(follow(t)))
                 {
-                    if (cls->indexer)
+                    if (tbl->indexer)
                     {
-                        unify(constraint, indexType, cls->indexer->indexType);
-                        parts.insert(cls->indexer->indexResultType);
-                        break;
+                        unify(constraint, indexType, tbl->indexer->indexType);
+                        parts.insert(tbl->indexer->indexResultType);
                     }
 
-                    if (cls->parent)
-                        cls = get<ExternType>(cls->parent);
-                    else
-                        break;
+                    if (tbl->state == TableState::Unsealed || tbl->state == TableState::Free)
+                    {
+                        tbl->indexer = TableIndexer{indexType, rhsType};
+                        parts.insert(rhsType);
+                    }
+                }
+                else if (auto cls = get<ExternType>(follow(t)))
+                {
+                    while (true)
+                    {
+                        if (cls->indexer)
+                        {
+                            unify(constraint, indexType, cls->indexer->indexType);
+                            parts.insert(cls->indexer->indexResultType);
+                            break;
+                        }
+
+                        if (cls->parent)
+                            cls = get<ExternType>(cls->parent);
+                        else
+                            break;
+                    }
                 }
             }
+
+            TypeId res = simplifyIntersection(constraint->scope, constraint->location, std::move(parts));
+
+            unify(constraint, rhsType, res);
         }
+        else
+        {
 
-        TypeId res = simplifyIntersection(constraint->scope, constraint->location, std::move(parts));
+            std::set<TypeId> parts;
 
-        unify(constraint, rhsType, res);
+            for (TypeId t : lhsIntersection)
+            {
+                if (auto tbl = getMutable<TableType>(follow(t)))
+                {
+                    if (tbl->indexer)
+                    {
+                        unify(constraint, indexType, tbl->indexer->indexType);
+                        parts.insert(tbl->indexer->indexResultType);
+                    }
+
+                    if (tbl->state == TableState::Unsealed || tbl->state == TableState::Free)
+                    {
+                        tbl->indexer = TableIndexer{indexType, rhsType};
+                        parts.insert(rhsType);
+                    }
+                }
+                else if (auto cls = get<ExternType>(follow(t)))
+                {
+                    while (true)
+                    {
+                        if (cls->indexer)
+                        {
+                            unify(constraint, indexType, cls->indexer->indexType);
+                            parts.insert(cls->indexer->indexResultType);
+                            break;
+                        }
+
+                        if (cls->parent)
+                            cls = get<ExternType>(cls->parent);
+                        else
+                            break;
+                    }
+                }
+            }
+
+            TypeId res = simplifyIntersection_DEPRECATED(constraint->scope, constraint->location, std::move(parts));
+
+            unify(constraint, rhsType, res);
+        }
     }
 
     // Other types do not support index assignment.
@@ -3805,7 +3855,26 @@ TypeId ConstraintSolver::simplifyIntersection(NotNull<Scope> scope, Location loc
         return ::Luau::simplifyIntersection(builtinTypes, arena, left, right).result;
 }
 
-TypeId ConstraintSolver::simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts)
+TypeId ConstraintSolver::simplifyIntersection(NotNull<Scope> scope, Location location, TypeIds parts)
+{
+    if (FFlag::DebugLuauEqSatSimplification)
+    {
+        TypeId ty = arena->addType(IntersectionType{parts.take()});
+
+        std::optional<EqSatSimplificationResult> res = eqSatSimplify(simplifier, ty);
+        if (!res)
+            return ty;
+
+        for (TypeId ty : res->newTypeFunctions)
+            pushConstraint(scope, location, ReduceConstraint{ty});
+
+        return res->result;
+    }
+    else
+        return ::Luau::simplifyIntersection(builtinTypes, arena, std::move(parts)).result;
+}
+
+TypeId ConstraintSolver::simplifyIntersection_DEPRECATED(NotNull<Scope> scope, Location location, std::set<TypeId> parts)
 {
     if (FFlag::DebugLuauEqSatSimplification)
     {
@@ -3821,7 +3890,7 @@ TypeId ConstraintSolver::simplifyIntersection(NotNull<Scope> scope, Location loc
         return res->result;
     }
     else
-        return ::Luau::simplifyIntersection(builtinTypes, arena, std::move(parts)).result;
+        return ::Luau::simplifyIntersection_DEPRECATED(builtinTypes, arena, std::move(parts)).result;
 }
 
 TypeId ConstraintSolver::simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right)

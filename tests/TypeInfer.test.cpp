@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
+LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
 
 using namespace Luau;
 
@@ -2716,6 +2717,17 @@ end
 )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
+{
+    ScopedFastFlag _{FFlag::LuauMetatableAvoidSingletonUnion, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+_ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
+for l0,l2 in setmetatable(_,_),l0,_ do
+end
+    )"));
 }
 
 TEST_SUITE_END();

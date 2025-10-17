@@ -17,7 +17,6 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
-LUAU_FASTFLAG(LuauRawGetHandlesNil)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 
 struct TypeFunctionFixture : Fixture
@@ -1328,8 +1327,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
     if (!FFlag::LuauSolverV2)
         return;
 
-    ScopedFastFlag sff{FFlag::LuauRawGetHandlesNil, true};
-
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
         type rawType = rawget<MyObject, "a" | "b">
@@ -1345,8 +1342,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag sff{FFlag::LuauRawGetHandlesNil, true};
 
     CheckResult result = check(R"(
         type MyObject = {a: string, b: number, c: boolean}
@@ -1364,8 +1359,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatable
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag sff{FFlag::LuauRawGetHandlesNil, true};
 
     CheckResult result = check(R"(
         local exampleClass = { Foo = "text", Bar = true }
@@ -1399,8 +1392,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_queried_key_abs
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag sff{FFlag::LuauRawGetHandlesNil, true};
 
     CheckResult result = check(R"(
         type MyObject = {a: string}

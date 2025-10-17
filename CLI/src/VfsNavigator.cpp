@@ -188,7 +188,9 @@ NavigationStatus VfsNavigator::toParent()
     modulePath = normalizePath(modulePath + "/..");
     absoluteModulePath = normalizePath(absoluteModulePath + "/..");
 
-    return updateRealPaths();
+    // There is no ambiguity when navigating up in a tree.
+    NavigationStatus status = updateRealPaths();
+    return status == NavigationStatus::Ambiguous ? NavigationStatus::Success : status;
 }
 
 NavigationStatus VfsNavigator::toChild(const std::string& name)

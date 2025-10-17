@@ -10,6 +10,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
+LUAU_FASTFLAG(LuauPushTypeConstraintIndexer)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -747,6 +748,63 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010")
     )"));
 
     CHECK_EQ("\"meow\"", toString(requireType("var")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1773")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintIndexer, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        export type T = "foo" | "bar" | "toto"
+
+        local object: T = "foo"
+
+        local getOpposite: {[T]: T} = {
+            ["foo"] = "bar",
+            ["bar"] = "toto",
+            ["toto"] = "foo"
+        }
+
+        local function hello()
+            local x = getOpposite[object]
+
+            if x then
+                object = x
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        export type T = "foo" | "bar" | "toto"
+
+        local getOpposite: { [number]: T } = {
+            ["foo"] = "bar",
+            ["bar"] = "toto",
+            ["toto"] = "foo"
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    for (const auto& e: result.errors)
+        CHECK(get<TypeMismatch>(e));
 }
 
 
