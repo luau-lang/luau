@@ -181,15 +181,16 @@ static int b_replace(lua_State* L)
 static int b_countlz(lua_State* L)
 {
     b_uint v = luaL_checkunsigned(L, 1);
-
-    b_uint r = NBITS;
-    for (int i = 0; i < NBITS; ++i)
-        if (v & (1u << (NBITS - 1 - i)))
-        {
-            r = i;
-            break;
-        }
-
+    #if defined(_MSC_VER)
+        unsigned long index;
+        b_uint r = _BitScanReverse(&index, v) ? NBITS - 1 - index : NBITS;
+    #elif defined(__GNUC__) || defined(__clang__)
+        b_uint r = v ? __builtin_clz(v) : NBITS;
+    #else
+        b_uint r = NBITS;
+        for (int i = 0; i < NBITS; ++i)
+            if (v & (1u << (NBITS - 1 - i))) { r = i; break; }
+    #endif
     lua_pushunsigned(L, r);
     return 1;
 }
@@ -197,15 +198,16 @@ static int b_countlz(lua_State* L)
 static int b_countrz(lua_State* L)
 {
     b_uint v = luaL_checkunsigned(L, 1);
-
-    b_uint r = NBITS;
-    for (int i = 0; i < NBITS; ++i)
-        if (v & (1u << i))
-        {
-            r = i;
-            break;
-        }
-
+    #if defined(_MSC_VER)
+        unsigned long index;
+        b_uint r = _BitScanForward(&index, v) ? index : NBITS;
+    #elif defined(__GNUC__) || defined(__clang__)
+        b_uint r = v ? __builtin_ctz(v) : NBITS;
+    #else
+        b_uint r = NBITS;
+        for (int i = 0; i < NBITS; ++i)
+            if (v & (1u << i)) { r = i; break; }
+    #endif
     lua_pushunsigned(L, r);
     return 1;
 }
