@@ -91,6 +91,13 @@ struct ConfigOptions
     std::optional<AliasOptions> aliasOptions = std::nullopt;
 };
 
+std::optional<std::string> parseAlias(
+    Config& config,
+    const std::string& aliasKey,
+    const std::string& aliasValue,
+    const std::optional<ConfigOptions::AliasOptions>& aliasOptions
+);
+
 std::optional<std::string> parseConfig(const std::string& contents, Config& config, const ConfigOptions& options = ConfigOptions{});
 
 } // namespace Luau

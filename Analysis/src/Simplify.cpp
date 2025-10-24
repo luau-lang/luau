@@ -474,9 +474,9 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     else if (get<NeverType>(right))
         return flip(relate(right, left, seen));
 
-    if (auto ut = get<IntersectionType>(left))
+    if (get<IntersectionType>(left))
         return Relation::Intersects;
-    else if (auto ut = get<IntersectionType>(right))
+    else if (get<IntersectionType>(right))
         return Relation::Intersects;
 
     if (auto ut = get<UnionType>(left))
@@ -1838,19 +1838,19 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
             return arena->addType(IntersectionType{{left, right}});
     }
 
-    if (auto ut = get<UnionType>(left))
+    if (get<UnionType>(left))
     {
         if (get<UnionType>(right))
             return intersectUnions(left, right);
         else
             return intersectUnionWithType(left, right);
     }
-    else if (auto ut = get<UnionType>(right))
+    else if (get<UnionType>(right))
         return intersectUnionWithType(right, left);
 
-    if (auto it = get<IntersectionType>(left))
+    if (get<IntersectionType>(left))
         return intersectIntersectionWithType(left, right);
-    else if (auto it = get<IntersectionType>(right))
+    else if (get<IntersectionType>(right))
         return intersectIntersectionWithType(right, left);
 
     if (get<NegationType>(left))

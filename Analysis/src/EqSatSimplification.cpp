@@ -286,7 +286,7 @@ Id toId(
     // First, handle types which do not contain other types.  They obviously
     // cannot participate in cycles, so we don't have to check for that.
 
-    if (auto freeTy = get<FreeType>(ty))
+    if (get<FreeType>(ty))
         return egraph.add(TOpaque{ty});
     else if (get<GenericType>(ty))
         return egraph.add(TOpaque{ty});
@@ -765,7 +765,7 @@ TypeId fromId(
         return arena->addType(SingletonType{StringSingleton{strings.asString(s->value())}});
     else if (auto fun = node.get<TFunction>())
         return fun->value();
-    else if (auto tbl = node.get<TTable>())
+    else if (node.get<TTable>())
     {
         TypeId res = arena->addType(BlockedType{});
         seen[rootId] = res;
@@ -1310,7 +1310,7 @@ void unionWithType(EGraph& egraph, CanonicalizedType& ct, Id part)
         if (!ct.functionPart)
             ct.functionParts.insert(part);
     }
-    else if (auto tclass = isTag<TClass>(egraph, part))
+    else if (isTag<TClass>(egraph, part))
         unionClasses(egraph, ct.classParts, part);
     else if (isTag<TAny>(egraph, part))
     {
@@ -1415,7 +1415,7 @@ bool subtract(EGraph& egraph, CanonicalizedType& ct, Id part)
         ct.tablePart.reset();
     else if (etype->get<TTopClass>())
         ct.classParts.clear();
-    else if (auto tclass = etype->get<TClass>())
+    else if (etype->get<TClass>())
     {
         auto it = std::find(ct.classParts.begin(), ct.classParts.end(), part);
         if (it != ct.classParts.end())

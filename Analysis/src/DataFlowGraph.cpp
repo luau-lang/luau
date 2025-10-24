@@ -574,7 +574,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatLocal* l)
         if (i < l->values.size)
         {
             AstExpr* e = l->values.data[i];
-            if (const AstExprTable* tbl = e->as<AstExprTable>())
+            if (e->is<AstExprTable>())
             {
                 def = defs[i];
             }
@@ -1165,7 +1165,7 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(f);
     else if (auto tyof = t->as<AstTypeTypeof>())
         return visitType(tyof);
-    else if (auto o = t->as<AstTypeOptional>())
+    else if (t->is<AstTypeOptional>())
         return;
     else if (auto u = t->as<AstTypeUnion>())
         return visitType(u);
@@ -1173,9 +1173,9 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(i);
     else if (auto e = t->as<AstTypeError>())
         return visitType(e);
-    else if (auto s = t->as<AstTypeSingletonBool>())
+    else if (t->is<AstTypeSingletonBool>())
         return; // ok
-    else if (auto s = t->as<AstTypeSingletonString>())
+    else if (t->is<AstTypeSingletonString>())
         return; // ok
     else if (auto g = t->as<AstTypeGroup>())
         return visitType(g->type);
@@ -1243,7 +1243,7 @@ void DataFlowGraphBuilder::visitTypePack(AstTypePack* p)
         return visitTypePack(e);
     else if (auto v = p->as<AstTypePackVariadic>())
         return visitTypePack(v);
-    else if (auto g = p->as<AstTypePackGeneric>())
+    else if (p->is<AstTypePackGeneric>())
         return; // ok
     else
         handle->ice("Unknown AstTypePack in DataFlowGraphBuilder::visitTypePack");

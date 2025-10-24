@@ -2011,7 +2011,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     {
         return {pack->head.empty() ? nilType : pack->head[0], std::move(result.predicates)};
     }
-    else if (const FreeTypePack* ftp = get<FreeTypePack>(retPack))
+    else if (get<FreeTypePack>(retPack))
     {
         TypeId head = freshType(scope->level);
         TypePackId pack = addTypePack(TypePackVar{TypePack{{head}, freshTypePack(scope->level)}});
@@ -3501,7 +3501,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             }
         }
 
-        if (const ExternType* exprExternType = get<ExternType>(exprType))
+        if (get<ExternType>(exprType))
         {
             if (isNonstrictMode())
                 return unknownType;
@@ -4541,7 +4541,7 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(
     if (get<NeverType>(fn))
         return std::make_unique<WithPredicate<TypePackId>>(uninhabitableTypePack);
 
-    if (auto ftv = get<FreeType>(fn))
+    if (get<FreeType>(fn))
     {
         // fn is one of the overloads of actualFunctionType, which
         // has been instantiated, so is a monotype. We can therefore

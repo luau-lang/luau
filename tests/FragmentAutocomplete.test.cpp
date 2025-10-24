@@ -28,9 +28,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAG(LuauPopulateSelfTypesInFragment)
-LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
-LUAU_FASTFLAG(LuauForInProvidesRecommendations)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
 LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
@@ -62,9 +59,6 @@ template<class BaseType>
 struct FragmentAutocompleteFixtureImpl : BaseType
 {
     static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
-
-    ScopedFastFlag sffLuauPopulateSelfTypesInFragment{FFlag::LuauPopulateSelfTypesInFragment, true};
-    ScopedFastFlag luauParseIncompleteInterpStringsWithLocation{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
 
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
@@ -764,7 +758,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "partial_for_numeric_in_condition")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     auto region = getAutocompleteRegion(
         R"(
 for c = 1,3
@@ -4195,7 +4188,6 @@ local s = `{e.@1 }`
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "string_interpolation_format_provides_results_inside_of_function_call")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     const std::string source = R"(
 type T = {x : number, y : number, z : number}
 local e = {x = 1, y = 2, z = 3}
@@ -4223,7 +4215,6 @@ print(`{e.x} {e.@1}`)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_in_should_rec")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number}
 local x : T = ({} :: T)
@@ -4245,7 +4236,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_no_do")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4274,7 +4264,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_with_do_in_step")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4303,7 +4292,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_with_do_in_max_delete")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4332,7 +4320,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_with_do_in_max_add")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)

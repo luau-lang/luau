@@ -2770,7 +2770,7 @@ SubtypingResult Subtyping::isCovariantWith(
 )
 {
     SubtypingResult result{false};
-    if (auto stringleton = get<StringSingleton>(subSingleton))
+    if (get<StringSingleton>(subSingleton))
     {
         if (auto metatable = getMetatable(builtinTypes->stringType, builtinTypes))
         {

@@ -15,8 +15,6 @@
 #include "doctest.h"
 #include <iostream>
 
-LUAU_FASTFLAG(LuauNewNonStrictSuppressesDynamicRequireErrors)
-LUAU_FASTFLAG(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAG(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 
 using namespace Luau;
@@ -761,7 +759,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_one_sided_conditionals")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "new_non_strict_should_suppress_dynamic_require_errors")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNewNonStrictSuppressesDynamicRequireErrors, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     // Avoid warning about dynamic requires in new nonstrict mode
     CheckResult result = check(Mode::Nonstrict, R"(
 function passThrough(module)
@@ -784,7 +782,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "new_non_strict_should_suppress_unknown_require_errors")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNewNonStrictSuppressesDynamicRequireErrors, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     // Avoid warning about dynamic requires in new nonstrict mode
     CheckResult result = check(Mode::Nonstrict, R"(
@@ -808,7 +806,6 @@ require("@self/NonExistent")
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "new_non_strict_stringifies_checked_function_errors_as_one_indexed")
 {
-    ScopedFastFlag sff = {FFlag::LuauNewNonStrictReportsOneIndexedErrors, true};
     CheckResult result = checkNonStrict(R"(
 getAllTheArgsWrong(3, true, "what")
 )");

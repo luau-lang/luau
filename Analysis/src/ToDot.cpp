@@ -439,7 +439,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
 
         visitChild(vtp->ty, index);
     }
-    else if (const FreeTypePack* ftp = get<FreeTypePack>(tp))
+    else if (get<FreeTypePack>(tp))
     {
         formatAppend(result, "FreeTypePack %d", index);
         finishNodeLabel(tp);

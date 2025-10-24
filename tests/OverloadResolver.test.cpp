@@ -7,7 +7,6 @@
 #include "Luau/Normalize.h"
 #include "Luau/UnifierSharedState.h"
 
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
@@ -135,8 +134,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities1")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "separate_non_viable_overloads_by_arity_mismatch")
 {
-    ScopedFastFlag sff{FFlag::LuauFilterOverloadsByArity, true};
-
     // ty: ((number)->number) & ((number)->string) & ((number, number)->number)
     // args: (string)
     OverloadResolver r = mkResolver();
