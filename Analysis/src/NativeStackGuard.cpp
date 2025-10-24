@@ -26,7 +26,7 @@ NativeStackGuard::NativeStackGuard()
     if (!FFlag::LuauUseNativeStackGuard)
         return;
 
-    GetCurrentThreadStackLimits(&low, &high);
+    GetCurrentThreadStackLimits((PULONG_PTR)&low, (PULONG_PTR)&high);
 }
 
 bool NativeStackGuard::isOk() const
@@ -45,7 +45,7 @@ uintptr_t getStackAddressSpaceSize()
 {
     uintptr_t low = 0;
     uintptr_t high = 0;
-    GetCurrentThreadStackLimits(&low, &high);
+    GetCurrentThreadStackLimits((PULONG_PTR)&low, (PULONG_PTR)&high);
 
     return high - low;
 }
