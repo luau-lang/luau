@@ -14,10 +14,8 @@
 LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
-LUAU_FASTFLAGVARIABLE(LuauFilterOverloadsByArity)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 
 namespace Luau
@@ -54,88 +52,30 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(
     bool useFreeTypeBounds
 )
 {
-    if (FFlag::LuauFilterOverloadsByArity)
+    TypeId t = follow(ty);
+
+    if (const FunctionType* fn = get<FunctionType>(t))
     {
-        TypeId t = follow(ty);
-
-        if (const FunctionType* fn = get<FunctionType>(t))
-        {
-            if (testFunctionTypeForOverloadSelection(fn, uniqueTypes, argsPack, useFreeTypeBounds))
-                return {Analysis::Ok, ty};
-            else
-                return {Analysis::OverloadIsNonviable, ty};
-        }
-        else if (auto it = get<IntersectionType>(t))
-        {
-            for (TypeId component : it)
-            {
-                const FunctionType* fn = get<FunctionType>(follow(component));
-                // Only consider function overloads with compatible arities
-                if (!fn || !isArityCompatible(argsPack, fn->argTypes, builtinTypes))
-                    continue;
-
-                if (testFunctionTypeForOverloadSelection(fn, uniqueTypes, argsPack, useFreeTypeBounds))
-                    return {Analysis::Ok, component};
-            }
-        }
-
-        return {Analysis::OverloadIsNonviable, ty};
-    }
-    else
-    {
-        auto tryOne = [&](TypeId f)
-        {
-            if (auto ftv = get<FunctionType>(f))
-            {
-                Subtyping::Variance variance = subtyping.variance;
-                subtyping.variance = Subtyping::Variance::Contravariant;
-                subtyping.uniqueTypes = uniqueTypes;
-                SubtypingResult r;
-                if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-                {
-                    std::vector<TypeId> generics;
-                    generics.reserve(ftv->generics.size());
-                    for (TypeId g : ftv->generics)
-                    {
-                        g = follow(g);
-                        if (get<GenericType>(g))
-                            generics.emplace_back(g);
-                    }
-                    r = FFlag::LuauPassBindableGenericsByReference
-                        ? subtyping.isSubtype(argsPack, ftv->argTypes, scope, generics)
-                                                                   : subtyping.isSubtype_DEPRECATED(argsPack, ftv->argTypes, scope, generics);
-                }
-                else
-                    r = FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(argsPack, ftv->argTypes, scope, {})
-                                                               : subtyping.isSubtype_DEPRECATED(argsPack, ftv->argTypes, scope);
-                subtyping.variance = variance;
-
-                if (!useFreeTypeBounds && !r.assumedConstraints.empty())
-                    return false;
-
-                if (r.isSubtype)
-                    return true;
-            }
-
-            return false;
-        };
-
-        TypeId t = follow(ty);
-
-        if (tryOne(ty))
+        if (testFunctionTypeForOverloadSelection(fn, uniqueTypes, argsPack, useFreeTypeBounds))
             return {Analysis::Ok, ty};
-
-        if (auto it = get<IntersectionType>(t))
-        {
-            for (TypeId component : it)
-            {
-                if (tryOne(component))
-                    return {Analysis::Ok, component};
-            }
-        }
-
-        return {Analysis::OverloadIsNonviable, ty};
+        else
+            return {Analysis::OverloadIsNonviable, ty};
     }
+    else if (auto it = get<IntersectionType>(t))
+    {
+        for (TypeId component : it)
+        {
+            const FunctionType* fn = get<FunctionType>(follow(component));
+            // Only consider function overloads with compatible arities
+            if (!fn || !isArityCompatible(argsPack, fn->argTypes, builtinTypes))
+                continue;
+
+            if (testFunctionTypeForOverloadSelection(fn, uniqueTypes, argsPack, useFreeTypeBounds))
+                return {Analysis::Ok, component};
+        }
+    }
+
+    return {Analysis::OverloadIsNonviable, ty};
 }
 
 void OverloadResolver::resolve(
@@ -161,17 +101,14 @@ void OverloadResolver::resolve(
         if (resolution.find(ty) != resolution.end())
             continue;
 
-        if (FFlag::LuauFilterOverloadsByArity)
+        if (const FunctionType* fn = get<FunctionType>(follow(ty)))
         {
-            if (const FunctionType* fn = get<FunctionType>(follow(ty)))
+            // If the overload isn't arity compatible, report the mismatch and don't do more work
+            const TypePackId argPack = arena->addTypePack(*args);
+            if (!isArityCompatible(argPack, fn->argTypes, builtinTypes))
             {
-                // If the overload isn't arity compatible, report the mismatch and don't do more work
-                const TypePackId argPack = arena->addTypePack(*args);
-                if (!isArityCompatible(argPack, fn->argTypes, builtinTypes))
-                {
-                    add(ArityMismatch, ty, {});
-                    continue;
-                }
+                add(ArityMismatch, ty, {});
+                continue;
             }
         }
 
@@ -322,8 +259,6 @@ void OverloadResolver::maybeEmplaceError(
 
 bool OverloadResolver::isArityCompatible(const TypePackId candidate, const TypePackId desired, NotNull<BuiltinTypes> builtinTypes) const
 {
-    LUAU_ASSERT(FFlag::LuauFilterOverloadsByArity);
-
     auto [candidateHead, candidateTail] = flatten(candidate);
     auto [desiredHead, desiredTail] = flatten(desired);
 
@@ -368,8 +303,6 @@ bool OverloadResolver::testFunctionTypeForOverloadSelection(
     bool useFreeTypeBounds
 )
 {
-    LUAU_ASSERT(FFlag::LuauFilterOverloadsByArity);
-
     Subtyping::Variance variance = subtyping.variance;
     subtyping.variance = Subtyping::Variance::Contravariant;
     subtyping.uniqueTypes = uniqueTypes;
@@ -701,12 +634,9 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
                 argLocation = argExprs->at(argExprs->size() - 1)->location;
 
             // TODO extract location from the SubtypingResult path and argExprs
-            if (FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing)
-            {
-                auto errorSuppression = shouldSuppressErrors(normalizer, *failedSubPack).orElse(shouldSuppressErrors(normalizer, *failedSuperPack));
-                if (errorSuppression == ErrorSuppression::Suppress)
-                    break;
-            }
+            auto errorSuppression = shouldSuppressErrors(normalizer, *failedSubPack).orElse(shouldSuppressErrors(normalizer, *failedSuperPack));
+            if (errorSuppression == ErrorSuppression::Suppress)
+                break;
 
             switch (reason.variance)
             {
@@ -767,8 +697,6 @@ void OverloadResolver::add(Analysis analysis, TypeId ty, ErrorVec&& errors)
         nonFunctions.push_back(ty);
         break;
     case ArityMismatch:
-        if (!FFlag::LuauFilterOverloadsByArity)
-            LUAU_ASSERT(!errors.empty());
         arityMismatches.emplace_back(ty, std::move(errors));
         break;
     case OverloadIsNonviable:

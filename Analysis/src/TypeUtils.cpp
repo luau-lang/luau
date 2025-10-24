@@ -15,9 +15,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
-LUAU_FASTFLAGVARIABLE(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 
 namespace Luau
 {
@@ -384,7 +382,7 @@ TypePack extendTypePack(
 
             return result;
         }
-        else if (auto etp = getMutable<ErrorTypePack>(pack))
+        else if (getMutable<ErrorTypePack>(pack))
         {
             while (result.head.size() < length)
                 result.head.push_back(builtinTypes->errorType);
@@ -507,13 +505,10 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId
 {
     // Flatten t where t = ...any will produce a type pack [ {}, t]
     // which trivially fails the tail check below, which is why we need to special case here
-    if (FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing)
+    if (auto tpId = get<VariadicTypePack>(follow(tp)))
     {
-        if (auto tpId = get<VariadicTypePack>(follow(tp)))
-        {
-            if (get<AnyType>(follow(tpId->ty)))
-                return ErrorSuppression::Suppress;
-        }
+        if (get<AnyType>(follow(tpId->ty)))
+            return ErrorSuppression::Suppress;
     }
 
     auto [tys, tail] = flatten(tp);
@@ -750,8 +745,6 @@ AstExpr* unwrapGroup(AstExpr* expr)
 
 bool isOptionalType(TypeId ty, NotNull<BuiltinTypes> builtinTypes)
 {
-    LUAU_ASSERT(FFlag::LuauFilterOverloadsByArity);
-
     ty = follow(ty);
 
     if (ty == builtinTypes->nilType || ty == builtinTypes->anyType || ty == builtinTypes->unknownType)

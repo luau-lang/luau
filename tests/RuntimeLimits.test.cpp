@@ -11,6 +11,7 @@
 
 #include "Fixture.h"
 
+#include "Luau/Error.h"
 #include "doctest.h"
 
 #include <algorithm>
@@ -27,6 +28,7 @@ LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
+LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxDepth)
 
 struct LimitFixture : BuiltinsFixture
@@ -587,6 +589,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 
     LUAU_REQUIRE_ERROR(result, UnificationTooComplex);
 }
+
+#if defined(_MSC_VER) || defined(__APPLE__)
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows" * doctest::timeout(4.0))
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLimitUnification, true},
+        {FFlag::LuauUseNativeStackGuard, true},
+    };
+
+    // Disable the iteration limit and very tightly constrain the stack.
+    ScopedFastInt sfi{FInt::LuauTypeInferIterationLimit, 0};
+    limitStackSize(38600);
+
+    try
+    {
+        (void)check(R"(
+            local function l0<A...>()
+                for l0=_,_ do
+                end
+            end
+
+            _ = if _._ then function(l0)
+            end elseif _._G then if `` then {n0=_,} else "luauExprConstantSt" elseif _[_][l0] then function()
+            end elseif _.n0 then if _[_] then if _ then _ else "aeld" elseif false then 0 else "lead"
+            return _.n0
+        )");
+    }
+    catch (InternalCompilerError& err)
+    {
+        // HACK: This test doesn't consistently stack overflow in the same subsystem because
+        // there is some other unrelated source of nondeterminism in the solver.
+        // For this test, it's aside from the point, so we write it to be a little bit flexible.
+        const std::string prefix = "Stack overflow in ";
+        CHECK(prefix == std::string(err.what()).substr(0, prefix.size()));
+        return;
+    }
+
+    CHECK_MESSAGE(false, "An expected InternalCompilerError was not thrown!");
+}
+
+#endif
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fusion_normalization_spin" * doctest::timeout(1.0))
 {

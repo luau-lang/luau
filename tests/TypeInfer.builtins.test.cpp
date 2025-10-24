@@ -14,7 +14,6 @@ LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauSubtypingPrimitiveAndGenericTableTypes)
 LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVectorLerp)
@@ -1730,7 +1729,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_requires_all_fields")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-        {FFlag::LuauFilterOverloadsByArity, true},
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
     };

@@ -30,6 +30,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
+LUAU_FASTINT(LuauStackGuardThreshold)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -737,6 +738,17 @@ Frontend& Fixture::getFrontend()
     return *frontend;
 }
 
+void Fixture::limitStackSize(size_t size)
+{
+    // The FInt is designed to trip when the amount of available address
+    // space goes below some threshold, but for this API, the convenient thing
+    // is to specify how much the test should be allowed to use.  We need to
+    // do a tiny amount of arithmetic to convert.
+
+    uintptr_t addressSpaceSize = getStackAddressSpaceSize();
+
+    dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
+}
 
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)

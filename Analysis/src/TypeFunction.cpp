@@ -35,6 +35,7 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAGVARIABLE(LuauEnqueueUnionsOfDistributedTypeFunctions)
 
 namespace Luau
 {
@@ -380,9 +381,22 @@ struct TypeFunctionReducer
             result.messages.emplace_back(location, UserDefinedTypeFunctionError{std::move(message)});
 
         if (reduction.result)
+        {
             replace(subject, *reduction.result);
+            if (FFlag::LuauEnqueueUnionsOfDistributedTypeFunctions)
+            {
+                for (auto ty : reduction.freshTypes)
+                {
+                    if constexpr (std::is_same_v<T, TypeId>)
+                        queuedTys.push_back(ty);
+                    else if constexpr (std::is_same_v<T, TypePackId>)
+                        queuedTps.push_back(ty);
+                }
+            }
+        }
         else
         {
+            LUAU_ASSERT(reduction.freshTypes.empty());
             irreducible.insert(subject);
 
             if (reduction.error.has_value())

@@ -697,7 +697,7 @@ struct ErrorConverter
             if (tfit->typeArguments.size() != 2)
                 return "Type function instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
 
-            if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
+            if (get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
                 return "Second argument to " + tfit->function->name + "<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
             else // Property `indexer` does not exist on type `indexee`
                 return "Property '" + Luau::toString(tfit->typeArguments[1]) + "' does not exist on type '" + Luau::toString(tfit->typeArguments[0]) +
@@ -757,12 +757,8 @@ struct ErrorConverter
     std::string operator()(const CheckedFunctionCallError& e) const
     {
         // TODO: What happens if checkedFunctionName cannot be found??
-        if (FFlag::LuauNewNonStrictReportsOneIndexedErrors)
-            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
-                   std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
-        else
-            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
-                   ", but got '" + Luau::toString(e.passed) + "'";
+        return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
+            std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const

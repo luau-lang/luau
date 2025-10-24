@@ -185,7 +185,7 @@ bool isValidAlias(const std::string& alias)
     return true;
 }
 
-static Error parseAlias(
+Error parseAlias(
     Config& config,
     const std::string& aliasKey,
     const std::string& aliasValue,

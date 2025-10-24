@@ -1563,7 +1563,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
         sig.bodyScope->lvalueTypes[def] = sig.signature;
         updateRValueRefinements(sig.bodyScope, def, sig.signature);
     }
-    else if (AstExprIndexName* indexName = function->name->as<AstExprIndexName>())
+    else if (function->name->is<AstExprIndexName>())
     {
         updateRValueRefinements(sig.bodyScope, def, sig.signature);
     }
@@ -1673,7 +1673,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     {
         visitLValue(scope, indexName, generalizedType);
     }
-    else if (AstExprError* err = function->name->as<AstExprError>())
+    else if (function->name->is<AstExprError>())
     {
         generalizedType = builtinTypes->errorType;
     }
@@ -2360,7 +2360,7 @@ InferencePack ConstraintGenerator::checkPack(
 
     if (AstExprCall* call = expr->as<AstExprCall>())
         result = checkPack(scope, call);
-    else if (AstExprVarargs* varargs = expr->as<AstExprVarargs>())
+    else if (expr->is<AstExprVarargs>())
     {
         if (scope->varargPack)
             result = InferencePack{*scope->varargPack};

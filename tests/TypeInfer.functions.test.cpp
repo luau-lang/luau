@@ -6,7 +6,6 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
-#include "Luau/VisitType.h"
 
 #include "ClassFixture.h"
 #include "Fixture.h"
@@ -32,7 +31,6 @@ LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -247,8 +245,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 
 TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_count")
 {
-    ScopedFastFlag _{FFlag::LuauFilterOverloadsByArity, true};
-
     CheckResult result = check(R"(
         local multiply: ((number)->number) & ((number)->string) & ((number, number)->number)
         multiply("")

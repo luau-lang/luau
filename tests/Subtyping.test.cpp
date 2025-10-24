@@ -18,7 +18,6 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
@@ -1835,7 +1834,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_pack_should_suppress_errors_during_overload_resolution")
 {
-    ScopedFastFlag sff{FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing, true};
     auto res = check(R"(
 type ActionCallback = (string) -> ...any
 

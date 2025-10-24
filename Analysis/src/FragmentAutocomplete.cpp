@@ -33,8 +33,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAGVARIABLE(LuauPopulateSelfTypesInFragment)
-LUAU_FASTFLAGVARIABLE(LuauForInProvidesRecommendations)
 LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
@@ -119,7 +117,7 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
     {
         Location nonEmpty{nearestStatement->location.begin, cursorPosition};
         // If your sibling is a do block, do nothing
-        if (auto doEnd = nearestStatement->as<AstStatBlock>())
+        if (nearestStatement->as<AstStatBlock>())
             return empty;
 
         // If you're inside the body of the function and this is your sibling, empty fragment
@@ -156,27 +154,20 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
 
         if (auto forStat = nearestStatement->as<AstStatFor>())
         {
-
-            if (FFlag::LuauForInProvidesRecommendations)
-            {
-                if (forStat->step && forStat->step->location.containsClosed(cursorPosition))
-                    return {forStat->step->location.begin, cursorPosition};
-                if (forStat->to && forStat->to->location.containsClosed(cursorPosition))
-                    return {forStat->to->location.begin, cursorPosition};
-                if (forStat->from && forStat->from->location.containsClosed(cursorPosition))
-                    return {forStat->from->location.begin, cursorPosition};
-            }
+            if (forStat->step && forStat->step->location.containsClosed(cursorPosition))
+                return {forStat->step->location.begin, cursorPosition};
+            if (forStat->to && forStat->to->location.containsClosed(cursorPosition))
+                return {forStat->to->location.begin, cursorPosition};
+            if (forStat->from && forStat->from->location.containsClosed(cursorPosition))
+                return {forStat->from->location.begin, cursorPosition};
 
             if (!forStat->hasDo)
                 return nonEmpty;
             else
             {
-                if (FFlag::LuauForInProvidesRecommendations)
-                {
                     auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
                     if (completeableExtents.containsClosed(cursorPosition))
                         return nonEmpty;
-                }
 
                 return empty;
             }
@@ -188,21 +179,18 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 return nonEmpty;
             else
             {
-                if (FFlag::LuauForInProvidesRecommendations)
+                auto completeableExtents = Location{forIn->location.begin, forIn->doLocation.begin};
+                if (completeableExtents.containsClosed(cursorPosition))
                 {
-                    auto completeableExtents = Location{forIn->location.begin, forIn->doLocation.begin};
-                    if (completeableExtents.containsClosed(cursorPosition))
+                    if (!forIn->hasIn)
+                        return nonEmpty;
+                    else
                     {
-                        if (!forIn->hasIn)
+                        // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
+                        if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
                             return nonEmpty;
                         else
-                        {
-                            // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
-                            if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
-                                return nonEmpty;
-                            else
-                                return Location{forIn->inLocation.begin, cursorPosition};
-                        }
+                            return Location{forIn->inLocation.begin, cursorPosition};
                     }
                 }
                 return empty;
@@ -429,13 +417,10 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     {
                         if (globFun->location.contains(cursorPos))
                         {
-                            if (FFlag::LuauPopulateSelfTypesInFragment)
+                            if (auto local = globFun->func->self)
                             {
-                                if (auto local = globFun->func->self)
-                                {
-                                    localStack.push_back(local);
-                                    localMap[local->name] = local;
-                                }
+                                localStack.push_back(local);
+                                localMap[local->name] = local;
                             }
 
                             for (AstLocal* loc : globFun->func->args)
