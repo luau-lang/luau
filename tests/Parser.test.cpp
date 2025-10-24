@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
-LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
 LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -952,7 +951,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
-    ScopedFastFlag sff{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto columnOfEndBraceError = [this](const char* code)
     {
         try
@@ -4310,7 +4308,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_string_union_indexers")
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_at_eof")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a)");
     const auto first = parseResult.root->body.data[0];
     auto expr = first->as<AstStatExpr>();
@@ -4331,7 +4328,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_backtick_at_eof")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a})");
     const auto first = parseResult.root->body.data[0];
     auto expr = first->as<AstStatExpr>();
@@ -4352,7 +4348,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_back
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_with_backtick_at_eof")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a`)");
     const auto first = parseResult.root->body.data[0];
     auto expr = first->as<AstStatExpr>();
@@ -4373,7 +4368,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_broken_string")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a
 )");
     const auto first = parseResult.root->body.data[0];
@@ -4395,7 +4389,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_backtick_broken_string")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a}
 )");
     const auto first = parseResult.root->body.data[0];
@@ -4417,7 +4410,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_back
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_with_backtick_broken_string")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a`
 )");
     const auto first = parseResult.root->body.data[0];

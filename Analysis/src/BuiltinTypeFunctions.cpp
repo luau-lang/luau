@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAG(LuauEnqueueUnionsOfDistributedTypeFunctions)
 
 namespace Luau
 {
@@ -122,7 +123,10 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
         if (ctx->solver)
             ctx->pushConstraint(ReduceConstraint{resultTy});
 
-        return {{resultTy, Reduction::MaybeOk, {}, {}}};
+        if (FFlag::LuauEnqueueUnionsOfDistributedTypeFunctions)
+            return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
+        else
+            return {{resultTy, Reduction::MaybeOk, {}, {}}};
     }
 
     return std::nullopt;
@@ -2468,7 +2472,7 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
     std::optional<TypeId> result = std::nullopt;
     bool erroneous = true;
 
-    if (auto table = get<TableType>(targetTy))
+    if (get<TableType>(targetTy))
         erroneous = false;
 
     if (auto mt = get<MetatableType>(targetTy))

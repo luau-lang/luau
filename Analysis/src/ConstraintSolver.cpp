@@ -1226,7 +1226,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     }
 
     // Adding ReduceConstraint on type function for the constraint solver
-    if (auto typeFn = get<TypeFunctionInstanceType>(follow(tf->type)))
+    if (get<TypeFunctionInstanceType>(follow(tf->type)))
         pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{tf->type});
 
     // Due to how pending expansion types and TypeFun's are created
@@ -3660,7 +3660,7 @@ bool ConstraintSolver::isBlocked(TypePackId tp) const
 {
     tp = follow(tp);
 
-    if (auto tfitp = get<TypeFunctionInstanceTypePack>(tp))
+    if (get<TypeFunctionInstanceTypePack>(tp))
         return uninhabitedTypeFunctions.contains(tp) == false;
 
     return nullptr != get<BlockedTypePack>(tp);

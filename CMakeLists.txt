@@ -84,6 +84,7 @@ target_link_libraries(Luau.Compiler PUBLIC Luau.Ast)
 target_compile_features(Luau.Config PUBLIC cxx_std_17)
 target_include_directories(Luau.Config PUBLIC Config/include)
 target_link_libraries(Luau.Config PUBLIC Luau.Ast)
+target_link_libraries(Luau.Config PRIVATE Luau.Compiler Luau.VM)
 
 target_compile_features(Luau.Analysis PUBLIC cxx_std_17)
 target_include_directories(Luau.Analysis PUBLIC Analysis/include)

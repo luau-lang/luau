@@ -3059,7 +3059,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
 
     NormalizedTyvars tyvars = std::move(here.tyvars);
 
-    if (const FunctionType* utv = get<FunctionType>(there))
+    if (get<FunctionType>(there))
     {
         NormalizedFunctionType functions = std::move(here.functions);
         clearNormal(here);
@@ -3150,9 +3150,9 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     else if (const NegationType* ntv = get<NegationType>(there))
     {
         TypeId t = follow(ntv->ty);
-        if (const PrimitiveType* ptv = get<PrimitiveType>(t))
+        if (get<PrimitiveType>(t))
             subtractPrimitive(here, ntv->ty);
-        else if (const SingletonType* stv = get<SingletonType>(t))
+        else if (get<SingletonType>(t))
             subtractSingleton(here, follow(ntv->ty));
         else if (get<ExternType>(t))
         {

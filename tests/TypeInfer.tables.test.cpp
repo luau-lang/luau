@@ -32,7 +32,6 @@ LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSimplifyIntersectionForLiteralSubtypeCheck)
 LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
 
 TEST_SUITE_BEGIN("TableTests");
@@ -2358,7 +2357,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-        {FFlag::LuauFilterOverloadsByArity, true},
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
     };
@@ -6091,8 +6089,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_any_and_true")
 {
-    ScopedFastFlag _{FFlag::LuauFilterOverloadsByArity, true};
-
     CheckResult result = check(R"(
         table.insert({} :: any, true)
     )");
@@ -6116,7 +6112,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-        {FFlag::LuauFilterOverloadsByArity, true},
     };
 
     CheckResult result = check(R"(

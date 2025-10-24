@@ -173,11 +173,11 @@ private:
             }
             }
         }
-        else if (auto u = get<UnknownType>(ty))
+        else if (get<UnknownType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionUnknownType{});
-        else if (auto a = get<NeverType>(ty))
+        else if (get<NeverType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionNeverType{});
-        else if (auto a = get<AnyType>(ty))
+        else if (get<AnyType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionAnyType{});
         else if (auto s = get<SingletonType>(ty))
         {
@@ -191,22 +191,22 @@ private:
                 state->errors.push_back(error);
             }
         }
-        else if (auto u = get<UnionType>(ty))
+        else if (get<UnionType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionUnionType{{}});
-        else if (auto i = get<IntersectionType>(ty))
+        else if (get<IntersectionType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionIntersectionType{{}});
-        else if (auto n = get<NegationType>(ty))
+        else if (get<NegationType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionNegationType{{}});
-        else if (auto t = get<TableType>(ty))
+        else if (get<TableType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionTableType{{}, std::nullopt, std::nullopt});
-        else if (auto m = get<MetatableType>(ty))
+        else if (get<MetatableType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionTableType{{}, std::nullopt, std::nullopt});
-        else if (auto f = get<FunctionType>(ty))
+        else if (get<FunctionType>(ty))
         {
             TypeFunctionTypePackId emptyTypePack = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{});
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionFunctionType{{}, {}, emptyTypePack, emptyTypePack});
         }
-        else if (auto c = get<ExternType>(ty))
+        else if (get<ExternType>(ty))
         {
             // Since there aren't any new class types being created in type functions, we will deserialize by using a direct reference to the original
             // class
@@ -241,9 +241,9 @@ private:
 
         // Create a shallow serialization
         TypeFunctionTypePackId target = {};
-        if (auto tPack = get<TypePack>(tp))
+        if (get<TypePack>(tp))
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionTypePack{{}});
-        else if (auto vPack = get<VariadicTypePack>(tp))
+        else if (get<VariadicTypePack>(tp))
             target = typeFunctionRuntime->typePackArena.allocate(TypeFunctionVariadicTypePack{});
         else if (auto gPack = get<GenericTypePack>(tp))
         {
@@ -683,11 +683,11 @@ private:
                 state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
             }
         }
-        else if (auto u = get<TypeFunctionUnknownType>(ty))
+        else if (get<TypeFunctionUnknownType>(ty))
             target = state->ctx->builtins->unknownType;
-        else if (auto n = get<TypeFunctionNeverType>(ty))
+        else if (get<TypeFunctionNeverType>(ty))
             target = state->ctx->builtins->neverType;
-        else if (auto a = get<TypeFunctionAnyType>(ty))
+        else if (get<TypeFunctionAnyType>(ty))
             target = state->ctx->builtins->anyType;
         else if (auto s = get<TypeFunctionSingletonType>(ty))
         {
@@ -698,11 +698,11 @@ private:
             else
                 state->ctx->ice->ice("Deserializing user defined type function arguments: mysterious type is being deserialized");
         }
-        else if (auto u = get<TypeFunctionUnionType>(ty))
+        else if (get<TypeFunctionUnionType>(ty))
             target = state->ctx->arena->addTV(Type(UnionType{{}}));
-        else if (auto i = get<TypeFunctionIntersectionType>(ty))
+        else if (get<TypeFunctionIntersectionType>(ty))
             target = state->ctx->arena->addTV(Type(IntersectionType{{}}));
-        else if (auto n = get<TypeFunctionNegationType>(ty))
+        else if (get<TypeFunctionNegationType>(ty))
             target = state->ctx->arena->addType(NegationType{state->ctx->builtins->unknownType});
         else if (auto t = get<TypeFunctionTableType>(ty); t && !t->metatable.has_value())
             target = state->ctx->arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, TableState::Sealed});
@@ -711,7 +711,7 @@ private:
             TypeId emptyTable = state->ctx->arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, TableState::Sealed});
             target = state->ctx->arena->addType(MetatableType{emptyTable, emptyTable});
         }
-        else if (auto f = get<TypeFunctionFunctionType>(ty))
+        else if (get<TypeFunctionFunctionType>(ty))
         {
             TypePackId emptyTypePack = state->ctx->arena->addTypePack(TypePack{});
             target = state->ctx->arena->addType(FunctionType{emptyTypePack, emptyTypePack, {}, false});
@@ -762,11 +762,11 @@ private:
 
         // Create a shallow deserialization
         TypePackId target = {};
-        if (auto tPack = get<TypeFunctionTypePack>(tp))
+        if (get<TypeFunctionTypePack>(tp))
         {
             target = state->ctx->arena->addTypePack(TypePack{});
         }
-        else if (auto vPack = get<TypeFunctionVariadicTypePack>(tp))
+        else if (get<TypeFunctionVariadicTypePack>(tp))
         {
             target = state->ctx->arena->addTypePack(VariadicTypePack{});
         }

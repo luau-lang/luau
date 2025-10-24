@@ -1452,7 +1452,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     else if (isBlocked(log, superTp))
         blockedTypePacks.push_back(superTp);
 
-    if (auto superFree = log.getMutable<FreeTypePack>(superTp))
+    if (log.getMutable<FreeTypePack>(superTp))
     {
         if (!occursCheck(superTp, subTp, /* reversed = */ true))
         {
@@ -1460,7 +1460,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
         }
     }
-    else if (auto subFree = log.getMutable<FreeTypePack>(subTp))
+    else if (log.getMutable<FreeTypePack>(subTp))
     {
         if (!occursCheck(subTp, superTp, /* reversed = */ false))
         {

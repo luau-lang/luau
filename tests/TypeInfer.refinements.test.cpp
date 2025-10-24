@@ -23,6 +23,8 @@ LUAU_FASTFLAG(LuauAddConditionalContextForTernary)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
+LUAU_FASTFLAG(LuauEnqueueUnionsOfDistributedTypeFunctions)
+LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 using namespace Luau;
 
@@ -3156,6 +3158,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_conditional_context_in_if_should_not_ref
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'table' does not have key 'foo'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application" * doctest::timeout(0.5))
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauEnqueueUnionsOfDistributedTypeFunctions, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local lastTick = 0
+        local jumpAnimTime = 0
+        local toolAnimTime = 0
+
+        function move(time, tool, animStringValueObject)
+            local deltaTime = time - lastTick
+            lastTick = time
+
+            if jumpAnimTime > 0 then
+                jumpAnimTime = jumpAnimTime - deltaTime
+            end
+
+            if animStringValueObject then
+                toolAnimTime = time + .3
+            end
+
+            if time > toolAnimTime then
+            end
+        end
+    )"));
 }
 
 TEST_SUITE_END();
