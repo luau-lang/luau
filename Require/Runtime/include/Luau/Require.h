@@ -20,7 +20,7 @@
 //
 // Without more context, it is impossible to tell which components in a given
 // path "./foo/bar/baz" are modules and which are directories. To provide this
-// context, the require-by-string runtime library must be opened with a
+// context, the require-by-string runtime library must be opened with a
 // luarequire_Configuration object, which defines the navigation behavior of the
 // context in which Luau is embedded.
 //
