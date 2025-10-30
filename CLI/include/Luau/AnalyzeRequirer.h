@@ -7,6 +7,7 @@
 struct FileNavigationContext : Luau::Require::NavigationContext
 {
     using NavigateResult = Luau::Require::NavigationContext::NavigateResult;
+    using ConfigStatus = Luau::Require::NavigationContext::ConfigStatus;
 
     FileNavigationContext(std::string requirerPath);
 
@@ -19,7 +20,7 @@ struct FileNavigationContext : Luau::Require::NavigationContext
     NavigateResult toParent() override;
     NavigateResult toChild(const std::string& component) override;
 
-    bool isConfigPresent() const override;
+    ConfigStatus getConfigStatus() const override;
     virtual ConfigBehavior getConfigBehavior() const override;
     virtual std::optional<std::string> getAlias(const std::string& alias) const override;
     virtual std::optional<std::string> getConfig() const override;

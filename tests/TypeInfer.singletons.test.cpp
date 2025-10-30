@@ -807,5 +807,14 @@ TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
         CHECK(get<TypeMismatch>(e));
 }
 
+TEST_CASE_FIXTURE(Fixture, "oss_2018")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local rule: { rule: "AppendTextComment" } | { rule: "Other" } = { rule = "AppendTextComment" }
+    )"));
+}
+
 
 TEST_SUITE_END();

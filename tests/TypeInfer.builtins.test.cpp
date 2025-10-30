@@ -13,9 +13,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType3)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauSubtypingPrimitiveAndGenericTableTypes)
-LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
@@ -1727,11 +1725,7 @@ table.insert(1::any, 2::any)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_requires_all_fields")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
-    };
+    ScopedFastFlag _[] = {{FFlag::LuauNoScopeShallNotSubsumeAll, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}};
 
     CheckResult result = check(R"(
         local function huh(): { { x: number, y: string } }
@@ -1785,9 +1779,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_known_
 TEST_CASE_FIXTURE(BuiltinsFixture, "next_with_refined_any")
 {
     ScopedFastFlag lsv2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSubtypingPrimitiveAndGenericTableTypes, true}, {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true}
-    };
+    ScopedFastFlag sff{FFlag::LuauSubtypingPrimitiveAndGenericTableTypes, true};
 
     CheckResult result = check(R"(
         --!strict

@@ -24,12 +24,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAGVARIABLE(LuauTrackUniqueness)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingGenericPacksDoesntUseVariance2)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
 LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
@@ -83,13 +80,10 @@ MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
     : mappings(std::move(mappings))
     , parentScopeIndex(parentScopeIndex)
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
 }
 
 MappedGenericEnvironment::LookupResult MappedGenericEnvironment::lookupGenericPack(TypePackId genericTp) const
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
-
     genericTp = follow(genericTp);
 
     std::optional<size_t> currentFrameIndex = currentScopeIndex;
@@ -137,8 +131,6 @@ MappedGenericEnvironment::LookupResult MappedGenericEnvironment::lookupGenericPa
 
 void MappedGenericEnvironment::pushFrame(const std::vector<TypePackId>& genericTps)
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
-
     DenseHashMap<TypePackId, std::optional<TypePackId>> mappings{nullptr};
 
     for (TypePackId tp : genericTps)
@@ -156,7 +148,6 @@ void MappedGenericEnvironment::pushFrame(const std::vector<TypePackId>& genericT
 
 void MappedGenericEnvironment::popFrame()
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
     LUAU_ASSERT(currentScopeIndex);
     if (currentScopeIndex)
     {
@@ -167,7 +158,6 @@ void MappedGenericEnvironment::popFrame()
 
 bool MappedGenericEnvironment::bindGeneric(TypePackId genericTp, TypePackId bindeeTp)
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
     // We shouldn't bind generic type packs to themselves
     if (genericTp == bindeeTp)
         return true;
@@ -207,35 +197,14 @@ static void assertReasoningValid_DEPRECATED(TID subTy, TID superTy, const Subtyp
 template<typename TID>
 static void assertReasoningValid(TID subTy, TID superTy, const SubtypingResult& result, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
 {
-    LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping3);
-
     if (!FFlag::DebugLuauSubtypingCheckPathValidity)
         return;
 
     for (const SubtypingReasoning& reasoning : result.reasoning)
     {
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        {
-            LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes, arena));
-            LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes, arena));
-        }
-        else
-        {
-            LUAU_ASSERT(traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes, NotNull{&result.mappedGenericPacks_DEPRECATED}, arena));
-            LUAU_ASSERT(traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes, NotNull{&result.mappedGenericPacks_DEPRECATED}, arena));
-        }
+        LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes, arena));
+        LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes, arena));
     }
-}
-
-template<>
-void assertReasoningValid_DEPRECATED<TableIndexer>(
-    TableIndexer subIdx,
-    TableIndexer superIdx,
-    const SubtypingResult& result,
-    NotNull<BuiltinTypes> builtinTypes
-)
-{
-    // Empty method to satisfy the compiler.
 }
 
 template<>
@@ -440,19 +409,9 @@ struct ApplyMappedGenerics : Substitution
 {
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
-    // TODO: make this NotNull when LuauSubtypingGenericsDoesntUseVariance is clipped
-    InternalErrorReporter* iceReporter;
+    NotNull<InternalErrorReporter> iceReporter;
 
     SubtypingEnvironment& env;
-
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
-    ApplyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, SubtypingEnvironment& env)
-        : Substitution(TxnLog::empty(), arena)
-        , builtinTypes(builtinTypes)
-        , arena(arena)
-        , env(env)
-    {
-    }
 
     ApplyMappedGenerics(
         NotNull<BuiltinTypes> builtinTypes,
@@ -480,106 +439,79 @@ struct ApplyMappedGenerics : Substitution
 
     TypeId clean(TypeId ty) override
     {
-        if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-        {
-            const auto& [lowerBound, upperBound] = env.getMappedTypeBounds(ty, NotNull{iceReporter});
+        const auto& [lowerBound, upperBound] = env.getMappedTypeBounds(ty, NotNull{iceReporter});
 
-            if (upperBound.empty() && lowerBound.empty())
+        if (upperBound.empty() && lowerBound.empty())
+        {
+            // No bounds for the generic we're mapping.
+            // In this case, unknown vs never is an arbitrary choice:
+            // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
+            // We choose unknown here, since it's closest to the original behavior.
+            return builtinTypes->unknownType;
+        }
+        else if (!upperBound.empty())
+        {
+            TypeIds boundsToUse;
+
+            for (TypeId ub : upperBound)
             {
-                // No bounds for the generic we're mapping.
+                // quick and dirty check to avoid adding generic types
+                if (!get<GenericType>(ub))
+                    boundsToUse.insert(ub);
+            }
+
+            if (boundsToUse.empty())
+            {
+                // This case happens when we've collected no bounds for the generic we're mapping.
                 // In this case, unknown vs never is an arbitrary choice:
                 // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
                 // We choose unknown here, since it's closest to the original behavior.
                 return builtinTypes->unknownType;
             }
-            else if (!upperBound.empty())
+            if (boundsToUse.size() == 1)
+                return *boundsToUse.begin();
+
+            return arena->addType(IntersectionType{boundsToUse.take()});
+        }
+        else if (!lowerBound.empty())
+        {
+            TypeIds boundsToUse;
+
+            for (TypeId lb : lowerBound)
             {
-                TypeIds boundsToUse;
-
-                for (TypeId ub : upperBound)
-                {
-                    // quick and dirty check to avoid adding generic types
-                    if (!get<GenericType>(ub))
-                        boundsToUse.insert(ub);
-                }
-
-                if (boundsToUse.empty())
-                {
-                    // This case happens when we've collected no bounds for the generic we're mapping.
-                    // In this case, unknown vs never is an arbitrary choice:
-                    // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
-                    // We choose unknown here, since it's closest to the original behavior.
-                    return builtinTypes->unknownType;
-                }
-                if (boundsToUse.size() == 1)
-                    return *boundsToUse.begin();
-
-                return arena->addType(IntersectionType{boundsToUse.take()});
+                // quick and dirty check to avoid adding generic types
+                if (!get<GenericType>(lb))
+                    boundsToUse.insert(lb);
             }
-            else if (!lowerBound.empty())
-            {
-                TypeIds boundsToUse;
 
-                for (TypeId lb : lowerBound)
-                {
-                    // quick and dirty check to avoid adding generic types
-                    if (!get<GenericType>(lb))
-                        boundsToUse.insert(lb);
-                }
-
-                if (boundsToUse.empty())
-                {
-                    // This case happens when we've collected no bounds for the generic we're mapping.
-                    // In this case, unknown vs never is an arbitrary choice:
-                    // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
-                    // We choose unknown here, since it's closest to the original behavior.
-                    return builtinTypes->unknownType;
-                }
-                else if (lowerBound.size() == 1)
-                    return *boundsToUse.begin();
-                else
-                    return arena->addType(UnionType{boundsToUse.take()});
-            }
-            else
+            if (boundsToUse.empty())
             {
-                LUAU_ASSERT(!"Unreachable path");
+                // This case happens when we've collected no bounds for the generic we're mapping.
+                // In this case, unknown vs never is an arbitrary choice:
+                // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
+                // We choose unknown here, since it's closest to the original behavior.
                 return builtinTypes->unknownType;
             }
+            else if (lowerBound.size() == 1)
+                return *boundsToUse.begin();
+            else
+                return arena->addType(UnionType{boundsToUse.take()});
         }
         else
         {
-            const auto& bounds = env.getMappedTypeBounds_DEPRECATED(ty);
-
-            if (bounds.upperBound.empty())
-                return builtinTypes->unknownType;
-
-            if (bounds.upperBound.size() == 1)
-                return *begin(bounds.upperBound);
-
-            return arena->addType(IntersectionType{std::vector<TypeId>(begin(bounds.upperBound), end(bounds.upperBound))});
+            LUAU_ASSERT(!"Unreachable path");
+            return builtinTypes->unknownType;
         }
     }
 
     TypePackId clean(TypePackId tp) override
     {
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        {
-            const MappedGenericEnvironment::LookupResult result = env.lookupGenericPack(tp);
-            if (const TypePackId* mappedGen = get_if<TypePackId>(&result))
-                return *mappedGen;
-            // Clean is only called when isDirty found a pack bound
-            LUAU_ASSERT(!"Unreachable");
-            return builtinTypes->anyTypePack;
-        }
-        else
-        {
-            if (auto it = env.getMappedPackBounds_DEPRECATED(tp))
-                return *it;
-
-            // Clean is only called when isDirty found a pack bound
-            LUAU_ASSERT(!"Unreachable");
-            return nullptr;
-        }
+        const MappedGenericEnvironment::LookupResult result = env.lookupGenericPack(tp);
+        if (const TypePackId* mappedGen = get_if<TypePackId>(&result))
+            return *mappedGen;
+        // Clean is only called when isDirty found a pack bound
+        LUAU_ASSERT(!"Unreachable");
+        return builtinTypes->anyTypePack;
     }
 
     bool ignoreChildren(TypeId ty) override
@@ -587,16 +519,13 @@ struct ApplyMappedGenerics : Substitution
         if (get<ExternType>(ty))
             return true;
 
-        if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
+        if (const FunctionType* f = get<FunctionType>(ty))
         {
-            if (const FunctionType* f = get<FunctionType>(ty))
+            for (TypeId g : f->generics)
             {
-                for (TypeId g : f->generics)
-                {
-                    if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env.mappedGenerics.find(g); bounds && !bounds->empty())
-                        // We don't want to mutate the generics of a function that's being subtyped
-                        return true;
-                }
+                if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env.mappedGenerics.find(g); bounds && !bounds->empty())
+                    // We don't want to mutate the generics of a function that's being subtyped
+                    return true;
             }
         }
 
@@ -615,14 +544,7 @@ std::optional<TypeId> SubtypingEnvironment::applyMappedGenerics(
     NotNull<InternalErrorReporter> iceReporter
 )
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
     ApplyMappedGenerics amg{builtinTypes, arena, *this, iceReporter};
-    return amg.substitute(ty);
-}
-
-std::optional<TypeId> SubtypingEnvironment::applyMappedGenerics_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty)
-{
-    ApplyMappedGenerics amg{builtinTypes, arena, *this};
     return amg.substitute(ty);
 }
 
@@ -654,12 +576,7 @@ std::optional<TypeId> SubtypingEnvironment::tryFindSubstitution(TypeId ty) const
 
 const SubtypingResult* SubtypingEnvironment::tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const
 {
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-    {
-        if (const auto it = seenSetCache.find(subAndSuper))
-            return it;
-    }
-    else if (auto it = ephemeralCache.find(subAndSuper))
+    if (const auto it = seenSetCache.find(subAndSuper))
         return it;
 
     if (parent)
@@ -670,37 +587,19 @@ const SubtypingResult* SubtypingEnvironment::tryFindSubtypingResult(std::pair<Ty
 
 bool SubtypingEnvironment::containsMappedType(TypeId ty) const
 {
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-    {
-        ty = follow(ty);
-        if (const auto bounds = mappedGenerics.find(ty); bounds && !bounds->empty())
-            return true;
+    ty = follow(ty);
+    if (const auto bounds = mappedGenerics.find(ty); bounds && !bounds->empty())
+        return true;
 
-        if (parent)
-            return parent->containsMappedType(ty);
+    if (parent)
+        return parent->containsMappedType(ty);
 
-        return false;
-    }
-    else
-    {
-        if (mappedGenerics_DEPRECATED.contains(ty))
-            return true;
-
-        if (parent)
-            return parent->containsMappedType(ty);
-
-        return false;
-    }
+    return false;
 }
 
 bool SubtypingEnvironment::containsMappedPack(TypePackId tp) const
 {
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-    {
-        if (const MappedGenericEnvironment::LookupResult lookupResult = mappedGenericPacks.lookupGenericPack(tp); get_if<TypePackId>(&lookupResult))
-            return true;
-    }
-    else if (mappedGenericPacks_DEPRECATED.contains(tp))
+    if (const MappedGenericEnvironment::LookupResult lookupResult = mappedGenericPacks.lookupGenericPack(tp); get_if<TypePackId>(&lookupResult))
         return true;
 
     if (parent)
@@ -711,7 +610,6 @@ bool SubtypingEnvironment::containsMappedPack(TypePackId tp) const
 
 SubtypingEnvironment::GenericBounds& SubtypingEnvironment::getMappedTypeBounds(TypeId ty, NotNull<InternalErrorReporter> iceReporter)
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
     ty = follow(ty);
     std::vector<GenericBounds>* bounds = mappedGenerics.find(ty);
     if (bounds && !bounds->empty())
@@ -724,36 +622,8 @@ SubtypingEnvironment::GenericBounds& SubtypingEnvironment::getMappedTypeBounds(T
     iceReporter->ice("Trying to access bounds for a type with no in-scope bounds");
 }
 
-SubtypingEnvironment::GenericBounds_DEPRECATED& SubtypingEnvironment::getMappedTypeBounds_DEPRECATED(TypeId ty)
-{
-    LUAU_ASSERT(!FFlag::LuauSubtypingGenericsDoesntUseVariance);
-    if (auto it = mappedGenerics_DEPRECATED.find(ty))
-        return *it;
-
-    if (parent)
-        return parent->getMappedTypeBounds_DEPRECATED(ty);
-
-    LUAU_ASSERT(!"Use containsMappedType before asking for bounds!");
-    return mappedGenerics_DEPRECATED[ty];
-}
-
-TypePackId* SubtypingEnvironment::getMappedPackBounds_DEPRECATED(TypePackId tp)
-{
-    LUAU_ASSERT(!FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
-
-    if (auto it = mappedGenericPacks_DEPRECATED.find(tp))
-        return it;
-
-    if (parent)
-        return parent->getMappedPackBounds_DEPRECATED(tp);
-
-    // This fallback is reachable in valid cases, unlike the final part of getMappedTypeBounds
-    return nullptr;
-}
-
 MappedGenericEnvironment::LookupResult SubtypingEnvironment::lookupGenericPack(TypePackId tp) const
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
     MappedGenericEnvironment::LookupResult result = mappedGenericPacks.lookupGenericPack(tp);
     if (get_if<TypePackId>(&result))
         return result;
@@ -794,52 +664,8 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
         return result;
     }
 
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-    {
-        for (const auto& [_, bounds] : env.mappedGenerics)
-            LUAU_ASSERT(bounds.empty());
-    }
-    else
-    {
-        for (const auto& [subTy, bounds] : env.mappedGenerics_DEPRECATED)
-        {
-            const auto& lb = bounds.lowerBound;
-            const auto& ub = bounds.upperBound;
-            TypeId lowerBound = makeAggregateType<UnionType>(lb, builtinTypes->neverType);
-            TypeId upperBound = makeAggregateType<IntersectionType>(ub, builtinTypes->unknownType);
-
-            std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
-            // we say that the result is true if normalization failed because complex types are likely to be inhabited.
-            NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
-
-            if (!nt || res == NormalizationResult::HitLimits)
-                result.normalizationTooComplex = true;
-            else if (res == NormalizationResult::False)
-            {
-                /* If the normalized upper bound we're mapping to a generic is
-                 * uninhabited, then we must consider the subtyping relation not to
-                 * hold.
-                 *
-                 * This happens eg in <T>() -> (T, T) <: () -> (string, number)
-                 *
-                 * T appears in covariant position and would have to be both string
-                 * and number at once.
-                 *
-                 * No actual value is both a string and a number, so the test fails.
-                 *
-                 * TODO: We'll need to add explanitory context here.
-                 */
-                result.isSubtype = false;
-            }
-
-            SubtypingEnvironment boundsEnv;
-            boundsEnv.parent = &env;
-            SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
-            boundsResult.reasoning.clear();
-
-            result.andAlso(boundsResult);
-        }
-    }
+    for (const auto& [_, bounds] : env.mappedGenerics)
+        LUAU_ASSERT(bounds.empty());
 
     /* TODO: We presently don't store subtype test results in the persistent
      * cache if the left-side type is a generic function.
@@ -853,9 +679,6 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
      * cacheable.
      */
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        result.mappedGenericPacks_DEPRECATED = std::move(env.mappedGenericPacks_DEPRECATED);
-
     if (result.isCacheable)
         resultCache[{subTy, superTy}] = result;
 
@@ -866,42 +689,30 @@ SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNu
     LUAU_ASSERT(FFlag::LuauPassBindableGenericsByReference);
 
     SubtypingEnvironment env;
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-    {
-        for (TypeId g : bindableGenerics)
-            env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
-    }
+    for (TypeId g : bindableGenerics)
+        env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
 
     SubtypingResult result = isCovariantWith(env, subTp, superTp, scope);
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
+    for (TypeId bg : bindableGenerics)
     {
-        if (!env.mappedGenericPacks_DEPRECATED.empty())
-            result.mappedGenericPacks_DEPRECATED = std::move(env.mappedGenericPacks_DEPRECATED);
-    }
+        bg = follow(bg);
 
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-    {
-        for (TypeId bg : bindableGenerics)
+        LUAU_ASSERT(env.mappedGenerics.contains(bg));
+
+        if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env.mappedGenerics.find(bg))
         {
-            bg = follow(bg);
-
-            LUAU_ASSERT(env.mappedGenerics.contains(bg));
-
-            if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env.mappedGenerics.find(bg))
+            // Bounds should have exactly one entry
+            LUAU_ASSERT(bounds->size() == 1);
+            if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
             {
-                // Bounds should have exactly one entry
-                LUAU_ASSERT(bounds->size() == 1);
-                if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
-                {
-                    if (bounds->empty())
-                        continue;
-                    if (const GenericType* gen = get<GenericType>(bg))
-                        result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
-                }
-                else if (!bounds->empty())
-                    result.andAlso(checkGenericBounds_DEPRECATED(bounds->back(), env, scope));
+                if (bounds->empty())
+                    continue;
+                if (const GenericType* gen = get<GenericType>(bg))
+                    result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
             }
+            else if (!bounds->empty())
+                result.andAlso(checkGenericBounds_DEPRECATED(bounds->back(), env, scope));
         }
     }
 
@@ -918,7 +729,7 @@ SubtypingResult Subtyping::isSubtype_DEPRECATED(
     LUAU_ASSERT(!FFlag::LuauPassBindableGenericsByReference);
 
     SubtypingEnvironment env;
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance && bindableGenerics)
+    if (bindableGenerics)
     {
         for (TypeId g : *bindableGenerics)
             env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
@@ -926,13 +737,7 @@ SubtypingResult Subtyping::isSubtype_DEPRECATED(
 
     SubtypingResult result = isCovariantWith(env, subTp, superTp, scope);
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-    {
-        if (!env.mappedGenericPacks_DEPRECATED.empty())
-            result.mappedGenericPacks_DEPRECATED = std::move(env.mappedGenericPacks_DEPRECATED);
-    }
-
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance && bindableGenerics)
+    if (bindableGenerics)
     {
         for (TypeId bg : *bindableGenerics)
         {
@@ -964,13 +769,8 @@ SubtypingResult Subtyping::cache(SubtypingEnvironment& env, SubtypingResult resu
 {
     const std::pair<TypeId, TypeId> p{subTy, superTy};
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        result.mappedGenericPacks_DEPRECATED = env.mappedGenericPacks_DEPRECATED;
-
     if (result.isCacheable)
         resultCache[p] = result;
-    else if (!FFlag::LuauSubtypingGenericsDoesntUseVariance)
-        env.ephemeralCache[p] = result;
 
     return result;
 }
@@ -1013,24 +813,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     const SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
     if (cachedResult)
     {
-        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        {
-            for (const auto& [genericTp, boundTp] : cachedResult->mappedGenericPacks_DEPRECATED)
-                env.mappedGenericPacks_DEPRECATED.try_insert(genericTp, boundTp);
-        }
-
         return *cachedResult;
     }
 
     cachedResult = env.tryFindSubtypingResult({subTy, superTy});
     if (cachedResult)
     {
-        if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3 && !FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        {
-            for (const auto& [genericTp, boundTp] : cachedResult->mappedGenericPacks_DEPRECATED)
-                env.mappedGenericPacks_DEPRECATED.try_insert(genericTp, boundTp);
-        }
-
         return *cachedResult;
     }
 
@@ -1065,8 +853,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         res.isSubtype = true;
         res.isCacheable = false;
 
-        if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
-            env.seenSetCache[typePair] = res;
+        env.seenSetCache[typePair] = res;
 
         return res;
     }
@@ -1128,8 +915,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = {false};
     else if (get<ErrorType>(subTy))
         result = {true};
-    else if (auto subTypeFunctionInstance = get<TypeFunctionInstanceType>(subTy);
-             subTypeFunctionInstance && FFlag::LuauSubtypingGenericsDoesntUseVariance)
+    else if (auto subTypeFunctionInstance = get<TypeFunctionInstanceType>(subTy))
     {
         bool mappedGenericsApplied = false;
         if (auto substSubTy = env.applyMappedGenerics(builtinTypes, arena, subTy, iceReporter))
@@ -1141,8 +927,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, subTypeFunctionInstance, superTy, scope);
         result.isCacheable = !mappedGenericsApplied;
     }
-    else if (auto superTypeFunctionInstance = get<TypeFunctionInstanceType>(superTy);
-             superTypeFunctionInstance && FFlag::LuauSubtypingGenericsDoesntUseVariance)
+    else if (auto superTypeFunctionInstance = get<TypeFunctionInstanceType>(superTy))
     {
         bool mappedGenericsApplied = false;
         if (auto substSuperTy = env.applyMappedGenerics(builtinTypes, arena, superTy, iceReporter))
@@ -1154,7 +939,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
         result.isCacheable = !mappedGenericsApplied;
     }
-    else if (FFlag::LuauSubtypingGenericsDoesntUseVariance && (get<GenericType>(subTy) || get<GenericType>(superTy)))
+    else if (get<GenericType>(subTy) || get<GenericType>(superTy))
     {
         if (const auto subBounds = env.mappedGenerics.find(subTy); subBounds && !subBounds->empty())
         {
@@ -1192,18 +977,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, subIntersection, superTy, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
-    }
-    else if (!FFlag::LuauSubtypingGenericsDoesntUseVariance && get<GenericType>(subTy) && variance == Variance::Covariant)
-    {
-        bool ok = bindGeneric(env, subTy, superTy);
-        result.isSubtype = ok;
-        result.isCacheable = false;
-    }
-    else if (!FFlag::LuauSubtypingGenericsDoesntUseVariance && get<GenericType>(superTy) && variance == Variance::Contravariant)
-    {
-        bool ok = bindGeneric(env, subTy, superTy);
-        result.isSubtype = ok;
-        result.isCacheable = false;
     }
     else if (auto pair = get2<FreeType, FreeType>(subTy, superTy))
     {
@@ -1257,22 +1030,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
     }
-    else if (auto subTypeFunctionInstance = get<TypeFunctionInstanceType>(subTy))
-    {
-        LUAU_ASSERT(!FFlag::LuauSubtypingGenericsDoesntUseVariance);
-        if (auto substSubTy = env.applyMappedGenerics_DEPRECATED(builtinTypes, arena, subTy))
-            subTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSubTy);
-
-        result = isCovariantWith(env, subTypeFunctionInstance, superTy, scope);
-    }
-    else if (auto superTypeFunctionInstance = get<TypeFunctionInstanceType>(superTy))
-    {
-        LUAU_ASSERT(!FFlag::LuauSubtypingGenericsDoesntUseVariance);
-        if (auto substSuperTy = env.applyMappedGenerics_DEPRECATED(builtinTypes, arena, superTy))
-            superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
-
-        result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
-    }
     else if (auto p = get2<PrimitiveType, PrimitiveType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<SingletonType, PrimitiveType>(subTy, superTy))
@@ -1311,10 +1068,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     else if (auto p = get2<SingletonType, TableType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-        assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
-    else
-        assertReasoningValid_DEPRECATED(subTy, superTy, result, builtinTypes);
+    assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
 
     return cache(env, std::move(result), subTy, superTy);
 }
@@ -1354,14 +1108,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     subTp = follow(subTp);
     superTp = follow(superTp);
 
-    std::optional<ScopedSeenSet<Subtyping::SeenTypePackSet, std::pair<TypePackId, TypePackId>>> popper;
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-    {
-        std::pair<TypePackId, TypePackId> typePair = {subTp, superTp};
-        if (!seenPacks.insert(typePair))
-            return SubtypingResult{true, false, false};
-        popper.emplace(seenPacks, std::move(typePair));
-    }
+    std::pair<TypePackId, TypePackId> typePair = {subTp, superTp};
+    if (!seenPacks.insert(typePair))
+        return SubtypingResult{true, false, false};
+    ScopedSeenSet<Subtyping::SeenTypePackSet, std::pair<TypePackId, TypePackId>> popper{seenPacks, std::move(typePair)};
 
     auto [subHead, subTail] = flatten(subTp);
     auto [superHead, superTail] = flatten(superTp);
@@ -1479,10 +1229,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
 
     SubtypingResult result = SubtypingResult::all(results);
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-        assertReasoningValid(subTp, superTp, result, builtinTypes, arena);
-    else
-        assertReasoningValid_DEPRECATED(subTp, superTp, result, builtinTypes);
+    assertReasoningValid(subTp, superTp, result, builtinTypes, arena);
 
     return result;
 }
@@ -1524,109 +1271,42 @@ std::optional<SubtypingResult> Subtyping::isSubTailCovariantWith(
     }
     else if (get<GenericTypePack>(subTail))
     {
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        {
-            MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(subTail);
-            SubtypingResult result;
-            if (get_if<MappedGenericEnvironment::NotBindable>(&lookupResult))
-                result = SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}
-                                .withSubComponent(TypePath::PackField::Tail)
-                                .withSuperComponent(TypePath::PackSlice{superHeadStartIndex});
-            else
-            {
-                TypePackId superTailPack = sliceTypePack(superHeadStartIndex, superTp, superHead, superTail, builtinTypes, arena);
-
-                if (const TypePackId* mappedGen = get_if<TypePackId>(&lookupResult))
-                {
-                    // Subtype against the mapped generic pack.
-                    TypePackId subTpToCompare = *mappedGen;
-
-                    // If mappedGen has a hidden variadic tail, we clip it for better arity mismatch reporting.
-                    const TypePack* tp = get<TypePack>(*mappedGen);
-                    if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
-                        subTpToCompare = arena->addTypePack(tp->head);
-
-                    result = isCovariantWith(env, subTpToCompare, superTailPack, scope)
-                                    .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*mappedGen}}))
-                                    .withSuperComponent(TypePath::PackSlice{superHeadStartIndex});
-                }
-                else
-                {
-                    LUAU_ASSERT(get_if<MappedGenericEnvironment::Unmapped>(&lookupResult));
-                    bool ok = env.mappedGenericPacks.bindGeneric(subTail, superTailPack);
-                    result = SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}
-                                    .withSubComponent(TypePath::PackField::Tail)
-                                    .withSuperComponent(TypePath::PackSlice{superHeadStartIndex});
-                }
-            }
-
-            outputResults.push_back(result);
-            return SubtypingResult::all(outputResults);
-        }
-        else if (variance == Variance::Covariant)
-        {
-            // For any non-generic type T:
-            //
-            // <X>(X) -> () <: (T) -> ()
-
-            TypePackId superTailPack;
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-            {
-                if (superHeadStartIndex == 0)
-                    superTailPack = superTp;
-                else if (superHeadStartIndex == superHead.size())
-                    superTailPack = superTail ? *superTail : builtinTypes->emptyTypePack;
-                else
-                {
-                    auto superHeadIter = begin(superHead);
-                    for (size_t i = 0; i < superHeadStartIndex; ++i)
-                        ++superHeadIter;
-                    std::vector<TypeId> headSlice(std::move(superHeadIter), end(superHead));
-                    superTailPack = arena->addTypePack(std::move(headSlice), superTail);
-                }
-            }
-            else
-            {
-                // Possible optimization: If headSize == 0 then we can just use subTp as-is.
-                std::vector<TypeId> headSlice = std::vector<TypeId>(begin(superHead), begin(superHead) + int(superHeadStartIndex));
-                superTailPack = arena->addTypePack(std::move(headSlice), superTail);
-            }
-
-            if (TypePackId* other = env.getMappedPackBounds_DEPRECATED(subTail))
-            {
-                if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-                {
-                    const TypePack* tp = get<TypePack>(*other);
-                    if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
-                    {
-                        TypePackId taillessTp = arena->addTypePack(tp->head);
-                        outputResults.push_back(isCovariantWith(env, taillessTp, superTailPack, scope)
-                                                .withSubComponent(TypePath::PackField::Tail)
-                                                .withSuperComponent(TypePath::PackSlice{superHeadStartIndex}));
-                    }
-                    else
-                        outputResults.push_back(isCovariantWith(env, *other, superTailPack, scope)
-                                                .withSubComponent(TypePath::PackField::Tail)
-                                                .withSuperComponent(TypePath::PackSlice{superHeadStartIndex}));
-                }
-                else
-                    outputResults.push_back(isCovariantWith(env, *other, superTailPack, scope).withSubComponent(TypePath::PackField::Tail));
-            }
-            else
-                env.mappedGenericPacks_DEPRECATED.try_insert(subTail, superTailPack);
-
-            // FIXME? Not a fan of the early return here.  It makes the
-            // control flow harder to reason about.
-            return SubtypingResult::all(outputResults);
-        }
+        MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(subTail);
+        SubtypingResult result;
+        if (get_if<MappedGenericEnvironment::NotBindable>(&lookupResult))
+            result = SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}
+                         .withSubComponent(TypePath::PackField::Tail)
+                         .withSuperComponent(TypePath::PackSlice{superHeadStartIndex});
         else
         {
-            // For any non-generic type T:
-            //
-            // (T) -> () </: <X>(X) -> ()
-            //
-            return SubtypingResult{false}.withSubComponent(TypePath::PackField::Tail);
+            TypePackId superTailPack = sliceTypePack(superHeadStartIndex, superTp, superHead, superTail, builtinTypes, arena);
+
+            if (const TypePackId* mappedGen = get_if<TypePackId>(&lookupResult))
+            {
+                // Subtype against the mapped generic pack.
+                TypePackId subTpToCompare = *mappedGen;
+
+                // If mappedGen has a hidden variadic tail, we clip it for better arity mismatch reporting.
+                const TypePack* tp = get<TypePack>(*mappedGen);
+                if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
+                    subTpToCompare = arena->addTypePack(tp->head);
+
+                result = isCovariantWith(env, subTpToCompare, superTailPack, scope)
+                             .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*mappedGen}}))
+                             .withSuperComponent(TypePath::PackSlice{superHeadStartIndex});
+            }
+            else
+            {
+                LUAU_ASSERT(get_if<MappedGenericEnvironment::Unmapped>(&lookupResult));
+                bool ok = env.mappedGenericPacks.bindGeneric(subTail, superTailPack);
+                result = SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}
+                             .withSubComponent(TypePath::PackField::Tail)
+                             .withSuperComponent(TypePath::PackSlice{superHeadStartIndex});
+            }
         }
+
+        outputResults.push_back(result);
+        return SubtypingResult::all(outputResults);
     }
     else if (get<ErrorTypePack>(subTail))
         return SubtypingResult{true}.withSubComponent(TypePath::PackField::Tail);
@@ -1658,107 +1338,41 @@ std::optional<SubtypingResult> Subtyping::isCovariantWithSuperTail(
     }
     else if (get<GenericTypePack>(superTail))
     {
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-        {
-            MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTail);
-            SubtypingResult result;
-            if (get_if<MappedGenericEnvironment::NotBindable>(&lookupResult))
-                result = SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}
-                                .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
-                                .withSuperComponent(TypePath::PackField::Tail);
-            else
-            {
-                TypePackId subTailPack = sliceTypePack(subHeadStartIndex, subTp, subHead, subTail, builtinTypes, arena);
-
-                if (const TypePackId* mappedGen = get_if<TypePackId>(&lookupResult))
-                {
-                    TypePackId superTpToCompare = *mappedGen;
-
-                    // Subtype against the mapped generic pack.
-                    const TypePack* tp = get<TypePack>(*mappedGen);
-                    if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
-                        superTpToCompare = arena->addTypePack(tp->head);
-
-                    result = isCovariantWith(env, subTailPack, superTpToCompare, scope)
-                                    .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
-                                    .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*mappedGen}}));
-                }
-                else
-                {
-                    LUAU_ASSERT(get_if<MappedGenericEnvironment::Unmapped>(&lookupResult));
-                    bool ok = env.mappedGenericPacks.bindGeneric(superTail, subTailPack);
-                    result = SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}
-                                    .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
-                                    .withSuperComponent(TypePath::PackField::Tail);
-                }
-            }
-
-            results.push_back(result);
-            return SubtypingResult::all(results);
-        }
-        else if (variance == Variance::Contravariant)
-        {
-            // For any non-generic type T:
-            //
-            // <X...>(X...) -> () <: (T) -> ()
-
-            TypePackId subTailPack;
-            if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-            {
-                if (subHeadStartIndex == 0)
-                    subTailPack = subTp;
-                else if (subHeadStartIndex == subHead.size())
-                    subTailPack = subTail ? *subTail : builtinTypes->emptyTypePack;
-                else
-                {
-                    auto subHeadIter = begin(subHead);
-                    for (size_t i = 0; i < subHeadStartIndex; ++i)
-                        ++subHeadIter;
-                    std::vector<TypeId> headSlice(std::move(subHeadIter), end(subHead));
-                    subTailPack = arena->addTypePack(std::move(headSlice), subTail);
-                }
-            }
-            else
-            {
-                // Possible optimization: If headSize == 0 then we can just use subTp as-is.
-                std::vector<TypeId> headSlice = std::vector<TypeId>(begin(subHead), begin(subHead) + int(subHeadStartIndex));
-                subTailPack = arena->addTypePack(std::move(headSlice), subTail);
-            }
-
-            if (TypePackId* other = env.getMappedPackBounds_DEPRECATED(superTail))
-            {
-                if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-                {
-                    const TypePack* tp = get<TypePack>(*other);
-                    if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
-                    {
-                        TypePackId taillessTp = arena->addTypePack(tp->head);
-                        results.push_back(isCovariantWith(env, subTailPack, taillessTp, scope)
-                                                .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
-                                                .withSuperComponent(TypePath::PackField::Tail));
-                    }
-                    else
-                        results.push_back(isCovariantWith(env, subTailPack, *other, scope)
-                                                .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
-                                                .withSuperComponent(TypePath::PackField::Tail));
-                }
-                else
-                    results.push_back(isContravariantWith(env, subTailPack, *other, scope).withSuperComponent(TypePath::PackField::Tail));
-            }
-            else
-                env.mappedGenericPacks_DEPRECATED.try_insert(superTail, subTailPack);
-
-            // FIXME? Not a fan of the early return here.  It makes the
-            // control flow harder to reason about.
-            return SubtypingResult::all(results);
-        }
+        MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTail);
+        SubtypingResult result;
+        if (get_if<MappedGenericEnvironment::NotBindable>(&lookupResult))
+            result = SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}
+                         .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
+                         .withSuperComponent(TypePath::PackField::Tail);
         else
         {
-            // For any non-generic type T:
-            //
-            // () -> T </: <X...>() -> X...
-            return SubtypingResult{false}.withSuperComponent(TypePath::PackField::Tail);
+            TypePackId subTailPack = sliceTypePack(subHeadStartIndex, subTp, subHead, subTail, builtinTypes, arena);
+
+            if (const TypePackId* mappedGen = get_if<TypePackId>(&lookupResult))
+            {
+                TypePackId superTpToCompare = *mappedGen;
+
+                // Subtype against the mapped generic pack.
+                const TypePack* tp = get<TypePack>(*mappedGen);
+                if (const VariadicTypePack* vtp = tp ? get<VariadicTypePack>(follow(tp->tail)) : nullptr; vtp && vtp->hidden)
+                    superTpToCompare = arena->addTypePack(tp->head);
+
+                result = isCovariantWith(env, subTailPack, superTpToCompare, scope)
+                             .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
+                             .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*mappedGen}}));
+            }
+            else
+            {
+                LUAU_ASSERT(get_if<MappedGenericEnvironment::Unmapped>(&lookupResult));
+                bool ok = env.mappedGenericPacks.bindGeneric(superTail, subTailPack);
+                result = SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}
+                             .withSubComponent(TypePath::PackSlice{subHeadStartIndex})
+                             .withSuperComponent(TypePath::PackField::Tail);
+            }
         }
+
+        results.push_back(result);
+        return SubtypingResult::all(results);
     }
     else if (get<ErrorTypePack>(superTail))
         return SubtypingResult{true}.withSuperComponent(TypePath::PackField::Tail);
@@ -1793,91 +1407,66 @@ SubtypingResult Subtyping::isTailCovariantWithTail(
     const GenericTypePack* super
 )
 {
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-    {
-        MappedGenericEnvironment::LookupResult subLookupResult = env.lookupGenericPack(subTp);
-        MappedGenericEnvironment::LookupResult superLookupResult = env.lookupGenericPack(superTp);
+    MappedGenericEnvironment::LookupResult subLookupResult = env.lookupGenericPack(subTp);
+    MappedGenericEnvironment::LookupResult superLookupResult = env.lookupGenericPack(superTp);
 
-        // match (subLookup, superLookupResult) {
-        //     (TypePackId, _) => do covariant test
-        //     (Unmapped, _) => bind the generic
-        //     (_, TypePackId) => do covariant test
-        //     (_, Unmapped) => bind the generic
-        //     (_, _) => subtyping succeeds if the two generics are pointer-identical
-        // }
-        if (const TypePackId* currMapping = get_if<TypePackId>(&subLookupResult))
-        {
-            return isCovariantWith(env, *currMapping, superTp, scope)
-                .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}))
-                .withSuperComponent(TypePath::PackField::Tail);
-        }
-        else if (get_if<MappedGenericEnvironment::Unmapped>(&subLookupResult))
-        {
-            bool ok = env.mappedGenericPacks.bindGeneric(subTp, superTp);
-            return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
-        }
-        else if (const TypePackId* currMapping = get_if<TypePackId>(&superLookupResult))
-        {
-            return isCovariantWith(env, subTp, *currMapping, scope)
-                .withSubComponent(TypePath::PackField::Tail)
-                .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
-        }
-        else if (get_if<MappedGenericEnvironment::Unmapped>(&superLookupResult))
-        {
-            bool ok = env.mappedGenericPacks.bindGeneric(superTp, subTp);
-            return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
-        }
-        else
-        {
-            // Sometimes, we compare generic packs inside the functions which are quantifying them. They're not bindable, but should still
-            // subtype against themselves.
-            return SubtypingResult{subTp == superTp, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(
-                TypePath::PackField::Tail
-            );
-        }
+    // match (subLookup, superLookupResult) {
+    //     (TypePackId, _) => do covariant test
+    //     (Unmapped, _) => bind the generic
+    //     (_, TypePackId) => do covariant test
+    //     (_, Unmapped) => bind the generic
+    //     (_, _) => subtyping succeeds if the two generics are pointer-identical
+    // }
+    if (const TypePackId* currMapping = get_if<TypePackId>(&subLookupResult))
+    {
+        return isCovariantWith(env, *currMapping, superTp, scope)
+            .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}))
+            .withSuperComponent(TypePath::PackField::Tail);
+    }
+    else if (get_if<MappedGenericEnvironment::Unmapped>(&subLookupResult))
+    {
+        bool ok = env.mappedGenericPacks.bindGeneric(subTp, superTp);
+        return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
+    }
+    else if (const TypePackId* currMapping = get_if<TypePackId>(&superLookupResult))
+    {
+        return isCovariantWith(env, subTp, *currMapping, scope)
+            .withSubComponent(TypePath::PackField::Tail)
+            .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
+    }
+    else if (get_if<MappedGenericEnvironment::Unmapped>(&superLookupResult))
+    {
+        bool ok = env.mappedGenericPacks.bindGeneric(superTp, subTp);
+        return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
     }
     else
     {
-        bool ok = bindGeneric_DEPRECATED(env, subTp, superTp);
-        return SubtypingResult{ok}.withBothComponent(TypePath::PackField::Tail);
+        // Sometimes, we compare generic packs inside the functions which are quantifying them. They're not bindable, but should still
+        // subtype against themselves.
+        return SubtypingResult{subTp == superTp, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(
+            TypePath::PackField::Tail
+        );
     }
 }
 
 SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const VariadicTypePack* sub, TypePackId superTp, const GenericTypePack* super)
 {
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
+    MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTp);
+    if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
     {
-        MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTp);
-        if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
-        {
-            return isCovariantWith(env, subTp, *currMapping, scope)
-                                    .withSubComponent(TypePath::PackField::Tail)
-                                    .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
-        }
-        else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
-        {
-            bool ok = env.mappedGenericPacks.bindGeneric(superTp, subTp);
-            return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
-        }
-        else
-        {
-            LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
-            return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(
-                    TypePath::PackField::Tail
-                );
-        }
+        return isCovariantWith(env, subTp, *currMapping, scope)
+            .withSubComponent(TypePath::PackField::Tail)
+            .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
     }
-    else if (variance == Variance::Contravariant)
+    else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
     {
-        // <A...>(A...) -> number <: (...number) -> number
-        bool ok = bindGeneric_DEPRECATED(env, subTp, superTp);
-
-        return SubtypingResult{ok}.withBothComponent(TypePath::PackField::Tail);
+        bool ok = env.mappedGenericPacks.bindGeneric(superTp, subTp);
+        return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
     }
     else
     {
-        // (number) -> ...number </: <A...>(number) -> A...
-        return SubtypingResult{false}.withBothComponent(TypePath::PackField::Tail);
+        LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
+        return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
     }
 }
 
@@ -1892,7 +1481,7 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
         // See https://github.com/luau-lang/luau/issues/767
         return SubtypingResult{true};
     }
-    else if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
+    else
     {
         MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(subTp);
         if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
@@ -1914,75 +1503,42 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
                 );
         }
     }
-    else if (variance == Variance::Contravariant)
-    {
-        // (...number) -> number </: <A...>(A...) -> number
-        return SubtypingResult{false}.withBothComponent(TypePath::PackField::Tail);
-    }
-    else
-    {
-        // <A...>() -> A... <: () -> ...number
-        bool ok = bindGeneric_DEPRECATED(env, subTp, superTp);
-        return SubtypingResult{ok}.withBothComponent(TypePath::PackField::Tail);
-    }
 }
 
 SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, Nothing)
 {
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
+    MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(subTp);
+    if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
+        return isCovariantWith(env, *currMapping, builtinTypes->emptyTypePack, scope)
+            .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
+    else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
     {
-        MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(subTp);
-        if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
-            return isCovariantWith(env, *currMapping, builtinTypes->emptyTypePack, scope)
-                                    .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
-        else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
-        {
-            bool ok = env.mappedGenericPacks.bindGeneric(subTp, builtinTypes->emptyTypePack);
-            return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSubComponent(TypePath::PackField::Tail);
-        }
-        else
-        {
-            LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
-            return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSubComponent(
-                TypePath::PackField::Tail
-            );
-        }
+        bool ok = env.mappedGenericPacks.bindGeneric(subTp, builtinTypes->emptyTypePack);
+        return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSubComponent(TypePath::PackField::Tail);
     }
     else
     {
-        bool ok = bindGeneric_DEPRECATED(env, subTp, builtinTypes->emptyTypePack);
-        return SubtypingResult{ok}.withSubComponent(TypePath::PackField::Tail);
+        LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
+        return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSubComponent(TypePath::PackField::Tail);
     }
 }
 
 SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, Nothing, TypePackId superTp, const GenericTypePack* super)
 {
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
+    MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTp);
+    if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
+        return isCovariantWith(env, builtinTypes->emptyTypePack, *currMapping, scope)
+            .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
+    else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
     {
-        MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTp);
-        if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
-            return isCovariantWith(env, builtinTypes->emptyTypePack, *currMapping, scope)
-                                    .withSuperPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}));
-        else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
-        {
-            bool ok = env.mappedGenericPacks.bindGeneric(superTp, builtinTypes->emptyTypePack);
-            return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSuperComponent(
-                    TypePath::PackField::Tail
-                );
-        }
-        else
-        {
-            LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
-            return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSuperComponent(TypePath::PackField::Tail);
-        }
-    }
-    else if (variance == Variance::Contravariant)
-    {
-        bool ok = bindGeneric_DEPRECATED(env, builtinTypes->emptyTypePack, superTp);
-        return SubtypingResult{ok}.withSuperComponent(TypePath::PackField::Tail);
+        bool ok = env.mappedGenericPacks.bindGeneric(superTp, builtinTypes->emptyTypePack);
+        return SubtypingResult{ok, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSuperComponent(TypePath::PackField::Tail);
     }
     else
-        return SubtypingResult{false}.withSuperComponent(TypePath::PackField::Tail);
+    {
+        LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
+        return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withSuperComponent(TypePath::PackField::Tail);
+    }
 }
 
 
@@ -2013,10 +1569,7 @@ SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy&
         }
     }
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-        assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
-    else
-        assertReasoningValid_DEPRECATED(subTy, superTy, result, builtinTypes);
+    assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
 
     return result;
 }
@@ -2035,10 +1588,7 @@ SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, SubTy&& su
             reasoning.variance = SubtypingVariance::Invariant;
     }
 
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-        assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
-    else
-        assertReasoningValid_DEPRECATED(subTy, superTy, result, builtinTypes);
+    assertReasoningValid(subTy, superTy, result, builtinTypes, arena);
 
     return result;
 }
@@ -2627,7 +2177,7 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     SubtypingResult result;
 
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance && !subFunction->generics.empty())
+    if (!subFunction->generics.empty())
     {
         for (TypeId g : subFunction->generics)
         {
@@ -2643,7 +2193,7 @@ SubtypingResult Subtyping::isCovariantWith(
         }
     }
 
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2 && !subFunction->genericPacks.empty())
+    if (!subFunction->genericPacks.empty())
     {
         std::vector<TypePackId> packs;
         packs.reserve(subFunction->genericPacks.size());
@@ -2691,7 +2241,7 @@ SubtypingResult Subtyping::isCovariantWith(
             );
     }
 
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance && !subFunction->generics.empty())
+    if (!subFunction->generics.empty())
     {
         for (TypeId g : subFunction->generics)
         {
@@ -2711,7 +2261,7 @@ SubtypingResult Subtyping::isCovariantWith(
         }
     }
 
-    if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2 && !subFunction->genericPacks.empty())
+    if (!subFunction->genericPacks.empty())
     {
         env.mappedGenericPacks.popFrame();
         // This result isn't cacheable, because we may need it to populate the generic pack mapping environment again later
@@ -3032,77 +2582,51 @@ SubtypingResult Subtyping::isCovariantWith(
 
 bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId superTy)
 {
-    if (FFlag::LuauSubtypingGenericsDoesntUseVariance)
+    subTy = follow(subTy);
+    superTy = follow(superTy);
+    std::optional<SubtypingEnvironment::GenericBounds> originalSubTyBounds = std::nullopt;
+
+    if (const auto subBounds = env.mappedGenerics.find(subTy); subBounds && !subBounds->empty())
     {
-        subTy = follow(subTy);
-        superTy = follow(superTy);
-        std::optional<SubtypingEnvironment::GenericBounds> originalSubTyBounds = std::nullopt;
+        LUAU_ASSERT(get<GenericType>(subTy));
 
-        if (const auto subBounds = env.mappedGenerics.find(subTy); subBounds && !subBounds->empty())
-        {
-            LUAU_ASSERT(get<GenericType>(subTy));
+        originalSubTyBounds = SubtypingEnvironment::GenericBounds{subBounds->back()};
 
-            originalSubTyBounds = SubtypingEnvironment::GenericBounds{subBounds->back()};
-
-            auto& [lowerSubBounds, upperSubBounds] = subBounds->back();
-
-            if (const auto superBounds = env.mappedGenerics.find(superTy); superBounds && !superBounds->empty())
-            {
-                LUAU_ASSERT(get<GenericType>(superTy));
-
-                const auto& [lowerSuperBounds, upperSuperBounds] = superBounds->back();
-
-                maybeUpdateBounds(subTy, superTy, upperSubBounds, lowerSuperBounds, upperSuperBounds);
-            }
-            else
-                upperSubBounds.insert(superTy);
-        }
-        else if (env.containsMappedType(subTy))
-            iceReporter->ice("attempting to modify bounds of a potentially visited generic");
+        auto& [lowerSubBounds, upperSubBounds] = subBounds->back();
 
         if (const auto superBounds = env.mappedGenerics.find(superTy); superBounds && !superBounds->empty())
         {
             LUAU_ASSERT(get<GenericType>(superTy));
 
-            auto& [lowerSuperBounds, upperSuperBounds] = superBounds->back();
+            const auto& [lowerSuperBounds, upperSuperBounds] = superBounds->back();
 
-            if (originalSubTyBounds)
-            {
-                LUAU_ASSERT(get<GenericType>(subTy));
-
-                const auto& [originalLowerSubBound, originalUpperSubBound] = *originalSubTyBounds;
-
-                maybeUpdateBounds(superTy, subTy, lowerSuperBounds, originalUpperSubBound, originalLowerSubBound);
-            }
-            else
-                lowerSuperBounds.insert(subTy);
-        }
-        else if (env.containsMappedType(superTy))
-            iceReporter->ice("attempting to modify bounds of a potentially visited generic");
-    }
-    else
-    {
-        if (variance == Variance::Covariant)
-        {
-            if (!get<GenericType>(subTy))
-                return false;
-
-            if (!env.mappedGenerics_DEPRECATED.find(subTy) && env.containsMappedType(subTy))
-                iceReporter->ice("attempting to modify bounds of a potentially visited generic");
-
-            env.mappedGenerics_DEPRECATED[subTy].upperBound.insert(superTy);
+            maybeUpdateBounds(subTy, superTy, upperSubBounds, lowerSuperBounds, upperSuperBounds);
         }
         else
-        {
-            if (!get<GenericType>(superTy))
-                return false;
-
-            if (!env.mappedGenerics_DEPRECATED.find(superTy) && env.containsMappedType(superTy))
-                iceReporter->ice("attempting to modify bounds of a potentially visited generic");
-
-            env.mappedGenerics_DEPRECATED[superTy].lowerBound.insert(subTy);
-        }
+            upperSubBounds.insert(superTy);
     }
+    else if (env.containsMappedType(subTy))
+        iceReporter->ice("attempting to modify bounds of a potentially visited generic");
+
+    if (const auto superBounds = env.mappedGenerics.find(superTy); superBounds && !superBounds->empty())
+    {
+        LUAU_ASSERT(get<GenericType>(superTy));
+
+        auto& [lowerSuperBounds, upperSuperBounds] = superBounds->back();
+
+        if (originalSubTyBounds)
+        {
+            LUAU_ASSERT(get<GenericType>(subTy));
+
+            const auto& [originalLowerSubBound, originalUpperSubBound] = *originalSubTyBounds;
+
+            maybeUpdateBounds(superTy, subTy, lowerSuperBounds, originalUpperSubBound, originalLowerSubBound);
+        }
+        else
+            lowerSuperBounds.insert(subTy);
+    }
+    else if (env.containsMappedType(superTy))
+        iceReporter->ice("attempting to modify bounds of a potentially visited generic");
 
     return true;
 }
@@ -3131,35 +2655,6 @@ SubtypingResult Subtyping::isCovariantWith(
     // Reduce the type function instance
     auto [ty, errors] = handleTypeFunctionReductionResult(superFunctionInstance, scope);
     return isCovariantWith(env, subTy, ty, scope).withErrors(errors).withSuperComponent(TypePath::Reduction{ty});
-}
-
-/*
- * If, when performing a subtyping test, we encounter a generic on the left
- * side, it is permissible to tentatively bind that generic to the right side
- * type.
- */
-bool Subtyping::bindGeneric_DEPRECATED(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp) const
-{
-    LUAU_ASSERT(!FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
-    if (variance == Variance::Contravariant)
-        std::swap(superTp, subTp);
-
-    if (!get<GenericTypePack>(subTp))
-        return false;
-
-    if (TypePackId* m = env.getMappedPackBounds_DEPRECATED(subTp))
-        return *m == superTp;
-
-    if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-    {
-        // We shouldn't bind generic type packs to themselves
-        if (subTp == superTp)
-            return true;
-    }
-
-    env.mappedGenericPacks_DEPRECATED[subTp] = superTp;
-
-    return true;
 }
 
 template<typename T, typename Container>
@@ -3223,7 +2718,6 @@ SubtypingResult Subtyping::checkGenericBounds(
     std::string_view genericName
 )
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
     LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
 
     SubtypingResult result{true};
@@ -3342,7 +2836,6 @@ SubtypingResult Subtyping::checkGenericBounds_DEPRECATED(
     NotNull<Scope> scope
 )
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericsDoesntUseVariance);
     LUAU_ASSERT(!FFlag::LuauSubtypingReportGenericBoundMismatches2);
 
     SubtypingResult result{true};

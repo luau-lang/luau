@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 using namespace Luau;
 
@@ -1875,8 +1874,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
-
     // @deprecated works on local functions
     {
         LintResult result = lint(R"(

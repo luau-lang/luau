@@ -747,7 +747,7 @@ void Fixture::limitStackSize(size_t size)
 
     uintptr_t addressSpaceSize = getStackAddressSpaceSize();
 
-    dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, addressSpaceSize - size);
+    dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
 }
 
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)

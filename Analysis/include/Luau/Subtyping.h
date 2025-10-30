@@ -147,13 +147,6 @@ struct SubtypingEnvironment
         TypeIds upperBound;
     };
 
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
-    struct GenericBounds_DEPRECATED
-    {
-        DenseHashSet<TypeId> lowerBound{nullptr};
-        DenseHashSet<TypeId> upperBound{nullptr};
-    };
-
     /* For nested subtyping relationship tests of mapped generic bounds, we keep the outer environment immutable */
     SubtypingEnvironment* parent = nullptr;
 
@@ -165,23 +158,16 @@ struct SubtypingEnvironment
         TypeId ty,
         NotNull<InternalErrorReporter> iceReporter
     );
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
-    std::optional<TypeId> applyMappedGenerics_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
 
     // TODO: Clip with LuauTryFindSubstitutionReturnOptional
     const TypeId* tryFindSubstitution_DEPRECATED(TypeId ty) const;
     std::optional<TypeId> tryFindSubstitution(TypeId ty) const;
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
     const SubtypingResult* tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const;
 
     bool containsMappedType(TypeId ty) const;
     bool containsMappedPack(TypePackId tp) const;
 
     GenericBounds& getMappedTypeBounds(TypeId ty, NotNull<InternalErrorReporter> iceReporter);
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
-    GenericBounds_DEPRECATED& getMappedTypeBounds_DEPRECATED(TypeId ty);
-    // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance2
-    TypePackId* getMappedPackBounds_DEPRECATED(TypePackId tp);
     MappedGenericEnvironment::LookupResult lookupGenericPack(TypePackId tp) const;
 
     /*
@@ -191,12 +177,8 @@ struct SubtypingEnvironment
      * of each vector represents the current scope.
      */
     DenseHashMap<TypeId, std::vector<GenericBounds>> mappedGenerics{nullptr};
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
-    DenseHashMap<TypeId, GenericBounds_DEPRECATED> mappedGenerics_DEPRECATED{nullptr};
 
     MappedGenericEnvironment mappedGenericPacks;
-    // TODO: Clip with LuauSubtypingGenericPacksDoesntUseVariance2
-    DenseHashMap<TypePackId, TypePackId> mappedGenericPacks_DEPRECATED{nullptr};
 
     /*
      * See the test cyclic_tables_are_assumed_to_be_compatible_with_extern_types for
@@ -206,8 +188,6 @@ struct SubtypingEnvironment
      */
     DenseHashMap<TypeId, TypeId> substitutions{nullptr};
 
-    // TODO: Clip with LuauSubtypingGenericsDoesntUseVariance
-    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> ephemeralCache{{}};
 
     // We use this cache to track pairs of subtypes that we tried to subtype, and found them to be in the seen set at the time.
     // In those situations, we return True, but mark the result as not cacheable, because we don't want to cache broader results which
@@ -237,7 +217,7 @@ struct Subtyping
         Contravariant
     };
 
-    // TODO: Clip this along with LuauSubtypingGenericsDoesntUseVariance?
+    // TODO: Clip in CLI-170986
     Variance variance = Variance::Covariant;
 
     using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
@@ -467,8 +447,6 @@ private:
     SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, Nothing, TypePackId superTp, const GenericTypePack* super);
 
     bool bindGeneric(SubtypingEnvironment& env, TypeId subTp, TypeId superTp);
-    // Clip with LuauSubtypingGenericPacksDoesntUseVariance2
-    bool bindGeneric_DEPRECATED(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp) const;
 
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);

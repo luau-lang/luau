@@ -32,7 +32,6 @@ add_library(Luau.EqSat STATIC)
 add_library(Luau.CodeGen STATIC)
 add_library(Luau.VM STATIC)
 add_library(Luau.Require STATIC)
-add_library(Luau.RequireNavigator STATIC)
 add_library(isocline STATIC)
 
 if(LUAU_BUILD_CLI)
@@ -105,13 +104,8 @@ target_include_directories(Luau.VM PUBLIC VM/include)
 target_link_libraries(Luau.VM PUBLIC Luau.Common)
 
 target_compile_features(Luau.Require PUBLIC cxx_std_17)
-target_include_directories(Luau.Require PUBLIC Require/Runtime/include)
-target_link_libraries(Luau.Require PUBLIC Luau.VM)
-target_link_libraries(Luau.Require PRIVATE Luau.RequireNavigator)
-
-target_compile_features(Luau.RequireNavigator PUBLIC cxx_std_17)
-target_include_directories(Luau.RequireNavigator PUBLIC Require/Navigator/include)
-target_link_libraries(Luau.RequireNavigator PUBLIC Luau.Config)
+target_include_directories(Luau.Require PUBLIC Require/include)
+target_link_libraries(Luau.Require PUBLIC Luau.Config Luau.VM)
 
 target_include_directories(isocline PUBLIC extern/isocline/include)
 
@@ -236,7 +230,7 @@ if(LUAU_BUILD_CLI)
     target_link_libraries(Luau.Compile.CLI PRIVATE osthreads)
     target_link_libraries(Luau.Bytecode.CLI PRIVATE osthreads)
 
-    target_link_libraries(Luau.Analyze.CLI PRIVATE Luau.Analysis Luau.CLI.lib Luau.RequireNavigator)
+    target_link_libraries(Luau.Analyze.CLI PRIVATE Luau.Analysis Luau.CLI.lib Luau.Require)
 
     target_link_libraries(Luau.Ast.CLI PRIVATE Luau.Ast Luau.Analysis Luau.CLI.lib)
 
@@ -276,10 +270,10 @@ endif()
 
 if(LUAU_BUILD_WEB)
     target_compile_options(Luau.Web PRIVATE ${LUAU_OPTIONS})
-    target_link_libraries(Luau.Web PRIVATE Luau.Compiler Luau.VM)
+    target_link_libraries(Luau.Web PRIVATE Luau.Compiler Luau.VM Luau.Analysis)
 
     # declare exported functions to emscripten
-    target_link_options(Luau.Web PRIVATE -sEXPORTED_FUNCTIONS=['_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'])
+    target_link_options(Luau.Web PRIVATE -sEXPORTED_FUNCTIONS=["_executeScript","_checkScript"] -sEXPORTED_RUNTIME_METHODS=["ccall","cwrap"])
 
     # add -fexceptions for emscripten to allow exceptions to be caught in C++
     target_link_options(Luau.Web PRIVATE -fexceptions)

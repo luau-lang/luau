@@ -25,14 +25,13 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSimplifyIntersectionForLiteralSubtypeCheck)
 LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2313,7 +2312,6 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     // Old Solver Bug: We have to turn off InstantiateInSubtyping in the old solver as we don't invariantly
     // compare functions inside of table properties
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::LuauInstantiateInSubtyping, FFlag::LuauSolverV2},
     };
@@ -2355,10 +2353,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
+        {FFlag::LuauSolverV2, true}, {FFlag::LuauNoScopeShallNotSubsumeAll, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}
     };
 
     CheckResult result = check(R"(
@@ -5806,7 +5801,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true},
         {FFlag::LuauPushTypeConstraint2, true},
     };
 
@@ -6108,10 +6102,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_array_of_any")
 TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
-        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
+        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}, {FFlag::LuauNoScopeShallNotSubsumeAll, true}
     };
 
     CheckResult result = check(R"(
@@ -6227,6 +6218,130 @@ TEST_CASE_FIXTURE(Fixture, "oss_1953")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<MissingUnionProperty>(result.errors[0]);
     CHECK_EQ("kind", err->key);
+}
+
+TEST_CASE_FIXTURE(Fixture, "array_of_callbacks_bidirectionally_inferred")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Actions : { [string]: (string?) -> number? } = {
+            Foo = function (input)
+                if input then
+                    return 42
+                else
+                    return nil
+                end
+            end
+        }
+    )"));
+
+    CHECK_EQ("string?", toString(requireTypeAtPosition({3, 21})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1483")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Form = "do-not-register" | (() -> ())
+
+        local function observer(register: () -> Form) end
+
+        observer(function()
+            if math.random() > 0.5 then
+                return "do-not-register"
+            end
+            return function() end
+        end)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1910")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Implementation = {
+            on_thing: (something: boolean) -> (),
+        }
+
+        local a: Implementation = {
+            on_thing = function(something)
+                local _ = something
+            end,
+        }
+    )"));
+    CHECK_EQ("boolean", toString(requireTypeAtPosition({7, 29})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_variadic_type_pack")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    // As it turns out, you don't strictly need bidirectional inference in
+    // this specific case: subtyping is enough to constain `foobar` to be
+    // `string <: 'a <: string`, and generalization takes care of the rest,
+    // but you need to order the constraints correctly, otherwise we
+    // generalize the lambda too early.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo: { (...string) -> () } = {
+            function (foobar)
+                print(foobar)
+            end
+        }
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({3, 24})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_with_intersection_containing_lambda")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::LuauPushTypeConstraintIntersection, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Arg = { foo: string }
+
+        type TypeA = { foo: string, method: (arg: Arg) -> any }
+
+        type TypeB = TypeA & {}
+
+        local bar: TypeB = {
+            foo = "wow!",
+            method = function(arg)
+                local _ = arg
+                return nil
+            end,
+        }
+    )"));
+
+    CHECK_EQ("{ foo: string }", toString(requireTypeAtPosition({10, 28}), { /* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

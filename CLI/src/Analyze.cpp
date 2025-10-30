@@ -2,8 +2,10 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Config.h"
 #include "Luau/Frontend.h"
+#include "Luau/LuauConfig.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/PrettyPrinter.h"
+#include "Luau/StringUtils.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/TypeInfer.h"
 
@@ -174,6 +176,7 @@ struct CliFileResolver : Luau::FileResolver
         {
             std::string path{expr->value.data, expr->value.size};
 
+            // TODO (CLI-174536): support interrupt callbacks based on TypeCheckLimits
             FileNavigationContext navigationContext{context->name};
             Luau::Require::ErrorHandler nullErrorHandler{};
 
@@ -229,20 +232,48 @@ struct CliConfigResolver : Luau::ConfigResolver
         std::optional<std::string> parent = getParentPath(path);
         Luau::Config result = parent ? readConfigRec(*parent) : defaultConfig;
 
-        std::string configPath = joinPaths(path, Luau::kConfigName);
+        std::optional<std::string> configPath = joinPaths(path, Luau::kConfigName);
+        if (!isFile(*configPath))
+            configPath = std::nullopt;
 
-        if (std::optional<std::string> contents = readFile(configPath))
+        std::optional<std::string> luauConfigPath = joinPaths(path, Luau::kLuauConfigName);
+        if (!isFile(*luauConfigPath))
+            luauConfigPath = std::nullopt;
+
+        if (configPath && luauConfigPath)
         {
-            Luau::ConfigOptions::AliasOptions aliasOpts;
-            aliasOpts.configLocation = configPath;
-            aliasOpts.overwriteAliases = true;
+            std::string ambiguousError = Luau::format("Both %s and %s files exist", Luau::kConfigName, Luau::kLuauConfigName);
+            configErrors.emplace_back(*configPath, std::move(ambiguousError));
+        }
+        else if (configPath)
+        {
+            if (std::optional<std::string> contents = readFile(*configPath))
+            {
+                Luau::ConfigOptions::AliasOptions aliasOpts;
+                aliasOpts.configLocation = *configPath;
+                aliasOpts.overwriteAliases = true;
 
-            Luau::ConfigOptions opts;
-            opts.aliasOptions = std::move(aliasOpts);
+                Luau::ConfigOptions opts;
+                opts.aliasOptions = std::move(aliasOpts);
 
-            std::optional<std::string> error = Luau::parseConfig(*contents, result, opts);
-            if (error)
-                configErrors.push_back({configPath, *error});
+                std::optional<std::string> error = Luau::parseConfig(*contents, result, opts);
+                if (error)
+                    configErrors.emplace_back(*configPath, *error);
+            }
+        }
+        else if (luauConfigPath)
+        {
+            if (std::optional<std::string> contents = readFile(*luauConfigPath))
+            {
+                Luau::ConfigOptions::AliasOptions aliasOpts;
+                aliasOpts.configLocation = *configPath;
+                aliasOpts.overwriteAliases = true;
+
+                // TODO (CLI-174536): support interrupt callbacks based on TypeCheckLimits
+                std::optional<std::string> error = Luau::extractLuauConfig(*contents, result, aliasOpts, Luau::InterruptCallbacks{});
+                if (error)
+                    configErrors.emplace_back(*luauConfigPath, *error);
+            }
         }
 
         return configCache[path] = result;

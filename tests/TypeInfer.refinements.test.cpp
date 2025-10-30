@@ -13,10 +13,7 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauAddConditionalContextForTernary)
@@ -25,6 +22,7 @@ LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(LuauEnqueueUnionsOfDistributedTypeFunctions)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauNormalizationPreservesAny)
 
 using namespace Luau;
 
@@ -2282,10 +2280,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "check_refinement_to_primitive_and_compare")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_variant")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true},
-        {FFlag::LuauNoOrderingTypeFunctions, true},
-    };
+    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
 
     // FIXME CLI-141364: An underlying bug in normalization means the type of
     // `isIndexKey` is platform dependent.
@@ -3186,6 +3181,26 @@ TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application"
             end
 
             if time > toolAnimTime then
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
+{
+    ScopedFastFlag _{FFlag::LuauNormalizationPreservesAny, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local REACT_FRAGMENT_TYPE = (nil :: any)
+        local function typeOf(object: any)
+            local __type = object.type
+
+            if __type == REACT_FRAGMENT_TYPE then
+                return __type
+            else
+                return __type
+                    and typeof(__type) == "table"
+                    and __type["$$typeof"]
             end
         end
     )"));

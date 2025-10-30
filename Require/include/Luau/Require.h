@@ -3,6 +3,7 @@
 
 #include "lua.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,7 +20,7 @@
 //
 // Without more context, it is impossible to tell which components in a given
 // path "./foo/bar/baz" are modules and which are directories. To provide this
-// context, the require-by-string runtime library must be opened with a
+// context, the require-by-string runtime library must be opened with a
 // luarequire_Configuration object, which defines the navigation behavior of the
 // context in which Luau is embedded.
 //
@@ -35,35 +36,44 @@
 // nestable code unit and organizational unit, respectively.
 //
 // Require-by-string's runtime behavior can be additionally be configured in
-// configuration files, such as .luaurc files in a filesystem context. The
-// presence of a configuration file in the current context is signaled by the
-// is_config_present function. Both modules and directories can contain
-// configuration files; however, note that a given configuration file's scope is
-// limited to the descendants of the module or directory in which it resides. In
-// other words, when searching for a relevant configuration file for a given
-// module, the search begins at the module's parent context and proceeds up the
-// hierarchy from there, resolving to the first configuration file found.
+// configuration files, such as .luaurc or .config.luau files in a filesystem
+// context. The presence of a configuration file in the current context is
+// signaled by the get_config_status function. Both modules and directories can
+// contain configuration files; however, note that a given configuration file's
+// scope is limited to the descendants of the module or directory in which it
+// resides. In other words, when searching for a relevant configuration file for
+// a given module, the search begins at the module's parent context and proceeds
+// up the hierarchy from there, resolving to the first configuration file found.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-enum luarequire_NavigateResult
+typedef enum luarequire_NavigateResult
 {
     NAVIGATE_SUCCESS,
     NAVIGATE_AMBIGUOUS,
     NAVIGATE_NOT_FOUND
-};
+} luarequire_NavigateResult;
 
 // Functions returning WRITE_SUCCESS are expected to set their size_out argument
 // to the number of bytes written to the buffer. If WRITE_BUFFER_TOO_SMALL is
 // returned, size_out should be set to the required buffer size.
-enum luarequire_WriteResult
+typedef enum luarequire_WriteResult
 {
     WRITE_SUCCESS,
     WRITE_BUFFER_TOO_SMALL,
     WRITE_FAILURE
-};
+} luarequire_WriteResult;
 
-struct luarequire_Configuration
+// Represents whether a configuration file is present, and if so, its syntax.
+typedef enum luarequire_ConfigStatus
+{
+    CONFIG_ABSENT,
+    CONFIG_AMBIGUOUS, // Signals the presence of multiple configuration files.
+    CONFIG_PRESENT_JSON,
+    CONFIG_PRESENT_LUAU,
+} luarequire_ConfigStatus;
+
+typedef struct luarequire_Configuration
 {
     // Returns whether requires are permitted from the given chunkname.
     bool (*is_require_allowed)(lua_State* L, void* ctx, const char* requirer_chunkname);
@@ -96,31 +106,40 @@ struct luarequire_Configuration
     // only called if is_module_present returns true.
     luarequire_WriteResult (*get_cache_key)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
 
-    // Returns whether a configuration file is present in the current context.
-    // If not, require-by-string will call to_parent until either a
-    // configuration file is present or NAVIGATE_FAILURE is returned (at root).
-    bool (*is_config_present)(lua_State* L, void* ctx);
+    // Returns whether a configuration file is present in the current context,
+    // and if so, its syntax. If not present, require-by-string will call
+    // to_parent until either a configuration file is present or
+    // NAVIGATE_FAILURE is returned (at root).
+    luarequire_ConfigStatus (*get_config_status)(lua_State* L, void* ctx);
 
     // Parses the configuration file in the current context for the given alias
     // and returns its value or WRITE_FAILURE if not found. This function is
-    // only called if is_config_present returns true. If this function pointer
+    // only called if get_config_status returns true. If this function pointer
     // is set, get_config must not be set. Opting in to this function pointer
     // disables parsing configuration files internally and can be used for finer
     // control over the configuration file parsing process.
     luarequire_WriteResult (*get_alias)(lua_State* L, void* ctx, const char* alias, char* buffer, size_t buffer_size, size_t* size_out);
 
     // Provides the contents of the configuration file in the current context.
-    // This function is only called if is_config_present returns true. If this
-    // function pointer is set, get_alias must not be set. Opting in to this
-    // function pointer enables parsing configuration files internally.
+    // This function is only called if get_config_status does not return
+    // CONFIG_ABSENT. If this function pointer is set, get_alias must not be
+    // set. Opting in to this function pointer enables parsing configuration
+    // files internally.
     luarequire_WriteResult (*get_config)(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out);
+
+    // Returns the maximum number of milliseconds to allow for executing a given
+    // Luau-syntax configuration file. This function is only called if
+    // get_config_status returns CONFIG_PRESENT_LUAU and can be left undefined
+    // if support for Luau-syntax configuration files is not needed. A default
+    // value of 2000ms is used. Negative values are treated as infinite.
+    int (*get_luau_config_timeout)(lua_State* L, void* ctx);
 
     // Executes the module and places the result on the stack. Returns the
     // number of results placed on the stack. Returning -1 directs the requiring
     // thread to yield. In this case, this thread should be resumed with the
     // module result pushed onto its stack.
     int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname);
-};
+} luarequire_Configuration;
 
 // Populates function pointers in the given luarequire_Configuration.
 typedef void (*luarequire_Configuration_init)(luarequire_Configuration* config);

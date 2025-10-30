@@ -590,24 +590,21 @@ endif()
 if(TARGET Luau.Require)
     # Luau.Require Sources
     target_sources(Luau.Require PRIVATE
-        Require/Runtime/include/Luau/Require.h
+    # Public headers
+    Require/include/Luau/Require.h
+    Require/include/Luau/RequireNavigator.h
 
-        Require/Runtime/src/Navigation.h
-        Require/Runtime/src/RequireImpl.h
+    # Internal headers
+    Require/src/Navigation.h
+    Require/src/PathUtilities.h
+    Require/src/RequireImpl.h
 
-        Require/Runtime/src/Navigation.cpp
-        Require/Runtime/src/Require.cpp
-        Require/Runtime/src/RequireImpl.cpp)
-endif()
-
-if(TARGET Luau.RequireNavigator)
-    # Luau.Require Sources
-    target_sources(Luau.RequireNavigator PRIVATE
-        Require/Navigator/include/Luau/PathUtilities.h
-        Require/Navigator/include/Luau/RequireNavigator.h
-
-        Require/Navigator/src/PathUtilities.cpp
-        Require/Navigator/src/RequireNavigator.cpp)
+    # Source files
+    Require/src/Navigation.cpp
+    Require/src/PathUtilities.cpp
+    Require/src/Require.cpp
+    Require/src/RequireImpl.cpp
+    Require/src/RequireNavigator.cpp)
 endif()
 
 if(TARGET Luau.Web)
