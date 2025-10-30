@@ -25,7 +25,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
-LUAU_FASTFLAGVARIABLE(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAGVARIABLE(LuauFixNilRightPad)
 
 namespace Luau
@@ -400,15 +399,12 @@ UnifyResult Unifier2::unify_(const UnionType* subUnion, TypeId superTy)
 
 UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
 {
-    if (FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+    subTy = follow(subTy);
+    // T <: T | U1 | U2 | ... | Un is trivially true, so we don't gain any information by unifying
+    for (const auto superOption : superUnion)
     {
-        subTy = follow(subTy);
-        // T <: T | U1 | U2 | ... | Un is trivially true, so we don't gain any information by unifying
-        for (const auto superOption : superUnion)
-        {
-            if (subTy == superOption)
-                return UnifyResult::Ok;
-        }
+        if (subTy == superOption)
+            return UnifyResult::Ok;
     }
 
     UnifyResult result = UnifyResult::Ok;
@@ -425,15 +421,12 @@ UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
 
 UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, TypeId superTy)
 {
-    if (FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+    superTy = follow(superTy);
+    // T & I1 & I2 & ... & In <: T is trivially true, so we don't gain any information by unifying
+    for (const auto subOption : subIntersection)
     {
-        superTy = follow(superTy);
-        // T & I1 & I2 & ... & In <: T is trivially true, so we don't gain any information by unifying
-        for (const auto subOption : subIntersection)
-        {
-            if (superTy == subOption)
-                return UnifyResult::Ok;
-        }
+        if (superTy == subOption)
+            return UnifyResult::Ok;
     }
 
     UnifyResult result = UnifyResult::Ok;

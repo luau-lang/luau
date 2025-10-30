@@ -1446,4 +1446,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_variadic_type_pack_read_only_prop")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo: { read bar: (...string) -> () } = {
+            bar = function (foobar)
+                print(foobar)
+            end
+        }
+    )"));
+
+    // CLI-174314: This should be `string`: we need to flatten and *extend*
+    // the type packs for function arguments, so that variadic type packs
+    // fill in.
+    CHECK_EQ("unknown", toString(requireTypeAtPosition({3, 24})));
+}
+
 TEST_SUITE_END();

@@ -2,7 +2,9 @@
 #include "Luau/VfsNavigator.h"
 
 #include "Luau/Common.h"
+#include "Luau/Config.h"
 #include "Luau/FileUtils.h"
+#include "Luau/LuauConfig.h"
 
 #include <array>
 #include <string>
@@ -195,6 +197,9 @@ NavigationStatus VfsNavigator::toParent()
 
 NavigationStatus VfsNavigator::toChild(const std::string& name)
 {
+    if (name == ".config")
+        return NavigationStatus::NotFound;
+
     modulePath = normalizePath(modulePath + "/" + name);
     absoluteModulePath = normalizePath(absoluteModulePath + "/" + name);
 
@@ -211,7 +216,7 @@ std::string VfsNavigator::getAbsoluteFilePath() const
     return absoluteRealPath;
 }
 
-std::string VfsNavigator::getLuaurcPath() const
+std::string VfsNavigator::getConfigPath(const std::string& filename) const
 {
     std::string_view directory = realPath;
 
@@ -220,7 +225,7 @@ std::string VfsNavigator::getLuaurcPath() const
         if (hasSuffix(directory, suffix))
         {
             directory.remove_suffix(suffix.size());
-            return std::string(directory) + "/.luaurc";
+            return std::string(directory) + '/' + filename;
         }
     }
     for (std::string_view suffix : kSuffixes)
@@ -228,9 +233,37 @@ std::string VfsNavigator::getLuaurcPath() const
         if (hasSuffix(directory, suffix))
         {
             directory.remove_suffix(suffix.size());
-            return std::string(directory) + "/.luaurc";
+            return std::string(directory) + '/' + filename;
         }
     }
 
-    return std::string(directory) + "/.luaurc";
+    return std::string(directory) + '/' + filename;
+}
+
+VfsNavigator::ConfigStatus VfsNavigator::getConfigStatus() const
+{
+    bool luaurcExists = isFile(getConfigPath(Luau::kConfigName));
+    bool luauConfigExists = isFile(getConfigPath(Luau::kLuauConfigName));
+
+    if (luaurcExists && luauConfigExists)
+        return ConfigStatus::Ambiguous;
+    else if (luauConfigExists)
+        return ConfigStatus::PresentLuau;
+    else if (luaurcExists)
+        return ConfigStatus::PresentJson;
+    else
+        return ConfigStatus::Absent;
+}
+
+std::optional<std::string> VfsNavigator::getConfig() const
+{
+    ConfigStatus status = getConfigStatus();
+    LUAU_ASSERT(status == ConfigStatus::PresentJson || status == ConfigStatus::PresentLuau);
+
+    if (status == ConfigStatus::PresentJson)
+        return readFile(getConfigPath(Luau::kConfigName));
+    else if (status == ConfigStatus::PresentLuau)
+        return readFile(getConfigPath(Luau::kLuauConfigName));
+
+    LUAU_UNREACHABLE();
 }

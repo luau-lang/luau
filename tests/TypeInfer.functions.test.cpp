@@ -23,14 +23,14 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
+LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
+LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1442,7 +1442,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::LuauNoOrderingTypeFunctions, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         {FFlag::LuauNoScopeShallNotSubsumeAll, true},
     };
 
@@ -1959,8 +1958,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
     if (FFlag::LuauSolverV2)
     {
         LUAU_CHECK_NO_ERRORS(result);
-        if (!FFlag::LuauSubtypingGenericsDoesntUseVariance) // FIXME CLI-162439, the below fails on Linux with the flag on
-            CHECK("<a>({ read p: { read q: a } }) -> (a & ~(false?))?" == toString(requireType("g")));
+        // FIXME CLI-162439, the below fails on Linux with the flag on
+        // CHECK("<a>({ read p: { read q: a } }) -> (a & ~(false?))?" == toString(requireType("g")));
     }
     else
     {
@@ -2388,11 +2387,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local function apply<a, b..., c...>(f: (a, b...) -> c..., x: a)
@@ -3272,8 +3267,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unnecessary_nil_in_lower_bound_of_generic")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true};
-
     CheckResult result = check(
         Mode::Nonstrict,
         R"(
@@ -3355,6 +3348,31 @@ TEST_CASE_FIXTURE(Fixture, "cli_119545_pass_lambda_inside_table")
         local baz = { foo = function(number: number) end, }
         bar1(baz)
         bar2(baz)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::LuauPushTypeConstraintIntersection, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(callback: () -> (() -> ())?)
+        end
+
+        local someCondition: boolean = true
+
+        foo(function()
+            if someCondition then
+                return nil
+            end
+            return function() end
+        end)
     )"));
 }
 

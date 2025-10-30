@@ -9,12 +9,9 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
 
@@ -995,8 +992,6 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_few")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-
     CheckResult result = check(R"(
 function test(a: number)
     return 1
@@ -1023,8 +1018,6 @@ wrapper(test)
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-
     CheckResult result = check(R"(
 function test2(a: number, b: string)
     return 1
@@ -1067,8 +1060,6 @@ wrapper(test2, 1, "")
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_pack_type_inferred_from_return")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-
     CheckResult result = check(R"(
 function test2(a: number)
     return "hello"
@@ -1097,8 +1088,6 @@ wrapper(test2, 1)
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_pack_type_inferred_from_return_no_error")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-
     CheckResult result = check(R"(
 function test2(a: number)
     return "hello"
@@ -1115,8 +1104,6 @@ wrapper(test2, "hello")
 
 TEST_CASE_FIXTURE(Fixture, "nested_generic_argument_type_packs")
 {
-    ScopedFastFlag _{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-
     CheckResult result = check(R"(
 function test2(a: number)
     return 3
@@ -1480,10 +1467,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
@@ -1544,7 +1528,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions_2")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type t = <a>(a, a, (a, a) -> a) -> a
@@ -1893,8 +1877,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f<A>(foo: (A) -> ()): () end
 function g<B...>(...: B...): () end
@@ -1906,8 +1888,6 @@ f(g)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_2")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f(foo: (number) -> (number)): () end
 type T = <A...>(A...) -> A...
@@ -1920,8 +1900,6 @@ f(t)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_3")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f(foo: <B...>(B...) -> B...): () end
 type T = <A...>(A...) -> A...
@@ -1935,7 +1913,6 @@ f(t)
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_4")
 {
     ScopedFastFlag sff1{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff2{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
 
     CheckResult result = check(R"(
 function f(foo: <A...>(A...) -> A...): () end
@@ -1949,8 +1926,6 @@ f(t)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_5")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f(foo: (number) -> number): () end
 type T = <A...>(A...) -> number
@@ -1963,8 +1938,6 @@ f(t)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_6")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f(foo: (...number) -> number): () end
 type T = <A...>(A...) -> number
@@ -1977,8 +1950,6 @@ f(t)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_7")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f(foo: () -> ()): () end
 type T = <A...>() -> A...
@@ -1991,8 +1962,6 @@ f(t)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_packs_in_contravariant_position_8")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 function f(foo: () -> ()): () end
 type T = <A...>(A...) -> A...
@@ -2006,7 +1975,6 @@ f(t)
 TEST_CASE_FIXTURE(BuiltinsFixture, "nested_generic_packs")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff1{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
 
     CheckResult result = check(R"(
 type T = <A...>(A...) -> (<A...>(A...) -> ())
@@ -2020,7 +1988,7 @@ local u: U = t
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauSubtypingGenericsDoesntUseVariance, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}};
+    ScopedFastFlag _{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
     CheckResult res = check(R"(
         local func: <T>(T, (T) -> ()) -> () = nil :: any
         local foobar: (number) -> () = nil :: any
@@ -2036,7 +2004,7 @@ TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error_1")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauSubtypingGenericsDoesntUseVariance, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}};
+    ScopedFastFlag _{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
     CheckResult res = check(R"(
         --!strict
 
@@ -2058,8 +2026,6 @@ TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_should_work_with_generics")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericPacksDoesntUseVariance2, true};
-
     CheckResult result = check(R"(
 --!strict
 local v: (number) -> (number) = nil :: any
@@ -2078,7 +2044,6 @@ TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_a
         // These flags expose the issue
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::DebugLuauStringSingletonBasedOnQuotes, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         // And this flag fixes it
         {FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds, true}
     };
@@ -2095,7 +2060,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         {FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds, true}
     };
 
@@ -2114,7 +2078,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic_2")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         {FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds, true}
     };
 

@@ -28,11 +28,9 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
@@ -671,7 +669,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "invalide_deprecated_attribute_doesn't_chrash_checker")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     CheckResult result = check(R"(
 @[deprecated{ reason = reasonString }]
 function hello(x: number, y: number): number
@@ -2531,10 +2528,7 @@ TEST_CASE_FIXTURE(Fixture, "non_standalone_constraint_solving_incomplete_is_hidd
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_type_pack_follow")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
-    };
+    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
 local _ = {[0]=_,}

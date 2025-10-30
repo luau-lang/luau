@@ -8,8 +8,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
-
 namespace Luau
 {
 
@@ -991,35 +989,27 @@ Lexeme Lexer::readNext()
     }
     case '@':
     {
-        if (FFlag::LuauParametrizedAttributeSyntax)
+        if (peekch(1) == '[')
         {
-            if (peekch(1) == '[')
-            {
-                consume();
-                consume();
+            consume();
+            consume();
 
-                return Lexeme(Location(start, 2), Lexeme::AttributeOpen);
-            }
-            else
-            {
-                // consume @ first
-                consume();
-
-                if (isAlpha(peekch()) || peekch() == '_')
-                {
-                    std::pair<AstName, Lexeme::Type> attribute = readName();
-                    return Lexeme(Location(start, position()), Lexeme::Attribute, attribute.first.value);
-                }
-                else
-                {
-                    return Lexeme(Location(start, position()), Lexeme::Attribute, "");
-                }
-            }
+            return Lexeme(Location(start, 2), Lexeme::AttributeOpen);
         }
         else
         {
-            std::pair<AstName, Lexeme::Type> attribute = readName();
-            return Lexeme(Location(start, position()), Lexeme::Attribute, attribute.first.value);
+            // consume @ first
+            consume();
+
+            if (isAlpha(peekch()) || peekch() == '_')
+            {
+                std::pair<AstName, Lexeme::Type> attribute = readName();
+                return Lexeme(Location(start, position()), Lexeme::Attribute, attribute.first.value);
+            }
+            else
+            {
+                return Lexeme(Location(start, position()), Lexeme::Attribute, "");
+            }
         }
     }
     default:

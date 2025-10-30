@@ -5,9 +5,6 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
-
 namespace Luau
 {
 
@@ -455,41 +452,6 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp,
     return {flattened, tail};
 }
 
-std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten_DEPRECATED(
-    TypePackId tp,
-    const DenseHashMap<TypePackId, TypePackId>& mappedGenericPacks
-)
-{
-    LUAU_ASSERT(FFlag::LuauReturnMappedGenericPacksFromSubtyping3);
-    LUAU_ASSERT(!FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
-
-    tp = mappedGenericPacks.contains(tp) ? *mappedGenericPacks.find(tp) : tp;
-
-    std::vector<TypeId> flattened;
-    std::optional<TypePackId> tail = std::nullopt;
-    DenseHashSet<TypePackId> seenGenericPacks{nullptr};
-
-    while (tp)
-    {
-        TypePackIterator it(tp);
-
-        for (; it != end(tp); ++it)
-            flattened.push_back(*it);
-
-        if (const auto tpTail = it.tail(); tpTail && !seenGenericPacks.contains(*tpTail) && mappedGenericPacks.contains(*tpTail))
-        {
-            tp = *mappedGenericPacks.find(*tpTail);
-            seenGenericPacks.insert(*tpTail);
-            continue;
-        }
-
-        tail = it.tail();
-        break;
-    }
-
-    return {flattened, tail};
-}
-
 bool isVariadic(TypePackId tp)
 {
     return isVariadic(tp, *TxnLog::empty());
@@ -553,8 +515,6 @@ TypePackId sliceTypePack(
     const NotNull<TypeArena> arena
 )
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingGenericPacksDoesntUseVariance2);
-
     if (sliceIndex == 0)
         return toBeSliced;
     else if (sliceIndex == head.size())

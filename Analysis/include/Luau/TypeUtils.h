@@ -6,6 +6,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
+#include "Luau/VisitType.h"
 
 #include <memory>
 #include <optional>
@@ -388,5 +389,17 @@ private:
 TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 
+struct ContainsAnyGeneric final : public TypeOnceVisitor
+{
+    bool found = false;
+
+    explicit ContainsAnyGeneric();
+
+    bool visit(TypeId ty) override;
+    bool visit(TypePackId ty) override;
+
+    static bool hasAnyGeneric(TypeId ty);
+    static bool hasAnyGeneric(TypePackId tp);
+};
 
 } // namespace Luau

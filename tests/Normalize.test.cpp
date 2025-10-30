@@ -9,14 +9,12 @@
 #include "doctest.h"
 
 #include "Luau/Normalize.h"
-#include "Luau/BuiltinDefinitions.h"
 #include <memory>
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauNormalizerUnionTyvarsTakeMaxSize)
 
 using namespace Luau;
@@ -1283,10 +1281,7 @@ do end
 #if 0
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 
     // FIXME CLI-153131: This is constructing a cyclic type pack

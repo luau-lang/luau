@@ -16,7 +16,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
-LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 
 struct TypeFunctionFixture : Fixture
@@ -1893,8 +1892,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_functions_should_not_get_stuck_or")
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation")
 {
-    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
-
     CheckResult result = check(R"(
         type a<T> = {a<{T}>}
     )");
@@ -1905,8 +1902,6 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation")
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation1")
 {
-    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
-
     CheckResult result = check(R"(
         type b<T> = {b<T | string>}
     )");
@@ -1917,8 +1912,6 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation1")
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation2")
 {
-    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
-
     CheckResult result = check(R"(
         type c<T> = {c<T & string>}
     )");
@@ -1929,8 +1922,6 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation2")
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation3")
 {
-    ScopedFastFlag _ = {FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
-
     CheckResult result = check(R"(
         type d<T> = (d<T | string>) -> ()
     )");

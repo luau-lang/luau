@@ -6,6 +6,7 @@
 #include "lua.h"
 #include "lualib.h"
 
+#include <chrono>
 #include <string>
 
 static constexpr size_t initalFileBufferSize = 1024;
@@ -24,12 +25,38 @@ static NavigationContext::NavigateResult convertNavigateResult(luarequire_Naviga
     return NavigationContext::NavigateResult::NotFound;
 }
 
+static NavigationContext::ConfigStatus convertConfigStatus(luarequire_ConfigStatus status)
+{
+    if (status == CONFIG_PRESENT_JSON)
+        return NavigationContext::ConfigStatus::PresentJson;
+    if (status == CONFIG_PRESENT_LUAU)
+        return NavigationContext::ConfigStatus::PresentLuau;
+    if (status == CONFIG_AMBIGUOUS)
+        return NavigationContext::ConfigStatus::Ambiguous;
+
+    return NavigationContext::ConfigStatus::Absent;
+}
+
 RuntimeNavigationContext::RuntimeNavigationContext(luarequire_Configuration* config, lua_State* L, void* ctx, std::string requirerChunkname)
     : config(config)
     , L(L)
     , ctx(ctx)
     , requirerChunkname(std::move(requirerChunkname))
 {
+    luauConfigInit = [config, ctx, this](lua_State* L)
+    {
+        int timeout = config->get_luau_config_timeout ? config->get_luau_config_timeout(L, ctx) : 2000;
+        this->timer.start(timeout);
+        lua_setthreaddata(L, &this->timer);
+    };
+
+    luauConfigInterrupt = [](lua_State* L, int gc)
+    {
+        RuntimeLuauConfigTimer* timer = static_cast<RuntimeLuauConfigTimer*>(lua_getthreaddata(L));
+        LUAU_ASSERT(timer);
+        if (timer->isFinished())
+            luaL_errorL(L, "configuration execution timed out");
+    };
 }
 
 std::string RuntimeNavigationContext::getRequirerIdentifier() const
@@ -77,9 +104,9 @@ std::optional<std::string> RuntimeNavigationContext::getCacheKey() const
     return getStringFromCWriter(config->get_cache_key, initalIdentifierBufferSize);
 }
 
-bool RuntimeNavigationContext::isConfigPresent() const
+NavigationContext::ConfigStatus RuntimeNavigationContext::getConfigStatus() const
 {
-    return config->is_config_present(L, ctx);
+    return convertConfigStatus(config->get_config_status(L, ctx));
 }
 
 NavigationContext::ConfigBehavior RuntimeNavigationContext::getConfigBehavior() const
@@ -163,6 +190,22 @@ void RuntimeErrorHandler::reportError(std::string message)
 const std::string& RuntimeErrorHandler::getReportedError() const
 {
     return errorMessage;
+}
+
+void RuntimeLuauConfigTimer::start(int timeoutMs)
+{
+    startTime = std::chrono::steady_clock::now();
+    if (timeoutMs < 0)
+        timeoutDuration = std::nullopt; // Infinite timeout
+    else
+        timeoutDuration = std::chrono::milliseconds(timeoutMs);
+}
+
+bool RuntimeLuauConfigTimer::isFinished() const
+{
+    if (!timeoutDuration)
+        return false;
+    return (std::chrono::steady_clock::now() - startTime) >= *timeoutDuration;
 }
 
 } // namespace Luau::Require

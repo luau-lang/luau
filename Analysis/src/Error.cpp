@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -756,21 +757,37 @@ struct ErrorConverter
 
     std::string operator()(const CheckedFunctionCallError& e) const
     {
-        // TODO: What happens if checkedFunctionName cannot be found??
-        return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
-            std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
+        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+        {
+            return "the function '" + e.checkedFunctionName + "' expects to get a " + toString(e.expected) + " as its " +
+                   toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
+        }
+        else
+        {
+            // TODO: What happens if checkedFunctionName cannot be found??
+            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
+                   std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
+        }
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
     {
-        if (e.functionName.empty())
+        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
         {
-            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
+            std::string prefix = e.functionName.empty() ? "" : "in the function '" + e.functionName + "', '";
+            return prefix + "the argument '" + e.argument + "' is used in a way that will error at runtime";
         }
         else
         {
-            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
-                   "' is used in a way that will run time error";
+            if (e.functionName.empty())
+            {
+                return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
+            }
+            else
+            {
+                return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
+                       "' is used in a way that will run time error";
+            }
         }
     }
 
@@ -791,8 +808,17 @@ struct ErrorConverter
 
     std::string operator()(const CheckedFunctionIncorrectArgs& e) const
     {
-        return "Checked Function " + e.functionName + " expects " + std::to_string(e.expected) + " arguments, but received " +
-               std::to_string(e.actual);
+
+        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+        {
+            return "the function '" + e.functionName + "' will error at runtime if it is not called with " + std::to_string(e.expected) +
+                   " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
+        }
+        else
+        {
+            return "Checked Function " + e.functionName + " expects " + std::to_string(e.expected) + " arguments, but received " +
+                   std::to_string(e.actual);
+        }
     }
 
     std::string operator()(const UnexpectedTypeInSubtyping& e) const

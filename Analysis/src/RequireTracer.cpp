@@ -71,19 +71,6 @@ struct RequireTracer : AstVisitor
         return true;
     }
 
-    AstExpr* getDependent_DEPRECATED(AstExpr* node)
-    {
-        if (AstExprLocal* expr = node->as<AstExprLocal>())
-            return locals[expr->local];
-        else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
-            return expr->expr;
-        else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
-            return expr->expr;
-        else if (AstExprCall* expr = node->as<AstExprCall>(); expr && expr->self)
-            return expr->func->as<AstExprIndexName>()->expr;
-        else
-            return nullptr;
-    }
     AstNode* getDependent(AstNode* node)
     {
         if (AstExprLocal* expr = node->as<AstExprLocal>())

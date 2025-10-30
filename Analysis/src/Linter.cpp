@@ -15,7 +15,6 @@
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 namespace Luau
 {
@@ -2295,7 +2294,7 @@ private:
 
         if (shouldReport)
         {
-            if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+            if (fty->deprecatedInfo != nullptr)
             {
                 report(node->location, node->local->name.value, *fty->deprecatedInfo);
             }
@@ -2315,7 +2314,7 @@ private:
 
         if (shouldReport)
         {
-            if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+            if (fty->deprecatedInfo != nullptr)
             {
                 report(node->location, node->name.value, *fty->deprecatedInfo);
             }
@@ -2399,7 +2398,7 @@ private:
                             className = global->name.value;
 
                         const char* functionName = node->index.value;
-                        if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+                        if (fty->deprecatedInfo != nullptr)
                         {
                             report(node->location, className, functionName, *fty->deprecatedInfo);
                         }
@@ -2440,7 +2439,7 @@ private:
 
                             const char* functionName = node->index.value;
 
-                            if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+                            if (fty->deprecatedInfo != nullptr)
                             {
                                 report(node->location, className, functionName, *fty->deprecatedInfo);
                             }
