@@ -3,6 +3,7 @@
 
 #include "lua.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,7 +20,7 @@
 //
 // Without more context, it is impossible to tell which components in a given
 // path "./foo/bar/baz" are modules and which are directories. To provide this
-// context, the require-by-string runtime library must be opened with a
+// context, the require-by-string runtime library must be opened with a
 // luarequire_Configuration object, which defines the navigation behavior of the
 // context in which Luau is embedded.
 //
@@ -46,24 +47,24 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-enum luarequire_NavigateResult
+typedef enum luarequire_NavigateResult
 {
     NAVIGATE_SUCCESS,
     NAVIGATE_AMBIGUOUS,
     NAVIGATE_NOT_FOUND
-};
+} luarequire_NavigateResult;
 
 // Functions returning WRITE_SUCCESS are expected to set their size_out argument
 // to the number of bytes written to the buffer. If WRITE_BUFFER_TOO_SMALL is
 // returned, size_out should be set to the required buffer size.
-enum luarequire_WriteResult
+typedef enum luarequire_WriteResult
 {
     WRITE_SUCCESS,
     WRITE_BUFFER_TOO_SMALL,
     WRITE_FAILURE
-};
+} luarequire_WriteResult;
 
-struct luarequire_Configuration
+typedef struct luarequire_Configuration
 {
     // Returns whether requires are permitted from the given chunkname.
     bool (*is_require_allowed)(lua_State* L, void* ctx, const char* requirer_chunkname);
@@ -120,7 +121,7 @@ struct luarequire_Configuration
     // thread to yield. In this case, this thread should be resumed with the
     // module result pushed onto its stack.
     int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname);
-};
+} luarequire_Configuration;
 
 // Populates function pointers in the given luarequire_Configuration.
 typedef void (*luarequire_Configuration_init)(luarequire_Configuration* config);
