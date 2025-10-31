@@ -631,4 +631,61 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "vector_readonly")
+{
+    ScopedFastFlag sff = {FFlag::LuauSolverV2, true};
+
+    loadDefinition(R"(
+        declare extern type vector with
+            read x: number
+        end
+    )");
+
+    CheckResult result = check(R"(
+--!strict
+local function read(n: number | boolean)
+end
+
+local function foo(vec: vector)
+    read(vec.x)
+    read(vec.x > 42)
+    vec.x = 15
+    vec.x -= 15
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK(get<PropertyAccessViolation>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
+{
+    ScopedFastFlag sff = {FFlag::LuauSolverV2, true};
+
+    loadDefinition(R"(
+        declare extern type noread with
+            write value: number
+        end
+    )");
+
+    CheckResult result = check(R"(
+--!strict
+local function read(v: buffer | boolean)
+end
+
+local function foo(bar: noread)
+    bar.value = 42
+    bar.value += -15
+    read(bar.value)
+    read(bar.value > 15)
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK(get<PropertyAccessViolation>(result.errors[1]));
+    CHECK(get<PropertyAccessViolation>(result.errors[2]));
+}
+
 TEST_SUITE_END();
