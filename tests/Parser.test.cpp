@@ -18,7 +18,6 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -3729,8 +3728,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "parse_parametrized_attribute_on_function_stat")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
-
     AstStatBlock* stat = parse(R"(
 @[deprecated{ use = "greetng", reason = "Using <hello> is too causal"}]
 function hello(x, y)
@@ -3751,7 +3748,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "non_literal_attribute_arguments_is_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     ParseResult result = tryParse(R"(
 @[deprecated{ reason = reasonString }]
 function hello(x, y)
@@ -3765,7 +3761,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "unknown_arguments_for_depricated_is_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     ParseResult result = tryParse(R"(
 @[deprecated({}, "Very deprecated")]
 function hello(x, y)
@@ -3806,7 +3801,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "do_not_hang_on_incomplete_attribute_list")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     ParseResult result = tryParse(R"(
 @[]
 function hello(x, y)

@@ -218,18 +218,6 @@ private:
 
     void generalizeOneType(TypeId ty);
 
-    /**
-     * Bind a type variable to another type.
-     *
-     * A constraint is required and will validate that blockedTy is owned by this
-     * constraint. This prevents one constraint from interfering with another's
-     * blocked types.
-     *
-     * Bind will also unblock the type variable for you.
-     */
-    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
-    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
-
     template<typename T, typename... Args>
     void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
 
@@ -403,6 +391,18 @@ public:
      * @param target the type which the free type is being bound to
      */
     void shiftReferences(TypeId source, TypeId target);
+
+    /**
+     * Bind a type variable to another type.
+     *
+     * A constraint is required and will validate that blockedTy is owned by this
+     * constraint. This prevents one constraint from interfering with another's
+     * blocked types.
+     *
+     * Bind will also unblock the type variable for you.
+     */
+    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
+    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
 
     /**
      * Generalizes the given free type if the reference counting allows it.

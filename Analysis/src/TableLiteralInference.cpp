@@ -4,6 +4,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
+#include "Luau/ConstraintSolver.h"
 #include "Luau/HashUtil.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
@@ -16,6 +17,7 @@
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintSingleton)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIndexer)
+LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintLambdas)
 
 namespace Luau
 {
@@ -138,8 +140,15 @@ struct BidirectionalTypePusher
                     // ... where we are attempting to push a singleton onto any string
                     // literal, and the lower bound is still a singleton, then snap
                     // to said lower bound.
-                    emplaceType<BoundType>(asMutable(exprType), ft->lowerBound);
-                    solver->unblock(exprType, expr->location);
+                    if (FFlag::LuauPushTypeConstraintLambdas)
+                    {
+                        solver->bind(constraint, exprType, ft->lowerBound);
+                    }
+                    else
+                    {
+                        emplaceType<BoundType>(asMutable(exprType), ft->lowerBound);
+                        solver->unblock(exprType, expr->location);
+                    }
                     return exprType;
                 }
 
@@ -147,8 +156,15 @@ struct BidirectionalTypePusher
                 Relation upperBoundRelation = relate(ft->upperBound, expectedType);
                 if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
                 {
-                    emplaceType<BoundType>(asMutable(exprType), expectedType);
-                    solver->unblock(exprType, expr->location);
+                    if (FFlag::LuauPushTypeConstraintLambdas)
+                    {
+                        solver->bind(constraint, exprType, expectedType);
+                    }
+                    else
+                    {
+                        emplaceType<BoundType>(asMutable(exprType), expectedType);
+                        solver->unblock(exprType, expr->location);
+                    }
                     return exprType;
                 }
 
@@ -158,8 +174,15 @@ struct BidirectionalTypePusher
                 Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
                 if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
                 {
-                    emplaceType<BoundType>(asMutable(exprType), expectedType);
-                    solver->unblock(exprType, expr->location);
+                    if (FFlag::LuauPushTypeConstraintLambdas)
+                    {
+                        solver->bind(constraint, exprType, expectedType);
+                    }
+                    else
+                    {
+                        emplaceType<BoundType>(asMutable(exprType), expectedType);
+                        solver->unblock(exprType, expr->location);
+                    }
                     return exprType;
                 }
             }
@@ -174,8 +197,15 @@ struct BidirectionalTypePusher
                 Relation upperBoundRelation = relate(ft->upperBound, expectedType);
                 if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
                 {
-                    emplaceType<BoundType>(asMutable(exprType), expectedType);
-                    solver->unblock(exprType, expr->location);
+                    if (FFlag::LuauPushTypeConstraintLambdas)
+                    {
+                        solver->bind(constraint, exprType, expectedType);
+                    }
+                    else
+                    {
+                        emplaceType<BoundType>(asMutable(exprType), expectedType);
+                        solver->unblock(exprType, expr->location);
+                    }
                     return exprType;
                 }
 
@@ -185,8 +215,15 @@ struct BidirectionalTypePusher
                 Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
                 if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
                 {
-                    emplaceType<BoundType>(asMutable(exprType), expectedType);
-                    solver->unblock(exprType, expr->location);
+                    if (FFlag::LuauPushTypeConstraintLambdas)
+                    {
+                        solver->bind(constraint, exprType, expectedType);
+                    }
+                    else
+                    {
+                        emplaceType<BoundType>(asMutable(exprType), expectedType);
+                        solver->unblock(exprType, expr->location);
+                    }
                     return exprType;
                 }
             }
@@ -209,10 +246,38 @@ struct BidirectionalTypePusher
             return exprType;
         }
 
+        if (FFlag::LuauPushTypeConstraintLambdas)
+        {
+            if (auto exprLambda = expr->as<AstExprFunction>())
+            {
+                const auto lambdaTy = get<FunctionType>(exprType);
+                const auto expectedLambdaTy = get<FunctionType>(expectedType);
+                if (lambdaTy && expectedLambdaTy && !ContainsAnyGeneric::hasAnyGeneric(expectedType))
+                {
+                    const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);
+                    const auto& [expectedLambdaArgTys, _expectedLambdaTail] = flatten(expectedLambdaTy->argTypes);
 
-        if (expr->is<AstExprFunction>())
-            // TODO: Push argument / return types into the lambda.
-            return exprType;
+                    auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
+                    for (size_t argIndex = 0; argIndex < limit; argIndex++)
+                    {
+                        if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])))
+                            solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
+                    }
+
+                    if (!exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)))
+                        solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
+                }
+            }
+        }
+        else
+        {
+            if (expr->is<AstExprFunction>())
+            {
+                // TODO: Push argument / return types into the lambda.
+                return exprType;
+            }
+        }
+
 
         // TODO: CLI-169235: This probably ought to use the same logic as
         // `index` to determine what the type of a given member is.

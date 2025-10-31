@@ -1954,6 +1954,29 @@ std::string dump(const Constraint& c)
     return s;
 }
 
+// Converts the given number index into a human-readable string for that index to be used in errors.
+// e.g. the index `0` becomes `1st`, `1` becomes `2nd`, `11` becomes `12th`, etc.
+std::string toHumanReadableIndex(size_t number)
+{
+    size_t humanIndex = number + 1;
+    size_t finalDigit = humanIndex % 10;
+
+    if (humanIndex > 10 && humanIndex < 20)
+        return std::to_string(humanIndex) + "th";
+
+    switch (finalDigit)
+    {
+    case 1:
+        return std::to_string(humanIndex) + "st";
+    case 2:
+        return std::to_string(humanIndex) + "nd";
+    case 3:
+        return std::to_string(humanIndex) + "rd";
+    default:
+        return std::to_string(humanIndex) + "th";
+    }
+}
+
 std::optional<std::string> getFunctionNameAsString(const AstExpr& expr)
 {
     const AstExpr* curr = &expr;

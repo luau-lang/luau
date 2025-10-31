@@ -19,7 +19,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
-LUAU_FASTFLAGVARIABLE(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAttributes)
 
@@ -868,60 +867,10 @@ std::optional<AstAttr::Type> Parser::validateAttribute(
     return type;
 }
 
-std::optional<AstAttr::Type> Parser::validateAttribute_DEPRECATED(const char* attributeName, const TempVector<AstAttr*>& attributes)
-{
-    // check if the attribute name is valid
-    std::optional<AstAttr::Type> type;
-
-    for (int i = 0; kAttributeEntries_DEPRECATED[i].name; ++i)
-    {
-        if (strcmp(attributeName, kAttributeEntries_DEPRECATED[i].name) == 0)
-        {
-            type = kAttributeEntries_DEPRECATED[i].type;
-            break;
-        }
-    }
-
-    if (!type)
-    {
-        if (strlen(attributeName) == 1)
-            report(lexer.current().location, "Attribute name is missing");
-        else
-            report(lexer.current().location, "Invalid attribute '%s'", attributeName);
-    }
-    else
-    {
-        // check that attribute is not duplicated
-        for (const AstAttr* attr : attributes)
-        {
-            if (attr->type == *type)
-                report(lexer.current().location, "Cannot duplicate attribute '%s'", attributeName);
-        }
-    }
-
-    return type;
-}
-
 // attribute ::= '@' NAME
 void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 {
     AstArray<AstExpr*> empty;
-    if (!FFlag::LuauParametrizedAttributeSyntax)
-    {
-        LUAU_ASSERT(lexer.current().type == Lexeme::Type::Attribute);
-
-        Location loc = lexer.current().location;
-
-        const char* name = lexer.current().name;
-        std::optional<AstAttr::Type> type = validateAttribute_DEPRECATED(name, attributes);
-
-        nextLexeme();
-
-        if (type)
-            attributes.push_back(allocator.alloc<AstAttr>(loc, *type, empty));
-
-        return;
-    }
 
     LUAU_ASSERT(lexer.current().type == Lexeme::Type::Attribute || lexer.current().type == Lexeme::Type::AttributeOpen);
 
@@ -1034,7 +983,7 @@ AstArray<AstAttr*> Parser::parseAttributes()
 
     TempVector<AstAttr*> attributes(scratchAttr);
 
-    while (lexer.current().type == Lexeme::Attribute || (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
+    while (lexer.current().type == Lexeme::Attribute || lexer.current().type == Lexeme::AttributeOpen)
         parseAttribute(attributes);
 
     return copy(attributes);
@@ -1442,8 +1391,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
         {
             AstArray<AstAttr*> attributes{nullptr, 0};
 
-            if (lexer.current().type == Lexeme::Attribute ||
-                (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
+            if (lexer.current().type == Lexeme::Attribute || lexer.current().type == Lexeme::AttributeOpen)
             {
                 attributes = Parser::parseAttributes();
 
@@ -2566,7 +2514,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
     AstArray<AstAttr*> attributes{nullptr, 0};
 
-    if (lexer.current().type == Lexeme::Attribute || (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
+    if (lexer.current().type == Lexeme::Attribute || lexer.current().type == Lexeme::AttributeOpen)
     {
         if (!inDeclarationContext)
         {
@@ -3213,7 +3161,7 @@ AstExpr* Parser::parseSimpleExpr()
 
     AstArray<AstAttr*> attributes{nullptr, 0};
 
-    if (lexer.current().type == Lexeme::Attribute || (FFlag::LuauParametrizedAttributeSyntax && lexer.current().type == Lexeme::AttributeOpen))
+    if (lexer.current().type == Lexeme::Attribute || lexer.current().type == Lexeme::AttributeOpen)
     {
         attributes = parseAttributes();
 

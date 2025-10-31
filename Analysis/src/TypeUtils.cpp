@@ -921,7 +921,35 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
     return ub.build();
 }
 
+ContainsAnyGeneric::ContainsAnyGeneric()
+    : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
+{
+}
+bool ContainsAnyGeneric::visit(TypeId ty)
+{
+    found = found || is<GenericType>(ty);
+    return !found;
+}
 
+bool ContainsAnyGeneric::visit(TypePackId ty)
+{
+    found = found || is<GenericTypePack>(follow(ty));
+    return !found;
+}
+
+bool ContainsAnyGeneric::hasAnyGeneric(TypeId ty)
+{
+    ContainsAnyGeneric cg;
+    cg.traverse(ty);
+    return cg.found;
+}
+
+bool ContainsAnyGeneric::hasAnyGeneric(TypePackId tp)
+{
+    ContainsAnyGeneric cg;
+    cg.traverse(tp);
+    return cg.found;
+}
 
 
 } // namespace Luau

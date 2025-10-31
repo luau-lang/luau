@@ -11,7 +11,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 
 namespace Luau
 {
@@ -65,11 +64,8 @@ TypeId Instantiation::clean(TypeId ty)
     clone.magic = ftv->magic;
     clone.tags = ftv->tags;
     clone.argNames = ftv->argNames;
-    if (FFlag::LuauParametrizedAttributeSyntax)
-    {
-        clone.isDeprecatedFunction = ftv->isDeprecatedFunction;
-        clone.deprecatedInfo = ftv->deprecatedInfo;
-    }
+    clone.isDeprecatedFunction = ftv->isDeprecatedFunction;
+    clone.deprecatedInfo = ftv->deprecatedInfo;
     TypeId result = addType(std::move(clone));
 
     // Annoyingly, we have to do this even if there are no generics,

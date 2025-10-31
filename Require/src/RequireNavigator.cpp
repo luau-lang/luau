@@ -2,9 +2,10 @@
 
 #include "Luau/RequireNavigator.h"
 
-#include "Luau/PathUtilities.h"
+#include "PathUtilities.h"
 
 #include "Luau/Config.h"
+#include "Luau/LuauConfig.h"
 
 #include <algorithm>
 #include <optional>
@@ -179,30 +180,50 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias)
         if (result == NavigationContext::NavigateResult::NotFound)
             break; // Not treated as an error: interpreted as reaching the root.
 
-        if (navigationContext.isConfigPresent())
+        NavigationContext::ConfigStatus status = navigationContext.getConfigStatus();
+        if (status == NavigationContext::ConfigStatus::Absent)
+        {
+            continue;
+        }
+        else if (status == NavigationContext::ConfigStatus::Ambiguous)
+        {
+            return "could not resolve alias \"" + desiredAlias + "\" (ambiguous configuration file)";
+        }
+        else
         {
             if (navigationContext.getConfigBehavior() == NavigationContext::ConfigBehavior::GetAlias)
             {
                 foundAliasValue = navigationContext.getAlias(desiredAlias);
+                break;
             }
-            else
+
+            std::optional<std::string> configContents = navigationContext.getConfig();
+            if (!configContents)
+                return "could not get configuration file contents to resolve alias \"" + desiredAlias + "\"";
+
+            Luau::ConfigOptions opts;
+            Luau::ConfigOptions::AliasOptions aliasOpts;
+            aliasOpts.configLocation = "unused";
+            aliasOpts.overwriteAliases = false;
+            opts.aliasOptions = std::move(aliasOpts);
+
+            if (status == NavigationContext::ConfigStatus::PresentJson)
             {
-                std::optional<std::string> configContents = navigationContext.getConfig();
-                if (!configContents)
-                    return "could not get configuration file contents to resolve alias \"" + desiredAlias + "\"";
-
-                Luau::ConfigOptions opts;
-                Luau::ConfigOptions::AliasOptions aliasOpts;
-                aliasOpts.configLocation = "unused";
-                aliasOpts.overwriteAliases = false;
-                opts.aliasOptions = std::move(aliasOpts);
-
                 if (Error error = Luau::parseConfig(*configContents, config, opts))
                     return error;
-
-                if (config.aliases.contains(desiredAlias))
-                    foundAliasValue = config.aliases[desiredAlias].value;
             }
+            else if (status == NavigationContext::ConfigStatus::PresentLuau)
+            {
+                InterruptCallbacks callbacks;
+                callbacks.initCallback = navigationContext.luauConfigInit;
+                callbacks.interruptCallback = navigationContext.luauConfigInterrupt;
+
+                if (Error error = Luau::extractLuauConfig(*configContents, config, std::move(opts.aliasOptions), std::move(callbacks)))
+                    return error;
+            }
+
+            if (config.aliases.contains(desiredAlias))
+                foundAliasValue = config.aliases[desiredAlias].value;
         }
     };
 

@@ -42,6 +42,18 @@ static luarequire_NavigateResult convert(NavigationStatus status)
         return NAVIGATE_NOT_FOUND;
 }
 
+static luarequire_ConfigStatus convert(VfsNavigator::ConfigStatus status)
+{
+    if (status == VfsNavigator::ConfigStatus::Ambiguous)
+        return CONFIG_AMBIGUOUS;
+    else if (status == VfsNavigator::ConfigStatus::PresentJson)
+        return CONFIG_PRESENT_JSON;
+    else if (status == VfsNavigator::ConfigStatus::PresentLuau)
+        return CONFIG_PRESENT_LUAU;
+    else
+        return CONFIG_ABSENT;
+}
+
 static bool is_require_allowed(lua_State* L, void* ctx, const char* requirer_chunkname)
 {
     std::string_view chunkname = requirer_chunkname;
@@ -107,16 +119,16 @@ static luarequire_WriteResult get_cache_key(lua_State* L, void* ctx, char* buffe
     return write(req->vfs.getAbsoluteFilePath(), buffer, buffer_size, size_out);
 }
 
-static bool is_config_present(lua_State* L, void* ctx)
+static luarequire_ConfigStatus get_config_status(lua_State* L, void* ctx)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return isFile(req->vfs.getLuaurcPath());
+    return convert(req->vfs.getConfigStatus());
 }
 
 static luarequire_WriteResult get_config(lua_State* L, void* ctx, char* buffer, size_t buffer_size, size_t* size_out)
 {
     ReplRequirer* req = static_cast<ReplRequirer*>(ctx);
-    return write(readFile(req->vfs.getLuaurcPath()), buffer, buffer_size, size_out);
+    return write(req->vfs.getConfig(), buffer, buffer_size, size_out);
 }
 
 static int load(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname)
@@ -204,7 +216,7 @@ void requireConfigInit(luarequire_Configuration* config)
     config->to_parent = to_parent;
     config->to_child = to_child;
     config->is_module_present = is_module_present;
-    config->is_config_present = is_config_present;
+    config->get_config_status = get_config_status;
     config->get_chunkname = get_chunkname;
     config->get_loadname = get_loadname;
     config->get_cache_key = get_cache_key;

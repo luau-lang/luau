@@ -5,7 +5,6 @@
 LUAU_FASTFLAG(LuauSolverV2);
 
 LUAU_FASTFLAGVARIABLE(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 namespace Luau
 {
@@ -254,8 +253,6 @@ bool Scope::shouldWarnGlobal(std::string name) const
 
 bool Scope::isInvalidTypeAliasName(const std::string& name) const
 {
-    LUAU_ASSERT(FFlag::LuauNameConstraintRestrictRecursiveTypes);
-
     for (auto scope = this; scope; scope = scope->parent.get())
     {
         if (scope->invalidTypeAliasNames.contains(name))

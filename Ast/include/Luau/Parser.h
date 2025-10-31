@@ -136,7 +136,6 @@ private:
         const TempVector<AstAttr*>& attributes,
         const AstArray<AstExpr*>& args
     );
-    std::optional<AstAttr::Type> validateAttribute_DEPRECATED(const char* attributeName, const TempVector<AstAttr*>& attributes);
 
     // attribute ::= '@' NAME
     void parseAttribute(TempVector<AstAttr*>& attribute);

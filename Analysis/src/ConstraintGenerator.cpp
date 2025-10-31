@@ -40,7 +40,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateResolvedTypeFunctions)
@@ -56,6 +55,7 @@ LUAU_FASTFLAGVARIABLE(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAGVARIABLE(LuauMetatableAvoidSingletonUnion)
 LUAU_FASTFLAGVARIABLE(LuauAddRefinementToAssertions)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas)
 
 namespace Luau
 {
@@ -1459,18 +1459,11 @@ static void propagateDeprecatedAttributeToConstraint(ConstraintV& c, const AstEx
 {
     if (GeneralizationConstraint* genConstraint = c.get_if<GeneralizationConstraint>())
     {
-        if (FFlag::LuauParametrizedAttributeSyntax)
+        AstAttr* deprecatedAttribute = func->getAttribute(AstAttr::Type::Deprecated);
+        genConstraint->hasDeprecatedAttribute = deprecatedAttribute != nullptr;
+        if (deprecatedAttribute)
         {
-            AstAttr* deprecatedAttribute = func->getAttribute(AstAttr::Type::Deprecated);
-            genConstraint->hasDeprecatedAttribute = deprecatedAttribute != nullptr;
-            if (deprecatedAttribute)
-            {
-                genConstraint->deprecatedInfo = deprecatedAttribute->deprecatedInfo();
-            }
-        }
-        else
-        {
-            genConstraint->hasDeprecatedAttribute = func->hasAttribute(AstAttr::Type::Deprecated);
+            genConstraint->deprecatedInfo = deprecatedAttribute->deprecatedInfo();
         }
     }
 }
@@ -2260,18 +2253,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
 
     FunctionType* ftv = getMutable<FunctionType>(fnType);
     ftv->isCheckedFunction = global->isCheckedFunction();
-    if (FFlag::LuauParametrizedAttributeSyntax)
+    AstAttr* deprecatedAttr = global->getAttribute(AstAttr::Type::Deprecated);
+    ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+    if (deprecatedAttr)
     {
-        AstAttr* deprecatedAttr = global->getAttribute(AstAttr::Type::Deprecated);
-        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
-        if (deprecatedAttr)
-        {
-            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
-        }
-    }
-    else
-    {
-        ftv->isDeprecatedFunction = global->hasAttribute(AstAttr::Type::Deprecated);
+        ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
     ftv->argNames.reserve(global->paramNames.size);
@@ -3649,12 +3635,31 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     TypeIds valuesLowerBound;
 
+    std::optional<Checkpoint> start{std::nullopt};
+    if (FFlag::LuauPushTypeConstraint2 && FFlag::LuauPushTypeConstraintLambdas)
+        start = checkpoint(this);
+
     for (const AstExprTable::Item& item : expr->items)
     {
         // Expected types are threaded through table literals separately via the
         // function matchLiteralType.
 
-        TypeId itemTy = check(scope, item.value).ty;
+        // generalize is false here as we want to be able to push types into lambdas in a situation like:
+        //
+        //  type Callback = (string) -> ()
+        //
+        //  local t: { Callback } = {
+        //      function (s)
+        //          -- s should have type `string` here
+        //      end
+        //  }
+        TypeId itemTy = check(
+            scope,
+            item.value,
+            /* expectedType */ std::nullopt,
+            /* forceSingleton */ false,
+            /* generalize */ !(FFlag::LuauPushTypeConstraint2 && FFlag::LuauPushTypeConstraintLambdas)
+        ).ty;
 
         if (item.key)
         {
@@ -3681,6 +3686,10 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
             createIndexer(item.value->location, numberType, itemTy);
         }
     }
+
+    std::optional<Checkpoint> end{std::nullopt};
+    if (FFlag::LuauPushTypeConstraintLambdas)
+        end = checkpoint(this);
 
     if (!indexKeyLowerBound.empty())
     {
@@ -3714,7 +3723,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     if (FFlag::LuauPushTypeConstraint2 && expectedType)
     {
-        addConstraint(
+        auto ptc = addConstraint(
             scope,
             expr->location,
             PushTypeConstraint{
@@ -3725,6 +3734,19 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                 /* expr */ NotNull{expr},
             }
         );
+        if (FFlag::LuauPushTypeConstraintLambdas)
+        {
+            LUAU_ASSERT(start && end);
+            forEachConstraint(
+                *start,
+                *end,
+                this,
+                [ptc](const ConstraintPtr& c)
+                {
+                    c->dependencies.emplace_back(ptc.get());
+                }
+            );
+        }
     }
 
     if (FInt::LuauPrimitiveInferenceInTableLimit > 0 && expr->items.size > size_t(FInt::LuauPrimitiveInferenceInTableLimit))
@@ -4193,18 +4215,11 @@ TypeId ConstraintGenerator::resolveFunctionType(
     // how to quantify/instantiate it.
     FunctionType ftv{TypeLevel{}, {}, {}, argTypes, returnTypes};
     ftv.isCheckedFunction = fn->isCheckedFunction();
-    if (FFlag::LuauParametrizedAttributeSyntax)
+    AstAttr* deprecatedAttr = fn->getAttribute(AstAttr::Type::Deprecated);
+    ftv.isDeprecatedFunction = deprecatedAttr != nullptr;
+    if (deprecatedAttr)
     {
-        AstAttr* deprecatedAttr = fn->getAttribute(AstAttr::Type::Deprecated);
-        ftv.isDeprecatedFunction = deprecatedAttr != nullptr;
-        if (deprecatedAttr)
-        {
-            ftv.deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
-        }
-    }
-    else
-    {
-        ftv.isDeprecatedFunction = fn->hasAttribute(AstAttr::Type::Deprecated);
+        ftv.deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
 

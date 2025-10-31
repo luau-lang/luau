@@ -26,10 +26,10 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauLimitUnification)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxDepth)
+LUAU_FASTFLAG(LuauNormalizerStepwiseFuel)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -423,11 +423,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(1.0))
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
-        // This flags surfaced and solves the problem. (The original PR was reverted)
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     constexpr const char* src = R"LUAU(
     type DataProxy = any
@@ -662,6 +658,37 @@ local function innerScope<T>(
     local new = deriveScopeImpl(existing, ...)
 end
 
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_" * doctest::timeout(4.0))
+{
+    ScopedFastFlag _{FFlag::LuauNormalizerStepwiseFuel, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        _ = if _ then {n0=# _,[_]=_,``,[function(l0,l0,l0)
+        do end
+        end]=_,setmetatable,[l0(_ + _)]=_,} else _(),_,_
+        _[_](_,_(coroutine,_,_,nil),_(0,_()),function()
+        end)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_oom_unions" * doctest::timeout(4.0))
+{
+    ScopedFastFlag _{FFlag::LuauNormalizerStepwiseFuel, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local _ = true,l0
+        _ = if _ then _ else _._,if _[_] then nil elseif _ then `` else _._,...
+        _ = if _ then _ elseif _ then `` else _.n0,true,...
+        _G = if "" then _ else _.n0,_
+        _ = if _[_] then _ elseif _ then _ + n0 else _._,32804,...
+        _.readstring = _,_
+        local l0 = require(module0)
+        _ = _,l0,_
+        do end
+        _.readstring += _
     )"));
 }
 

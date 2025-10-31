@@ -44,8 +44,6 @@ LUAU_FASTFLAGVARIABLE(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAGVARIABLE(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAGVARIABLE(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
-LUAU_FASTFLAGVARIABLE(LuauNameConstraintRestrictRecursiveTypes)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
@@ -53,6 +51,7 @@ LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
 LUAU_FASTFLAGVARIABLE(LuauIterableBindNotUnify)
 LUAU_FASTFLAGVARIABLE(LuauAvoidOverloadSelectionForFunctionType)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas)
 
 namespace Luau
 {
@@ -939,10 +938,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
             if (c.hasDeprecatedAttribute)
             {
                 fty->isDeprecatedFunction = true;
-                if (FFlag::LuauParametrizedAttributeSyntax)
-                {
-                    fty->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(c.deprecatedInfo);
-                }
+                fty->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(c.deprecatedInfo);
             }
         }
     }
@@ -1144,27 +1140,24 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
     if (target->persistent || target->owningArena != arena)
         return true;
 
-    if (FFlag::LuauNameConstraintRestrictRecursiveTypes)
+    if (std::optional<TypeFun> tf = constraint->scope->lookupType(c.name))
     {
-        if (std::optional<TypeFun> tf = constraint->scope->lookupType(c.name))
+        // We check to see if this type alias violates the recursion restriction
+        InstantiationSignature signature{
+            *tf,
+            c.typeParameters,
+            c.typePackParameters,
+        };
+
+        InfiniteTypeFinder itf{this, signature, constraint->scope};
+        itf.traverse(target);
+
+        if (itf.foundInfiniteType)
         {
-            // We check to see if this type alias violates the recursion restriction
-            InstantiationSignature signature{
-                *tf,
-                c.typeParameters,
-                c.typePackParameters,
-            };
-
-            InfiniteTypeFinder itf{this, signature, constraint->scope};
-            itf.traverse(target);
-
-            if (itf.foundInfiniteType)
-            {
-                constraint->scope->invalidTypeAliasNames.insert(c.name);
-                shiftReferences(target, builtinTypes->errorType);
-                emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
-                return true;
-            }
+            constraint->scope->invalidTypeAliasNames.insert(c.name);
+            shiftReferences(target, builtinTypes->errorType);
+            emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
+            return true;
         }
     }
 
@@ -1753,51 +1746,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // We don't attempt to perform bidirectional inference on the self type.
     const size_t typeOffset = c.callSite->self ? 1 : 0;
 
-    for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
+    if (FFlag::LuauPushTypeConstraintLambdas && FFlag::LuauPushTypeConstraint2)
     {
-        TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
-        const TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
-        AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+        Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
 
-        (*c.astExpectedTypes)[expr] = expectedArgTy;
-
-        const auto lambdaTy = get<FunctionType>(actualArgTy);
-        const auto expectedLambdaTy = get<FunctionType>(expectedArgTy);
-        const auto lambdaExpr = expr->as<AstExprFunction>();
-
-        if (expectedLambdaTy && lambdaTy && lambdaExpr)
+        for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
         {
-            if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
-                continue;
+            TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
+            AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
-            const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
-            const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
-
-            for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
+            if (isLiteral(expr))
             {
-                if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
-                {
-                    shiftReferences(lambdaArgTys[j], expectedLambdaArgTys[j]);
-                    bind(constraint, lambdaArgTys[j], expectedLambdaArgTys[j]);
-                }
-            }
-        }
-        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
-                 expr->is<AstExprConstantNil>() || expr->is<AstExprTable>())
-        {
-            if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
-            {
-                replacer.resetState(TxnLog::empty(), arena);
-                if (auto res = replacer.substitute(expectedArgTy))
-                {
-                    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-                    queuer.traverse(*res);
-                    expectedArgTy = *res;
-                }
-            }
-            if (FFlag::LuauPushTypeConstraint2)
-            {
-                Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
                 PushTypeResult result =
                     pushTypeInto(c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr);
 
@@ -1832,13 +1791,97 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                     }
                 }
             }
-            else
+        }
+    }
+    else
+    {
+
+        for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
+        {
+            TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
+            const TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
+            AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+
+            (*c.astExpectedTypes)[expr] = expectedArgTy;
+
+            const auto lambdaTy = get<FunctionType>(actualArgTy);
+            const auto expectedLambdaTy = get<FunctionType>(expectedArgTy);
+            const auto lambdaExpr = expr->as<AstExprFunction>();
+
+            if (expectedLambdaTy && lambdaTy && lambdaExpr)
             {
-                u2.unify(actualArgTy, expectedArgTy);
+                if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+                    continue;
+
+                const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
+                const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
+
+                for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
+                {
+                    if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
+                    {
+                        shiftReferences(lambdaArgTys[j], expectedLambdaArgTys[j]);
+                        bind(constraint, lambdaArgTys[j], expectedLambdaArgTys[j]);
+                    }
+                }
+            }
+            else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
+                     expr->is<AstExprConstantNil>() || expr->is<AstExprTable>())
+            {
+                if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+                {
+                    replacer.resetState(TxnLog::empty(), arena);
+                    if (auto res = replacer.substitute(expectedArgTy))
+                    {
+                        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+                        queuer.traverse(*res);
+                        expectedArgTy = *res;
+                    }
+                }
+                if (FFlag::LuauPushTypeConstraint2)
+                {
+                    Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+                    PushTypeResult result = pushTypeInto(
+                        c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr
+                    );
+                    // Consider:
+                    //
+                    //  local Direction = { Left = 1, Right = 2 }
+                    //  type Direction = keyof<Direction>
+                    //
+                    //  local function move(dirs: { Direction }) --[[...]] end
+                    //
+                    //  move({ "Left", "Right", "Left", "Right" })
+                    //
+                    // We need `keyof<Direction>` to reduce prior to inferring that the
+                    // arguments to `move` must generalize to their lower bounds. This
+                    // is how we ensure that ordering.
+                    if (!force && !result.incompleteTypes.empty())
+                    {
+                        for (const auto& [newExpectedTy, newTargetTy, newExpr] : result.incompleteTypes)
+                        {
+                            auto addition = pushConstraint(
+                                constraint->scope,
+                                constraint->location,
+                                PushTypeConstraint{
+                                    newExpectedTy,
+                                    newTargetTy,
+                                    /* astTypes */ c.astTypes,
+                                    /* astExpectedTypes */ c.astExpectedTypes,
+                                    /* expr */ NotNull{newExpr},
+                                }
+                            );
+                            inheritBlocks(constraint, addition);
+                        }
+                    }
+                }
+                else
+                {
+                    u2.unify(actualArgTy, expectedArgTy);
+                }
             }
         }
     }
-
     // Consider:
     //
     //  local Direction = { Left = 1, Right = 2 }
@@ -2762,47 +2805,6 @@ bool ConstraintSolver::tryDispatch(const SimplifyConstraint& c, NotNull<const Co
     emplaceType<BoundType>(asMutable(target), result);
     return true;
 }
-
-namespace
-{
-
-struct ContainsAnyGeneric final : public TypeOnceVisitor
-{
-    bool found = false;
-
-    explicit ContainsAnyGeneric()
-        : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
-    {
-    }
-
-    bool visit(TypeId ty) override
-    {
-        found = found || is<GenericType>(ty);
-        return !found;
-    }
-
-    bool visit(TypePackId ty) override
-    {
-        found = found || is<GenericTypePack>(follow(ty));
-        return !found;
-    }
-
-    static bool hasAnyGeneric(TypeId ty)
-    {
-        ContainsAnyGeneric cg;
-        cg.traverse(ty);
-        return cg.found;
-    }
-
-    static bool hasAnyGeneric(TypePackId tp)
-    {
-        ContainsAnyGeneric cg;
-        cg.traverse(tp);
-        return cg.found;
-    }
-};
-
-} // namespace
 
 bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<const Constraint> constraint)
 {

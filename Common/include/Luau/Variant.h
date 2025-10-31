@@ -290,6 +290,14 @@ auto visit(Visitor&& vis, Variant<Ts...>& var)
     }
 }
 
+template<typename... Ts>
+struct overloaded : Ts...
+{
+    using Ts::operator()...;
+};
+template<typename... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
 template<class>
 inline constexpr bool always_false_v = false;
 

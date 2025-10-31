@@ -34,11 +34,8 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauTrackUniqueness)
-LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance2)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
@@ -1327,13 +1324,10 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
     if (!module->astScopes.contains(stat))
         return;
 
-    if (FFlag::LuauNameConstraintRestrictRecursiveTypes)
+    if (const Scope* scope = findInnermostScope(stat->location))
     {
-        if (const Scope* scope = findInnermostScope(stat->location))
-        {
-            if (scope->isInvalidTypeAliasName(stat->name.value))
-                reportError(RecursiveRestraintViolation{}, stat->location);
-        }
+        if (scope->isInvalidTypeAliasName(stat->name.value))
+            reportError(RecursiveRestraintViolation{}, stat->location);
     }
 
     visitGenerics(stat->generics, stat->genericPacks);
@@ -3014,22 +3008,9 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf;
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-            optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes, subtyping->arena);
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-            optSubLeaf = traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes, NotNull{&r.mappedGenericPacks_DEPRECATED}, subtyping->arena);
-        else
-            optSubLeaf = traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes);
+        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes, subtyping->arena);
 
-        std::optional<TypeOrPack> optSuperLeaf;
-        if (FFlag::LuauSubtypingGenericPacksDoesntUseVariance2)
-            optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes, subtyping->arena);
-        else if (FFlag::LuauReturnMappedGenericPacksFromSubtyping3)
-            optSuperLeaf =
-                traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes, NotNull{&r.mappedGenericPacks_DEPRECATED}, subtyping->arena);
-        else
-            optSuperLeaf = traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes);
+        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes, subtyping->arena);
 
         if (!optSubLeaf || !optSuperLeaf)
         {
@@ -3447,15 +3428,11 @@ void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId pr
             return;
         }
 
-        std::optional<TypeId> subLeaf = FFlag::LuauSubtypingGenericPacksDoesntUseVariance2
-                                            ? traverseForType(iterFunc, reasoning.subPath, builtinTypes, subtyping->arena)
-                                            : traverseForType_DEPRECATED(iterFunc, reasoning.subPath, builtinTypes);
+        std::optional<TypeId> subLeaf = traverseForType(iterFunc, reasoning.subPath, builtinTypes, subtyping->arena);
         if (!subLeaf)
             continue;
 
-        std::optional<TypeId> superLeaf = FFlag::LuauSubtypingGenericPacksDoesntUseVariance2
-                                              ? traverseForType(prospectiveFunc, reasoning.superPath, builtinTypes, subtyping->arena)
-                                              : traverseForType_DEPRECATED(prospectiveFunc, reasoning.superPath, builtinTypes);
+        std::optional<TypeId> superLeaf = traverseForType(prospectiveFunc, reasoning.superPath, builtinTypes, subtyping->arena);
         if (!superLeaf)
             continue;
 

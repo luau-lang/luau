@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
+LUAU_FASTFLAG(LuauNormalizerStepwiseFuel)
 
 namespace Luau
 {
@@ -1189,13 +1190,26 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
                     {
                         innerState->log.clear();
                         innerState->tryUnify_(*result, ftv->retTypes);
-                        if (innerState->errors.empty())
-                            log.concat(std::move(innerState->log));
-                        // Annoyingly, since we don't support intersection of generic type packs,
-                        // the intersection may fail. We rather arbitrarily use the first matching overload
-                        // in that case.
-                        else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks(*result, ftv->retTypes))
-                            result = intersect;
+                        if (FFlag::LuauNormalizerStepwiseFuel)
+                        {
+                            if (innerState->errors.empty())
+                                log.concat(std::move(innerState->log));
+                            // Annoyingly, since we don't support intersection of generic type packs,
+                            // the intersection may fail. We rather arbitrarily use the first matching overload
+                            // in that case.
+                            else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks(*result, ftv->retTypes))
+                                result = intersect;
+                        }
+                        else
+                        {
+                            if (innerState->errors.empty())
+                                log.concat(std::move(innerState->log));
+                            // Annoyingly, since we don't support intersection of generic type packs,
+                            // the intersection may fail. We rather arbitrarily use the first matching overload
+                            // in that case.
+                            else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks_INTERNAL(*result, ftv->retTypes))
+                                result = intersect;
+                        }
                     }
                     else
                         result = ftv->retTypes;

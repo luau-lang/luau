@@ -2,10 +2,14 @@
 #pragma once
 
 #include "Luau/Config.h"
+#include "Luau/LuauConfig.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
+
+struct lua_State;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -65,10 +69,21 @@ public:
         GetConfig
     };
 
-    virtual bool isConfigPresent() const = 0;
+    enum class ConfigStatus
+    {
+        Absent,
+        Ambiguous,
+        PresentJson,
+        PresentLuau
+    };
+
+    virtual ConfigStatus getConfigStatus() const = 0;
+
+    std::function<void(lua_State*)> luauConfigInit = nullptr;
+    void (*luauConfigInterrupt)(lua_State* L, int gc) = nullptr;
 
     // The result of getConfigBehavior determines whether getAlias or getConfig
-    // is called when isConfigPresent returns true.
+    // is called when getConfigStatus indicates a configuration is present.
     virtual ConfigBehavior getConfigBehavior() const = 0;
     virtual std::optional<std::string> getAlias(const std::string& alias) const = 0;
     virtual std::optional<std::string> getConfig() const = 0;

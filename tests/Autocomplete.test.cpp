@@ -22,7 +22,6 @@ LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnfinishedRepeatAncestryFix)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
 using namespace Luau;
@@ -4917,7 +4916,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_while_body")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_attribute")
 {
-    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
 
     check(R"(
         \@@1
@@ -4932,7 +4931,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_attribute")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_attribute")
 {
-    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
 
     check(R"(
         \@dep@1
@@ -4947,7 +4946,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_attribute")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_braced_attribute")
 {
-    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
 
     check(R"(
         \@[@1]
@@ -4962,7 +4961,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_braced_attribute")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_braced_attribute")
 {
-    ScopedFastFlag sff[]{{FFlag::LuauParametrizedAttributeSyntax, true}, {FFlag::LuauAutocompleteAttributes, true}};
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
 
     check(R"(
         \@[dep@1]
