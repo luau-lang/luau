@@ -2226,6 +2226,9 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
+    if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+        visit(expr->left, ValueContext::LValue); // in compound assignments, the lhs is both read-from and written-to
+
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
 
@@ -3631,7 +3634,7 @@ void TypeChecker2::checkIndexTypeFromType(
         // because extern types come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
         // the `else` branch.
-        else if (context == ValueContext::LValue && !get<ExternType>(tableTy))
+        else if (context == ValueContext::LValue)
         {
             const auto lvPropTypes = lookupProp(norm.get(), prop, ValueContext::RValue, location, astIndexExprType, dummy);
             if (lvPropTypes.foundOneProp() && lvPropTypes.noneMissingProp())
@@ -3639,9 +3642,14 @@ void TypeChecker2::checkIndexTypeFromType(
             else if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
                 reportError(NotATable{tableTy}, location);
             else
-                reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            {
+                if (get<ExternType>(tableTy))
+                    reportError(UnknownProperty{tableTy, prop}, location);
+                else
+                    reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            }
         }
-        else if (context == ValueContext::RValue && !get<ExternType>(tableTy))
+        else if (context == ValueContext::RValue)
         {
             const auto rvPropTypes = lookupProp(norm.get(), prop, ValueContext::LValue, location, astIndexExprType, dummy);
             if (rvPropTypes.foundOneProp() && rvPropTypes.noneMissingProp())
