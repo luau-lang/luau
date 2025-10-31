@@ -265,9 +265,9 @@ static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
 declare extern type vector with
-    x: number
-    y: number
-    z: number
+    read x: number
+    read y: number
+    read z: number
 end
 
 declare vector: {

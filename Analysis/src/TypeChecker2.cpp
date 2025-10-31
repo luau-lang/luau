@@ -3703,7 +3703,12 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // is compatible with the indexer's indexType
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
-            return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+        {
+            if ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
+                return {NormalizationResult::False, {}};
+            else
+                return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+        }
         if (cls->indexer)
         {
             TypeId inhabitatedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
