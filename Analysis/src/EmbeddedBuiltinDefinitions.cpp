@@ -128,6 +128,10 @@ declare math: {
     round: @checked (n: number) -> number,
     map: @checked (x: number, inmin: number, inmax: number, outmin: number, outmax: number) -> number,
     lerp: @checked (a: number, b: number, t: number) -> number,
+
+    isnan: @checked (x: number) -> boolean,
+    isinf: @checked (x: number) -> boolean,
+    isfinite: @checked (x: number) -> boolean,
 }
 
 )BUILTIN_SRC";

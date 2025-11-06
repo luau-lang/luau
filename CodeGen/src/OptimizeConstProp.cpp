@@ -650,6 +650,9 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_VECTOR_MAX:
     case LBF_VECTOR_LERP:
     case LBF_MATH_LERP:
+    case LBF_MATH_ISNAN:
+    case LBF_MATH_ISINF:
+    case LBF_MATH_ISFINITE:
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();

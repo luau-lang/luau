@@ -427,6 +427,30 @@ static int math_lerp(lua_State* L)
     return 1;
 }
 
+static int math_isnan(lua_State* L)
+{
+    double x = luaL_checknumber(L, 1);
+
+    lua_pushboolean(L, isnan(x));
+    return 1;
+}
+
+static int math_isinf(lua_State* L)
+{
+    double x = luaL_checknumber(L, 1);
+
+    lua_pushboolean(L, isinf(x));
+    return 1;
+}
+
+static int math_isfinite(lua_State* L)
+{
+    double x = luaL_checknumber(L, 1);
+
+    lua_pushboolean(L, isfinite(x));
+    return 1;
+}
+
 static const luaL_Reg mathlib[] = {
     {"abs", math_abs},
     {"acos", math_acos},
@@ -462,6 +486,9 @@ static const luaL_Reg mathlib[] = {
     {"round", math_round},
     {"map", math_map},
     {"lerp", math_lerp},
+    {"isnan", math_isnan},
+    {"isinf", math_isinf},
+    {"isfinite", math_isfinite},
     {NULL, NULL},
 };
 
