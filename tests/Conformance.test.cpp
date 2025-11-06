@@ -38,12 +38,13 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
-LUAU_FASTFLAG(LuauMathIsNanInfFinite)
-LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauResumeFix)
+LUAU_FASTFLAG(LuauMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauTypeCheckerMathIsNanInfFinite)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -1294,7 +1295,8 @@ TEST_CASE("Types")
     ScopedFastFlag _[] =
     {
         {FFlag::LuauMathIsNanInfFinite, true},
-        {FFlag::LuauCompileMathIsNanInfFinite, true}
+        {FFlag::LuauCompileMathIsNanInfFinite, true},
+        {FFlag::LuauTypeCheckerMathIsNanInfFinite, true}
     };
 
     runConformance(
