@@ -1742,7 +1742,7 @@ static int luauF_lerp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 
 static int luauF_isnan(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && ttisnumber(arg0))
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
         double x = nvalue(arg0);
 
@@ -1755,7 +1755,7 @@ static int luauF_isnan(lua_State* L, StkId res, TValue* arg0, int nresults, StkI
 
 static int luauF_isinf(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && ttisnumber(arg0))
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
         double x = nvalue(arg0);
 
@@ -1768,7 +1768,7 @@ static int luauF_isinf(lua_State* L, StkId res, TValue* arg0, int nresults, StkI
 
 static int luauF_isfinite(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && ttisnumber(arg0))
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
         double x = nvalue(arg0);
 

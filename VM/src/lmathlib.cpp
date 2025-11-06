@@ -13,6 +13,8 @@
 
 #define PCG32_INC 105
 
+LUAU_FASTFLAGVARIABLE(LuauMathIsNanInfFinite)
+
 static uint32_t pcg32_random(uint64_t* state)
 {
     uint64_t oldstate = *state;
@@ -486,9 +488,6 @@ static const luaL_Reg mathlib[] = {
     {"round", math_round},
     {"map", math_map},
     {"lerp", math_lerp},
-    {"isnan", math_isnan},
-    {"isinf", math_isinf},
-    {"isfinite", math_isfinite},
     {NULL, NULL},
 };
 
@@ -504,6 +503,17 @@ int luaopen_math(lua_State* L)
     pcg32_seed(&L->global->rngstate, seed);
 
     luaL_register(L, LUA_MATHLIBNAME, mathlib);
+
+    if (FFlag::LuauMathIsNanInfFinite)
+    {
+        lua_pushcfunction(L, math_isnan, "isnan");
+        lua_setfield(L, -2, "isnan");
+        lua_pushcfunction(L, math_isinf, "isinf");
+        lua_setfield(L, -2, "isinf");
+        lua_pushcfunction(L, math_isfinite, "isfinite");
+        lua_setfield(L, -2, "isfinite");
+    }
+
     lua_pushnumber(L, PI);
     lua_setfield(L, -2, "pi");
     lua_pushnumber(L, HUGE_VAL);

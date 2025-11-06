@@ -561,16 +561,16 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
         types.c = LBC_TYPE_NUMBER;
         break;
     case LBF_MATH_ISNAN:
-        types.result = LBC_TYPE_NUMBER,
-        types.a = LBC_TYPE_BOOLEAN;
+        types.result = LBC_TYPE_BOOLEAN,
+        types.a = LBC_TYPE_NUMBER;
         break;
     case LBF_MATH_ISINF:
-        types.result = LBC_TYPE_NUMBER,
-        types.a = LBC_TYPE_BOOLEAN;
+        types.result = LBC_TYPE_BOOLEAN,
+        types.a = LBC_TYPE_NUMBER;
         break;
     case LBF_MATH_ISFINITE:
-        types.result = LBC_TYPE_NUMBER,
-        types.a = LBC_TYPE_BOOLEAN;
+        types.result = LBC_TYPE_BOOLEAN,
+        types.a = LBC_TYPE_NUMBER;
         break;
     }
 }
