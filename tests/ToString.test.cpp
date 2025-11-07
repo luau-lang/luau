@@ -14,7 +14,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 TEST_SUITE_BEGIN("ToString");
@@ -650,10 +649,7 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_intersection")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauExplicitSkipBoundTypes, true},
-        {FFlag::LuauReduceSetTypeStackPressure, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauReduceSetTypeStackPressure, true};
 
     CheckResult result = check(R"(
         function f() return f end

@@ -41,7 +41,6 @@ LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauResumeFix)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -1879,8 +1878,6 @@ static int cpcallTest(lua_State* L)
 
 TEST_CASE("ApiCalls")
 {
-    ScopedFastFlag luauResumeFix{FFlag::LuauResumeFix, true};
-
     StateRef globalState = runConformance("apicalls.luau", nullptr, nullptr, lua_newstate(limitedRealloc, nullptr));
     lua_State* L = globalState.get();
 

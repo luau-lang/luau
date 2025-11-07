@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 using namespace Luau;
 
@@ -1363,14 +1364,16 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
+
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Unknown global 'foo'");
-    CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
+    CHECK(toString(result.errors[0]) == "Unknown global 'foo'; consider assigning to it first");
+    CHECK(toString(result.errors[1]) == "Unknown global 'foo'; consider assigning to it first");
 }
 
 TEST_CASE_FIXTURE(Fixture, "occurs_isnt_always_failure")
@@ -1788,6 +1791,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 {
     ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1798,7 +1802,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 14})));
 
     REQUIRE_EQ(1, result.errors.size());
-    CHECK_EQ("Unknown global 'foo'", toString(result.errors[0]));
+    CHECK_EQ("Unknown global 'foo'; consider assigning to it first", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiple_assignment")

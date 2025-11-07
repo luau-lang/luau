@@ -14,6 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -366,6 +367,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "type_error_addition")
 {
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
+
     CheckResult result = check(R"(
 --!strict
 local foo = makesandwich()
@@ -375,7 +378,7 @@ local bar = foo.nutrition + 100
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     // We should definitely get this error
-    CHECK_EQ("Unknown global 'makesandwich'", toString(result.errors[0]));
+    CHECK_EQ("Unknown global 'makesandwich'; consider assigning to it first", toString(result.errors[0]));
     // We get this error if makesandwich() returns a free type
     // CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'foo'", toString(result.errors[1]));
 }
