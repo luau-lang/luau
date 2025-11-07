@@ -9,7 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauInstantiateResolvedTypeFunctions)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1007,6 +1007,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         -- this function should not see 'fourth' function when invoked from 'third' that sees it
@@ -1029,7 +1030,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(5, result);
-    CHECK(toString(result.errors[0]) == R"(Unknown global 'fourth')");
+    CHECK(toString(result.errors[0]) == R"(Unknown global 'fourth'; consider assigning to it first)");
     CHECK(toString(result.errors[1]) == R"('third' type function errored at runtime: [string "first"]:4: attempt to call a nil value)");
 }
 
@@ -1056,6 +1057,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_unordered")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -1076,7 +1078,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 
     // We are only checking first errors, others are mostly duplicates
     LUAU_REQUIRE_ERROR_COUNT(9, result);
-    CHECK(toString(result.errors[0]) == R"(Unknown global 'glob')");
+    CHECK(toString(result.errors[0]) == R"(Unknown global 'glob'; consider assigning to it first)");
     CHECK(toString(result.errors[1]) == R"('bar' type function errored at runtime: [string "foo"]:4: attempt to modify a readonly table)");
     CHECK(toString(result.errors[2]) == R"(Type function instance bar<"x"> is uninhabited)");
 }
@@ -1128,6 +1130,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         type function illegal(arg)
@@ -1141,7 +1144,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 
     // We are only checking first errors, others are mostly duplicates
     LUAU_REQUIRE_ERROR_COUNT(5, result);
-    CHECK(toString(result.errors[0]) == R"(Unknown global 'gcinfo')");
+    CHECK(toString(result.errors[0]) == R"(Unknown global 'gcinfo'; consider assigning to it first)");
     CHECK(
         toString(result.errors[1]) ==
         R"('illegal' type function errored at runtime: [string "illegal"]:3: this function is not supported in type functions)"
@@ -2314,6 +2317,7 @@ local y: Test.foo<{ a: string }> = "x"
 TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_not_too_many_globals")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
 type function get()
@@ -2323,7 +2327,7 @@ local function ok(idx: get<>): number return idx end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(5, result);
-    CHECK(toString(result.errors[0]) == R"(Unknown global 'number')");
+    CHECK(toString(result.errors[0]) == R"(Unknown global 'number'; consider assigning to it first)");
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_not_enough_arguments")
@@ -2475,10 +2479,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_udtf_with_optional_missing")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInstantiateResolvedTypeFunctions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type function create_table_with_key()
@@ -2495,10 +2496,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_udtf_with_optional_missing")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_udtf_with_optional_present")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInstantiateResolvedTypeFunctions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type function create_table_with_key()
@@ -2515,10 +2513,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_udtf_with_optional_present")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_udtf_table_mismatch")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInstantiateResolvedTypeFunctions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type function create_table_with_key()
@@ -2539,10 +2534,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_udtf_table_mismatch")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_mismatch")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInstantiateResolvedTypeFunctions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type function foo()
@@ -2561,10 +2553,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_mismatch")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_match")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInstantiateResolvedTypeFunctions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type function foo()

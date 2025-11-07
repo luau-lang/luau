@@ -24,7 +24,6 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
@@ -3289,8 +3288,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "call_function_with_nothing_but_nil")
 {
-    ScopedFastFlag _{FFlag::LuauFixNilRightPad, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(n: number, x: string?, y: string?, z: string?) end
 
@@ -3302,8 +3299,6 @@ TEST_CASE_FIXTURE(Fixture, "call_function_with_nothing_but_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1640")
 {
-    ScopedFastFlag _{FFlag::LuauFixNilRightPad, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         table.create(1) -- top function call

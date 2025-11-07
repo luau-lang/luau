@@ -15,7 +15,6 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenDisableWithNoReentry, false)
 
 namespace Luau
 {
@@ -377,11 +376,8 @@ static int onEnter(lua_State* L, Proto* proto)
 
 static int onEnterDisabled(lua_State* L, Proto* proto)
 {
-    if (DFFlag::LuauCodeGenDisableWithNoReentry)
-    {
-        // If the function wasn't entered natively, it cannot be resumed natively later
-        L->ci->flags &= ~LUA_CALLINFO_NATIVE;
-    }
+    // If the function wasn't entered natively, it cannot be resumed natively later
+    L->ci->flags &= ~LUA_CALLINFO_NATIVE;
 
     return 1;
 }

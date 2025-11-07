@@ -25,7 +25,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
-LUAU_FASTFLAGVARIABLE(LuauFixNilRightPad)
 
 namespace Luau
 {
@@ -688,19 +687,8 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     auto [superTypes, superTail] = extendTypePack(*arena, builtinTypes, superTp, maxLength);
 
     // right-pad the subpack with nils if `superPack` is larger since that's what a function call does
-    if (FFlag::LuauFixNilRightPad)
-    {
-        if (subTypes.size() < maxLength)
-            subTypes.resize(maxLength, builtinTypes->nilType);
-    }
-    else
-    {
-        if (subTypes.size() < maxLength)
-        {
-            for (size_t i = 0; i <= maxLength - subTypes.size(); i++)
-                subTypes.push_back(builtinTypes->nilType);
-        }
-    }
+    if (subTypes.size() < maxLength)
+        subTypes.resize(maxLength, builtinTypes->nilType);
 
     if (subTypes.size() < maxLength || superTypes.size() < maxLength)
         return UnifyResult::Ok;

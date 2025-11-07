@@ -4,7 +4,6 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 namespace Luau
@@ -23,7 +22,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
     bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer(NotNull<TypeIds> result)
-        : TypeOnceVisitor("ReferenceCountInitializer", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
         , result(result)
     {
     }

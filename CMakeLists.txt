@@ -22,7 +22,7 @@ if(LUAU_STATIC_CRT)
 endif()
 
 project(Luau LANGUAGES CXX C)
-add_library(Luau.Common INTERFACE)
+add_library(Luau.Common STATIC)
 add_library(Luau.CLI.lib STATIC)
 add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
@@ -66,7 +66,8 @@ add_library(Luau.VM.Internals INTERFACE)
 
 include(Sources.cmake)
 
-target_include_directories(Luau.Common INTERFACE Common/include)
+target_compile_features(Luau.Common PUBLIC cxx_std_17)
+target_include_directories(Luau.Common PUBLIC Common/include)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
 target_include_directories(Luau.CLI.lib PUBLIC CLI/include)

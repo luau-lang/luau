@@ -1,17 +1,17 @@
 # Luau.Common Sources
-# Note: Until 3.19, INTERFACE targets couldn't have SOURCES property set
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
-    target_sources(Luau.Common PRIVATE
-        Common/include/Luau/Common.h
-        Common/include/Luau/Bytecode.h
-        Common/include/Luau/BytecodeUtils.h
-        Common/include/Luau/DenseHash.h
-        Common/include/Luau/ExperimentalFlags.h
-        Common/include/Luau/HashUtil.h
-        Common/include/Luau/Variant.h
-        Common/include/Luau/VecDeque.h
-    )
-endif()
+target_sources(Luau.Common PRIVATE
+    Common/include/Luau/Common.h
+    Common/include/Luau/Bytecode.h
+    Common/include/Luau/BytecodeUtils.h
+    Common/include/Luau/DenseHash.h
+    Common/include/Luau/ExperimentalFlags.h
+    Common/include/Luau/HashUtil.h
+    Common/include/Luau/StringUtils.h
+    Common/include/Luau/Variant.h
+    Common/include/Luau/VecDeque.h
+
+    Common/src/StringUtils.cpp
+)
 
 # Luau.Ast Sources
 target_sources(Luau.Ast PRIVATE
@@ -25,7 +25,6 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Parser.h
     Ast/include/Luau/ParseResult.h
     Ast/include/Luau/PrettyPrinter.h
-    Ast/include/Luau/StringUtils.h
     Ast/include/Luau/TimeTrace.h
 
     Ast/src/Allocator.cpp
@@ -36,7 +35,6 @@ target_sources(Luau.Ast PRIVATE
     Ast/src/Location.cpp
     Ast/src/Parser.cpp
     Ast/src/PrettyPrinter.cpp
-    Ast/src/StringUtils.cpp
     Ast/src/TimeTrace.cpp
 )
 

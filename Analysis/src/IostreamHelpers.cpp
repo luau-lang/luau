@@ -13,7 +13,8 @@ namespace Luau
 
 std::ostream& operator<<(std::ostream& stream, const Position& position)
 {
-    return stream << "{ line = " << position.line << ", col = " << position.column << " }";
+    // We add one so that the numbers we display match what people see in their text editors.
+    return stream << "{ line = " << (position.line + 1) << ", col = " << (position.column + 1) << " }";
 }
 
 std::ostream& operator<<(std::ostream& stream, const Location& location)

@@ -1464,4 +1464,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_variadic_type_pack_r
     CHECK_EQ("unknown", toString(requireTypeAtPosition({3, 24})));
 }
 
+TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    // CLI-169235: This is just wrong, we should be rejecting this code.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(
+            t: { [string]: number } | { [number]: number }
+        )
+            return t[true]
+        end
+    )"));
+
+}
+
 TEST_SUITE_END();

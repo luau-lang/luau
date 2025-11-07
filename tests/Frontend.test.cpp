@@ -16,7 +16,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauBatchedExecuteTask)
 
 namespace
 {
@@ -1735,8 +1734,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_simple")
 {
-    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
-
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!strict
         return {hello=5, world=true}
@@ -1758,8 +1755,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "queue_check_simple")
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_instant")
 {
-    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
-
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!strict
         local Modules = game:GetService('Gui').Modules
@@ -1785,8 +1780,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_instant")
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_delayed")
 {
-    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
-
     fileResolver.source["game/Gui/Modules/C"] = R"(
         --!strict
         return {c_value = 5}
@@ -1818,7 +1811,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "queue_check_cycle_delayed")
 
 TEST_CASE_FIXTURE(FrontendFixture, "queue_check_propagates_ice")
 {
-    ScopedFastFlag luauBatchedExecuteTask{FFlag::LuauBatchedExecuteTask, true};
     ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 
     ModuleName mm = fromString("MainModule");
