@@ -17,7 +17,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenVBlendpdReorder)
-LUAU_FASTFLAG(LuauCodegenDirectCompare2)
 
 namespace Luau
 {
@@ -919,7 +918,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_TAG:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
         // Cannot reuse operand registers as a target because we have to modify it before the comparison
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
@@ -941,7 +939,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_SPLIT_TVALUE:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
         // Cannot reuse operand registers as a target because we have to modify it before the comparison
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 

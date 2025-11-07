@@ -44,7 +44,6 @@ LUAU_FASTFLAGVARIABLE(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAGVARIABLE(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAGVARIABLE(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
@@ -341,7 +340,7 @@ struct InfiniteTypeFinder : TypeOnceVisitor
     bool foundInfiniteType = false;
 
     explicit InfiniteTypeFinder(ConstraintSolver* solver, const InstantiationSignature& signature, NotNull<Scope> scope)
-        : TypeOnceVisitor("InfiniteTypeFinder", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InfiniteTypeFinder", /* skipBoundTypes */ true)
         , solver(solver)
         , signature(signature)
         , scope(scope)
@@ -670,7 +669,7 @@ struct TypeSearcher : TypeVisitor
     }
 
     explicit TypeSearcher(TypeId needle, Polarity initialPolarity)
-        : TypeVisitor("TypeSearcher", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeVisitor("TypeSearcher", /* skipBoundTypes */ true)
         , needle(needle)
         , current(initialPolarity)
     {
@@ -1635,7 +1634,7 @@ struct ContainsGenerics : public TypeOnceVisitor
     NotNull<DenseHashSet<const void*>> generics;
 
     explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
-        : TypeOnceVisitor("ContainsGenerics", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("ContainsGenerics", /* skipBoundTypes */ true)
         , generics{generics}
     {
     }
@@ -2149,7 +2148,7 @@ struct BlockedTypeFinder : TypeOnceVisitor
     std::optional<TypeId> blocked;
 
     BlockedTypeFinder()
-        : TypeOnceVisitor("ContainsGenerics_DEPRECATED", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("ContainsGenerics_DEPRECATED", /* skipBoundTypes */ true)
     {
     }
 
@@ -3521,7 +3520,7 @@ struct Blocker : TypeOnceVisitor
     bool blocked = false;
 
     explicit Blocker(NotNull<ConstraintSolver> solver, NotNull<const Constraint> constraint)
-        : TypeOnceVisitor("Blocker", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("Blocker", /* skipBoundTypes */ true)
         , solver(solver)
         , constraint(constraint)
     {

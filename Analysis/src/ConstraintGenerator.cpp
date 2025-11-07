@@ -40,9 +40,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
-LUAU_FASTFLAGVARIABLE(LuauInstantiateResolvedTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauEGFixGenericsList)
 LUAU_FASTFLAGVARIABLE(LuauNumericUnaryOpsDontProduceNegationRefinements)
@@ -145,7 +143,7 @@ struct HasFreeType : TypeOnceVisitor
     bool result = false;
 
     HasFreeType()
-        : TypeOnceVisitor("TypeOnceVisitor", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("TypeOnceVisitor", /* skipBoundTypes */ true)
     {
     }
 
@@ -619,7 +617,7 @@ struct FindSimplificationBlockers : TypeOnceVisitor
     bool found = false;
 
     FindSimplificationBlockers()
-        : TypeOnceVisitor("FindSimplificationBlockers", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("FindSimplificationBlockers", /* skipBoundTypes */ true)
     {
     }
 
@@ -4096,15 +4094,11 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (FFlag::LuauInstantiateResolvedTypeFunctions)
+    if (is<TypeFunctionInstanceType>(follow(result)))
     {
-        if (is<TypeFunctionInstanceType>(follow(result)))
-        {
-            reportError(ty->location, UnappliedTypeFunction{});
-            addConstraint(scope, ty->location, ReduceConstraint{result});
-        }
+        reportError(ty->location, UnappliedTypeFunction{});
+        addConstraint(scope, ty->location, ReduceConstraint{result});
     }
-
 
     return result;
 }

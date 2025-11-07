@@ -228,11 +228,6 @@ struct Frontend
     // If provided, 'executeTasks' function is allowed to call any item in 'tasks' on any thread and return without waiting for them to complete
     void queueModuleCheck(const std::vector<ModuleName>& names);
     void queueModuleCheck(const ModuleName& name);
-    std::vector<ModuleName> checkQueuedModules_DEPRECATED(
-        std::optional<FrontendOptions> optionOverride = {},
-        std::function<void(std::function<void()> task)> executeTask = {},
-        std::function<bool(size_t done, size_t total)> progress = {}
-    );
     std::vector<ModuleName> checkQueuedModules(
         std::optional<FrontendOptions> optionOverride = {},
         std::function<void(std::vector<std::function<void()>> tasks)> executeTasks = {},
@@ -275,7 +270,6 @@ private:
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);
     void performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos);
-    void sendQueueItemTask_DEPRECATED(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos);
     void sendQueueItemTasks(std::shared_ptr<BuildQueueWorkState> state, const std::vector<size_t>& items);
     void sendQueueCycleItemTask(std::shared_ptr<BuildQueueWorkState> state);
 

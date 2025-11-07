@@ -27,6 +27,7 @@ LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
 LUAU_FASTFLAGVARIABLE(LuauExternTableIndexersIntersect)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyMoveTableProps)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionNoTreeSet)
+LUAU_FASTFLAG(LuauGetmetatableError)
 
 namespace Luau
 {
@@ -2334,6 +2335,9 @@ std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId tar
 
     if (is<AnyType>(target))
         return arena->addType(UnionType{{builtinTypes->errorType, discriminant}});
+
+    if (FFlag::LuauGetmetatableError && is<ErrorType>(target))
+        return builtinTypes->errorType;
 
     if (auto nty = get<NegationType>(discriminant))
         return subtractOne(target, nty->ty);

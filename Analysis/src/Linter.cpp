@@ -16,6 +16,8 @@ LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
 LUAU_FASTFLAG(LuauSolverV2)
 
+LUAU_FASTFLAGVARIABLE(LuauUnknownGlobalFixSuggestion)
+
 namespace Luau
 {
 
@@ -267,7 +269,13 @@ private:
             Global* g = globals.find(gv->name);
 
             if (!g || (!g->assigned && !g->builtin))
-                emitWarning(*context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'", gv->name.value);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_UnknownGlobal,
+                    gv->location,
+                    FFlag::LuauUnknownGlobalFixSuggestion ? "Unknown global '%s'; consider assigning to it first" : "Unknown global '%s'",
+                    gv->name.value
+                );
             else if (g->deprecated)
             {
                 if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
