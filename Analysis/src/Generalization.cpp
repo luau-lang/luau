@@ -17,7 +17,6 @@
 
 LUAU_FASTFLAGVARIABLE(LuauReduceSetTypeStackPressure)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -984,7 +983,7 @@ struct GenericCounter : TypeVisitor
     bool hitLimits = false;
 
     explicit GenericCounter(NotNull<DenseHashSet<TypeId>> cachedTypes)
-        : TypeVisitor("GenericCounter", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeVisitor("GenericCounter", /* skipBoundTypes */ true)
         , cachedTypes(cachedTypes)
     {
     }

@@ -27,11 +27,12 @@ LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAG(LuauSimplifyIntersectionForLiteralSubtypeCheck)
 LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas)
+LUAU_FASTFLAG(LuauGetmetatableError)
+LUAU_FASTFLAG(LuauSuppressIndexingIntoError)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -5983,8 +5984,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_are_ok_for_any_key")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1935")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyIntersectionForLiteralSubtypeCheck, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         type Drawing = {
@@ -6342,6 +6341,88 @@ TEST_CASE_FIXTURE(Fixture, "table_with_intersection_containing_lambda")
     )"));
 
     CHECK_EQ("{ foo: string }", toString(requireTypeAtPosition({10, 28}), { /* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_174304_allow_getmetatable_error_and_table")
+{
+    ScopedFastFlag _{FFlag::LuauGetmetatableError, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function instanceof(tbl: any, class: any): boolean
+            if typeof(tbl) ~= "table" then
+                return false
+            end
+
+            local ok, hasNew = pcall(function()
+                return class.new ~= nil and tbl.new == class.new
+            end)
+            if ok and hasNew then
+                return true
+            end
+
+            while typeof(tbl) == "table" do
+                tbl = getmetatable(tbl)
+                if typeof(tbl) == "table" then
+                    tbl = tbl.__index
+                end
+            end
+
+            return false
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "allow_indexing_into_error_or_not_nil")
+{
+    ScopedFastFlag _{FFlag::LuauSuppressIndexingIntoError, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function f(i: number, ...)
+            local value = select(i, ...)
+            local valueType = typeof(value)
+            if value == nil then
+            elseif valueType == "table" then
+                for k = 1, #value do
+                    local _ = value[k]
+                end
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1684")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::LuauPushTypeConstraintIntersection, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local targetConfig = { ["Bag of coins"] = {}, }
+
+        type TargetConfig = typeof(targetConfig)
+        type Targets = keyof<TargetConfig>
+
+        type QuestConfig = { target: Targets, }
+
+        -- All of the table members that aren't "Bag of coins" should
+        -- have errors.
+        local questConfig: { [string]: QuestConfig  } = {
+            ["Works as intended"] = { target = "Bag of coins" },
+            ["Also works as intended "] = { target = "Not bag of coins" },
+            ["Should warn 1"] = { target = "Also not a bag of coins" },
+            ["Should warn 2"] = { target = "Still not a bag of coins" },
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    for (const auto& e: result.errors)
+        CHECK(get<TypeMismatch>(e));
 }
 
 TEST_SUITE_END();

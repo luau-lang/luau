@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
 static std::string wrongNumberOfArgsString(
@@ -172,7 +173,8 @@ struct ErrorConverter
         switch (e.context)
         {
         case UnknownSymbol::Binding:
-            return "Unknown global '" + e.name + "'";
+            return FFlag::LuauUnknownGlobalFixSuggestion ? "Unknown global '" + e.name + "'; consider assigning to it first"
+                                                         : "Unknown global '" + e.name + "'";
         case UnknownSymbol::Type:
             return "Unknown type '" + e.name + "'";
         }

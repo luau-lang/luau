@@ -38,16 +38,14 @@ LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauTrackUniqueness)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
-LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionForLiteralSubtypeCheck)
 LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
-LUAU_FASTFLAGVARIABLE(LuauAddErrorCaseForIncompatibleTypePacks)
-LUAU_FASTFLAGVARIABLE(LuauAddConditionalContextForTernary)
-LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping2)
+LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
+LUAU_FASTFLAGVARIABLE(LuauNoCustomHandlingOfReasonsingsForForIn)
+LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
 
 namespace Luau
 {
@@ -170,7 +168,7 @@ struct TypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
     TypeFunctionFinder()
-        : TypeOnceVisitor("TypeFunctionFinder", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("TypeFunctionFinder", /* skipBoundTypes */ true)
     {
     }
 
@@ -195,7 +193,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
     explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
-        : TypeOnceVisitor("InternalTypeFunctionFinder", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InternalTypeFunctionFinder", /* skipBoundTypes */ true)
     {
         TypeFunctionFinder f;
         for (TypeId fn : declStack)
@@ -991,11 +989,11 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
 
-            if (FFlag::LuauCheckForInWithSubtyping2)
+            if (FFlag::LuauCheckForInWithSubtyping3)
                 return;
         }
 
-        if (!FFlag::LuauCheckForInWithSubtyping2)
+        if (!FFlag::LuauCheckForInWithSubtyping3)
         {
             for (size_t i = 0; i < std::min(expectedVariableTypes.head.size(), variableTypes.size()); ++i)
                 testIsSubtype(variableTypes[i], expectedVariableTypes.head[i], forInStatement->vars.data[i]->location);
@@ -1030,7 +1028,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
 
-            if (FFlag::LuauCheckForInWithSubtyping2)
+            if (FFlag::LuauCheckForInWithSubtyping3)
                 return;
         }
         else if (actualArgCount < minCount)
@@ -1040,11 +1038,11 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
 
-            if (FFlag::LuauCheckForInWithSubtyping2)
+            if (FFlag::LuauCheckForInWithSubtyping3)
                 return;
         }
 
-        if (FFlag::LuauCheckForInWithSubtyping2)
+        if (FFlag::LuauCheckForInWithSubtyping3)
         {
             const TypeId iterFunc = follow(iterTys[0]);
 
@@ -1881,6 +1879,8 @@ void TypeChecker2::indexExprMetatableHelper(AstExprIndexExpr* indexExpr, const M
 
 void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
 {
+    // CLI-169235: This should probably all be the same logic as `index`, we
+    // do some really weird stuff here.
     if (auto str = indexExpr->index->as<AstExprConstantString>())
     {
         TypeId astIndexExprType = lookupType(indexExpr->index);
@@ -1930,7 +1930,23 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         // if all of the types are a table type, the union must be a table, and so we shouldn't error.
         if (!std::all_of(begin(ut), end(ut), getTableType))
-            reportError(NotATable{exprType}, indexExpr->location);
+        {
+            if (FFlag::LuauSuppressIndexingIntoError)
+            {
+                switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
+                {
+                case ErrorSuppression::Suppress:
+                    break;
+                case ErrorSuppression::NormalizationFailed:
+                    reportError(NormalizationTooComplex{}, indexExpr->location);
+                    [[fallthrough]];
+                case ErrorSuppression::DoNotSuppress:
+                    reportError(OptionalValueAccess{exprType}, indexExpr->location);
+                }
+            }
+            else
+                reportError(NotATable{exprType}, indexExpr->location);
+        }
     }
     else if (auto it = get<IntersectionType>(exprType))
     {
@@ -2654,22 +2670,12 @@ void TypeChecker2::visit(AstExprTypeAssertion* expr)
 void TypeChecker2::visit(AstExprIfElse* expr)
 {
     InConditionalContext inContext(&typeContext, TypeContext::Default);
-
-    if (FFlag::LuauAddConditionalContextForTernary)
     {
-        {
-            InConditionalContext inContext(&typeContext, TypeContext::Condition);
-            visit(expr->condition, ValueContext::RValue);
-        }
-        visit(expr->trueExpr, ValueContext::RValue);
-        visit(expr->falseExpr, ValueContext::RValue);
-    }
-    else
-    {
+        InConditionalContext inContext(&typeContext, TypeContext::Condition);
         visit(expr->condition, ValueContext::RValue);
-        visit(expr->trueExpr, ValueContext::RValue);
-        visit(expr->falseExpr, ValueContext::RValue);
     }
+    visit(expr->trueExpr, ValueContext::RValue);
+    visit(expr->falseExpr, ValueContext::RValue);
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -2831,13 +2837,10 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
         }
 
-        if (FFlag::LuauAddErrorCaseForIncompatibleTypePacks)
+        // If we require type parameters, but no types are provided and only packs are provided, we report an error.
+        if (typesRequired != 0 && typesProvided == 0 && packsProvided != 0)
         {
-            // If we require type parameters, but no types are provided and only packs are provided, we report an error.
-            if (typesRequired != 0 && typesProvided == 0 && packsProvided != 0)
-            {
-                reportError(GenericError{"Type parameters must come before type pack parameters"}, ty->location);
-            }
+            reportError(GenericError{"Type parameters must come before type pack parameters"}, ty->location);
         }
 
         if (extraTypes != 0 && packsProvided == 0)
@@ -3201,28 +3204,25 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                 return testPotentialLiteralIsSubtype(expr, *tt);
         }
 
-        if (FFlag::LuauSimplifyIntersectionForLiteralSubtypeCheck)
+        if (auto itv = get<IntersectionType>(expectedType))
         {
-            if (auto itv = get<IntersectionType>(expectedType))
+            // If we _happen_ to have an intersection of tables, let's try to
+            // construct it and use it as the input to this algorithm.
+            if (FFlag::LuauSimplifyIntersectionNoTreeSet)
             {
-                // If we _happen_ to have an intersection of tables, let's try to
-                // construct it and use it as the input to this algorithm.
-                if (FFlag::LuauSimplifyIntersectionNoTreeSet)
-                {
-                    TypeIds parts;
-                    parts.insert(begin(itv), end(itv));
-                    TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
-                    if (is<TableType>(simplified))
-                        return testPotentialLiteralIsSubtype(expr, simplified);
-                }
-                else
-                {
+                TypeIds parts;
+                parts.insert(begin(itv), end(itv));
+                TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+                if (is<TableType>(simplified))
+                    return testPotentialLiteralIsSubtype(expr, simplified);
+            }
+            else
+            {
 
-                    std::set<TypeId> parts{begin(itv), end(itv)};
-                    TypeId simplified = simplifyIntersection_DEPRECATED(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
-                    if (is<TableType>(simplified))
-                        return testPotentialLiteralIsSubtype(expr, simplified);
-                }
+                std::set<TypeId> parts{begin(itv), end(itv)};
+                TypeId simplified = simplifyIntersection_DEPRECATED(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+                if (is<TableType>(simplified))
+                    return testPotentialLiteralIsSubtype(expr, simplified);
             }
         }
 
@@ -3363,7 +3363,7 @@ bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location 
 
 void TypeChecker2::maybeReportSubtypingError(const TypeId subTy, const TypeId superTy, const Location& location)
 {
-    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping2);
+    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping3);
     switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
     {
     case ErrorSuppression::Suppress:
@@ -3382,7 +3382,7 @@ void TypeChecker2::maybeReportSubtypingError(const TypeId subTy, const TypeId su
 
 void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId prospectiveFunc, const AstStatForIn& forInStat)
 {
-    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping2);
+    LUAU_ASSERT(FFlag::LuauCheckForInWithSubtyping3);
     LUAU_ASSERT(get<FunctionType>(follow(iterFunc)));
     LUAU_ASSERT(get<FunctionType>(follow(prospectiveFunc)));
 
@@ -3404,58 +3404,9 @@ void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId pr
     if (r.isSubtype)
         return;
 
-    for (auto& reasoning : r.reasoning)
-    {
-        // We can give more specific errors if superPath reasoning is of form [Arguments|Returns, PackIndex[n]]
-        if (reasoning.subPath.empty() || reasoning.superPath.components.size() != 2)
-        {
-            maybeReportSubtypingError(prospectiveFunc, iterFunc, iterFuncLocation);
-            return;
-        }
-
-        const TypePath::PackField* pf = get_if<TypePath::PackField>(&reasoning.superPath.components[0]);
-
-        if (!pf || *pf == TypePath::PackField::Tail)
-        {
-            maybeReportSubtypingError(prospectiveFunc, iterFunc, iterFuncLocation);
-            return;
-        }
-
-        const TypePath::Index* index = get_if<TypePath::Index>(&reasoning.superPath.components[1]);
-        if (!index || index->variant != TypePath::Index::Variant::Pack)
-        {
-            maybeReportSubtypingError(prospectiveFunc, iterFunc, iterFuncLocation);
-            return;
-        }
-
-        std::optional<TypeId> subLeaf = traverseForType(iterFunc, reasoning.subPath, builtinTypes, subtyping->arena);
-        if (!subLeaf)
-            continue;
-
-        std::optional<TypeId> superLeaf = traverseForType(prospectiveFunc, reasoning.superPath, builtinTypes, subtyping->arena);
-        if (!superLeaf)
-            continue;
-
-        if (*pf == TypePath::PackField::Arguments)
-        {
-            // The first component of `forInStat.values` is the iterator function itself
-            Location loc = index->index + 1 >= forInStat.values.size
-                               ? iterFuncLocation
-                               : forInStat.values.data[index->index + 1]->location;
-            maybeReportSubtypingError(*subLeaf, *superLeaf, loc);
-        }
-        else if (*pf == TypePath::PackField::Returns)
-        {
-            Location loc = index->index > forInStat.vars.size ? iterFuncLocation : forInStat.vars.data[index->index]->location;
-            maybeReportSubtypingError(*subLeaf, *superLeaf, loc);
-        }
-        else
-        {
-            LUAU_ASSERT(!"Unknown PackField type");
-            maybeReportSubtypingError(prospectiveFunc, iterFunc, iterFuncLocation);
-            return;
-        }
-    }
+    // TODO, CLI-177651: We do not get amazing errors from this, we probably 
+    // want to do something more bidirectional here.
+    explainError(iterFunc, prospectiveFunc, iterFuncLocation, r);
 }
 
 void TypeChecker2::reportError(TypeErrorData data, const Location& location)

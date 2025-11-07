@@ -201,6 +201,7 @@ LUA_API int lua_getfield(lua_State* L, int idx, const char* k);
 LUA_API int lua_rawgetfield(lua_State* L, int idx, const char* k);
 LUA_API int lua_rawget(lua_State* L, int idx);
 LUA_API int lua_rawgeti(lua_State* L, int idx, int n);
+LUA_API int lua_rawgetptagged(lua_State* L, int idx, void* p, int tag);
 LUA_API void lua_createtable(lua_State* L, int narr, int nrec);
 
 LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
@@ -218,6 +219,7 @@ LUA_API void lua_setfield(lua_State* L, int idx, const char* k);
 LUA_API void lua_rawsetfield(lua_State* L, int idx, const char* k);
 LUA_API void lua_rawset(lua_State* L, int idx);
 LUA_API void lua_rawseti(lua_State* L, int idx, int n);
+LUA_API void lua_rawsetptagged(lua_State* L, int idx, void* p, int tag);
 LUA_API int lua_setmetatable(lua_State* L, int objindex);
 LUA_API int lua_setfenv(lua_State* L, int idx);
 
@@ -382,6 +384,9 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_pushcfunction(L, fn, debugname) lua_pushcclosurek(L, fn, debugname, 0, NULL)
 #define lua_pushcclosure(L, fn, debugname, nup) lua_pushcclosurek(L, fn, debugname, nup, NULL)
 #define lua_pushlightuserdata(L, p) lua_pushlightuserdatatagged(L, p, 0)
+
+#define lua_rawgetp(L, idx, p) lua_rawgetptagged(L, idx, p, 0)
+#define lua_rawsetp(L, idx, p) lua_rawsetptagged(L, idx, p, 0)
 
 #define lua_setglobal(L, s) lua_setfield(L, LUA_GLOBALSINDEX, (s))
 #define lua_getglobal(L, s) lua_getfield(L, LUA_GLOBALSINDEX, (s))

@@ -15,7 +15,6 @@
 
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {
@@ -27,7 +26,7 @@ struct InstanceCollector2 : TypeOnceVisitor
     DenseHashSet<TypeId> instanceArguments{nullptr};
 
     InstanceCollector2()
-        : TypeOnceVisitor("InstanceCollector2", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InstanceCollector2", /* skipBoundTypes */ true)
     {
     }
 

@@ -21,7 +21,6 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -51,7 +50,7 @@ namespace
 struct FindCyclicTypes final : TypeVisitor
 {
     FindCyclicTypes()
-        : TypeVisitor("FindCyclicTypes", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeVisitor("FindCyclicTypes", /* skipBoundTypes */ true)
     {
     }
 
