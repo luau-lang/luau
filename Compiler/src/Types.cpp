@@ -757,6 +757,9 @@ struct TypeMapVisitor : AstVisitor
                 recordResolvedType(node, &builtinTypes.stringType);
                 break;
 
+            case LBF_MATH_ISNAN:
+            case LBF_MATH_ISINF:
+            case LBF_MATH_ISFINITE:
             case LBF_RAWEQUAL:
                 recordResolvedType(node, &builtinTypes.booleanType);
                 break;
