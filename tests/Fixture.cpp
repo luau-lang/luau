@@ -176,7 +176,7 @@ std::optional<SourceCode> TestFileResolver::readSource(const ModuleName& name)
     return SourceCode{it->second, sourceType};
 }
 
-std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr)
+std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr, const TypeCheckLimits& limits)
 {
     if (AstExprGlobal* g = expr->as<AstExprGlobal>())
     {
@@ -249,7 +249,7 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
     return std::nullopt;
 }
 
-const Config& TestConfigResolver::getConfig(const ModuleName& name) const
+const Config& TestConfigResolver::getConfig(const ModuleName& name, const TypeCheckLimits& limits) const
 {
     auto it = configFiles.find(name);
     if (it != configFiles.end())

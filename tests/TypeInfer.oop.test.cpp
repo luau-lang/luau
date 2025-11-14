@@ -26,7 +26,16 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
     CheckResult result = check(R"(
         local someTable = {}
 
+        local function abs(x: number)
+            if x < 0 then
+                return -x
+            else
+                return x
+            end
+        end
+
         someTable.Function1 = function(Arg1)
+            abs(Arg1)
         end
 
         someTable.Function1() -- Argument count mismatch
@@ -41,7 +50,17 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
     CheckResult result = check(R"(
         local someTable = {}
 
+        local function abs(x: number)
+            if x < 0 then
+                return -x
+            else
+                return x
+            end
+        end
+
         someTable.Function2 = function(Arg1, Arg2)
+            abs(Arg1)
+            abs(Arg2)
         end
 
         someTable.Function2() -- Argument count mismatch

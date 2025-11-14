@@ -37,4 +37,13 @@ RecursionLimiter::RecursionLimiter(const std::string& system, int* count, int li
     }
 }
 
+NonExceptionalRecursionLimiter::NonExceptionalRecursionLimiter(int* count)
+    : RecursionCounter(count)
+{
+}
+
+bool NonExceptionalRecursionLimiter::isOk(int limit) const {
+    return nativeStackGuard.isOk() && !(limit > 0 && *count > limit);
+}
+
 }

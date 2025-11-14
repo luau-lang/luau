@@ -18,6 +18,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAG(LuauGetmetatableError)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 
 struct TypeFunctionFixture : Fixture
 {

@@ -1759,13 +1759,22 @@ TEST_CASE("ApiTables")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
+    int lu1 = 1;
+    int lu2 = 2;
+
     lua_newtable(L);
     lua_pushnumber(L, 123.0);
     lua_setfield(L, -2, "key");
     lua_pushnumber(L, 456.0);
     lua_rawsetfield(L, -2, "key2");
-    lua_pushstring(L, "test");
+    lua_pushstring(L, "key3");
     lua_rawseti(L, -2, 5);
+    lua_pushstring(L, "key4");
+    lua_rawsetp(L, -2, &lu1);
+    lua_pushstring(L, "key5");
+    lua_rawsetptagged(L, -2, &lu2, 1);
+    lua_pushstring(L, "key6");
+    lua_rawsetptagged(L, -2, &lu2, 2);
 
     // lua_gettable
     lua_pushstring(L, "key");
@@ -1791,7 +1800,24 @@ TEST_CASE("ApiTables")
 
     // lua_rawgeti
     CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
-    CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    CHECK(strcmp(lua_tostring(L, -1), "key3") == 0);
+    lua_pop(L, 1);
+
+    // lua_rawgetp
+    CHECK(lua_rawgetp(L, -1, &lu1) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key4") == 0);
+    lua_pop(L, 1);
+
+    // lua_rawsetptagged
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 1) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key5") == 0);
+    lua_pop(L, 1);
+
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 2) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key6") == 0);
+    lua_pop(L, 1);
+
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 0) == LUA_TNIL);
     lua_pop(L, 1);
 
     // lua_clonetable
