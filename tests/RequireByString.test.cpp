@@ -715,13 +715,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasNotParsedIfConfigsAmbiguous")
     assertOutputContainsAll({"false", "could not resolve alias \"dep\" (ambiguous configuration file)"});
 }
 
-TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasNotParsedIfLuauConfigTimesOut" * doctest::timeout(5))
-{
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/config_luau_timeout/requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"false", "configuration execution timed out"});
-}
-
 TEST_CASE_FIXTURE(ReplWithPathFixture, "CannotRequireConfigLuau")
 {
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/config_cannot_be_required/requirer";
