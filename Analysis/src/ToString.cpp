@@ -507,10 +507,10 @@ struct TypeStringifier
             }
             state.emit("'");
             state.emit(state.getName(ty));
-            
+
             if (FInt::DebugLuauVerboseTypeNames >= 1)
                 state.emit(ftv.polarity);
-            
+
             if (!get<UnknownType>(upperBound))
             {
                 state.emit(" <: ");

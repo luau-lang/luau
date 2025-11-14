@@ -6,13 +6,18 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/PrettyPrinter.h"
 #include "Luau/StringUtils.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/TypeAttach.h"
+#include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeInfer.h"
 
 #include "Luau/AnalyzeRequirer.h"
 #include "Luau/FileUtils.h"
 #include "Luau/Flags.h"
 #include "Luau/RequireNavigator.h"
+
+#include "lua.h"
+#include "lualib.h"
 
 #include <condition_variable>
 #include <functional>
@@ -145,6 +150,12 @@ static int assertionHandler(const char* expr, const char* file, int line, const 
     return 1;
 }
 
+struct LuauConfigInterruptInfo
+{
+    Luau::TypeCheckLimits limits;
+    std::string module;
+};
+
 struct CliFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
@@ -170,14 +181,28 @@ struct CliFileResolver : Luau::FileResolver
         return Luau::SourceCode{*source, sourceType};
     }
 
-    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node) override
+    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits) override
     {
         if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
         {
             std::string path{expr->value.data, expr->value.size};
 
-            // TODO (CLI-174536): support interrupt callbacks based on TypeCheckLimits
             FileNavigationContext navigationContext{context->name};
+
+            LuauConfigInterruptInfo info = {limits, path};
+            navigationContext.luauConfigInit = [&info](lua_State* L)
+            {
+                lua_setthreaddata(L, &info);
+            };
+            navigationContext.luauConfigInterrupt = [](lua_State* L, int gc)
+            {
+                LuauConfigInterruptInfo* info = static_cast<LuauConfigInterruptInfo*>(lua_getthreaddata(L));
+                if (info->limits.finishTime && Luau::TimeTrace::getClock() > *info->limits.finishTime)
+                    throw Luau::TimeLimitError{info->module};
+                if (info->limits.cancellationToken && info->limits.cancellationToken->requested())
+                    throw Luau::UserCancelError{info->module};
+            };
+
             Luau::Require::ErrorHandler nullErrorHandler{};
 
             Luau::Require::Navigator navigator(navigationContext, nullErrorHandler);
@@ -214,23 +239,23 @@ struct CliConfigResolver : Luau::ConfigResolver
         defaultConfig.mode = mode;
     }
 
-    const Luau::Config& getConfig(const Luau::ModuleName& name) const override
+    const Luau::Config& getConfig(const Luau::ModuleName& name, const Luau::TypeCheckLimits& limits) const override
     {
         std::optional<std::string> path = getParentPath(name);
         if (!path)
             return defaultConfig;
 
-        return readConfigRec(*path);
+        return readConfigRec(*path, limits);
     }
 
-    const Luau::Config& readConfigRec(const std::string& path) const
+    const Luau::Config& readConfigRec(const std::string& path, const Luau::TypeCheckLimits& limits) const
     {
         auto it = configCache.find(path);
         if (it != configCache.end())
             return it->second;
 
         std::optional<std::string> parent = getParentPath(path);
-        Luau::Config result = parent ? readConfigRec(*parent) : defaultConfig;
+        Luau::Config result = parent ? readConfigRec(*parent, limits) : defaultConfig;
 
         std::optional<std::string> configPath = joinPaths(path, Luau::kConfigName);
         if (!isFile(*configPath))
@@ -269,8 +294,22 @@ struct CliConfigResolver : Luau::ConfigResolver
                 aliasOpts.configLocation = *configPath;
                 aliasOpts.overwriteAliases = true;
 
-                // TODO (CLI-174536): support interrupt callbacks based on TypeCheckLimits
-                std::optional<std::string> error = Luau::extractLuauConfig(*contents, result, aliasOpts, Luau::InterruptCallbacks{});
+                Luau::InterruptCallbacks callbacks;
+                LuauConfigInterruptInfo info{limits, *luauConfigPath};
+                callbacks.initCallback = [&info](lua_State* L)
+                {
+                    lua_setthreaddata(L, &info);
+                };
+                callbacks.interruptCallback = [](lua_State* L, int gc)
+                {
+                    LuauConfigInterruptInfo* info = static_cast<LuauConfigInterruptInfo*>(lua_getthreaddata(L));
+                    if (info->limits.finishTime && Luau::TimeTrace::getClock() > *info->limits.finishTime)
+                        throw Luau::TimeLimitError{info->module};
+                    if (info->limits.cancellationToken && info->limits.cancellationToken->requested())
+                        throw Luau::UserCancelError{info->module};
+                };
+
+                std::optional<std::string> error = Luau::extractLuauConfig(*contents, result, aliasOpts, std::move(callbacks));
                 if (error)
                     configErrors.emplace_back(*luauConfigPath, *error);
             }

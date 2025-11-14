@@ -21,6 +21,6 @@ struct RequireTraceResult
     std::vector<std::pair<ModuleName, Location>> requireList;
 };
 
-RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName);
+RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName, const TypeCheckLimits& limits);
 
 } // namespace Luau

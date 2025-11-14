@@ -88,7 +88,7 @@ struct TestFileResolver
 
     std::optional<SourceCode> readSource(const ModuleName& name) override;
 
-    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override;
+    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr, const TypeCheckLimits& limits) override;
 
     std::string getHumanReadableModuleName(const ModuleName& name) const override;
 
@@ -104,7 +104,7 @@ struct TestConfigResolver : ConfigResolver
     Config defaultConfig;
     std::unordered_map<ModuleName, Config> configFiles;
 
-    const Config& getConfig(const ModuleName& name) const override;
+    const Config& getConfig(const ModuleName& name, const TypeCheckLimits& limits = {}) const override;
 };
 
 struct Fixture
