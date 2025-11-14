@@ -7,10 +7,12 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
     Common/include/Luau/StringUtils.h
+    Common/include/Luau/TimeTrace.h
     Common/include/Luau/Variant.h
     Common/include/Luau/VecDeque.h
 
     Common/src/StringUtils.cpp
+    Common/src/TimeTrace.cpp
 )
 
 # Luau.Ast Sources
@@ -25,7 +27,6 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Parser.h
     Ast/include/Luau/ParseResult.h
     Ast/include/Luau/PrettyPrinter.h
-    Ast/include/Luau/TimeTrace.h
 
     Ast/src/Allocator.cpp
     Ast/src/Ast.cpp
@@ -35,7 +36,6 @@ target_sources(Luau.Ast PRIVATE
     Ast/src/Location.cpp
     Ast/src/Parser.cpp
     Ast/src/PrettyPrinter.cpp
-    Ast/src/TimeTrace.cpp
 )
 
 # Luau.Compiler Sources
@@ -485,7 +485,6 @@ if(TARGET Luau.UnitTest)
         tests/Generalization.test.cpp
         tests/InferPolarity.test.cpp
         tests/InsertionOrderedMap.test.cpp
-        tests/Instantiation2.test.cpp
         tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
@@ -593,11 +592,13 @@ if(TARGET Luau.Require)
     Require/include/Luau/RequireNavigator.h
 
     # Internal headers
+    Require/src/AliasCycleTracker.h
     Require/src/Navigation.h
     Require/src/PathUtilities.h
     Require/src/RequireImpl.h
 
     # Source files
+    Require/src/AliasCycleTracker.cpp
     Require/src/Navigation.cpp
     Require/src/PathUtilities.cpp
     Require/src/Require.cpp

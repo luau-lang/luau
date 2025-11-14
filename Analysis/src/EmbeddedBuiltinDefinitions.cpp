@@ -2,6 +2,9 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorLerp2)
+LUAU_FASTFLAGVARIABLE(LuauUseTopTableForTableClearAndIsFrozen)
+
+LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
 
 namespace Luau
 {
@@ -179,8 +182,7 @@ declare coroutine: {
 }
 
 )BUILTIN_SRC";
-
-static constexpr const char* kBuiltinDefinitionTableSrc = R"BUILTIN_SRC(
+static constexpr const char* kBuiltinDefinitionTableSrc_DEPRECATED = R"BUILTIN_SRC(
 
 declare table: {
     concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
@@ -202,6 +204,32 @@ declare table: {
     clear: <K, V>(table: {[K]: V}) -> (),
 
     isfrozen: <K, V>(t: {[K]: V}) -> boolean,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTableSrc = R"BUILTIN_SRC(
+
+declare table: {
+    concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
+    insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ()),
+    maxn: <V>(t: {V}) -> number,
+    remove: <V>(t: {V}, number?) -> V?,
+    sort: <V>(t: {V}, comp: ((V, V) -> boolean)?) -> (),
+    create: <V>(count: number, value: V?) -> {V},
+    find: <V>(haystack: {V}, needle: V, init: number?) -> number?,
+
+    unpack: <V>(list: {V}, i: number?, j: number?) -> ...V,
+    pack: <V>(...V) -> { n: number, [number]: V },
+
+    getn: <V>(t: {V}) -> number,
+    foreach: <K, V>(t: {[K]: V}, f: (K, V) -> ()) -> (),
+    foreachi: <V>({V}, (number, V) -> ()) -> (),
+
+    move: <V>(src: {V}, a: number, b: number, t: number, dst: {V}?) -> {V},
+
+    clear: (table: {}) -> (),
+    isfrozen: (t: {}) -> boolean,
 }
 
 )BUILTIN_SRC";
@@ -330,7 +358,14 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
-    result += kBuiltinDefinitionTableSrc;
+    if (FFlag::LuauUseTopTableForTableClearAndIsFrozen)
+    {
+        result += kBuiltinDefinitionTableSrc;
+    }
+    else
+    {
+        result += kBuiltinDefinitionTableSrc_DEPRECATED;
+    }
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     result += kBuiltinDefinitionBufferSrc;
@@ -418,6 +453,30 @@ declare types: {
     negationof: @checked (arg: type) -> type,
     unionof: @checked (...type) -> type,
     intersectionof: @checked (...type) -> type,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTypesLibSrc_DEPRECATED = R"BUILTIN_SRC(
+
+declare types: {
+    unknown: type,
+    never: type,
+    any: type,
+    boolean: type,
+    number: type,
+    string: type,
+    thread: type,
+    buffer: type,
+
+    singleton: @checked (arg: string | boolean | nil) -> type,
+    optional: @checked (arg: type) -> type,
+    generic: @checked (name: string, ispack: boolean?) -> type,
+    negationof: @checked (arg: type) -> type,
+    unionof: @checked (...type) -> type,
+    intersectionof: @checked (...type) -> type,
     newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
     newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
     copy: @checked (arg: type) -> type,
@@ -430,7 +489,10 @@ std::string getTypeFunctionDefinitionSource()
 
     std::string result = kBuiltinDefinitionTypeMethodSrc;
 
-    result += kBuiltinDefinitionTypesLibSrc;
+    if (FFlag::LuauMorePermissiveNewtableType)
+        result += kBuiltinDefinitionTypesLibSrc;
+    else
+        result += kBuiltinDefinitionTypesLibSrc_DEPRECATED;
 
     return result;
 }

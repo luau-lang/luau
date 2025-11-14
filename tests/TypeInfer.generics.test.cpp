@@ -14,6 +14,10 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
+LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
+LUAU_FASTFLAG(LuauEGFixGenericsList)
+LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 
 using namespace Luau;
 
@@ -63,6 +67,8 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function2")
 
 TEST_CASE_FIXTURE(Fixture, "unions_and_generics")
 {
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesGenericPolarity, true};
+
     CheckResult result = check(R"(
         type foo = <T>(T | {T}) -> T
         local foo = (nil :: any) :: foo
@@ -74,7 +80,7 @@ TEST_CASE_FIXTURE(Fixture, "unions_and_generics")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::LuauSolverV2)
-        CHECK_EQ("number | {number}", toString(requireType("res")));
+        CHECK_EQ("number", toString(requireType("res")));
     else // in the old solver, this just totally falls apart
         CHECK_EQ("'a", toString(requireType("res")));
 }
@@ -1061,14 +1067,14 @@ wrapper(test2, 1, "")
 TEST_CASE_FIXTURE(Fixture, "generic_argument_pack_type_inferred_from_return")
 {
     CheckResult result = check(R"(
-function test2(a: number)
-    return "hello"
-end
+        function test2(a: number)
+            return "hello"
+        end
 
-function wrapper<A...>(f: (number) -> A..., ...: A...)
-end
+        function wrapper<A...>(f: (number) -> A..., ...: A...)
+        end
 
-wrapper(test2, 1)
+        wrapper(test2, 1)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -2090,6 +2096,73 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic_2")
     LUAU_REQUIRE_NO_ERRORS(res);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_isfrozen_and_clear_work_on_any_table")
+{
+    ScopedFastFlag _{FFlag::LuauUseTopTableForTableClearAndIsFrozen, true};
 
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Array<T> = { [number]: T }
+        type Object = { [string]: any }
+
+        return function(t: Object | Array<any>)
+            if not table.isfrozen(t) then
+                table.clear(t)
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::LuauEGFixGenericsList, true},
+        {FFlag::LuauIncludeExplicitGenericPacks, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        type Example<T...> = { Method: (T...) -> () }
+
+        local function CreateExample<T...>(Method: (T...) -> ()): Example<T...>
+            local self = {}
+            self.Method = Method
+            return self
+        end
+
+        local Object: Example<string> = CreateExample(function(a: string) end)
+
+        Object.Method("Hello World!")
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::LuauEGFixGenericsList, true},
+        {FFlag::LuauIncludeExplicitGenericPacks, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f<Return...>(callback: () -> Return...) end
+
+        f(function()
+            return 3
+        end)
+
+        local function g<Rest...>(callback: (x: string, Rest...) -> any) end
+        g(error)
+
+        type X<T...> = {
+            value: () -> T...,
+        }
+
+        local function foo<T...>(x: X<T...>) end
+
+        local function bar(x: X<string, number>)
+            foo(x)
+        end
+    )"));
+}
 
 TEST_SUITE_END();

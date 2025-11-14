@@ -3119,7 +3119,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_should_not_refine_despite_typeof
 
     CheckResult result = check(R"(
         --!strict
-        local function foo(_: any) end
+        local function foo(_: any)
+            return true
+        end
 
         local function f(x: unknown)
             if typeof(x) == "table" then

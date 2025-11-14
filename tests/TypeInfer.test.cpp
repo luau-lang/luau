@@ -31,7 +31,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
-LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
@@ -2616,7 +2615,7 @@ TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_t
 
 TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoConstraintGenRecursionLimitIce, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     // Lowers the recursion limit for the constraint generator
     ScopedFastInt i{FInt::LuauCheckRecursionLimit, 5};
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, 5};
@@ -2704,15 +2703,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_err
 {
     ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
     CheckResult result = check(R"(
---!strict
-local function f(u: string) end
+        --!strict
+        local function f(u: string) end
 
-local t: {[any]: any} = {}
+        local t: {[any]: any} = {}
 
-for k in t do
-	f(k)
-end
-)");
+        for k in t do
+            f(k)
+        end
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -2722,9 +2721,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
     ScopedFastFlag _{FFlag::LuauMetatableAvoidSingletonUnion, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
-_ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
-for l0,l2 in setmetatable(_,_),l0,_ do
-end
+        _ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
+        for l0,l2 in setmetatable(_,_),l0,_ do
+        end
     )"));
 }
 

@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauIterableBindNotUnify)
 LUAU_FASTFLAG(LuauCheckForInWithSubtyping3)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
