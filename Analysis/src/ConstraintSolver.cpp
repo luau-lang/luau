@@ -2924,24 +2924,6 @@ TypeId ConstraintSolver::instantiateFunctionType(
     const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
     if (!ftv)
     {
-        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
-            InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
-
-        if (findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location).has_value())
-        {
-            interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
-        }
-        else if (get<IntersectionType>(follow(functionTypeId)))
-        {
-            interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::Intersection;
-        }
-
-        reportError(
-            InstantiateGenericsOnNonFunction{
-                interestingEdgeCase,
-            },
-            location
-        );
         return functionTypeId;
     }
 

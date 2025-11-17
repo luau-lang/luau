@@ -3923,6 +3923,25 @@ void TypeChecker2::checkTypeInstantiation(
     const FunctionType* ftv = get<FunctionType>(follow(fnType));
     if (!ftv)
     {
+        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
+        InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
+
+        if (findMetatableEntry(builtinTypes, module->errors, fnType, "__call", location).has_value())
+        {
+            interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
+        }
+        else if (get<IntersectionType>(follow(fnType)))
+        {
+            interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::Intersection;
+        }
+
+        reportError(
+            InstantiateGenericsOnNonFunction{
+                interestingEdgeCase,
+            },
+            location
+        );
+
         return;
     }
 
