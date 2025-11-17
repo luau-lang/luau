@@ -470,10 +470,10 @@ public:
 
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
-    TypeId specifyExplicitTypes(
+    TypeId instantiateFunctionType(
         TypeId functionTypeId,
-        const std::vector<TypeId>& explicitTypeIds,
-        const std::vector<TypePackId>& explicitTypePackIds,
+        const std::vector<TypeId>& typeArguments,
+        const std::vector<TypePackId>& typePackArguments,
         NotNull<Scope> scope,
         const Location& location
     );

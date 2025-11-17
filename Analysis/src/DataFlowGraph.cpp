@@ -1076,7 +1076,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInstantiate* i)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
-    for (const AstTypeOrPack& typeOrPack : i->types)
+    for (const AstTypeOrPack& typeOrPack : i->typeArguments)
     {
         if (typeOrPack.type)
         {

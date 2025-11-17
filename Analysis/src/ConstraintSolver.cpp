@@ -1544,7 +1544,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     {
         if (!c.typeArguments.empty() || !c.typePackArguments.empty())
         {
-            fn = specifyExplicitTypes(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
+            fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
         }
     }
 
@@ -2907,16 +2907,16 @@ bool ConstraintSolver::tryDispatch(const TypeInstantiationConstraint& c, NotNull
     bind(
         constraint,
         c.placeholderType,
-        specifyExplicitTypes(c.functionType, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location)
+        instantiateFunctionType(c.functionType, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location)
     );
 
     return true;
 }
 
-TypeId ConstraintSolver::specifyExplicitTypes(
+TypeId ConstraintSolver::instantiateFunctionType(
     TypeId functionTypeId,
-    const std::vector<TypeId>& explicitTypeIds,
-    const std::vector<TypePackId>& explicitTypePackIds,
+    const std::vector<TypeId>& typeArguments,
+    const std::vector<TypePackId>& typePackArguments,
     NotNull<Scope> scope,
     const Location& location
 )
@@ -2924,20 +2924,20 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
     if (!ftv)
     {
-        ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
-            ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None;
+        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
+            InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
 
         if (findMetatableEntry(builtinTypes, errors, functionTypeId, "__call", location).has_value())
         {
-            interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
+            interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::MetatableCall;
         }
         else if (get<IntersectionType>(follow(functionTypeId)))
         {
-            interestingEdgeCase = ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection;
+            interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::Intersection;
         }
 
         reportError(
-            ExplicitlySpecifiedGenericsOnNonFunction{
+            InstantiateGenericsOnNonFunction{
                 interestingEdgeCase,
             },
             location
@@ -2948,7 +2948,7 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     DenseHashMap<TypeId, TypeId> replacements{nullptr};
     auto typeParametersIter = ftv->generics.begin();
 
-    for (const TypeId typeArgument : explicitTypeIds)
+    for (const TypeId typeArgument : typeArguments)
     {
         if (typeParametersIter == ftv->generics.end())
         {
@@ -2966,7 +2966,7 @@ TypeId ConstraintSolver::specifyExplicitTypes(
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
     auto typePackParametersIter = ftv->genericPacks.begin();
 
-    for (const TypePackId typePackArgument : explicitTypePackIds)
+    for (const TypePackId typePackArgument : typePackArguments)
     {
         if (typePackParametersIter == ftv->genericPacks.end())
         {

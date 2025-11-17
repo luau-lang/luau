@@ -93,10 +93,10 @@ struct StackPusher
 
 struct PropertyTypes
 {
-    // a vector of all the types assigned to the given property.
+    // a vector of all the typeArguments assigned to the given property.
     std::vector<TypeId> typesOfProp;
 
-    // a vector of all the types that are missing the given property.
+    // a vector of all the typeArguments that are missing the given property.
     std::vector<TypeId> missingProp;
 
     bool foundOneProp() const
@@ -753,7 +753,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
     //
     //  return E0, E1, E2, ... , EN
     //
-    // All expressions *except* the last will be types, and the last can
+    // All expressions *except* the last will be typeArguments, and the last can
     // potentially be a pack. However, if the last expression is a function
     // call or varargs (`...`), then we _could_ have a pack in the final
     // position. Additionally, if we have an argument overflow, then we can't
@@ -937,7 +937,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
         valueTypes.emplace_back(lookupType(firstValue));
     }
 
-    // if the initial and expected types from the iterator unified during constraint solving,
+    // if the initial and expected typeArguments from the iterator unified during constraint solving,
     // we'll have a resolved type to use here, but we'll only use it if either the iterator is
     // directly present in the for-in statement or if we have an iterator state constraining us
     TypeId* resolvedTy = module->astForInNextTypes.find(firstValue);
@@ -1006,7 +1006,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
         // first.
 
         // It may be invoked with 0 or 1 argument on the first iteration.
-        // This depends on the types in iterateePack and therefore
+        // This depends on the typeArguments in iterateePack and therefore
         // iteratorTypes.
 
         // If the iteratee is an error type, then we can't really say anything else about iteration over it.
@@ -1096,7 +1096,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
      *  * There must be 1 to 3 iterator arguments.  Name them (nextTy,
      *    arrayTy, startIndexTy)
      *  * The return type of nextTy() must correspond to the variables'
-     *    types and counts.  HOWEVER the first iterator will never be nil.
+     *    typeArguments and counts.  HOWEVER the first iterator will never be nil.
      *  * The first return value of nextTy must be compatible with
      *    startIndexTy.
      *  * The first argument to nextTy() must be compatible with arrayTy if
@@ -1263,7 +1263,7 @@ void TypeChecker2::visit(AstStatAssign* assign)
         }
 
         // FIXME CLI-142462: Due to the fact that we do not type state
-        // tables properly, table types "time travel." We can take
+        // tables properly, table typeArguments "time travel." We can take
         // advantage of this for the specific code pattern of:
         //
         //  local t = {}
@@ -1446,7 +1446,7 @@ void TypeChecker2::visit(AstExprConstantNil* expr)
 
 void TypeChecker2::visit(AstExprConstantBool* expr)
 {
-    // booleans use specialized inference logic for singleton types, which can lead to real type errors here.
+    // booleans use specialized inference logic for singleton typeArguments, which can lead to real type errors here.
 
     const TypeId bestType = expr->value ? builtinTypes->trueType : builtinTypes->falseType;
     const TypeId inferredType = lookupType(expr);
@@ -1477,7 +1477,7 @@ void TypeChecker2::visit(AstExprConstantNumber* expr)
 
 void TypeChecker2::visit(AstExprConstantString* expr)
 {
-    // strings use specialized inference logic for singleton types, which can lead to real type errors here.
+    // strings use specialized inference logic for singleton typeArguments, which can lead to real type errors here.
 
     const TypeId bestType = module->internalTypes.addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
     const TypeId inferredType = lookupType(expr);
@@ -1577,9 +1577,9 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
     if (FFlag::LuauExplicitTypeExpressionInstantiation)
     {
-        if (call->explicitTypes.size)
+        if (call->typeArguments.size)
         {
-            checkExplicitTypes(call, fnTy, call->location, call->explicitTypes);
+            checkTypeInstantiation(call, fnTy, call->location, call->typeArguments);
         }
     }
 
@@ -1621,7 +1621,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
     }
 
     // FIXME: Similar to bidirectional inference prior, this does not support
-    // overloaded functions nor generic types (yet).
+    // overloaded functions nor generic typeArguments (yet).
     if (auto fty = get<FunctionType>(fnTy); fty && fty->generics.empty() && fty->genericPacks.empty() && call->args.size > 0)
     {
         size_t selfOffset = call->self ? 1 : 0;
@@ -2078,7 +2078,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     }
     else if (auto ut = get<UnionType>(exprType))
     {
-        // if all of the types are a table type, the union must be a table, and so we shouldn't error.
+        // if all of the typeArguments are a table type, the union must be a table, and so we shouldn't error.
         if (!std::all_of(begin(ut), end(ut), getTableType))
         {
             if (FFlag::LuauSuppressIndexingIntoError)
@@ -2100,7 +2100,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     }
     else if (auto it = get<IntersectionType>(exprType))
     {
-        // if any of the types are a table type, the intersection must be a table, and so we shouldn't error.
+        // if any of the typeArguments are a table type, the intersection must be a table, and so we shouldn't error.
         if (!std::any_of(begin(it), end(it), getTableType))
             reportError(NotATable{exprType}, indexExpr->location);
     }
@@ -2353,7 +2353,7 @@ void TypeChecker2::visit(AstExprUnary* expr)
     }
 }
 
-// Comparisons between disjoint types is usually something we warn on, but there are some special exceptions.
+// Comparisons between disjoint typeArguments is usually something we warn on, but there are some special exceptions.
 static bool isOkToCompare(
     Normalizer& normalizer,
     NormalizationResult typesHaveIntersection,
@@ -2361,7 +2361,7 @@ static bool isOkToCompare(
     const std::shared_ptr<const NormalizedType>& normRight
 )
 {
-    // We only consider warning if we know that the types are disjoint. If
+    // We only consider warning if we know that the typeArguments are disjoint. If
     // normalization fails here, it should have also failed elsewhere and will
     // already have been reported.
     if (NormalizationResult::False != typesHaveIntersection)
@@ -2376,7 +2376,7 @@ static bool isOkToCompare(
              NormalizationResult::True != normalizer.isInhabited(normRight.get()))
         return true;
 
-    // Comparisons between different string singleton types is allowed even
+    // Comparisons between different string singleton typeArguments is allowed even
     // if their intersection is technically uninhabited.
     else if (!normLeft->strings.isNever() && !normRight->strings.isNever())
         return true;
@@ -2490,8 +2490,8 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
         // If we're working with things that are not tables, the metatable comparisons above are a little excessive
         // It's ok for one type to have a meta table and the other to not. In that case, we should fall back on
-        // checking if the intersection of the types is inhabited. If `typesHaveIntersection` failed due to limits,
-        // TODO: Maybe add more checks here (e.g. for functions, extern types, etc)
+        // checking if the intersection of the typeArguments is inhabited. If `typesHaveIntersection` failed due to limits,
+        // TODO: Maybe add more checks here (e.g. for functions, extern typeArguments, etc)
         if (!(get<TableType>(leftType) || get<TableType>(rightType)))
             if (!leftMt.has_value() || !rightMt.has_value())
                 matches = matches || typesHaveIntersection != NormalizationResult::False;
@@ -2717,7 +2717,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         if (FFlag::LuauNoOrderingTypeFunctions)
         {
             // This could be a little wasteful, as we already have normalized
-            // types, but correctly handles cases like `_: (T & number) <= _: (T & number)`.
+            // typeArguments, but correctly handles cases like `_: (T & number) <= _: (T & number)`.
 
             if (subtyping->isSubtype(leftType, builtinTypes->numberType, scope).isSubtype)
             {
@@ -2831,11 +2831,11 @@ void TypeChecker2::visit(AstExprInstantiate* explicitTypeInstantiation)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
-    checkExplicitTypes(
+    checkTypeInstantiation(
         explicitTypeInstantiation->expr,
         lookupType(explicitTypeInstantiation->expr),
         explicitTypeInstantiation->location,
-        explicitTypeInstantiation->types
+        explicitTypeInstantiation->typeArguments
     );
 }
 
@@ -2998,7 +2998,7 @@ void TypeChecker2::visit(AstTypeReference* ty)
             }
         }
 
-        // If we require type parameters, but no types are provided and only packs are provided, we report an error.
+        // If we require type parameters, but no typeArguments are provided and only packs are provided, we report an error.
         if (typesRequired != 0 && typesProvided == 0 && packsProvided != 0)
         {
             reportError(GenericError{"Type parameters must come before type pack parameters"}, ty->location);
@@ -3006,7 +3006,7 @@ void TypeChecker2::visit(AstTypeReference* ty)
 
         if (extraTypes != 0 && packsProvided == 0)
         {
-            // Extra types are only collected into a pack if a pack is expected
+            // Extra typeArguments are only collected into a pack if a pack is expected
             if (packsRequired != 0)
                 packsProvided += 1;
             else
@@ -3595,9 +3595,9 @@ void TypeChecker2::reportErrors(ErrorVec errors)
 /* A helper for checkIndexTypeFromType.
  *
  * Returns a pair:
- * * A boolean indicating that at least one of the constituent types
+ * * A boolean indicating that at least one of the constituent typeArguments
  *     contains the prop, and
- * * A vector of types that do not contain the prop.
+ * * A vector of typeArguments that do not contain the prop.
  */
 PropertyTypes TypeChecker2::lookupProp(
     const NormalizedType* norm,
@@ -3740,7 +3740,7 @@ void TypeChecker2::checkIndexTypeFromType(
         if (propTypes.foundOneProp())
             reportError(MissingUnionProperty{tableTy, propTypes.missingProp, prop}, location);
         // For class LValues, we don't want to report an extension error,
-        // because extern types come into being with full knowledge of their
+        // because extern typeArguments come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
         // the `else` branch.
         else if (context == ValueContext::LValue && !get<ExternType>(tableTy))
@@ -3911,11 +3911,11 @@ void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
     }
 }
 
-void TypeChecker2::checkExplicitTypes(
+void TypeChecker2::checkTypeInstantiation(
     AstExpr* baseFunctionExpr,
     TypeId fnType,
     const Location& location,
-    const AstArray<AstTypeOrPack>& explicitTypes
+    const AstArray<AstTypeOrPack>& typeArguments
 )
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
@@ -3929,7 +3929,7 @@ void TypeChecker2::checkExplicitTypes(
     size_t typeCount = 0;
     size_t typePackCount = 0;
 
-    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    for (const AstTypeOrPack& typeOrPack : typeArguments)
     {
         if (typeOrPack.type)
         {
@@ -3945,7 +3945,7 @@ void TypeChecker2::checkExplicitTypes(
     if (ftv->generics.size() < typeCount || ftv->genericPacks.size() < typePackCount)
     {
         reportError(
-            ExplicitlySpecifiedGenericsTooManySpecified{
+            TypeInstantiationCountMismatch{
                 getIdentifierOfBaseVar(baseFunctionExpr), fnType, typeCount, ftv->generics.size(), typePackCount, ftv->genericPacks.size()
             },
             location

@@ -84,7 +84,7 @@ public:
 };
 
 // Shared between the expression and call nodes
-struct CstExplicitTypeInstantiation
+struct CstTypeInstantiation
 {
     Position leftArrow1Position = {0,0};
     Position leftArrow2Position = {0,0};
@@ -105,7 +105,7 @@ public:
     std::optional<Position> openParens;
     std::optional<Position> closeParens;
     AstArray<Position> commaPositions;
-    CstExplicitTypeInstantiation* explicitTypes = nullptr;
+    CstTypeInstantiation* explicitTypes = nullptr;
 };
 
 class CstExprIndexExpr : public CstNode
@@ -210,9 +210,9 @@ class CstExprExplicitTypeInstantiation : public CstNode
 public:
     LUAU_CST_RTTI(CstExprExplicitTypeInstantiation)
 
-    explicit CstExprExplicitTypeInstantiation(CstExplicitTypeInstantiation instantiation);
+    explicit CstExprExplicitTypeInstantiation(CstTypeInstantiation instantiation);
 
-    CstExplicitTypeInstantiation instantiation;
+    CstTypeInstantiation instantiation;
 };
 
 class CstStatDo : public CstNode

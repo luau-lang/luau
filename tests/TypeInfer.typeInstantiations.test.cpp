@@ -311,9 +311,9 @@ TEST_CASE_FIXTURE(Fixture, "not_a_function")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
+        LUAU_REQUIRE_ERROR(result, InstantiateGenericsOnNonFunction);
 
-        REQUIRE_EQ(toString(result.errors[0]), "Explicitly specified generics on something that isn't a function.");
+        REQUIRE_EQ(toString(result.errors[0]), "Cannot instantiate type parameters on something without type parameters.");
     }
 }
 
@@ -335,8 +335,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_call")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
-        REQUIRE_EQ(toString(result.errors[0]), "Explicitly specified generics on a table with a call metamethod, which is currently unsupported. \
+        LUAU_REQUIRE_ERROR(result, InstantiateGenericsOnNonFunction);
+        REQUIRE_EQ(toString(result.errors[0]), "Luau does not currently support explicitly instantiating a table with a `__call` metamethod. \
                 You may be able to work around this by creating a function that calls the table, and using that instead.");
     }
 }
@@ -379,7 +379,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+        LUAU_REQUIRE_ERROR(result, TypeInstantiationCountMismatch);
 
         if (FFlag::LuauSolverV2)
         {
@@ -406,7 +406,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+        LUAU_REQUIRE_ERROR(result, TypeInstantiationCountMismatch);
 
         if (FFlag::LuauSolverV2)
         {
@@ -435,7 +435,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_method")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+        LUAU_REQUIRE_ERROR(result, TypeInstantiationCountMismatch);
         REQUIRE_EQ(result.errors[0].location.begin.line, 6);
 
         if (FFlag::LuauSolverV2)
@@ -465,7 +465,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_type_packs_provided_method")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsTooManySpecified);
+        LUAU_REQUIRE_ERROR(result, TypeInstantiationCountMismatch);
         REQUIRE_EQ(result.errors[0].location.begin.line, 6);
 
         if (FFlag::LuauSolverV2)
@@ -492,9 +492,9 @@ TEST_CASE_FIXTURE(Fixture, "function_intersections")
         )");
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        LUAU_REQUIRE_ERROR(result, ExplicitlySpecifiedGenericsOnNonFunction);
+        LUAU_REQUIRE_ERROR(result, InstantiateGenericsOnNonFunction);
         REQUIRE_EQ(result.errors[0].location.begin.line, 3);
-        REQUIRE_EQ(toString(result.errors[0]), "Explicitly specified generics are currently not supported for intersection types.");
+        REQUIRE_EQ(toString(result.errors[0]), "Luau does not currently support explicitly instantiating an overloaded function type.");
     }
 }
 

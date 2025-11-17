@@ -283,7 +283,7 @@ private:
     // prefixexp -> NAME | '(' expr ')'
     AstExpr* parsePrefixExpr();
 
-    // primaryexp -> prefixexp { `.' NAME | `[' exp `]' | ExplicitTypeInstantiation | `:' NAME [ExplicitTypeInstantiation] funcargs | funcargs }
+    // primaryexp -> prefixexp { `.' NAME | `[' exp `]' | TypeInstantiation | `:' NAME [TypeInstantiation] funcargs | funcargs }
     AstExpr* parsePrimaryExpr(bool asStatement);
 
     // asexp -> simpleexp [`::' Type]
@@ -310,9 +310,9 @@ private:
     // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
     AstExpr* parseInterpString();
 
-    // ExplicitTypeInstantiation ::= `<' `<' [TypeList] `>' `>'
-    AstArray<AstTypeOrPack> parseExplicitTypeInstantiation(
-        CstExplicitTypeInstantiation* cstNodeOut = nullptr,
+    // TypeInstantiation ::= `<' `<' [TypeList] `>' `>'
+    AstArray<AstTypeOrPack> parseTypeInstantiationExpr(
+        CstTypeInstantiation* cstNodeOut = nullptr,
         Location* endLocationOut = nullptr
     );
 

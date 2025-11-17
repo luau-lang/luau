@@ -441,7 +441,7 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, Locatio
         for (DefId operand : phi->operands)
         {
             // `scope->lookup(operand)` may return nothing because we only bind a type to that operand
-            // once we've seen that particular `DefId`. In this case, we need to prototype those types
+            // once we've seen that particular `DefId`. In this case, we need to prototype those typeArguments
             // and use those at a later time.
             std::optional<TypeId> ty = lookup(scope, location, operand, /*prototype*/ false);
             if (!ty)
@@ -609,8 +609,8 @@ namespace
 
 /*
  * Constraint generation may be called upon to simplify an intersection or union
- * of types that are not sufficiently solved yet.  We use
- * FindSimplificationBlockers to recognize these types and defer the
+ * of typeArguments that are not sufficiently solved yet.  We use
+ * FindSimplificationBlockers to recognize these typeArguments and defer the
  * simplification until constraint solution.
  */
 struct FindSimplificationBlockers : TypeOnceVisitor
@@ -646,7 +646,7 @@ struct FindSimplificationBlockers : TypeOnceVisitor
     }
 
     // We do not need to know anything at all about a function's argument or
-    // return types in order to simplify it in an intersection or union.
+    // return typeArguments in order to simplify it in an intersection or union.
     bool visit(TypeId, const FunctionType&) override
     {
         return false;
@@ -724,8 +724,8 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
             // IntersectConstraint.
             // For each discriminant ty, we accumulated it onto ty, creating a longer and longer
             // sequence of refine constraints. On every loop of this we called mustDeferIntersection.
-            // For sufficiently large types, we would blow the stack.
-            // Instead, we record all the discriminant types in sequence
+            // For sufficiently large typeArguments, we would blow the stack.
+            // Instead, we record all the discriminant typeArguments in sequence
             // and then dispatch a single refine constraint with multiple arguments. This helps us avoid
             // the potentially expensive check on mustDeferIntersection
             std::vector<TypeId> discriminants;
@@ -1294,7 +1294,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             scope->importedTypeBindings[name] = module->exportedTypeBindings;
             scope->importedModules[name] = moduleInfo->name;
 
-            // Imported types of requires that transitively refer to current module have to be replaced with 'any'
+            // Imported typeArguments of requires that transitively refer to current module have to be replaced with 'any'
             for (const auto& [location, path] : requireCycles)
             {
                 if (path.empty() || path.front() != moduleInfo->name)
@@ -1731,14 +1731,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* ass
     if (head.size() >= assign->vars.size)
     {
         // If the resultPack is definitely long enough for each variable, we can
-        // skip the UnpackConstraint and use the result types directly.
+        // skip the UnpackConstraint and use the result typeArguments directly.
 
         for (size_t i = 0; i < assign->vars.size; ++i)
             valueTypes.push_back(head[i]);
     }
     else
     {
-        // We're not sure how many types are produced by the right-side
+        // We're not sure how many typeArguments are produced by the right-side
         // expressions.  We'll use an UnpackConstraint to defer this until
         // later.
         for (size_t i = 0; i < assign->vars.size; ++i)
@@ -2049,7 +2049,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
             return ControlFlow::None;
         }
 
-        // We don't have generic extern types, so this assertion _should_ never be hit.
+        // We don't have generic extern typeArguments, so this assertion _should_ never be hit.
         LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
         superTy = follow(lookupType->type);
 
@@ -2110,7 +2110,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
         bool assignToMetatable = isMetamethod(propName);
 
-        // Function types always take 'self', but this isn't reflected in the
+        // Function typeArguments always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
         if (prop.isMethod)
         {
@@ -2145,7 +2145,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
             if (auto readTy = prop.readTy)
             {
                 // We special-case this logic to keep the intersection flat; otherwise we
-                // would create a ton of nested intersection types.
+                // would create a ton of nested intersection typeArguments.
                 if (const IntersectionType* itv = get<IntersectionType>(*readTy))
                 {
                     std::vector<TypeId> options = itv->parts;
@@ -2172,7 +2172,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
             if (auto writeTy = prop.writeTy)
             {
                 // We special-case this logic to keep the intersection flat; otherwise we
-                // would create a ton of nested intersection types.
+                // would create a ton of nested intersection typeArguments.
                 if (const IntersectionType* itv = get<IntersectionType>(*writeTy))
                 {
                     std::vector<TypeId> options = itv->parts;
@@ -2583,16 +2583,16 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
     TypePackId argPack = addTypePack(std::move(args), argTail);
     FunctionType ftv(TypeLevel{}, argPack, rets, std::nullopt, call->self);
 
-    auto [explicitTypeIds, explicitTypePackIds] = FFlag::LuauExplicitTypeExpressionInstantiation && call->explicitTypes.size
-                                                      ? getExplicitTypeIds(scope, call->explicitTypes)
+    auto [explicitTypeIds, explicitTypePackIds] = FFlag::LuauExplicitTypeExpressionInstantiation && call->typeArguments.size
+                                                      ? resolveTypeArguments(scope, call->typeArguments)
                                                       : std::pair<std::vector<TypeId>, std::vector<TypePackId>>();
 
     /*
      * To make bidirectional type checking work, we need to solve these constraints in a particular order:
      *
      * 1. Solve the function type
-     * 2. Propagate type information from the function type to the argument types
-     * 3. Solve the argument types
+     * 2. Propagate type information from the function type to the argument typeArguments
+     * 3. Solve the argument typeArguments
      * 4. Solve the call
      */
 
@@ -3360,7 +3360,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInstantiate* 
 
     TypeId functionType = check(scope, explicitTypeInstantiation->expr, std::nullopt).ty;
 
-    auto [explicitTypeIds, explicitTypePackIds] = getExplicitTypeIds(scope, explicitTypeInstantiation->types);
+    auto [explicitTypeIds, explicitTypePackIds] = resolveTypeArguments(scope, explicitTypeInstantiation->typeArguments);
 
     TypeId placeholderType = arena->addType(BlockedType{});
 
@@ -3375,21 +3375,21 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInstantiate* 
     return Inference{placeholderType};
 }
 
-std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::getExplicitTypeIds(
+std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::resolveTypeArguments(
     const ScopePtr& scope,
-    const AstArray<AstTypeOrPack>& explicitTypes
+    const AstArray<AstTypeOrPack>& typeArguments
 )
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 
-    std::vector<TypeId> typeArguments;
-    std::vector<TypePackId> typePackArguments;
+    std::vector<TypeId> resolvedTypeArguments;
+    std::vector<TypePackId> resolvedTypePackArguments;
 
-    for (const AstTypeOrPack& typeOrPack : explicitTypes)
+    for (const AstTypeOrPack& typeOrPack : typeArguments)
     {
         if (typeOrPack.type)
         {
-            typeArguments.push_back(resolveType(
+            resolvedTypeArguments.push_back(resolveType(
                 scope,
                 typeOrPack.type,
                 /* inTypeArguments = */ false
@@ -3398,7 +3398,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
         else
         {
             LUAU_ASSERT(typeOrPack.typePack);
-            typePackArguments.push_back(resolveTypePack(
+            resolvedTypePackArguments.push_back(resolveTypePack(
                 scope,
                 typeOrPack.typePack,
                 /* inTypeArguments = */ false
@@ -3406,7 +3406,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::get
         }
     }
 
-    return {std::move(typeArguments), std::move(typePackArguments)};
+    return {std::move(resolvedTypeArguments), std::move(resolvedTypePackArguments)};
 }
 
 std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
@@ -3693,10 +3693,10 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     for (const AstExprTable::Item& item : expr->items)
     {
-        // Expected types are threaded through table literals separately via the
+        // Expected typeArguments are threaded through table literals separately via the
         // function matchLiteralType.
 
-        // generalize is false here as we want to be able to push types into lambdas in a situation like:
+        // generalize is false here as we want to be able to push typeArguments into lambdas in a situation like:
         //
         //  type Callback = (string) -> ()
         //
@@ -3841,7 +3841,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         std::vector<std::pair<Name, GenericTypePackDefinition>> genericPackDefinitions = createGenericPacks(signatureScope, fn->genericPacks);
 
         // We do not support default values on function generics, so we only
-        // care about the types involved.
+        // care about the typeArguments involved.
         for (const auto& [name, g] : genericDefinitions)
         {
             genericTypes.push_back(g.ty);
@@ -3991,7 +3991,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
     }
     else
     {
-        // Some of the types in argTypes will eventually be generics, and some
+        // Some of the typeArguments in argTypes will eventually be generics, and some
         // will not. The ones that are not generic will be pruned when
         // GeneralizationConstraint dispatches.
         genericTypes.insert(genericTypes.begin(), argTypes.begin(), argTypes.end());
@@ -4010,7 +4010,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         TypePackId annotatedRetType =
             resolveTypePack(signatureScope, fn->returnAnnotation, /* inTypeArguments */ false, /* replaceErrorWithFresh*/ true);
         // We bind the annotated type directly here so that, when we need to
-        // generate constraints for return types, we have a guarantee that we
+        // generate constraints for return typeArguments, we have a guarantee that we
         // know the annotated return type already, if one was provided.
         LUAU_ASSERT(get<FreeTypePack>(returnType));
         emplaceTypePack<BoundTypePack>(asMutable(returnType), annotatedRetType);
@@ -4117,7 +4117,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
 
             for (const AstTypeOrPack& p : ref->parameters)
             {
-                // We do not enforce the ordering of types vs. type packs here;
+                // We do not enforce the ordering of typeArguments vs. type packs here;
                 // that is done in the parser.
                 if (p.type)
                 {
@@ -4127,7 +4127,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
                 {
                     TypePackId tp = resolveTypePack_(scope, p.typePack, /*inTypeArguments*/ true);
 
-                    // If we need more regular types, we can use single element type packs to fill those in
+                    // If we need more regular typeArguments, we can use single element type packs to fill those in
                     if (parameters.size() < alias->typeParams.size() && size(tp) == 1 && finite(tp) && first(tp))
                         parameters.push_back(*first(tp));
                     else
@@ -4846,7 +4846,7 @@ std::vector<std::optional<TypeId>> ConstraintGenerator::getExpectedCallTypesForF
         }
     }
 
-    // TODO vvijay Feb 24, 2023 apparently we have to demote the types here?
+    // TODO vvijay Feb 24, 2023 apparently we have to demote the typeArguments here?
 
     return expectedTypes;
 }

@@ -919,27 +919,27 @@ struct ErrorConverter
                "\nbut these types are not compatible with one another.";
     }
 
-    std::string operator()(const ExplicitlySpecifiedGenericsOnNonFunction& e) const
+    std::string operator()(const InstantiateGenericsOnNonFunction& e) const
     {
         switch (e.interestingEdgeCase)
         {
-        case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::None:
-            return "Explicitly specified generics on something that isn't a function.";
-        case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::MetatableCall:
+        case InstantiateGenericsOnNonFunction::InterestingEdgeCase::None:
+            return "Cannot instantiate type parameters on something without type parameters.";
+        case InstantiateGenericsOnNonFunction::InterestingEdgeCase::MetatableCall:
             // `__call` is complicated because `f<<T>>()` is interpreted as `f<<T>>` as its own expression that is then called.
             // This is so that you can write code like `local f2 = f<<number>>`, and then call `f2()`.
             // With metatables, it's not so obvious what this would result in.
-            return "Explicitly specified generics on a table with a call metamethod, which is currently unsupported. \
+            return "Luau does not currently support explicitly instantiating a table with a `__call` metamethod. \
                 You may be able to work around this by creating a function that calls the table, and using that instead.";
-        case ExplicitlySpecifiedGenericsOnNonFunction::InterestingEdgeCase::Intersection:
-            return "Explicitly specified generics are currently not supported for intersection types.";
+        case InstantiateGenericsOnNonFunction::InterestingEdgeCase::Intersection:
+            return "Luau does not currently support explicitly instantiating an overloaded function type.";
         default:
             LUAU_ASSERT(false);
             return ""; // MSVC exhaustive
         }
     }
 
-    std::string operator()(const ExplicitlySpecifiedGenericsTooManySpecified& e) const
+    std::string operator()(const TypeInstantiationCountMismatch& e) const
     {
         LUAU_ASSERT(e.providedTypes > e.maximumTypes || e.providedTypePacks > e.maximumTypePacks);
 
@@ -1409,12 +1409,12 @@ bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rh
     return attemptedArgCount == rhs.attemptedArgCount;
 }
 
-bool ExplicitlySpecifiedGenericsOnNonFunction::operator==(const ExplicitlySpecifiedGenericsOnNonFunction& rhs) const
+bool InstantiateGenericsOnNonFunction::operator==(const InstantiateGenericsOnNonFunction& rhs) const
 {
     return interestingEdgeCase == rhs.interestingEdgeCase;
 }
 
-bool ExplicitlySpecifiedGenericsTooManySpecified::operator==(const ExplicitlySpecifiedGenericsTooManySpecified& rhs) const
+bool TypeInstantiationCountMismatch::operator==(const TypeInstantiationCountMismatch& rhs) const
 {
     return functionName == rhs.functionName && functionType == rhs.functionType && providedTypes == rhs.providedTypes &&
            maximumTypes == rhs.maximumTypes && providedTypePacks == rhs.providedTypePacks && maximumTypePacks == rhs.maximumTypePacks;
@@ -1678,10 +1678,10 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         for (auto& upperBound : e.upperBounds)
             upperBound = clone(upperBound);
     }
-    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsOnNonFunction>)
+    else if constexpr (std::is_same_v<T, InstantiateGenericsOnNonFunction>)
     {
     }
-    else if constexpr (std::is_same_v<T, ExplicitlySpecifiedGenericsTooManySpecified>)
+    else if constexpr (std::is_same_v<T, TypeInstantiationCountMismatch>)
     {
         e.functionType = clone(e.functionType);
     }

@@ -437,7 +437,7 @@ public:
     // These will only be filled in specifically `t:f<<A, B>>()`.
     // In `f<<A, B>>()`, this is parsed as `f<<A, B>>` as an expression,
     // which is then called.
-    AstArray<AstTypeOrPack> explicitTypes;
+    AstArray<AstTypeOrPack> typeArguments;
     AstArray<AstExpr*> args;
     bool self;
     Location argLocation;
@@ -671,7 +671,7 @@ public:
     void visit(AstVisitor* visitor) override;
 
     AstExpr* expr;
-    AstArray<AstTypeOrPack> types;
+    AstArray<AstTypeOrPack> typeArguments;
 };
 
 class AstStatBlock : public AstStat

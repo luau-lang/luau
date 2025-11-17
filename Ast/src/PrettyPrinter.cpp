@@ -543,9 +543,9 @@ struct Printer
 
             if (FFlag::LuauExplicitTypeExpressionInstantiation)
             {
-                if (writeTypes && (a->explicitTypes.size > 0 || (cstNode && cstNode->explicitTypes)))
+                if (writeTypes && (a->typeArguments.size > 0 || (cstNode && cstNode->explicitTypes)))
                 {
-                    visualizeExplicitTypeInstantiation(a->explicitTypes, cstNode && cstNode->explicitTypes ? cstNode->explicitTypes : nullptr);
+                    visualizeExplicitTypeInstantiation(a->typeArguments, cstNode && cstNode->explicitTypes ? cstNode->explicitTypes : nullptr);
                 }
             }
 
@@ -840,7 +840,7 @@ struct Printer
                 const CstExprExplicitTypeInstantiation* cstExprNode = lookupCstNode<CstExprExplicitTypeInstantiation>(a);
 
                 visualizeExplicitTypeInstantiation(
-                    a->types,
+                    a->typeArguments,
                     cstExprNode ? &cstExprNode->instantiation : nullptr
                 );
             }
@@ -1868,8 +1868,8 @@ struct Printer
     }
 
     void visualizeExplicitTypeInstantiation(
-        const AstArray<AstTypeOrPack>& explicitTypes,
-        const CstExplicitTypeInstantiation* cstNode
+        const AstArray<AstTypeOrPack>& typeArguments,
+        const CstTypeInstantiation* cstNode
     )
     {
         LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
@@ -1887,7 +1887,7 @@ struct Printer
         writer.symbol("<");
 
         CommaSeparatorInserter comma(writer, cstNode ? cstNode->commaPositions.begin() : nullptr);
-        for (const auto& typeOrPack : explicitTypes)
+        for (const auto& typeOrPack : typeArguments)
         {
             if (typeOrPack.type)
             {

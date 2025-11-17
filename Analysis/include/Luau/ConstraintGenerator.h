@@ -483,7 +483,7 @@ private:
 
     void fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block);
 
-    std::pair<std::vector<TypeId>, std::vector<TypePackId>> getExplicitTypeIds(const ScopePtr& scope, const AstArray<AstTypeOrPack>& explicitTypes);
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> resolveTypeArguments(const ScopePtr& scope, const AstArray<AstTypeOrPack>& typeArguments);
 
     /** Given a function type annotation, return a vector describing the expected types of the calls to the function
      *  For example, calling a function with annotation ((number) -> string & ((string) -> number))

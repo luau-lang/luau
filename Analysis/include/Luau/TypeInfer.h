@@ -228,7 +228,7 @@ struct TypeChecker
         const std::vector<std::optional<TypeId>>& expectedTypes = {}
     );
 
-    TypeId bindExplicitTypeInstantations(
+    TypeId instantiateTypeParameters(
         const ScopePtr& scope,
         TypeId baseType,
         const AstArray<AstTypeOrPack>& explicitTypes,

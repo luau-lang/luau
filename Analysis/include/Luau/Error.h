@@ -536,7 +536,7 @@ struct GenericBoundsMismatch
 };
 
 // Used `f<<T>>` where f is not a function
-struct ExplicitlySpecifiedGenericsOnNonFunction
+struct InstantiateGenericsOnNonFunction
 {
     enum class InterestingEdgeCase
     {
@@ -547,11 +547,11 @@ struct ExplicitlySpecifiedGenericsOnNonFunction
 
     InterestingEdgeCase interestingEdgeCase;
 
-    bool operator==(const ExplicitlySpecifiedGenericsOnNonFunction&) const;
+    bool operator==(const InstantiateGenericsOnNonFunction&) const;
 };
 
 // Provided too many generics inside `f<<T>>`
-struct ExplicitlySpecifiedGenericsTooManySpecified
+struct TypeInstantiationCountMismatch
 {
     std::optional<std::string> functionName;
     TypeId functionType;
@@ -562,7 +562,7 @@ struct ExplicitlySpecifiedGenericsTooManySpecified
     size_t providedTypePacks = 0;
     size_t maximumTypePacks = 0;
 
-    bool operator==(const ExplicitlySpecifiedGenericsTooManySpecified&) const;
+    bool operator==(const TypeInstantiationCountMismatch&) const;
 };
 
 // Error when referencing a type function without providing explicit generics.
@@ -640,8 +640,8 @@ using TypeErrorData = Variant<
     RecursiveRestraintViolation,
     GenericBoundsMismatch,
     UnappliedTypeFunction,
-    ExplicitlySpecifiedGenericsOnNonFunction,
-    ExplicitlySpecifiedGenericsTooManySpecified>;
+    InstantiateGenericsOnNonFunction,
+    TypeInstantiationCountMismatch>;
 
 struct TypeErrorSummary
 {
