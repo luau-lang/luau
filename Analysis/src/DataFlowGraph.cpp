@@ -1075,7 +1075,6 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprExplicitTypeInstantiation* i)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
-    visitExpr(i->expr);
 
     for (const AstTypeOrPack& typeOrPack : i->types)
     {
@@ -1090,7 +1089,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprExplicitTypeInstantiation*
         }
     }
 
-    return {defArena->freshCell(Symbol{}, i->location), nullptr};
+    return visitExpr(i->expr);
 }
 
 
