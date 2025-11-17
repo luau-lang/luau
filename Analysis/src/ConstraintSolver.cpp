@@ -882,7 +882,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*sc, constraint, force);
     else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
         success = tryDispatch(*pftc, constraint);
-    else if (auto esgc = get<ExplicitlySpecifiedGenericsConstraint>(*constraint))
+    else if (auto esgc = get<TypeInstantiationConstraint>(*constraint))
     {
         LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
         success = tryDispatch(*esgc, constraint);
@@ -2900,7 +2900,7 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const ExplicitlySpecifiedGenericsConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 

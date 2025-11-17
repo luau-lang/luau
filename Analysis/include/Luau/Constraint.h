@@ -297,7 +297,7 @@ struct PushFunctionTypeConstraint
 
 // Binds the function to a set of explicitly specified types,
 // for f<<T>>.
-struct ExplicitlySpecifiedGenericsConstraint
+struct TypeInstantiationConstraint
 {
     TypeId functionType;
     TypeId placeholderType;
@@ -335,7 +335,7 @@ using ConstraintV = Variant<
     SimplifyConstraint,
     PushFunctionTypeConstraint,
     PushTypeConstraint,
-    ExplicitlySpecifiedGenericsConstraint>;
+    TypeInstantiationConstraint>;
 
 struct Constraint
 {

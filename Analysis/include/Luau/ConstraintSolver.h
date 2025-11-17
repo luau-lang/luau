@@ -241,7 +241,7 @@ public:
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const ExplicitlySpecifiedGenericsConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint);
 
     bool tryDispatchHasIndexer(
         int& recursionDepth,

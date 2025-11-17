@@ -3367,7 +3367,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprExplicitTypeI
     NotNull<Constraint> constraint = addConstraint(
         scope,
         explicitTypeInstantiation->location,
-        ExplicitlySpecifiedGenericsConstraint{functionType, placeholderType, std::move(explicitTypeIds), std::move(explicitTypePackIds)}
+        TypeInstantiationConstraint{functionType, placeholderType, std::move(explicitTypeIds), std::move(explicitTypePackIds)}
     );
 
     getMutable<BlockedType>(placeholderType)->setOwner(constraint);
