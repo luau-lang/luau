@@ -850,7 +850,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
             return visitExpr(i);
         else if (auto i = e->as<AstExprInterpString>())
             return visitExpr(i);
-        else if (auto i = e->as<AstExprExplicitTypeInstantiation>())
+        else if (auto i = e->as<AstExprInstantiate>())
         {
             LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
             return visitExpr(i);
@@ -1072,7 +1072,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
     return {defArena->freshCell(Symbol{}, i->location), nullptr};
 }
 
-DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprExplicitTypeInstantiation* i)
+DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInstantiate* i)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 

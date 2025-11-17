@@ -1542,9 +1542,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     if (FFlag::LuauExplicitTypeExpressionInstantiation)
     {
-        if (!c.explicitlySpecifiedTypes.empty() || !c.explicitlySpecifiedTypePackIds.empty())
+        if (!c.typeArguments.empty() || !c.typePackArguments.empty())
         {
-            fn = specifyExplicitTypes(c.fn, c.explicitlySpecifiedTypes, c.explicitlySpecifiedTypePackIds, constraint->scope, constraint->location);
+            fn = specifyExplicitTypes(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
         }
     }
 

@@ -2865,7 +2865,7 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression_call")
     AstExprCall* call = expr->as<AstExprCall>();
     REQUIRE(call != nullptr);
 
-    AstExprExplicitTypeInstantiation* explicitTypeInstantiation = call->func->as<AstExprExplicitTypeInstantiation>();
+    AstExprInstantiate* explicitTypeInstantiation = call->func->as<AstExprInstantiate>();
     REQUIRE(explicitTypeInstantiation != nullptr);
 
     REQUIRE_EQ(stringAtLocation(source, explicitTypeInstantiation->location), "f<<T, U>>");

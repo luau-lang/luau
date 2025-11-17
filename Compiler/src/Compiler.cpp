@@ -2417,7 +2417,7 @@ struct Compiler
         {
             compileExprInterpString(interpString, target, targetTemp);
         }
-        else if (AstExprExplicitTypeInstantiation* expr = node->as<AstExprExplicitTypeInstantiation>())
+        else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
             LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
             compileExpr(expr->expr, target, targetTemp);

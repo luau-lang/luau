@@ -99,8 +99,8 @@ struct FunctionCallConstraint
     class AstExprCall* callSite = nullptr;
     std::vector<std::optional<TypeId>> discriminantTypes;
 
-    std::vector<TypeId> explicitlySpecifiedTypes;
-    std::vector<TypePackId> explicitlySpecifiedTypePackIds;
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
 
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.

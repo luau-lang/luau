@@ -2712,7 +2712,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
         result = check(scope, typeAssert);
     else if (auto interpString = expr->as<AstExprInterpString>())
         result = check(scope, interpString);
-    else if (auto explicitTypeInstantiation = expr->as<AstExprExplicitTypeInstantiation>())
+    else if (auto explicitTypeInstantiation = expr->as<AstExprInstantiate>())
     {
         LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
         result = check(scope, explicitTypeInstantiation);
@@ -3354,7 +3354,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInterpString*
     return Inference{builtinTypes->stringType};
 }
 
-Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprExplicitTypeInstantiation* explicitTypeInstantiation)
+Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 

@@ -661,12 +661,12 @@ public:
 };
 
 // f<<T>>
-class AstExprExplicitTypeInstantiation : public AstExpr
+class AstExprInstantiate : public AstExpr
 {
 public:
-    LUAU_RTTI(AstExprExplicitTypeInstantiation)
+    LUAU_RTTI(AstExprInstantiate)
 
-    AstExprExplicitTypeInstantiation(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> typePack);
+    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> typePack);
 
     void visit(AstVisitor* visitor) override;
 

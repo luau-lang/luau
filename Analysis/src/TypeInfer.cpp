@@ -1926,7 +1926,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         result = checkExpr(scope, *a, expectedType);
     else if (auto a = expr.as<AstExprInterpString>())
         result = checkExpr(scope, *a);
-    else if (auto a = expr.as<AstExprExplicitTypeInstantiation>())
+    else if (auto a = expr.as<AstExprInstantiate>())
     {
         LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
         result = checkExpr(scope, *a);
@@ -3281,7 +3281,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     return WithPredicate{stringType};
 }
 
-WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprExplicitTypeInstantiation& explicitTypeInstantiation)
+WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprInstantiate& explicitTypeInstantiation)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 

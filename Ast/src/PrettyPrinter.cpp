@@ -829,7 +829,7 @@ struct Printer
 
             writer.symbol(")");
         }
-        else if (const auto& a = expr.as<AstExprExplicitTypeInstantiation>())
+        else if (const auto& a = expr.as<AstExprInstantiate>())
         {
             LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 

@@ -546,7 +546,7 @@ void AstExprInterpString::visit(AstVisitor* visitor)
     }
 }
 
-AstExprExplicitTypeInstantiation::AstExprExplicitTypeInstantiation(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types)
+AstExprInstantiate::AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types)
     : AstExpr(ClassIndex(), location)
     , expr(expr)
     , types(types)
@@ -554,7 +554,7 @@ AstExprExplicitTypeInstantiation::AstExprExplicitTypeInstantiation(const Locatio
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
 }
 
-void AstExprExplicitTypeInstantiation::visit(AstVisitor* visitor)
+void AstExprInstantiate::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {

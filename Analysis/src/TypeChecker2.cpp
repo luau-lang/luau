@@ -1414,7 +1414,7 @@ void TypeChecker2::visit(AstExpr* expr, ValueContext context)
         return visit(e);
     else if (auto e = expr->as<AstExprIfElse>())
         return visit(e);
-    else if (auto e = expr->as<AstExprExplicitTypeInstantiation>())
+    else if (auto e = expr->as<AstExprInstantiate>())
     {
         LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
         return visit(e);
@@ -2827,7 +2827,7 @@ void TypeChecker2::visit(AstExprIfElse* expr)
     visit(expr->falseExpr, ValueContext::RValue);
 }
 
-void TypeChecker2::visit(AstExprExplicitTypeInstantiation* explicitTypeInstantiation)
+void TypeChecker2::visit(AstExprInstantiate* explicitTypeInstantiation)
 {
     LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);

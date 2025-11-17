@@ -192,7 +192,7 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
 
         return true;
     }
-    CASE(AstExprExplicitTypeInstantiation)
+    CASE(AstExprInstantiate)
     {
         LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
         return similar(le->expr, re->expr);

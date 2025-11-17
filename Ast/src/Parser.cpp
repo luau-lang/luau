@@ -4058,7 +4058,7 @@ LUAU_NOINLINE AstExpr* Parser::parseExplicitTypeInstantiationExpr(Position start
     Location endLocation;
     AstArray<AstTypeOrPack> typesOrPacks = parseExplicitTypeInstantiation(cstNode ? &cstNode->instantiation : nullptr, &endLocation);
 
-    AstExpr* expr = allocator.alloc<AstExprExplicitTypeInstantiation>(Location(start, endLocation.end), &basedOnExpr, typesOrPacks);
+    AstExpr* expr = allocator.alloc<AstExprInstantiate>(Location(start, endLocation.end), &basedOnExpr, typesOrPacks);
 
     if (options.storeCstData)
     {

@@ -333,7 +333,7 @@ private:
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
-    Inference check(const ScopePtr& scope, AstExprExplicitTypeInstantiation* explicitTypeInstantiation);
+    Inference check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(
         const ScopePtr& scope,
