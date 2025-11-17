@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Instantiation2.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
 
@@ -16,10 +17,8 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping2)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
+LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
 
@@ -75,6 +74,7 @@ struct SubtypeFixture : Fixture
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff1{FFlag::LuauPassBindableGenericsByReference, true};
 
     ScopePtr rootScope{new Scope(getBuiltins()->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -198,7 +198,7 @@ struct SubtypeFixture : Fixture
 
     SubtypingResult isSubtype(TypePackId subTy, TypePackId superTy)
     {
-        return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()});
+        return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()}, {});
     }
 
     TypeId helloType = arena.addType(SingletonType{StringSingleton{"hello"}});
@@ -216,7 +216,7 @@ struct SubtypeFixture : Fixture
     TypeId booleanAndTrueType = meet(getBuiltins()->booleanType, getBuiltins()->trueType);
 
     /**
-     * class
+     * userdata
      * \- Root
      *    |- Child
      *    |  |-GrandchildOne
@@ -972,12 +972,12 @@ TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->stringType
 TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->threadType));
 TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->bufferType));
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Root <: userdata")
 {
     CHECK_IS_SUBTYPE(rootClass, getBuiltins()->externType);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: userdata")
 {
     CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), getBuiltins()->externType);
 }
@@ -992,17 +992,17 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child | Root <: Root")
     CHECK_IS_SUBTYPE(join(childClass, rootClass), rootClass);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), getBuiltins()->externType);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, rootClass), getBuiltins()->externType);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), getBuiltins()->externType);
 }
@@ -1241,21 +1241,25 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "bill")
 {
-    TypeId a = arena.addType(TableType{
-        {{"a", getBuiltins()->stringType}},
-        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
-        TypeLevel{},
-        nullptr,
-        TableState::Sealed
-    });
+    TypeId a = arena.addType(
+        TableType{
+            {{"a", getBuiltins()->stringType}},
+            TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+            TypeLevel{},
+            nullptr,
+            TableState::Sealed
+        }
+    );
 
-    TypeId b = arena.addType(TableType{
-        {{"a", getBuiltins()->stringType}},
-        TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
-        TypeLevel{},
-        nullptr,
-        TableState::Sealed
-    });
+    TypeId b = arena.addType(
+        TableType{
+            {{"a", getBuiltins()->stringType}},
+            TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+            TypeLevel{},
+            nullptr,
+            TableState::Sealed
+        }
+    );
 
     CHECK(isSubtype(a, b).isSubtype);
     CHECK(isSubtype(b, a).isSubtype);
@@ -1265,13 +1269,15 @@ TEST_CASE_FIXTURE(SubtypeFixture, "({[string]: number, a: string}) -> () <: ({[s
 {
     auto makeTheType = [&]()
     {
-        TypeId argType = arena.addType(TableType{
-            {{"a", getBuiltins()->stringType}},
-            TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
-            TypeLevel{},
-            nullptr,
-            TableState::Sealed
-        });
+        TypeId argType = arena.addType(
+            TableType{
+                {{"a", getBuiltins()->stringType}},
+                TableIndexer{getBuiltins()->stringType, getBuiltins()->numberType},
+                TypeLevel{},
+                nullptr,
+                TableState::Sealed
+            }
+        );
 
         return arena.addType(FunctionType{arena.addTypePack({argType}), getBuiltins()->emptyTypePack});
     };
@@ -1397,18 +1403,18 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_function_instance")
 {
-    ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping2, true};
-
-    TypeId longTy = arena.addType(UnionType{
-        {getBuiltins()->booleanType,
-         getBuiltins()->bufferType,
-         getBuiltins()->externType,
-         getBuiltins()->functionType,
-         getBuiltins()->numberType,
-         getBuiltins()->stringType,
-         getBuiltins()->tableType,
-         getBuiltins()->threadType}
-    });
+    TypeId longTy = arena.addType(
+        UnionType{
+            {getBuiltins()->booleanType,
+             getBuiltins()->bufferType,
+             getBuiltins()->externType,
+             getBuiltins()->functionType,
+             getBuiltins()->numberType,
+             getBuiltins()->stringType,
+             getBuiltins()->tableType,
+             getBuiltins()->threadType}
+        }
+    );
     TypeId tblTy = tbl({{"depth", getBuiltins()->unknownType}});
     TypeId combined = meet(longTy, tblTy);
     TypeId subTy = arena.addType(TypeFunctionInstanceType{NotNull{&builtinTypeFunctions.unionFunc}, {combined, getBuiltins()->neverType}, {}});
@@ -1421,20 +1427,73 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf =
-            traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&result.mappedGenericPacks}, NotNull{&arena});
-        std::optional<TypeOrPack> optSuperLeaf =
-            traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&result.mappedGenericPacks}, NotNull{&arena});
+        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
 
         if (!optSubLeaf || !optSuperLeaf)
             CHECK(false);
     }
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "(number, number...) <!: (number, string...)")
+{
+    TypePackId leftTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->numberType}));
+    TypePackId rightTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->stringType}));
+
+    CHECK_IS_NOT_SUBTYPE(leftTp, rightTp);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_union_type_path")
+{
+    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
+    TypeId subTy = arena.addType(UnionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
+    TypeId superTy = getBuiltins()->booleanType;
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+
+    for (const SubtypingReasoning& reasoning : result.reasoning)
+    {
+        if (reasoning.subPath.empty() && reasoning.superPath.empty())
+            continue;
+
+        std::optional<TypeId> optSubLeaf = traverseForType(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeId> optSuperLeaf = traverseForType(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+
+        if (!optSubLeaf || !optSuperLeaf)
+            CHECK(false);
+
+        if (optSubLeaf != getBuiltins()->errorType)
+            CHECK(false);
+    }
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_intersect_type_path")
+{
+    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
+
+    TypeId subTy = getBuiltins()->booleanType;
+    TypeId superTy = arena.addType(IntersectionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+
+    for (const SubtypingReasoning& reasoning : result.reasoning)
+    {
+        if (reasoning.subPath.empty() && reasoning.superPath.empty())
+            continue;
+
+        std::optional<TypeId> optSubLeaf = traverseForType(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeId> optSuperLeaf = traverseForType(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+
+        if (!optSubLeaf || !optSuperLeaf)
+            CHECK(false);
+
+        if (optSuperLeaf != getBuiltins()->errorType)
+            CHECK(false);
+    }
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "(() -> number) -> () <: (<T>() -> T) -> ()")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = fn({nothingToNumberType}, {});
     TypeId f2 = fn({genericNothingToTType}, {});
     CHECK_IS_SUBTYPE(f1, f2);
@@ -1442,8 +1501,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(() -> number) -> () <: (<T>() -> T) -> ()")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> ()) -> () <: (<T>(T) -> ()) -> ()")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = fn({numberToNothingType}, {});
     TypeId f2 = fn({genericTToNothingType}, {});
     CHECK_IS_SUBTYPE(f1, f2);
@@ -1451,8 +1508,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> ()) -> () <: (<T>(T) -> ()) -> (
 
 TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> number) -> () <: (<T>(T) -> T) -> ()")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = fn({numberToNumberType}, {});
     TypeId f2 = fn({genericTToTType}, {});
     CHECK_IS_SUBTYPE(f1, f2);
@@ -1460,8 +1515,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> number) -> () <: (<T>(T) -> T) -
 
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>(x: T, y: T, f: (T, T) -> T) -> T <: (number, number, <U>(U, U) -> add<U, U>) -> number")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = arena.addType(FunctionType(
         {genericT},
         {},
@@ -1484,12 +1537,19 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>(x: T, y: T, f: (T, T) -> T) -> T <: (numb
     CHECK_IS_SUBTYPE(f1, f2);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> (<A...>(A...) -> ()) <: (string -> ((number) -> ())")
+{
+    // <A...>(A...) -> ()
+    TypeId asToNothing = arena.addType(FunctionType({}, {genericAs}, genericAs, getBuiltins()->emptyTypePack, std::nullopt, false));
+    TypeId f1 = arena.addType(FunctionType({}, {genericAs}, genericAs, pack({asToNothing}), std::nullopt, false));
+
+    TypeId f2 = fn({getBuiltins()->stringType}, {numberToNothingType});
+    CHECK_IS_SUBTYPE(f1, f2);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "no_caching_type_function_instances_with_mapped_generics")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     // (<U>(U) -> keyof<U>, <U>(U) -> keyof<U>) </: (({"a" : number}) -> "a", ({"b" : number}) -> "a")
-
     TypeId keyOfU = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions.keyofFunc, {genericU}});
     // <U>(U) -> keyof<U>
     TypeId uToKeyOfU = arena.addType(FunctionType({genericU}, {}, arena.addTypePack({genericU}), arena.addTypePack({keyOfU})));
@@ -1532,11 +1592,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
     CHECK(!result.isSubtype);
     REQUIRE(result.reasoning.size() == 1);
     CHECK(
-        *result.reasoning.begin() == SubtypingReasoning{
-                                         /* subPath */ Path(TypePath::Property::read("X")),
-                                         /* superPath */ Path(TypePath::Property::read("X")),
-                                         /* variance */ SubtypingVariance::Invariant
-                                     }
+        *result.reasoning.begin() == SubtypingReasoning{/* subPath */ Path(TypePath::Property::read("X")),
+                                                        /* superPath */ Path(TypePath::Property::read("X")),
+                                                        /* variance */ SubtypingVariance::Invariant}
     );
 }
 
@@ -1548,19 +1606,18 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_indexers")
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
     CHECK(
-        result.reasoning ==
-        std::vector{
-            SubtypingReasoning{
-                /* subPath */ Path(TypePath::TypeField::IndexLookup),
-                /* superPath */ Path(TypePath::TypeField::IndexLookup),
-                /* variance */ SubtypingVariance::Invariant,
-            },
-            SubtypingReasoning{
-                /* subPath */ Path(TypePath::TypeField::IndexResult),
-                /* superPath */ Path(TypePath::TypeField::IndexResult),
-                /* variance */ SubtypingVariance::Invariant,
-            }
-        }
+        result.reasoning == std::vector{
+                                SubtypingReasoning{
+                                    /* subPath */ Path(TypePath::TypeField::IndexLookup),
+                                    /* superPath */ Path(TypePath::TypeField::IndexLookup),
+                                    /* variance */ SubtypingVariance::Invariant,
+                                },
+                                SubtypingReasoning{
+                                    /* subPath */ Path(TypePath::TypeField::IndexResult),
+                                    /* superPath */ Path(TypePath::TypeField::IndexResult),
+                                    /* variance */ SubtypingVariance::Invariant,
+                                }
+                            }
     );
 }
 
@@ -1703,19 +1760,14 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
     CHECK(
-        result.reasoning ==
-        std::vector{
-            SubtypingReasoning{
-                /* subPath */ Path(TypePath::Property::read("X")),
-                /* superPath */ Path(TypePath::Property::read("X")),
-                /* variance */ SubtypingVariance::Invariant
-            },
-            SubtypingReasoning{
-                /* subPath */ Path(TypePath::Property::read("Y")),
-                /* superPath */ Path(TypePath::Property::read("Y")),
-                /* variance */ SubtypingVariance::Invariant
-            },
-        }
+        result.reasoning == std::vector{
+                                SubtypingReasoning{/* subPath */ Path(TypePath::Property::read("X")),
+                                                   /* superPath */ Path(TypePath::Property::read("X")),
+                                                   /* variance */ SubtypingVariance::Invariant},
+                                SubtypingReasoning{/* subPath */ Path(TypePath::Property::read("Y")),
+                                                   /* superPath */ Path(TypePath::Property::read("Y")),
+                                                   /* variance */ SubtypingVariance::Invariant},
+                            }
     );
 }
 
@@ -1744,10 +1796,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     TypeId argTy = arena.freshType(getBuiltins(), moduleScope.get());
     FreeType* freeArg = getMutable<FreeType>(argTy);
     REQUIRE(freeArg);
@@ -1761,7 +1809,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_pack_should_suppress_errors_during_overload_resolution")
 {
-    ScopedFastFlag sff{FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing, true};
     auto res = check(R"(
 type ActionCallback = (string) -> ...any
 
@@ -1772,6 +1819,44 @@ function bindAction(callback: ActionCallback)
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(res);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
+{
+    TypeArena arena;
+    Scope scope(getBuiltins()->anyTypePack);
+
+    TypeId genericT = arena.addType(GenericType{"T"});
+
+    TypeId idTy = arena.addType(
+        FunctionType{/* generics */ {genericT},
+                     /* genericPacks */ {},
+                     /* argTypes */ arena.addTypePack({genericT}),
+                     /* retTypes */ arena.addTypePack({genericT})}
+    );
+
+    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+
+    TypeId freeTy = arena.freshType(getBuiltins(), &scope);
+    FreeType* ft = getMutable<FreeType>(freeTy);
+    REQUIRE(ft);
+    ft->lowerBound = idTy;
+    ft->upperBound = getBuiltins()->unknownType;
+
+    genericSubstitutions[genericT] = freeTy;
+
+    CHECK("<T>(T) -> T" == toString(idTy));
+
+    std::optional<TypeId> res = instantiate2(
+        &arena, std::move(genericSubstitutions), std::move(genericPackSubstitutions), NotNull{&subtyping}, NotNull{rootScope.get()}, idTy
+    );
+
+    // Substitutions should not mutate the original type!
+    CHECK("<T>(T) -> T" == toString(idTy));
+
+    REQUIRE(res);
+    CHECK("<T>(T) -> T" == toString(*res));
 }
 
 TEST_SUITE_END();

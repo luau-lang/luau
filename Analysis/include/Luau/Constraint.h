@@ -92,6 +92,10 @@ struct FunctionCallConstraint
     TypeId fn;
     TypePackId argsPack;
     TypePackId result;
+
+    // callSite can be nullptr in the case that this constraint was
+    // synthetically generated from some other constraint. eg
+    // IterableConstraint.
     class AstExprCall* callSite = nullptr;
     std::vector<std::optional<TypeId>> discriminantTypes;
 

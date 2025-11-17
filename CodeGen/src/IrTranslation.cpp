@@ -12,8 +12,6 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenSimplifyImport2)
-
 namespace Luau
 {
 namespace CodeGen
@@ -270,11 +268,34 @@ void translateInstJumpxEqNil(IrBuilder& build, const Instruction* pc, int pcpos)
         build.beginBlock(next);
 }
 
+void translateInstJumpxEqNilShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int rr = LUAU_INSN_A(pc[2]);
+
+    int ra = LUAU_INSN_A(*pc);
+    uint32_t aux = pc[1];
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
+
+    IrOp next = build.blockAtInst(pcpos + 4);
+
+    IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+
+    IrOp result = build.inst(IrCmd::CMP_TAG, ta, build.constTag(LUA_TNIL), build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
+    build.inst(IrCmd::JUMP, next);
+
+    // Fallthrough in original bytecode is implicit, so we start next internal block here
+    if (build.isInternalBlock(next))
+        build.beginBlock(next);
+}
+
 void translateInstJumpxEqB(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     uint32_t aux = pc[1];
-    bool not_ = (aux & 0x80000000) != 0;
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
 
     IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
     IrOp next = build.blockAtInst(pcpos + 2);
@@ -287,7 +308,33 @@ void translateInstJumpxEqB(IrBuilder& build, const Instruction* pc, int pcpos)
     build.beginBlock(checkValue);
     IrOp va = build.inst(IrCmd::LOAD_INT, build.vmReg(ra));
 
-    build.inst(IrCmd::JUMP_CMP_INT, va, build.constInt(aux & 0x1), build.cond(IrCondition::Equal), not_ ? next : target, not_ ? target : next);
+    build.inst(IrCmd::JUMP_CMP_INT, va, build.constInt(LUAU_INSN_AUX_KB(aux)), build.cond(IrCondition::Equal), not_ ? next : target, not_ ? target : next);
+
+    // Fallthrough in original bytecode is implicit, so we start next internal block here
+    if (build.isInternalBlock(next))
+        build.beginBlock(next);
+}
+
+void translateInstJumpxEqBShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int rr = LUAU_INSN_A(pc[2]);
+
+    int ra = LUAU_INSN_A(*pc);
+    uint32_t aux = pc[1];
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
+
+    IrOp next = build.blockAtInst(pcpos + 4);
+
+    IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+    IrOp va = build.inst(IrCmd::LOAD_INT, build.vmReg(ra));
+    IrOp vb = build.constInt(LUAU_INSN_AUX_KB(aux));
+
+    IrOp result =
+        build.inst(IrCmd::CMP_SPLIT_TVALUE, ta, build.constTag(LUA_TBOOLEAN), va, vb, build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
+    build.inst(IrCmd::JUMP, next);
 
     // Fallthrough in original bytecode is implicit, so we start next internal block here
     if (build.isInternalBlock(next))
@@ -298,7 +345,7 @@ void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     uint32_t aux = pc[1];
-    bool not_ = (aux & 0x80000000) != 0;
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
 
     IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
     IrOp next = build.blockAtInst(pcpos + 2);
@@ -312,7 +359,7 @@ void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp va = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra));
 
     CODEGEN_ASSERT(build.function.proto);
-    TValue protok = build.function.proto->k[aux & 0xffffff];
+    TValue protok = build.function.proto->k[LUAU_INSN_AUX_KV(aux)];
 
     CODEGEN_ASSERT(protok.tt == LUA_TNUMBER);
     IrOp vb = build.constDouble(protok.value.n);
@@ -324,11 +371,42 @@ void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos)
         build.beginBlock(next);
 }
 
+void translateInstJumpxEqNShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int rr = LUAU_INSN_A(pc[2]);
+
+    int ra = LUAU_INSN_A(*pc);
+    uint32_t aux = pc[1];
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
+
+    IrOp next = build.blockAtInst(pcpos + 4);
+
+    IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+    IrOp va = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra));
+
+    CODEGEN_ASSERT(build.function.proto);
+    TValue protok = build.function.proto->k[LUAU_INSN_AUX_KV(aux)];
+
+    CODEGEN_ASSERT(protok.tt == LUA_TNUMBER);
+    IrOp vb = build.constDouble(protok.value.n);
+
+    IrOp result =
+        build.inst(IrCmd::CMP_SPLIT_TVALUE, ta, build.constTag(LUA_TNUMBER), va, vb, build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
+    build.inst(IrCmd::JUMP, next);
+
+    // Fallthrough in original bytecode is implicit, so we start next internal block here
+    if (build.isInternalBlock(next))
+        build.beginBlock(next);
+}
+
 void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     uint32_t aux = pc[1];
-    bool not_ = (aux & 0x80000000) != 0;
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
 
     IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
     IrOp next = build.blockAtInst(pcpos + 2);
@@ -339,9 +417,35 @@ void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.beginBlock(checkValue);
     IrOp va = build.inst(IrCmd::LOAD_POINTER, build.vmReg(ra));
-    IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmConst(aux & 0xffffff));
+    IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmConst(LUAU_INSN_AUX_KV(aux)));
 
     build.inst(IrCmd::JUMP_EQ_POINTER, va, vb, not_ ? next : target, not_ ? target : next);
+
+    // Fallthrough in original bytecode is implicit, so we start next internal block here
+    if (build.isInternalBlock(next))
+        build.beginBlock(next);
+}
+
+void translateInstJumpxEqSShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int rr = LUAU_INSN_A(pc[2]);
+
+    int ra = LUAU_INSN_A(*pc);
+    uint32_t aux = pc[1];
+    bool not_ = LUAU_INSN_AUX_NOT(aux) != 0;
+
+    IrOp next = build.blockAtInst(pcpos + 4);
+
+    IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+    IrOp va = build.inst(IrCmd::LOAD_POINTER, build.vmReg(ra));
+    IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmConst(LUAU_INSN_AUX_KV(aux)));
+
+    IrOp result =
+        build.inst(IrCmd::CMP_SPLIT_TVALUE, ta, build.constTag(LUA_TSTRING), va, vb, build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
+    build.inst(IrCmd::JUMP, next);
 
     // Fallthrough in original bytecode is implicit, so we start next internal block here
     if (build.isInternalBlock(next))
@@ -1217,35 +1321,8 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     int k = LUAU_INSN_D(*pc);
     uint32_t aux = pc[1];
 
-    if (FFlag::LuauCodeGenSimplifyImport2)
-    {
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
-        build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));
-    }
-    else
-    {
-        IrOp fastPath = build.block(IrBlockKind::Internal);
-        IrOp fallback = build.block(IrBlockKind::Fallback);
-
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
-
-        // note: if import failed, k[] is nil; we could check this during codegen, but we instead use runtime fallback
-        // this allows us to handle ahead-of-time codegen smoothly when an import fails to resolve at runtime
-        IrOp tk = build.inst(IrCmd::LOAD_TAG, build.vmConst(k));
-        build.inst(IrCmd::JUMP_EQ_TAG, tk, build.constTag(LUA_TNIL), fallback, fastPath);
-
-        build.beginBlock(fastPath);
-
-        IrOp tvk = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(k));
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvk);
-
-        IrOp next = build.blockAtInst(pcpos + 2);
-        FallbackStreamScope scope(build, fallback, next);
-
-        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-        build.inst(IrCmd::GET_IMPORT, build.vmReg(ra), build.constUint(aux));
-        build.inst(IrCmd::JUMP, next);
-    }
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));
 }
 
 void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)

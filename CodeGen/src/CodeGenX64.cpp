@@ -215,7 +215,7 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
         return false;
     }
 
-    // Set the offset at the begining so that functions in new blocks will not overlay the locations
+    // Set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
     unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
 

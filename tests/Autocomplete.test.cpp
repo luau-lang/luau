@@ -16,14 +16,13 @@
 
 #include <map>
 
+LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
+
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauImplicitTableIndexerKeys3)
-LUAU_FASTFLAG(LuauIncludeBreakContinueStatements)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauSuggestHotComments)
+LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
+LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
 using namespace Luau;
 
@@ -99,6 +98,13 @@ struct ACFixtureImpl : BaseType
             else if (c == '@')
             {
                 // skip the '@' character
+                if (prevChar == '\\')
+                {
+                    // escaped @, prevent prevChar to be equal to '@' on next loop
+                    c = '\0';
+                    // replace escaping '\' with '@'
+                    filteredSource.back() = '@';
+                }
             }
             else
             {
@@ -1596,9 +1602,6 @@ return target(a.@1
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_in_table")
 {
-    if (FFlag::LuauSolverV2) // CLI-116815 Autocomplete cannot suggest keys while autocompleting inside of a table
-        return;
-
     check(R"(
 type Foo = { a: number, b: string }
 local a = { one = 4, two = "hello" }
@@ -2195,7 +2198,6 @@ local abc = bar(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_sealed_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
 
     check(R"(
 local function f(a: { x: number, y: number }) return a.x + a.y end
@@ -3900,6 +3902,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_subtyping_recursion_limit")
         return;
 
     ScopedFastInt luauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 10};
+    ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, 10};
 
     const int parts = 100;
     std::string source;
@@ -3992,8 +3995,8 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
         local x = require(@1"@2"@3)
     )");
 
-    StringCompletionCallback callback = [](std::string, std::optional<const ExternType*>, std::optional<std::string> contents
-                                        ) -> std::optional<AutocompleteEntryMap>
+    StringCompletionCallback callback =
+        [](std::string, std::optional<const ExternType*>, std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap>
     {
         Luau::AutocompleteEntryMap results = {{"test", Luau::AutocompleteEntry{Luau::AutocompleteEntryKind::String, std::nullopt, false, false}}};
         return results;
@@ -4372,9 +4375,8 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_type_pack_vararg")
 {
-    // CLI-116932 - Autocomplete on a anonymous function in a function argument should not recommend a function with a generic parameter.
-    if (FFlag::LuauSolverV2)
-        return;
+    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
+
     check(R"(
 local function foo<A>(a: (...A) -> number, ...: A)
 	return a(...)
@@ -4384,6 +4386,52 @@ foo(@1)
     )");
 
     const std::optional<std::string> EXPECTED_INSERT = "function(...): number  end";
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ(EXPECTED_INSERT, *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_named_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
+
+    check(R"(
+local function foo<A>(f: (a: A) -> number, a: A)
+	return f(a)
+end
+
+foo(@1)
+    )");
+
+    const std::optional<std::string> EXPECTED_INSERT = "function(a): number  end";
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ(EXPECTED_INSERT, *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_return_type")
+{
+    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
+
+    check(R"(
+local function foo<A>(f: () -> A)
+	return f()
+end
+
+foo(@1)
+    )");
+
+    const std::optional<std::string> EXPECTED_INSERT = "function()  end";
 
     auto ac = autocomplete('1');
 
@@ -4478,10 +4526,8 @@ TEST_CASE_FIXTURE(ACExternTypeFixture, "ac_dont_overflow_on_recursive_union")
 
     auto ac = autocomplete('1');
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauEagerGeneralization4)
+    if (FFlag::LuauSolverV2)
     {
-        // This `if` statement is because `LuauEagerGeneralization4`
-        // sets some flags
         CHECK(ac.entryMap.count("BaseMethod") > 0);
         CHECK(ac.entryMap.count("Method") > 0);
     }
@@ -4613,11 +4659,8 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_in_type_assertion")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
 {
-    ScopedFastFlag sffs[] = {
-        // Somewhat surprisingly, the old solver didn't cover this case.
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauImplicitTableIndexerKeys3, true},
-    };
+    // Somewhat surprisingly, the old solver didn't cover this case.
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     check(R"(
         type Constraint = "A" | "B" | "C"
@@ -4640,10 +4683,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_implicit_named_index_index_expr_without_annotation")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauImplicitTableIndexerKeys3, true},
-    };
+    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
 
     check(R"(
         local foo = {
@@ -4723,8 +4763,6 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_via_bidirectional_self")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_loop")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(for x in y do
         @1
         if true then
@@ -4745,8 +4783,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_loop")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_outside_loop")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(@1if true then
         @2
     end)");
@@ -4763,8 +4799,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_outside_loop")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_function_boundary")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(for i = 1, 10 do
     local function helper()
         @1
@@ -4779,8 +4813,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_function_bound
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_param")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(while @1 do
         end)");
 
@@ -4792,8 +4824,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_param")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_incomplete_while")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check("while @1");
 
     auto ac = autocomplete('1');
@@ -4804,8 +4834,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_incomplete_whi
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_incomplete_for")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check("for @1 in @2 do");
 
     auto ac = autocomplete('1');
@@ -4821,8 +4849,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_incomplete_for
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_expr_func")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(while true do
         local _ = function ()
         @1
@@ -4837,8 +4863,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_expr_func")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_repeat")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(repeat
         @1
     until foo())");
@@ -4851,8 +4875,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_repeat")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_nests")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(while ((function ()
         while true do
             @1
@@ -4868,8 +4890,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_include_break_continue_in_nests")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_incomplete_loop")
 {
-    ScopedFastFlag sff{FFlag::LuauIncludeBreakContinueStatements, true};
-
     check(R"(while foo() do
         @1)");
 
@@ -4882,8 +4902,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_exclude_break_continue_in_incomplete_
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_suggest_hot_comments")
 {
-    ScopedFastFlag sff{FFlag::LuauSuggestHotComments, true};
-
     check("--!@1");
 
     auto ac = autocomplete('1');
@@ -4895,6 +4913,106 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_suggest_hot_comments")
     CHECK(ac.entryMap.count("native"));
     CHECK(ac.entryMap.count("nolint"));
     CHECK(ac.entryMap.count("optimize"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_repeat_body_eof")
+{
+    check(R"(local t = {}
+        function t:Foo() end
+        repeat
+        t:@1)");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("Foo"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_repeat_body_not_eof")
+{
+    check(R"(local t = {}
+        function t:Foo() end
+        repeat
+        t:@1
+        )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("Foo"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_method_in_unfinished_while_body")
+{
+    check(R"(local t = {}
+        function t:Foo() end
+        while true do
+        t:@1)");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("Foo"));
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@@1
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@dep@1
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_empty_braced_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@[@1]
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_braced_attribute")
+{
+    ScopedFastFlag sff[]{{FFlag::LuauAutocompleteAttributes, true}};
+
+    check(R"(
+        \@[dep@1]
+        function foo() return 42 end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("deprecated"), 1);
+    CHECK_EQ(ac.entryMap.count("checked"), 1);
+    CHECK_EQ(ac.entryMap.count("native"), 1);
 }
 
 TEST_SUITE_END();

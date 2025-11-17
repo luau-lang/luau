@@ -134,9 +134,9 @@ static int luaO_utf8esc(char* buff, unsigned long x)
         do
         { // add continuation bytes
             buff[UTF8BUFFSZ - (n++)] = cast_to(char, 0x80 | (x & 0x3f));
-            x >>= 6;                                           // remove added bits
-            mfb >>= 1;                                         // now there is one less bit available in first byte
-        } while (x > mfb);                                     // still needs continuation byte?
+            x >>= 6;   // remove added bits
+            mfb >>= 1; // now there is one less bit available in first byte
+        } while (x > mfb); // still needs continuation byte?
         buff[UTF8BUFFSZ - n] = cast_to(char, (~mfb << 1) | x); // add first byte
     }
     return n;

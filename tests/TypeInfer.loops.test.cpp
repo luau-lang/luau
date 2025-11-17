@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 #include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -15,7 +16,10 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
+LUAU_FASTFLAG(LuauIterableBindNotUnify)
+LUAU_FASTFLAG(LuauCheckForInWithSubtyping3)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -255,14 +259,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauIterableBindNotUnify, true},
+    };
 
     CheckResult result = check(R"(
         function no_iter() end
         for key in no_iter() do end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("for..in loops require at least one value to iterate over.  Got zero", err->message);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
@@ -399,6 +409,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauCheckForInWithSubtyping3, true},
+    };
+
     CheckResult result = check(R"(
         function my_iter(state: string, index: number)
             return state, index
@@ -412,13 +427,23 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    // TODO, CLI-177651: The rough bidirectional rule with for-in loops ought to be:
+    //
+    //  for a, b in c, d, e
+    //  end
+    //
+    //  c => (A, B) -> (A, B)
+    //  d <= A
+    //  e <= B
+    //  ---
+    //  a => A
+    //  b => B
+    //
+    // That would give us the nice errors here of `my_state </: string` and `first_index </: number`
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK(get<TypeMismatch>(result.errors[1]));
-    CHECK(Location{{9, 29}, {9, 37}} == result.errors[0].location);
-
-    CHECK(get<TypeMismatch>(result.errors[1]));
-    CHECK(Location{{9, 39}, {9, 50}} == result.errors[1].location);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location{{9, 20}, {9, 27}} == result.errors[0].location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
@@ -758,6 +783,10 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_generic_next")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
+    };
+
     CheckResult result = check(R"(
         for k: number, v: number in next, {1, 2, 3} do
         end
@@ -865,11 +894,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
-        result.errors[0] ==
-        TypeError{
-            Location{{2, 36}, {2, 37}},
-            GenericError{"__iter must return at least one value"},
-        }
+        result.errors[0] == TypeError{
+                                Location{{2, 36}, {2, 37}},
+                                GenericError{"__iter must return at least one value"},
+                            }
     );
 }
 
@@ -943,7 +971,6 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     // CLI-116500
     if (FFlag::LuauSolverV2)
         return;
@@ -1500,6 +1527,19 @@ TEST_CASE_FIXTURE(Fixture, "ensure_local_in_loop_does_not_escape")
     )"));
 
     CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1851_union_of_many_strings")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+--!strict
+type union = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+local example: { [union]: number } = {}
+
+for key in example do
+end
+    )"));
 }
 
 TEST_SUITE_END();

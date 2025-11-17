@@ -9,10 +9,10 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
+#include "Luau/PrettyPrinter.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/Transpiler.h"
 
 #include "doctest.h"
 
@@ -29,6 +29,8 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
+LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
+LUAU_FASTINT(LuauStackGuardThreshold)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -174,7 +176,7 @@ std::optional<SourceCode> TestFileResolver::readSource(const ModuleName& name)
     return SourceCode{it->second, sourceType};
 }
 
-std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr)
+std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr, const TypeCheckLimits& limits)
 {
     if (AstExprGlobal* g = expr->as<AstExprGlobal>())
     {
@@ -247,7 +249,7 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
     return std::nullopt;
 }
 
-const Config& TestConfigResolver::getConfig(const ModuleName& name) const
+const Config& TestConfigResolver::getConfig(const ModuleName& name, const TypeCheckLimits& limits) const
 {
     auto it = configFiles.find(name);
     if (it != configFiles.end())
@@ -578,7 +580,7 @@ std::string Fixture::decorateWithTypes(const std::string& code)
     SourceModule* sourceModule = getFrontend().getSourceModule(mainModuleName);
     attachTypeData(*sourceModule, *getFrontend().moduleResolver.getModule(mainModuleName));
 
-    return transpileWithTypes(*sourceModule->root);
+    return prettyPrintWithTypes(*sourceModule->root);
 }
 
 void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)
@@ -689,6 +691,11 @@ NotNull<BuiltinTypes> Fixture::getBuiltins()
     return NotNull{builtinTypes};
 }
 
+const BuiltinTypeFunctions& Fixture::getBuiltinTypeFunctions()
+{
+    return FFlag::LuauBuiltinTypeFunctionsArentGlobal ? *getBuiltins()->typeFunctions : builtinTypeFunctions_DEPRECATED();
+}
+
 Frontend& Fixture::getFrontend()
 {
     if (frontend)
@@ -731,6 +738,17 @@ Frontend& Fixture::getFrontend()
     return *frontend;
 }
 
+void Fixture::limitStackSize(size_t size)
+{
+    // The FInt is designed to trip when the amount of available address
+    // space goes below some threshold, but for this API, the convenient thing
+    // is to specify how much the test should be allowed to use.  We need to
+    // do a tiny amount of arithmetic to convert.
+
+    uintptr_t addressSpaceSize = getStackAddressSpaceSize();
+
+    dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
+}
 
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)

@@ -2,13 +2,15 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauPushTypeConstraint)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
+LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
+LUAU_FASTFLAG(LuauPushTypeConstraintIndexer)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -291,7 +293,6 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
 
 TEST_CASE_FIXTURE(Fixture, "table_has_a_boolean")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t={a=1,b=false}
     )");
@@ -398,7 +399,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
-    ScopedFastFlag _{FFlag::LuauPushTypeConstraint, true};
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
 
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
@@ -410,7 +411,10 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        CHECK(R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" == toString(result.errors[0]));
+        CHECK(
+            R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" ==
+            toString(result.errors[0])
+        );
     else
     {
         const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
@@ -661,6 +665,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
 
 TEST_CASE_FIXTURE(Fixture, "tagged_union_in_ternary")
 {
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Result = { type: "ok", value: unknown } | { type: "error" }
 
@@ -671,5 +677,144 @@ TEST_CASE_FIXTURE(Fixture, "tagged_union_in_ternary")
         end
     )"));
 }
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_with_singleton_union_values")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
+    CheckResult result = check(R"(
+        local t1: {[string]: "a" | "b"} = { a = "a", b = "b" }
+        local t2: {[string]: "a" | true} = { a = "a", b = true }
+        local t3: {[string]: "a" | nil} = { a = "a" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "singleton_type_mismatch_via_variable")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
+    CheckResult result = check(R"(
+        local c = "c"
+        local x: "a" = c
+        local y: "a" | "b" = c
+        local z: "a"? = c
+        local w: "a" | "b" = "c"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+    REQUIRE(get<TypeMismatch>(result.errors[1]));
+    REQUIRE(get<TypeMismatch>(result.errors[2]));
+    REQUIRE(get<TypeMismatch>(result.errors[3]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_163481_any_indexer_pushes_type")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        type test = "A"
+        type test2 = "A"|"B"|"C"
+
+        local t: { [any]: test } = { A = "A" }
+
+        local t2: { [any]: test2 } = {
+            A = "A",
+            B = "B",
+            C = "C"
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2010")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintSingleton, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo<T>(my_enum: "" | T): T
+            return my_enum :: T
+        end
+
+        local var = foo("meow")
+    )"));
+
+    CHECK_EQ("\"meow\"", toString(requireType("var")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1773")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintIndexer, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        export type T = "foo" | "bar" | "toto"
+
+        local object: T = "foo"
+
+        local getOpposite: {[T]: T} = {
+            ["foo"] = "bar",
+            ["bar"] = "toto",
+            ["toto"] = "foo"
+        }
+
+        local function hello()
+            local x = getOpposite[object]
+
+            if x then
+                object = x
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        export type T = "foo" | "bar" | "toto"
+
+        local getOpposite: { [number]: T } = {
+            ["foo"] = "bar",
+            ["bar"] = "toto",
+            ["toto"] = "foo"
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    for (const auto& e: result.errors)
+        CHECK(get<TypeMismatch>(e));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2018")
+{
+    ScopedFastFlag _{FFlag::LuauPushTypeConstraint2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local rule: { rule: "AppendTextComment" } | { rule: "Other" } = { rule = "AppendTextComment" }
+    )"));
+}
+
 
 TEST_SUITE_END();

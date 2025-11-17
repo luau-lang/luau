@@ -148,7 +148,34 @@ unsigned int getCpuFeaturesA64()
     size_t jscvtLen = sizeof(jscvt);
     if (sysctlbyname("hw.optional.arm.FEAT_JSCVT", &jscvt, &jscvtLen, nullptr, 0) == 0 && jscvt == 1)
         result |= A64::Feature_JSCVT;
+
+    int advSIMD = 0;
+    size_t advSIMDLen = sizeof(advSIMD);
+    if (sysctlbyname("hw.optional.arm.AdvSIMD", &advSIMD, &advSIMDLen, nullptr, 0) == 0 && advSIMD == 1)
+        result |= A64::Feature_AdvSIMD;
 #endif
+
+    return result;
+}
+#else
+unsigned int getCpuFeaturesX64()
+{
+    unsigned int result = 0;
+
+    int cpuinfo[4] = {0, 0, 0, 0};
+#if defined(CODEGEN_TARGET_X64)
+#ifdef _MSC_VER
+    __cpuid(cpuinfo, 1);
+#else
+    __cpuid(1, cpuinfo[0], cpuinfo[1], cpuinfo[2], cpuinfo[3]);
+#endif
+#endif
+
+    if ((cpuinfo[2] & 0x00001000) != 0)
+        result |= X64::Feature_FMA3;
+
+    if ((cpuinfo[2] & 0x10000000) != 0)
+        result |= X64::Feature_AVX;
 
     return result;
 }
@@ -183,7 +210,7 @@ bool isSupported()
 #endif
 
     // We require AVX1 support for VEX encoded XMM operations
-    // We also requre SSE4.1 support for ROUNDSD but the AVX check below covers it
+    // We also require SSE4.1 support for ROUNDSD but the AVX check below covers it
     // https://en.wikipedia.org/wiki/CPUID#EAX=1:_Processor_Info_and_Feature_Bits
     if ((cpuinfo[2] & (1 << 28)) == 0)
         return false;

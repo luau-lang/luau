@@ -33,8 +33,6 @@ LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
-LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 namespace Luau
 {
@@ -1854,14 +1852,11 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
     for (const auto& el : global.paramNames)
         ftv->argNames.push_back(FunctionArgument{el.first.value, el.second});
 
-    if (FFlag::LuauParametrizedAttributeSyntax)
+    AstAttr* deprecatedAttr = global.getAttribute(AstAttr::Type::Deprecated);
+    ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+    if (deprecatedAttr)
     {
-        AstAttr* deprecatedAttr = global.getAttribute(AstAttr::Type::Deprecated);
-        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
-        if (deprecatedAttr)
-        {
-            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
-        }
+        ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
     Name fnName(global.name.value);
@@ -2017,7 +2012,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     {
         return {pack->head.empty() ? nilType : pack->head[0], std::move(result.predicates)};
     }
-    else if (const FreeTypePack* ftp = get<FreeTypePack>(retPack))
+    else if (get<FreeTypePack>(retPack))
     {
         TypeId head = freshType(scope->level);
         TypePackId pack = addTypePack(TypePackVar{TypePack{{head}, freshTypePack(scope->level)}});
@@ -3641,7 +3636,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             }
         }
 
-        if (const ExternType* exprExternType = get<ExternType>(exprType))
+        if (get<ExternType>(exprType))
         {
             if (isNonstrictMode())
                 return unknownType;
@@ -4081,14 +4076,11 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
     for (AstLocal* local : expr.args)
         ftv->argNames.push_back(FunctionArgument{local->name.value, local->location});
 
-    if (FFlag::LuauParametrizedAttributeSyntax)
+    AstAttr* deprecatedAttr = expr.getAttribute(AstAttr::Type::Deprecated);
+    ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+    if (deprecatedAttr)
     {
-        AstAttr* deprecatedAttr = expr.getAttribute(AstAttr::Type::Deprecated);
-        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
-        if (deprecatedAttr)
-        {
-            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
-        }
+        ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
     return std::make_pair(funTy, funScope);
@@ -4229,12 +4221,14 @@ void TypeChecker::checkArgumentList(
             namePath = *path;
 
         auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
-        state.reportError(TypeError{
-            location,
-            CountMismatch{
-                minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, std::move(namePath)
+        state.reportError(
+            TypeError{
+                location,
+                CountMismatch{
+                    minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, std::move(namePath)
+                }
             }
-        });
+        );
     };
 
     while (true)
@@ -4351,10 +4345,12 @@ void TypeChecker::checkArgumentList(
                     if (std::optional<std::string> path = getFunctionNameAsString(funName))
                         namePath = *path;
 
-                    state.reportError(TypeError{
-                        funName.location,
-                        CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, std::move(namePath)}
-                    });
+                    state.reportError(
+                        TypeError{
+                            funName.location,
+                            CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, std::move(namePath)}
+                        }
+                    );
                     return;
                 }
                 ++paramIter;
@@ -4683,7 +4679,7 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(
     if (get<NeverType>(fn))
         return std::make_unique<WithPredicate<TypePackId>>(uninhabitableTypePack);
 
-    if (auto ftv = get<FreeType>(fn))
+    if (get<FreeType>(fn))
     {
         // fn is one of the overloads of actualFunctionType, which
         // has been instantiated, so is a monotype. We can therefore
@@ -4777,12 +4773,14 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(
         else
             overloadsThatDont.push_back(fn);
 
-        errors.push_back(OverloadErrorEntry{
-            std::move(state.log),
-            std::move(state.errors),
-            args->head,
-            ftv,
-        });
+        errors.push_back(
+            OverloadErrorEntry{
+                std::move(state.log),
+                std::move(state.errors),
+                args->head,
+                ftv,
+            }
+        );
     }
     else
     {
@@ -5935,14 +5933,11 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
                 ftv->argNames.push_back(std::nullopt);
         }
 
-        if (FFlag::LuauParametrizedAttributeSyntax)
+        AstAttr* deprecatedAttr = func->getAttribute(AstAttr::Type::Deprecated);
+        ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
+        if (deprecatedAttr)
         {
-            AstAttr* deprecatedAttr = func->getAttribute(AstAttr::Type::Deprecated);
-            ftv->isDeprecatedFunction = deprecatedAttr != nullptr;
-            if (deprecatedAttr)
-            {
-                ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
-            }
+            ftv->deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
         }
 
         return fnType;
@@ -6090,10 +6085,8 @@ TypeId TypeChecker::instantiateTypeFun(
     }
     if (applyTypeFunction.encounteredForwardedType)
     {
-        if (FFlag::LuauNameConstraintRestrictRecursiveTypes)
-            reportError(TypeError{location, RecursiveRestraintViolation{}});
-        else
-            reportError(TypeError{location, GenericError{"Recursive type being used with different parameters"}});
+        reportError(TypeError{location, RecursiveRestraintViolation{}});
+
         return errorRecoveryType(scope);
     }
 

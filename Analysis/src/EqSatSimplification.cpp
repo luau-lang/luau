@@ -4,6 +4,7 @@
 #include "Luau/EqSatSimplificationImpl.h"
 
 #include "Luau/EGraph.h"
+#include "Luau/HashUtil.h"
 #include "Luau/Id.h"
 #include "Luau/Language.h"
 
@@ -84,9 +85,9 @@ size_t TTable::Hash::operator()(const TTable& value) const
     // We're using pointers here, which does mean platform divergence. I think
     // it's okay? (famous last words, I know)
     for (StringId s : value.propNames)
-        EqSat::hashCombine(hash, EqSat::languageHash(s));
+        hashCombine(hash, EqSat::languageHash(s));
 
-    EqSat::hashCombine(hash, EqSat::languageHash(value.storage));
+    hashCombine(hash, EqSat::languageHash(value.storage));
 
     return hash;
 }
@@ -285,7 +286,7 @@ Id toId(
     // First, handle types which do not contain other types.  They obviously
     // cannot participate in cycles, so we don't have to check for that.
 
-    if (auto freeTy = get<FreeType>(ty))
+    if (get<FreeType>(ty))
         return egraph.add(TOpaque{ty});
     else if (get<GenericType>(ty))
         return egraph.add(TOpaque{ty});
@@ -415,12 +416,14 @@ Id toId(
         // `TypeFunctionInstanceType` outside of the provided arena so that
         // we can access the members without fear of the specific TFIT being
         // overwritten with a bound type.
-        return cache(egraph.add(TTypeFun{
-            std::make_shared<const TypeFunctionInstanceType>(
-                tfun->function, tfun->typeArguments, tfun->packArguments, tfun->userFuncName, tfun->userFuncData
-            ),
-            std::move(parts)
-        }));
+        return cache(egraph.add(
+            TTypeFun{
+                std::make_shared<const TypeFunctionInstanceType>(
+                    tfun->function, tfun->typeArguments, tfun->packArguments, tfun->userFuncName, tfun->userFuncData
+                ),
+                std::move(parts)
+            }
+        ));
     }
     else if (get<NoRefineType>(ty))
         return egraph.add(TNoRefine{});
@@ -762,7 +765,7 @@ TypeId fromId(
         return arena->addType(SingletonType{StringSingleton{strings.asString(s->value())}});
     else if (auto fun = node.get<TFunction>())
         return fun->value();
-    else if (auto tbl = node.get<TTable>())
+    else if (node.get<TTable>())
     {
         TypeId res = arena->addType(BlockedType{});
         seen[rootId] = res;
@@ -1307,7 +1310,7 @@ void unionWithType(EGraph& egraph, CanonicalizedType& ct, Id part)
         if (!ct.functionPart)
             ct.functionParts.insert(part);
     }
-    else if (auto tclass = isTag<TClass>(egraph, part))
+    else if (isTag<TClass>(egraph, part))
         unionClasses(egraph, ct.classParts, part);
     else if (isTag<TAny>(egraph, part))
     {
@@ -1412,7 +1415,7 @@ bool subtract(EGraph& egraph, CanonicalizedType& ct, Id part)
         ct.tablePart.reset();
     else if (etype->get<TTopClass>())
         ct.classParts.clear();
-    else if (auto tclass = etype->get<TClass>())
+    else if (etype->get<TClass>())
     {
         auto it = std::find(ct.classParts.begin(), ct.classParts.end(), part);
         if (it != ct.classParts.end())
@@ -2368,11 +2371,12 @@ void Simplifier::intersectTableProperty(Id id)
                                     newIntersectionParts.push_back(intersectionParts[index]);
                             }
 
-                            Id newTableProp =
-                                egraph.add(Intersection{
+                            Id newTableProp = egraph.add(
+                                Intersection{
                                     toId(egraph, builtinTypes, mappingIdToClass, stringCache, *it->second.readTy),
                                     toId(egraph, builtinTypes, mappingIdToClass, stringCache, *table1Ty->props.begin()->second.readTy)
-                                });
+                                }
+                            );
 
                             newIntersectionParts.push_back(egraph.add(TTable{jId, {stringCache.add(it->first)}, {newTableProp}}));
 

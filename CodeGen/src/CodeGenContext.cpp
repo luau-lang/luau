@@ -28,6 +28,7 @@ static void* gPerfLogContext = nullptr;
 static PerfLogFn gPerfLogFn = nullptr;
 
 unsigned int getCpuFeaturesA64();
+unsigned int getCpuFeaturesX64();
 
 void setPerfLog(void* context, PerfLogFn logFn)
 {
@@ -375,6 +376,9 @@ static int onEnter(lua_State* L, Proto* proto)
 
 static int onEnterDisabled(lua_State* L, Proto* proto)
 {
+    // If the function wasn't entered natively, it cannot be resumed natively later
+    L->ci->flags &= ~LUA_CALLINFO_NATIVE;
+
     return 1;
 }
 
@@ -438,12 +442,18 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
     NativeProtoExecDataPtr nativeExecData = createNativeProtoExecData(proto->sizecode);
 
     uint32_t instTarget = ir.function.entryLocation;
+    uint32_t unassignedOffset = ir.function.endLocation - instTarget;
 
     for (int i = 0; i < proto->sizecode; ++i)
     {
-        CODEGEN_ASSERT(ir.function.bcMapping[i].asmLocation >= instTarget);
+        const BytecodeMapping& bcMapping = ir.function.bcMapping[i];
 
-        nativeExecData[i] = ir.function.bcMapping[i].asmLocation - instTarget;
+        CODEGEN_ASSERT(bcMapping.asmLocation >= instTarget);
+
+        if (bcMapping.asmLocation != ~0u)
+            nativeExecData[i] = bcMapping.asmLocation - instTarget;
+        else
+            nativeExecData[i] = unassignedOffset;
     }
 
     // Set first instruction offset to 0 so that entering this function still
@@ -546,7 +556,8 @@ template<typename AssemblyBuilder>
     static unsigned int cpuFeatures = getCpuFeaturesA64();
     A64::AssemblyBuilderA64 build(/* logText= */ false, cpuFeatures);
 #else
-    X64::AssemblyBuilderX64 build(/* logText= */ false);
+    static unsigned int cpuFeatures = getCpuFeaturesX64();
+    X64::AssemblyBuilderX64 build(/* logText= */ false, cpuFeatures);
 #endif
 
     ModuleHelpers helpers;
@@ -574,7 +585,8 @@ template<typename AssemblyBuilder>
         }
         else
         {
-            compilationResult.protoFailures.push_back({protoResult, protos[i]->debugname ? getstr(protos[i]->debugname) : "", protos[i]->linedefined}
+            compilationResult.protoFailures.push_back(
+                {protoResult, protos[i]->debugname ? getstr(protos[i]->debugname) : "", protos[i]->linedefined}
             );
         }
     }

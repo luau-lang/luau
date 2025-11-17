@@ -56,7 +56,7 @@ void ConstraintGeneratorFixture::solve(const std::string& code)
         NotNull{rootScope},
         constraints,
         NotNull{&cg->scopeToFunction},
-        "MainModule",
+        mainModule,
         NotNull(&moduleResolver),
         {},
         &logger,

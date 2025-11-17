@@ -4,9 +4,7 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauForceSimplifyConstraint2)
-LUAU_FASTFLAGVARIABLE(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 namespace Luau
 {
@@ -24,7 +22,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
     bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer(NotNull<TypeIds> result)
-        : TypeOnceVisitor("ReferenceCountInitializer", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
         , result(result)
     {
     }
@@ -49,11 +47,8 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
-        if (FFlag::LuauEagerGeneralization4)
-        {
-            if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
-                result->insert(ty);
-        }
+        if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
+            result->insert(ty);
 
         return true;
     }
@@ -66,20 +61,14 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
     {
-        if (FFlag::LuauForceSimplifyConstraint2)
-            return tfit.function->canReduceGenerics;
-        else
-            return FFlag::LuauEagerGeneralization4 && traverseIntoTypeFunctions;
+        return tfit.function->canReduceGenerics;
     }
 };
 
 bool isReferenceCountedType(const TypeId typ)
 {
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        if (auto tt = get<TableType>(typ))
-            return tt->state == TableState::Free || tt->state == TableState::Unsealed;
-    }
+    if (auto tt = get<TableType>(typ))
+        return tt->state == TableState::Free || tt->state == TableState::Unsealed;
 
     // n.b. this should match whatever `ReferenceCountInitializer` includes.
     return get<FreeType>(typ) || get<BlockedType>(typ) || get<PendingExpansionType>(typ);
@@ -98,7 +87,8 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     if (auto ec = get<EqualityConstraint>(*this))
     {
         rci.traverse(ec->resultType);
-        // `EqualityConstraints` should not mutate `assignmentType`.
+        if (FFlag::LuauNoOrderingTypeFunctions)
+            rci.traverse(ec->assignmentType);
     }
     else if (auto sc = get<SubtypeConstraint>(*this))
     {
@@ -128,7 +118,7 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(fchc->argsPack);
     }
-    else if (auto fcc = get<FunctionCallConstraint>(*this); fcc && FFlag::LuauEagerGeneralization4)
+    else if (auto fcc = get<FunctionCallConstraint>(*this))
     {
         rci.traverseIntoTypeFunctions = false;
         rci.traverse(fcc->fn);
@@ -142,13 +132,11 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     else if (auto hpc = get<HasPropConstraint>(*this))
     {
         rci.traverse(hpc->resultType);
-        if (FFlag::LuauEagerGeneralization4)
-            rci.traverse(hpc->subjectType);
+        rci.traverse(hpc->subjectType);
     }
     else if (auto hic = get<HasIndexerConstraint>(*this))
     {
-        if (FFlag::LuauEagerGeneralization4)
-            rci.traverse(hic->subjectType);
+        rci.traverse(hic->subjectType);
         rci.traverse(hic->resultType);
         // `HasIndexerConstraint` should not mutate `indexType`.
     }

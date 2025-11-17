@@ -10,9 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-
 TEST_SUITE_BEGIN("UnionTypes");
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_union_with_one_part_assertion")
@@ -404,7 +401,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors")
 
 TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type A = { x: number } & { y: number }
         function f(a: A?)
@@ -525,7 +521,6 @@ local oh : boolean = t.y
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -629,13 +624,15 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
     UnionType u;
 
     u.options.push_back(badCyclicUnionTy);
-    u.options.push_back(arena.addType(TableType{
-        {},
-        TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType},
-        TypeLevel{},
-        getFrontend().globals.globalScope.get(),
-        TableState::Sealed
-    }));
+    u.options.push_back(arena.addType(
+        TableType{
+            {},
+            TableIndexer{getBuiltins()->numberType, getBuiltins()->numberType},
+            TypeLevel{},
+            getFrontend().globals.globalScope.get(),
+            TableState::Sealed
+        }
+    ));
 
     asMutable(badCyclicUnionTy)->ty.emplace<UnionType>(std::move(u));
 
@@ -896,15 +893,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauEagerGeneralization4)
-        CHECK_EQ(
-            "<a>(({ read x: a } & { x: number }) | ({ read x: a } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f"))
-        );
-    else
-        CHECK_EQ(
-            "(({ read x: unknown } & { x: number }) | ({ read x: unknown } & { x: string })) -> { x: number } | { x: string }",
-            toString(requireType("f"))
-        );
+    CHECK_EQ("<a>(({ read x: a } & { x: number }) | ({ read x: a } & { x: string })) -> { x: number } | { x: string }", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")

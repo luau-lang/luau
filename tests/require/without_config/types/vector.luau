@@ -1,0 +1,1 @@
+return vector.create(1, 2, 3)

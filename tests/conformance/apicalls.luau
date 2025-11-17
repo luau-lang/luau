@@ -30,4 +30,8 @@ function oops()
   return "oops"
 end
 
+function getnresults(n)
+  return table.unpack(table.create(n, 1))
+end
+
 return('OK')

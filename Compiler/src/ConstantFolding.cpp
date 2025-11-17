@@ -2,11 +2,14 @@
 #include "ConstantFolding.h"
 
 #include "BuiltinFolding.h"
+#include "Luau/Lexer.h"
 
 #include <vector>
 #include <math.h>
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAGVARIABLE(LuauStringConstFolding2)
+LUAU_FASTFLAGVARIABLE(LuauInterpStringConstFolding)
 
 namespace Luau
 {
@@ -82,7 +85,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
     }
 }
 
-static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra)
+static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra, AstNameTable& names)
 {
     switch (op)
     {
@@ -285,6 +288,25 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::Concat:
+        if (FFlag::LuauStringConstFolding2)
+            if (la.type == Constant::Type_String && ra.type == Constant::Type_String)
+            {
+                result.type = Constant::Type_String;
+                result.stringLength = la.stringLength + ra.stringLength;
+                if (la.stringLength == 0)
+                    result.valueString = ra.valueString;
+                else if (ra.stringLength == 0)
+                    result.valueString = la.valueString;
+                else
+                {
+                    std::string tmp;
+                    tmp.reserve(result.stringLength + 1);
+                    tmp.append(la.valueString, la.stringLength);
+                    tmp.append(ra.valueString, ra.stringLength);
+                    AstName name = names.getOrAdd(tmp.c_str(), result.stringLength);
+                    result.valueString = name.value;
+                }
+            }
         break;
 
     case AstExprBinary::CompareNe:
@@ -354,6 +376,48 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
     }
 }
 
+static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseHashMap<AstExpr*, Constant>& constants, AstNameTable& names)
+{
+    LUAU_ASSERT(expr->strings.size == expr->expressions.size + 1);
+    size_t resultLength = 0;
+    for (size_t index = 0; index < expr->strings.size; ++index)
+    {
+        resultLength += expr->strings.data[index].size;
+        if (index < expr->expressions.size)
+        {
+            const Constant* c = constants.find(expr->expressions.data[index]);
+            LUAU_ASSERT(c != nullptr && c->type == Constant::Type::Type_String);
+            resultLength += c->stringLength;
+        }
+    }
+    result.type = Constant::Type_String;
+    result.stringLength = resultLength;
+
+    if (resultLength == 0)
+    {
+        result.valueString = "";
+        return;
+    }
+
+    std::string tmp;
+    tmp.reserve(resultLength);
+
+    for (size_t index = 0; index < expr->strings.size; ++index)
+    {
+        AstArray<char> string = expr->strings.data[index];
+        tmp.append(string.data, string.size);
+        if (index < expr->expressions.size)
+        {
+            const Constant* c = constants.find(expr->expressions.data[index]);
+            tmp.append(c->valueString, c->stringLength);
+        }
+    }
+    result.type = Constant::Type_String;
+    result.stringLength = resultLength;
+    AstName name = names.getOrAdd(tmp.c_str(), resultLength);
+    result.valueString = name.value;
+}
+
 struct ConstantVisitor : AstVisitor
 {
     DenseHashMap<AstExpr*, Constant>& constants;
@@ -363,6 +427,7 @@ struct ConstantVisitor : AstVisitor
     const DenseHashMap<AstExprCall*, int>* builtins;
     bool foldLibraryK = false;
     LibraryMemberConstantCallback libraryMemberConstantCb;
+    AstNameTable& names;
 
     bool wasEmpty = false;
 
@@ -374,7 +439,8 @@ struct ConstantVisitor : AstVisitor
         DenseHashMap<AstLocal*, Constant>& locals,
         const DenseHashMap<AstExprCall*, int>* builtins,
         bool foldLibraryK,
-        LibraryMemberConstantCallback libraryMemberConstantCb
+        LibraryMemberConstantCallback libraryMemberConstantCb,
+        AstNameTable& names
     )
         : constants(constants)
         , variables(variables)
@@ -382,6 +448,7 @@ struct ConstantVisitor : AstVisitor
         , builtins(builtins)
         , foldLibraryK(foldLibraryK)
         , libraryMemberConstantCb(libraryMemberConstantCb)
+        , names(names)
     {
         // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
         wasEmpty = constants.empty() && locals.empty();
@@ -520,7 +587,7 @@ struct ConstantVisitor : AstVisitor
 
             // note: ra doesn't need to be constant to fold and/or
             if (la.type != Constant::Type_Unknown)
-                foldBinary(result, expr->op, la, ra);
+                foldBinary(result, expr->op, la, ra, names);
         }
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
         {
@@ -539,8 +606,21 @@ struct ConstantVisitor : AstVisitor
         }
         else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
         {
-            for (AstExpr* expression : expr->expressions)
-                analyze(expression);
+            if (FFlag::LuauInterpStringConstFolding)
+            {
+                bool onlyConstantSubExpr = true;
+                for (AstExpr* expression : expr->expressions)
+                    if (analyze(expression).type != Constant::Type_String)
+                        onlyConstantSubExpr = false;
+
+                if (onlyConstantSubExpr)
+                    foldInterpString(result, expr, constants, names);
+            }
+            else
+            {
+                for (AstExpr* expression : expr->expressions)
+                    analyze(expression);
+            }
         }
         else if (AstExprExplicitTypeInstantiation* expr = node->as<AstExprExplicitTypeInstantiation>())
         {
@@ -635,10 +715,11 @@ void foldConstants(
     const DenseHashMap<AstExprCall*, int>* builtins,
     bool foldLibraryK,
     LibraryMemberConstantCallback libraryMemberConstantCb,
-    AstNode* root
+    AstNode* root,
+    AstNameTable& names
 )
 {
-    ConstantVisitor visitor{constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb};
+    ConstantVisitor visitor{constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb, names};
     root->visit(&visitor);
 }
 

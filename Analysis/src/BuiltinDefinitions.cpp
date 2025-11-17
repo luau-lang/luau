@@ -32,89 +32,135 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
-LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
+LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
+LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
 
 namespace Luau
 {
 
 struct MagicSelect final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicSetMetatable final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicAssert final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicPack final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicRequire final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicClone final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFreeze final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFormat final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
     bool typeCheck(const MagicFunctionTypeCheckContext& ctx) override;
 };
 
 struct MagicMatch final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicGmatch final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
 struct MagicFind final : MagicFunction
 {
-    std::optional<WithPredicate<TypePackId>>
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>) override;
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
@@ -323,12 +369,19 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-    Scope* globalScope = nullptr; // NotNull<Scope> when removing FFlag::LuauEagerGeneralization4
-    if (FFlag::LuauEagerGeneralization4)
-        globalScope = globals.globalScope.get();
+    NotNull<Scope> globalScope{globals.globalScope.get()};
 
-    if (frontend.getLuauSolverMode() == SolverMode::New)
-        builtinTypeFunctions().addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
+    if (FFlag::LuauBuiltinTypeFunctionsArentGlobal)
+    {
+        if (frontend.getLuauSolverMode() == SolverMode::New)
+            builtinTypes->typeFunctions->addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
+    }
+    else
+    {
+        if (frontend.getLuauSolverMode() == SolverMode::New)
+            builtinTypeFunctions_DEPRECATED().addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
+    }
+
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
         globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete
@@ -397,7 +450,13 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
         // getmetatable : <T>(T) -> getmetatable<T>
-        TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().getmetatableFunc, {genericT}});
+        TypeId getmtReturn = arena.addType(
+            TypeFunctionInstanceType{
+                FFlag::LuauBuiltinTypeFunctionsArentGlobal ? builtinTypes->typeFunctions->getmetatableFunc
+                                                           : builtinTypeFunctions_DEPRECATED().getmetatableFunc,
+                {genericT}
+            }
+        );
         addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericT}, {}, {genericT}, {getmtReturn}), "@luau");
     }
     else
@@ -409,12 +468,15 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
         // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
-        TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions().setmetatableFunc, {genericT, genericMT}});
+        TypeId setmtReturn = arena.addType(
+            TypeFunctionInstanceType{
+                FFlag::LuauBuiltinTypeFunctionsArentGlobal ? builtinTypes->typeFunctions->setmetatableFunc
+                                                           : builtinTypeFunctions_DEPRECATED().setmetatableFunc,
+                {genericT, genericMT}
+            }
+        );
         addGlobalBinding(
-            globals,
-            "setmetatable",
-            makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}),
-            "@luau"
+            globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
         );
     }
     else
@@ -442,13 +504,22 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     {
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
         TypeId genericT = arena.addType(GenericType{globalScope, "T"});
-        TypeId refinedTy = arena.addType(TypeFunctionInstanceType{
-            NotNull{&builtinTypeFunctions().intersectFunc}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}
-        });
+        TypeId refinedTy = arena.addType(
+            TypeFunctionInstanceType{
+                NotNull{
+                    FFlag::LuauBuiltinTypeFunctionsArentGlobal ? &builtinTypes->typeFunctions->intersectFunc
+                                                               : &builtinTypeFunctions_DEPRECATED().intersectFunc
+                },
+                {genericT, arena.addType(NegationType{builtinTypes->falsyType})},
+                {}
+            }
+        );
 
-        TypeId assertTy = arena.addType(FunctionType{
-            {genericT}, {}, arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}), arena.addTypePack(TypePack{{refinedTy}})
-        });
+        TypeId assertTy = arena.addType(
+            FunctionType{
+                {genericT}, {}, arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}), arena.addTypePack(TypePack{{refinedTy}})
+            }
+        );
         addGlobalBinding(globals, "assert", assertTy, "@luau");
     }
 
@@ -468,12 +539,10 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
             TypePackId thePack = arena.addTypePack({genericTy});
             TypeId idTyWithMagic = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
             ttv->props["freeze"] = makeProperty(idTyWithMagic, "@luau/global/table.freeze");
-            if (globalScope)
-                inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTyWithMagic);
+            inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTyWithMagic);
 
             TypeId idTy = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
-            if (globalScope)
-                inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTy);
+            inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTy);
             ttv->props["clone"] = makeProperty(idTy, "@luau/global/table.clone");
         }
         else
@@ -489,7 +558,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreachi"].deprecated = true;
 
         attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
-        if (FFlag::LuauTableCloneClonesType3)
+        if (FFlag::LuauTableCloneClonesType4)
             attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
         attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
     }
@@ -699,83 +768,80 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
 
     if (iter == end(context.arguments))
     {
-        context.typechecker->reportError(
-            CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location
-            );
-            return true;
-        }
+        context.typechecker->reportError(CountMismatch{1, std::nullopt, 0, CountMismatch::Arg, true, "string.format"}, context.callSite->location);
+        return true;
+    }
 
-        // we'll suppress any errors for `string.format` if the format string is error suppressing.
-        if (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, follow(*iter)) == ErrorSuppression::Suppress)
+    // we'll suppress any errors for `string.format` if the format string is error suppressing.
+    if (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, follow(*iter)) == ErrorSuppression::Suppress)
+    {
+        return true;
+    }
+
+    AstExprConstantString* fmt = nullptr;
+    if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
+        fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
+
+    if (!context.callSite->self && context.callSite->args.size > 0)
+        fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
+
+    std::optional<std::string_view> formatString;
+    if (fmt)
+        formatString = {fmt->value.data, fmt->value.size};
+    else if (auto singleton = get<SingletonType>(follow(*iter)))
+    {
+        if (auto stringSingleton = get<StringSingleton>(singleton))
+            formatString = {stringSingleton->value};
+    }
+
+    if (!formatString)
+    {
+        context.typechecker->reportError(CannotCheckDynamicStringFormatCalls{}, context.callSite->location);
+        return true;
+    }
+
+    // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
+    // This does _not_ handle cases like:
+    //
+    //  local foo : () -> (...string) = (nil :: any)
+    //  print(string.format("%s %d %s", foo()))
+    //
+    // ... which should be disallowed.
+
+    std::vector<TypeId> expected = parseFormatString(context.builtinTypes, formatString->data(), formatString->size());
+
+    const auto& [params, tail] = flatten(context.arguments);
+
+    size_t paramOffset = 1;
+    // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
+    bool calledWithSelf = expected.size() == context.callSite->args.size;
+    // unify the prefix one argument at a time
+    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
+    {
+        TypeId actualTy = params[i + paramOffset];
+        TypeId expectedTy = expected[i];
+        Location location = context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
+        // use subtyping instead here
+        SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
+
+        if (!result.isSubtype)
         {
-            return true;
-        }
-
-        AstExprConstantString* fmt = nullptr;
-        if (auto index = context.callSite->func->as<AstExprIndexName>(); index && context.callSite->self)
-            fmt = unwrapGroup(index->expr)->as<AstExprConstantString>();
-
-        if (!context.callSite->self && context.callSite->args.size > 0)
-            fmt = context.callSite->args.data[0]->as<AstExprConstantString>();
-
-        std::optional<std::string_view> formatString;
-        if (fmt)
-            formatString = {fmt->value.data, fmt->value.size};
-        else if (auto singleton = get<SingletonType>(follow(*iter)))
-        {
-            if (auto stringSingleton = get<StringSingleton>(singleton))
-                formatString = {stringSingleton->value};
-        }
-
-        if (!formatString)
-        {
-            context.typechecker->reportError(CannotCheckDynamicStringFormatCalls{}, context.callSite->location);
-            return true;
-        }
-
-        // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
-        // This does _not_ handle cases like:
-        //
-        //  local foo : () -> (...string) = (nil :: any)
-        //  print(string.format("%s %d %s", foo()))
-        //
-        // ... which should be disallowed.
-
-        std::vector<TypeId> expected = parseFormatString(context.builtinTypes, formatString->data(), formatString->size());
-
-        const auto& [params, tail] = flatten(context.arguments);
-
-        size_t paramOffset = 1;
-        // Compare the expressions passed with the types the function expects to determine whether this function was called with : or .
-        bool calledWithSelf = expected.size() == context.callSite->args.size;
-        // unify the prefix one argument at a time
-        for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
-        {
-            TypeId actualTy = params[i + paramOffset];
-            TypeId expectedTy = expected[i];
-            Location location =
-                context.callSite->args.data[std::min(context.callSite->args.size - 1, i + (calledWithSelf ? 0 : paramOffset))]->location;
-            // use subtyping instead here
-            SubtypingResult result = context.typechecker->subtyping->isSubtype(actualTy, expectedTy, context.checkScope);
-
-            if (!result.isSubtype)
+            switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
             {
-                switch (shouldSuppressErrors(NotNull{&context.typechecker->normalizer}, actualTy))
-                {
-                    case ErrorSuppression::Suppress:
-                        break;
-                    case ErrorSuppression::NormalizationFailed:
-                        break;
-                    case ErrorSuppression::DoNotSuppress:
-                        Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                break;
+            case ErrorSuppression::DoNotSuppress:
+                Reasonings reasonings = context.typechecker->explainReasonings(actualTy, expectedTy, location, result);
 
-                        if (!reasonings.suppressed)
-                            context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
-                }
+                if (!reasonings.suppressed)
+                    context.typechecker->reportError(TypeMismatch{expectedTy, actualTy, reasonings.toString()}, location);
             }
         }
+    }
 
-        return true;
+    return true;
 }
 
 static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
@@ -1127,11 +1193,13 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
 
     const TypeId stringToStringType = makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ true);
 
-    const TypeId replArgType = arena->addType(UnionType{
-        {stringType,
-         arena->addType(TableType({}, TableIndexer(stringType, stringType), TypeLevel{}, TableState::Generic)),
-         makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ false)}
-    });
+    const TypeId replArgType = arena->addType(
+        UnionType{
+            {stringType,
+             arena->addType(TableType({}, TableIndexer(stringType, stringType), TypeLevel{}, TableState::Generic)),
+             makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ false)}
+        }
+    );
     const TypeId gsubFunc =
         makeFunction(*arena, stringType, {}, {}, {stringType, replArgType, optionalNumber}, {}, {stringType, numberType}, /* checked */ false);
     const TypeId gmatchFunc =
@@ -1194,10 +1262,12 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
              /* checked */ true
          )}},
         {"pack",
-         {arena->addType(FunctionType{
-             arena->addTypePack(TypePack{{stringType}, variadicTailPack}),
-             oneStringPack,
-         })}},
+         {arena->addType(
+             FunctionType{
+                 arena->addTypePack(TypePack{{stringType}, variadicTailPack}),
+                 oneStringPack,
+             }
+         )}},
         {"packsize", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType}, /* checked */ true)}},
         {"unpack", {arena->addType(std::move(stringDotUnpack))}},
     };
@@ -1511,6 +1581,8 @@ bool MagicPack::infer(const MagicFunctionCallContext& context)
     return true;
 }
 
+// ({+ +}) -> {+ +}
+// <T: {}>(T) -> T
 std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     TypeChecker& typechecker,
     const ScopePtr& scope,
@@ -1518,13 +1590,15 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     WithPredicate<TypePackId> withPredicate
 )
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType3);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType4);
 
     auto [paramPack, _predicates] = std::move(withPredicate);
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
-    const auto& [paramTypes, paramTail] = flatten(paramPack);
+    // in the old solver, nonstrict in particular is really bad about inferring `...any` for things that are definitely present
+    // and the only real way for us to deal with this is to just be more permissive here
+    const auto& [paramTypes, paramTail] = extendTypePack(arena, typechecker.builtinTypes, paramPack, 1);
     if (paramTypes.empty() || expr.args.size == 0)
     {
         typechecker.reportError(expr.argLocation, CountMismatch{1, std::nullopt, 0});
@@ -1533,8 +1607,23 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
     TypeId inputType = follow(paramTypes[0]);
 
-    if (!get<TableType>(inputType))
-        return std::nullopt;
+    if (FFlag::LuauCloneForIntersectionsUnions)
+    {
+        if (!get<TableType>(inputType) && !get<IntersectionType>(inputType))
+            return std::nullopt;
+
+        if (auto intersectionTy = get<IntersectionType>(inputType))
+        {
+            for (auto ty : intersectionTy)
+                if (!get<TableType>(ty))
+                    return std::nullopt;
+        }
+    }
+    else
+    {
+        if (!get<TableType>(inputType))
+            return std::nullopt;
+    }
 
     CloneState cloneState{typechecker.builtinTypes};
     TypeId resultType = shallowClone(inputType, arena, cloneState, /* clonePersistentTypes */ false);
@@ -1545,7 +1634,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
 bool MagicClone::infer(const MagicFunctionCallContext& context)
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType3);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType4);
 
     TypeArena* arena = context.solver->arena;
 
@@ -1622,8 +1711,12 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
     return std::nullopt;
 }
 
-std::optional<WithPredicate<TypePackId>> MagicFreeze::
-    handleOldSolver(struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>)
+std::optional<WithPredicate<TypePackId>> MagicFreeze::handleOldSolver(
+    struct TypeChecker&,
+    const std::shared_ptr<struct Scope>&,
+    const class AstExprCall&,
+    WithPredicate<TypePackId>
+)
 {
     return std::nullopt;
 }
@@ -1637,7 +1730,8 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
+        if (!FFlag::LuauNewOverloadResolver)
+            context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }
 
@@ -1754,7 +1848,7 @@ bool MagicRequire::infer(const MagicFunctionCallContext& context)
     if (!checkRequirePathDcr(context.solver, context.callSite->args.data[0]))
         return false;
 
-    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(context.solver->currentModuleName, *context.callSite))
+    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(context.solver->module->name, *context.callSite))
     {
         TypeId moduleType = context.solver->resolveModule(*moduleInfo, context.callSite->location);
         TypePackId moduleResult = context.solver->arena->addTypePack({moduleType});
@@ -1803,6 +1897,18 @@ bool matchAssert(const AstExprCall& call)
 
     const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
     if (!funcAsGlobal || funcAsGlobal->name != "assert")
+        return false;
+
+    return true;
+}
+
+bool matchTypeOf(const AstExprCall& call)
+{
+    if (call.args.size != 1)
+        return false;
+
+    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    if (!funcAsGlobal || (funcAsGlobal->name != "typeof" && funcAsGlobal->name != "type"))
         return false;
 
     return true;

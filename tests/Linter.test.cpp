@@ -8,8 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauEagerGeneralization4);
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 using namespace Luau;
 
@@ -41,10 +40,11 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 {
+    ScopedFastFlag sff{FFlag::LuauUnknownGlobalFixSuggestion, true};
     LintResult result = lint("--!nocheck\nreturn foo");
 
     REQUIRE(1 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'");
+    CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'; consider assigning to it first");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
@@ -1876,8 +1876,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
-
     // @deprecated works on local functions
     {
         LintResult result = lint(R"(
@@ -1986,7 +1984,9 @@ Account:deposit(200.00)
 )");
 
         REQUIRE(1 == result.warnings.size());
-        checkDeprecatedWarning(result.warnings[0], Position(8, 0), Position(8, 15), "Member 'Account.deposit' is deprecated, use 'credit' instead. It sounds cool");
+        checkDeprecatedWarning(
+            result.warnings[0], Position(8, 0), Position(8, 15), "Member 'Account.deposit' is deprecated, use 'credit' instead. It sounds cool"
+        );
     }
 
     // @deprecated works for methods with a compound expression class name
@@ -2007,7 +2007,9 @@ end
 )");
 
         REQUIRE(1 == result.warnings.size());
-        checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated, use 'credit' instead. It sounds cool");
+        checkDeprecatedWarning(
+            result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated, use 'credit' instead. It sounds cool"
+        );
     }
 
     {

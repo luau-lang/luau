@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 
 struct Unifier2Fixture
 {
@@ -130,6 +131,33 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "unify_binds_free_supertype_tail_pack")
     u2.unify(numberPack, freeAndFree);
 
     CHECK("(number <: 'a)" == toString(freeAndFree));
+}
+
+TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_intersection_in_ub_from_union")
+{
+    // 'a
+    TypeId freeTy = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
+    // 'a & ~(false?)
+    TypeId subTy = arena.addType(IntersectionType{{freeTy, builtinTypes.truthyType}});
+    // number?
+    TypeId superTy = arena.addType(UnionType{{builtinTypes.numberType, builtinTypes.nilType}});
+    u2.unify(subTy, superTy);
+
+    // TODO CLI-168953: This is not correct. We should not be unifying to `never` here.
+    CHECK("('a <: never)" == toString(freeTy));
+}
+
+TEST_CASE_FIXTURE(Unifier2Fixture, "unify_free_type_lb_from_intersection")
+{
+    // 'a
+    TypeId freeTy = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
+    // 'a?
+    TypeId superTy = arena.addType(UnionType{{freeTy, builtinTypes.nilType}});
+    // string & ~"foo"
+    TypeId subTy =
+        arena.addType(IntersectionType{{builtinTypes.stringType, arena.addType(NegationType{arena.addType(SingletonType{StringSingleton{"foo"}})})}});
+    u2.unify(subTy, superTy);
+    CHECK("(string & ~\"foo\" <: 'a)" == toString(freeTy));
 }
 
 TEST_SUITE_END();

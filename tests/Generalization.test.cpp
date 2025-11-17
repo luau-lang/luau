@@ -15,11 +15,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches)
-
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -166,10 +163,12 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can
 {
     TypeId selfTy = arena.addType(BlockedType{});
 
-    TypeId methodTy = arena.addType(FunctionType{
-        arena.addTypePack({selfTy}),
-        arena.addTypePack({builtinTypes.numberType}),
-    });
+    TypeId methodTy = arena.addType(
+        FunctionType{
+            arena.addTypePack({selfTy}),
+            arena.addTypePack({builtinTypes.numberType}),
+        }
+    );
 
     asMutable(selfTy)->ty.emplace<TableType>(
         TableType::Props{{"count", builtinTypes.numberType}, {"method", methodTy}}, std::nullopt, TypeLevel{}, TableState::Sealed
@@ -229,10 +228,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
     TypeId numberArray = arena.addType(TableType{tt});
@@ -265,10 +260,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
 
@@ -401,9 +392,7 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}};
 
     CheckResult result = check(R"(
 local func: <T>(T, (T) -> ()) -> () = nil :: any
@@ -438,10 +427,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional_inference")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauEagerGeneralization4, true},
-    };
-
     fileResolver.source["Module/ListFns"] = R"(
         local mod = {}
         function mod.findWhere(list, predicate): number?

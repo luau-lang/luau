@@ -229,15 +229,14 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
-        result.errors[0] ==
-        TypeError{
-            Location{{1, 17}, {1, 28}},
-            getMainSourceModule()->name,
-            UnknownSymbol{
-                "IDoNotExist",
-                UnknownSymbol::Context::Type,
-            },
-        }
+        result.errors[0] == TypeError{
+                                Location{{1, 17}, {1, 28}},
+                                getMainSourceModule()->name,
+                                UnknownSymbol{
+                                    "IDoNotExist",
+                                    UnknownSymbol::Context::Type,
+                                },
+                            }
     );
 }
 
@@ -886,12 +885,13 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_type_fun_should_not_trip_rbxassert")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-#if 0
 // This is because, after visiting all nodes in a block, we check if each type alias still points to a FreeType.
 // Doing it that way is wrong, but I also tried to make typeof(x) return a BoundType, with no luck.
 // Not important enough to fix today.
 TEST_CASE_FIXTURE(Fixture, "pulling_a_type_from_value_dont_falsely_create_occurs_check_failed")
 {
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
     CheckResult result = check(R"(
         function f(x)
             type T = typeof(x)
@@ -900,7 +900,6 @@ TEST_CASE_FIXTURE(Fixture, "pulling_a_type_from_value_dont_falsely_create_occurs
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "occurs_check_on_cyclic_union_type")
 {

@@ -3,7 +3,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/Parser.h"
-#include "Luau/Transpiler.h"
+#include "Luau/PrettyPrinter.h"
 
 #include "Luau/FileUtils.h"
 
@@ -85,7 +85,7 @@ struct Reducer
 
     void writeTempScript(bool minify = false)
     {
-        std::string source = transpileWithTypes(*root, cstNodeMap);
+        std::string source = prettyPrintWithTypes(*root, cstNodeMap);
 
         if (minify)
         {

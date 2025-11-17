@@ -140,7 +140,7 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
     ptrdiff_t ci_top = savestack(L, L->ci->top);
     int status = L->status;
 
-    // if the hook is called externally on a paused thread, we need to make sure the paused thread can emit Lua calls
+    // if the hook is called externally on a paused thread, we need to make sure the paused thread can emit Luau calls
     if (status == LUA_YIELD || status == LUA_BREAK)
     {
         L->status = 0;
@@ -2904,8 +2904,8 @@ reentry:
                 int skip = LUAU_INSN_C(insn) - 1;
                 uint32_t aux = *pc++;
                 TValue* arg1 = VM_REG(LUAU_INSN_B(insn));
-                TValue* arg2 = VM_REG(aux & 0xff);
-                TValue* arg3 = VM_REG((aux >> 8) & 0xff);
+                TValue* arg2 = VM_REG(LUAU_INSN_AUX_A(aux));
+                TValue* arg3 = VM_REG(LUAU_INSN_AUX_B(aux));
 
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
 
@@ -2980,7 +2980,7 @@ reentry:
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 static_assert(LUA_TNIL == 0, "we expect type-1 to be negative iff type is nil");
-                // condition is equivalent to: int(ttisnil(ra)) != (aux >> 31)
+                // condition is equivalent to: int(ttisnil(ra)) != LUAU_INSN_AUX_NOT(aux)
                 pc += int((ttype(ra) - 1) ^ aux) < 0 ? LUAU_INSN_D(insn) : 1;
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
@@ -2992,7 +2992,7 @@ reentry:
                 uint32_t aux = *pc;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
-                pc += int(ttisboolean(ra) && bvalue(ra) == int(aux & 1)) != (aux >> 31) ? LUAU_INSN_D(insn) : 1;
+                pc += int(ttisboolean(ra) && bvalue(ra) == int(LUAU_INSN_AUX_KB(aux))) != LUAU_INSN_AUX_NOT(aux) ? LUAU_INSN_D(insn) : 1;
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
@@ -3002,18 +3002,18 @@ reentry:
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* kv = VM_KV(aux & 0xffffff);
+                TValue* kv = VM_KV(LUAU_INSN_AUX_KV(aux));
                 LUAU_ASSERT(ttisnumber(kv));
 
 #if defined(__aarch64__)
                 // On several ARM chips (Apple M1/M2, Neoverse N1), comparing the result of a floating-point comparison is expensive, and a branch
                 // is much cheaper; on some 32-bit ARM chips (Cortex A53) the performance is about the same so we prefer less branchy variant there
-                if (aux >> 31)
+                if (LUAU_INSN_AUX_NOT(aux))
                     pc += !(ttisnumber(ra) && nvalue(ra) == nvalue(kv)) ? LUAU_INSN_D(insn) : 1;
                 else
                     pc += (ttisnumber(ra) && nvalue(ra) == nvalue(kv)) ? LUAU_INSN_D(insn) : 1;
 #else
-                pc += int(ttisnumber(ra) && nvalue(ra) == nvalue(kv)) != (aux >> 31) ? LUAU_INSN_D(insn) : 1;
+                pc += int(ttisnumber(ra) && nvalue(ra) == nvalue(kv)) != LUAU_INSN_AUX_NOT(aux) ? LUAU_INSN_D(insn) : 1;
 #endif
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
@@ -3024,10 +3024,10 @@ reentry:
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* kv = VM_KV(aux & 0xffffff);
+                TValue* kv = VM_KV(LUAU_INSN_AUX_KV(aux));
                 LUAU_ASSERT(ttisstring(kv));
 
-                pc += int(ttisstring(ra) && gcvalue(ra) == gcvalue(kv)) != (aux >> 31) ? LUAU_INSN_D(insn) : 1;
+                pc += int(ttisstring(ra) && gcvalue(ra) == gcvalue(kv)) != LUAU_INSN_AUX_NOT(aux) ? LUAU_INSN_D(insn) : 1;
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }

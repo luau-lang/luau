@@ -108,7 +108,7 @@ struct ConstraintSolver
     std::vector<NotNull<Constraint>> constraints;
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
-    ModuleName currentModuleName;
+    ModulePtr module;
 
     // The dataflow graph of the program, used in constraint generation and for magic functions.
     NotNull<const DataFlowGraph> dfg;
@@ -169,7 +169,7 @@ struct ConstraintSolver
         NotNull<Normalizer> normalizer,
         NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
-        ModuleName moduleName,
+        ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,
@@ -178,6 +178,7 @@ struct ConstraintSolver
         ConstraintSet constraintSet
     );
 
+    // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
         NotNull<Simplifier> simplifier,
@@ -185,7 +186,7 @@ struct ConstraintSolver
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
         NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
-        ModuleName moduleName,
+        ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,
@@ -216,18 +217,6 @@ private:
     void initFreeTypeTracking();
 
     void generalizeOneType(TypeId ty);
-
-    /**
-     * Bind a type variable to another type.
-     *
-     * A constraint is required and will validate that blockedTy is owned by this
-     * constraint. This prevents one constraint from interfering with another's
-     * blocked types.
-     *
-     * Bind will also unblock the type variable for you.
-     */
-    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
-    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
 
     template<typename T, typename... Args>
     void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
@@ -299,7 +288,7 @@ public:
         ValueContext context,
         bool inConditional,
         bool suppressSimplification,
-        DenseHashSet<TypeId>& seen
+        Set<TypeId>& seen
     );
 
     /**
@@ -404,6 +393,18 @@ public:
     void shiftReferences(TypeId source, TypeId target);
 
     /**
+     * Bind a type variable to another type.
+     *
+     * A constraint is required and will validate that blockedTy is owned by this
+     * constraint. This prevents one constraint from interfering with another's
+     * blocked types.
+     *
+     * Bind will also unblock the type variable for you.
+     */
+    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
+    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
+
+    /**
      * Generalizes the given free type if the reference counting allows it.
      * @param the scope to generalize in
      * @param type the free type we want to generalize
@@ -461,7 +462,12 @@ public:
     void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
-    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+
+    // Clip with LuauSimplifyIntersectionNoTreeSet
+    TypeId simplifyIntersection_DEPRECATED(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+
+    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeIds parts);
+
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
     TypeId specifyExplicitTypes(

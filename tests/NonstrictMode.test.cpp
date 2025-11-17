@@ -14,7 +14,6 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete)
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
@@ -61,8 +60,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_coul
     REQUIRE_EQ("(any) -> (...any)", toString(t));
 }
 
-#if 0
-// Maybe we want this?
 TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 {
     CheckResult result = check(R"(
@@ -73,7 +70,6 @@ TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 
     REQUIRE_NE(*getBuiltins()->anyType, *requireType("foo"));
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
 {
@@ -326,7 +322,6 @@ TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_n
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
         // This debug flag is normally on, but we turn it off as we're testing
         // the exact behavior it enables.
         {FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, false},
@@ -345,7 +340,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauNewNonStrictSuppressSoloConstraintSolvingIncomplete, true},
     };
 
     CheckResult results = check(R"(

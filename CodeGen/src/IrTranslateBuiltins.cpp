@@ -8,8 +8,8 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenDirectBtest)
-LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorLerp)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorLerp2)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenFMA)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -286,7 +286,7 @@ static BuiltinImplResult translateBuiltinMathClamp(
 
 static BuiltinImplResult translateBuiltinVectorLerp(IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
 {
-    if (!FFlag::LuauCodeGenVectorLerp || nparams < 3 || nresults > 1)
+    if (!FFlag::LuauCodeGenVectorLerp2 || nparams < 3 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
     IrOp arg1 = build.vmReg(arg);
@@ -301,10 +301,20 @@ static BuiltinImplResult translateBuiltinVectorLerp(IrBuilder& build, int nparam
     IrOp tvec = build.inst(IrCmd::NUM_TO_VEC, t);
     IrOp one = build.inst(IrCmd::NUM_TO_VEC, build.constDouble(1.0));
     IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
-    IrOp incr = build.inst(IrCmd::MUL_VEC, diff, tvec);
-    IrOp res = build.inst(IrCmd::ADD_VEC, a, incr);
-    IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+
+    if (FFlag::LuauCodeGenFMA)
+    {
+        IrOp res = build.inst(IrCmd::MULADD_VEC, diff, tvec, a);
+        IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+    }
+    else
+    {
+        IrOp incr = build.inst(IrCmd::MUL_VEC, diff, tvec);
+        IrOp res = build.inst(IrCmd::ADD_VEC, a, incr);
+        IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -332,10 +342,20 @@ static BuiltinImplResult translateBuiltinMathLerp(
     IrOp b = builtinLoadDouble(build, args);
     IrOp t = builtinLoadDouble(build, arg3);
 
-    IrOp l = build.inst(IrCmd::ADD_NUM, a, build.inst(IrCmd::MUL_NUM, build.inst(IrCmd::SUB_NUM, b, a), t));
-    IrOp r = build.inst(IrCmd::SELECT_NUM, l, b, t, build.constDouble(1.0)); // select on t==1.0
+    if (FFlag::LuauCodeGenFMA)
+    {
+        IrOp l = build.inst(IrCmd::MULADD_NUM, build.inst(IrCmd::SUB_NUM, b, a), t, a);
+        IrOp r = build.inst(IrCmd::SELECT_NUM, l, b, t, build.constDouble(1.0)); // select on t==1.0
 
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), r);
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), r);
+    }
+    else
+    {
+        IrOp l = build.inst(IrCmd::ADD_NUM, a, build.inst(IrCmd::MUL_NUM, build.inst(IrCmd::SUB_NUM, b, a), t));
+        IrOp r = build.inst(IrCmd::SELECT_NUM, l, b, t, build.constDouble(1.0)); // select on t==1.0
+
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), r);
+    }
 
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
@@ -439,30 +459,9 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
 
     if (btest)
     {
-        if (FFlag::LuauCodeGenDirectBtest)
-        {
-            IrOp value = build.inst(IrCmd::CMP_INT, res, build.constInt(0), build.cond(IrCondition::NotEqual));
-            build.inst(IrCmd::STORE_INT, build.vmReg(ra), value);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-        }
-        else
-        {
-            IrOp falsey = build.block(IrBlockKind::Internal);
-            IrOp truthy = build.block(IrBlockKind::Internal);
-            IrOp exit = build.block(IrBlockKind::Internal);
-            build.inst(IrCmd::JUMP_CMP_INT, res, build.constInt(0), build.cond(IrCondition::Equal), falsey, truthy);
-
-            build.beginBlock(falsey);
-            build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(0));
-            build.inst(IrCmd::JUMP, exit);
-
-            build.beginBlock(truthy);
-            build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(1));
-            build.inst(IrCmd::JUMP, exit);
-
-            build.beginBlock(exit);
-            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-        }
+        IrOp value = build.inst(IrCmd::CMP_INT, res, build.constInt(0), build.cond(IrCondition::NotEqual));
+        build.inst(IrCmd::STORE_INT, build.vmReg(ra), value);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
     }
     else
     {

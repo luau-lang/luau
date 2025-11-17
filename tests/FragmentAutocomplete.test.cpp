@@ -27,15 +27,10 @@ using namespace Luau;
 LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAG(LuauFragmentAutocompleteTracksRValueRefinements)
-LUAU_FASTFLAG(LuauPopulateSelfTypesInFragment)
-LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
-LUAU_FASTFLAG(LuauForInProvidesRecommendations)
-LUAU_FASTFLAG(LuauFragmentAutocompleteTakesInnermostRefinement)
-LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
+LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
+LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -65,10 +60,6 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 {
     static_assert(std::is_base_of_v<Fixture, BaseType>, "BaseType must be a descendant of Fixture");
 
-    ScopedFastFlag sffLuauFragmentAutocompleteTracksRValueRefinement{FFlag::LuauFragmentAutocompleteTracksRValueRefinements, true};
-    ScopedFastFlag sffLuauPopulateSelfTypesInFragment{FFlag::LuauPopulateSelfTypesInFragment, true};
-    ScopedFastFlag luauParseIncompleteInterpStringsWithLocation{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
-
     FragmentAutocompleteFixtureImpl()
         : BaseType(true)
     {
@@ -77,6 +68,53 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     CheckResult checkWithOptions(const std::string& source)
     {
         return this->check(source, getOptions());
+    }
+
+    std::string cleanMarkers(const std::string& source)
+    {
+        markerPosition.clear();
+        std::string filteredSource;
+        filteredSource.reserve(source.size());
+
+        Position curPos(0, 0);
+        char prevChar{};
+        for (char c : source)
+        {
+            if (prevChar == '@')
+            {
+                LUAU_ASSERT("Illegal marker character" && ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')));
+                LUAU_ASSERT("Duplicate marker found" && markerPosition.count(c) == 0);
+                markerPosition.insert(std::pair{c, curPos});
+            }
+            else if (c == '@')
+            {
+                // skip the '@' character
+                if (prevChar == '\\')
+                {
+                    // escaped @, prevent prevChar to be equal to '@' on next loop
+                    c = '\0';
+                    // replace escaping '\' with '@'
+                    filteredSource.back() = '@';
+                }
+            }
+            else
+            {
+                filteredSource.push_back(c);
+                if (c == '\n')
+                {
+                    curPos.line++;
+                    curPos.column = 0;
+                }
+                else
+                {
+                    curPos.column++;
+                }
+            }
+            prevChar = c;
+        }
+        LUAU_ASSERT("Digit expected after @ symbol" && prevChar != '@');
+
+        return filteredSource;
     }
 
     ParseResult parseHelper_(SourceModule& source, std::string document)
@@ -152,16 +190,21 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     void autocompleteFragmentInNewSolver(
         const std::string& document,
         const std::string& updated,
-        Position cursorPos,
+        char marker,
         std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
         ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+        std::string cleanDocument = cleanMarkers(document);
+        std::string cleanUpdated = cleanMarkers(updated);
+        Position cursorPos = getPosition(marker);
+
         this->getFrontend().setLuauSolverMode(SolverMode::New);
         this->check(document, getOptions());
 
-        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        FragmentAutocompleteStatusResult result = autocompleteFragment(cleanUpdated, cursorPos, fragmentEndPosition);
         CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
     }
@@ -169,16 +212,21 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     void autocompleteFragmentInOldSolver(
         const std::string& document,
         const std::string& updated,
-        Position cursorPos,
+        char marker,
         std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
         ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+
+        std::string cleanDocument = cleanMarkers(document);
+        std::string cleanUpdated = cleanMarkers(updated);
+        Position cursorPos = getPosition(marker);
+
         this->getFrontend().setLuauSolverMode(SolverMode::Old);
         this->check(document, getOptions());
 
-        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        FragmentAutocompleteStatusResult result = autocompleteFragment(cleanUpdated, cursorPos, fragmentEndPosition);
         CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
     }
@@ -186,24 +234,28 @@ struct FragmentAutocompleteFixtureImpl : BaseType
     void autocompleteFragmentInBothSolvers(
         const std::string& document,
         const std::string& updated,
-        Position cursorPos,
+        char marker,
         std::function<void(FragmentAutocompleteStatusResult& result)> assertions,
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
+        std::string cleanDocument = cleanMarkers(document);
+        std::string cleanUpdated = cleanMarkers(updated);
+        Position cursorPos = getPosition(marker);
+
         ScopedFastFlag sff{FFlag::LuauSolverV2, true};
         this->getFrontend().setLuauSolverMode(SolverMode::New);
-        this->check(document, getOptions());
+        this->check(cleanDocument, getOptions());
 
-        FragmentAutocompleteStatusResult result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        FragmentAutocompleteStatusResult result = autocompleteFragment(cleanUpdated, cursorPos, fragmentEndPosition);
         CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
 
         ScopedFastFlag _{FFlag::LuauSolverV2, false};
         this->getFrontend().setLuauSolverMode(SolverMode::Old);
-        this->check(document, getOptions());
+        this->check(cleanDocument, getOptions());
 
-        result = autocompleteFragment(updated, cursorPos, fragmentEndPosition);
+        result = autocompleteFragment(cleanUpdated, cursorPos, fragmentEndPosition);
         CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
     }
@@ -239,6 +291,16 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         source = std::make_unique<SourceModule>();
         return *source;
     }
+
+    const Position& getPosition(char marker) const
+    {
+        auto i = markerPosition.find(marker);
+        LUAU_ASSERT(i != markerPosition.end());
+        return i->second;
+    }
+
+    // Maps a marker character (0-9 inclusive) to a position in the source code.
+    std::map<char, Position> markerPosition;
 
 private:
     std::unique_ptr<SourceModule> source = std::make_unique<SourceModule>();
@@ -696,7 +758,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "partial_for_numeric_in_condition")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     auto region = getAutocompleteRegion(
         R"(
 for c = 1,3
@@ -1543,7 +1604,6 @@ TEST_SUITE_BEGIN("FragmentAutocompleteTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_fragment_autocomplete")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -1621,13 +1681,13 @@ local tbl = { abc = 1234}
 )";
     const std::string updated = R"(
 local tbl = { abc = 1234}
-tbl.
+tbl. @1
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{2, 5},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1647,12 +1707,12 @@ local tbl = { abc = { def = 1234, egh = false } }
 )";
     const std::string updated = R"(
 local tbl = { abc = { def = 1234, egh = false } }
-tbl.abc.
+tbl.abc.@1
 )";
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{2, 8},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1668,21 +1728,21 @@ tbl.abc.
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "multiple_functions_complex")
 {
-    const std::string text = R"( local function f1(a1)
-    local l1 = 1;
-    g1 = 1;
+    const std::string text = R"(@1 local function f1(a1)@2
+    local l1 = 1;@3
+    g1 = 1;@4
 end
-
+@5
 local function f2(a2)
-    local l2 = 1;
+    local l2 = 1;@6
     g2 = 1;
-end
+end @7
 )";
 
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{0, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1701,7 +1761,7 @@ end
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{0, 22},
+        '2',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1720,7 +1780,7 @@ end
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{1, 17},
+        '3',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1739,7 +1799,7 @@ end
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{2, 11},
+        '4',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1758,7 +1818,7 @@ end
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{4, 0},
+        '5',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1777,7 +1837,7 @@ end
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{6, 17},
+        '6',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1796,7 +1856,7 @@ end
     autocompleteFragmentInBothSolvers(
         text,
         text,
-        Position{8, 4},
+        '7',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1826,14 +1886,14 @@ end
 type Table = { a: number, b: number }
 do
     type Table = { x: string, y: string }
-    local a : T
+    local a : T@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{4, 15},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1861,13 +1921,13 @@ type Table = { a: number, b: number }
 do
     type Table = { x: string, y: string }
 end
-local a : T
+local a : T@1
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{5, 11},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1886,12 +1946,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "nested_recursive_function")
 {
     const std::string source = R"(
 function foo()
-end
+@1end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{2, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1905,13 +1965,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "string_literal_with_override")
 {
     const std::string source = R"(
 function foo(bar: string) end
-foo("abc")
+foo("a@1bc")
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{2, 6},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -1926,8 +1986,8 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "empty_program")
 {
     autocompleteFragmentInBothSolvers(
         "",
-        "",
-        Position{0, 0},
+        "@1",
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -1941,11 +2001,11 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "empty_program")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 {
-    const std::string source = "local a =";
+    const std::string source = "local a =@1";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{0, 9},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -1960,12 +2020,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "leave_numbers_alone")
 {
-    const std::string source = "local a = 3.";
+    const std::string source = "local a = 3.@1";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{0, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -1978,12 +2038,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "leave_numbers_alone")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "user_defined_globals")
 {
-    const std::string source = "local myLocal = 4; ";
+    const std::string source = "local myLocal = 4;@1 ";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{0, 18},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2002,16 +2062,16 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "dont_suggest_local_before_its_de
     const std::string source = R"(
         local myLocal = 4
         function abc()
-             local myInnerLocal = 1
-
+@1             local myInnerLocal = 1
+@2
         end
-    )";
+@3    )";
 
     // autocomplete after abc but before myInnerLocal
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -2024,7 +2084,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "dont_suggest_local_before_its_de
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 0},
+        '2',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -2038,7 +2098,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "dont_suggest_local_before_its_de
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{6, 0},
+        '3',
         [](FragmentAutocompleteStatusResult& fragment)
         {
             REQUIRE(fragment.result);
@@ -2054,14 +2114,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "nested_recursive_function")
     const std::string source = R"(
         local function outer()
             local function inner()
-            end
+@1            end
         end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2076,14 +2136,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "user_defined_local_functions_in_
 {
     const std::string source = R"(
         local function abc()
-
+@1
         end
     )";
     // Autocomplete inside of abc
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{2, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2103,11 +2163,11 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "global_functions_are_not_scoped_
 
             end
         end
-      )";
+@1      )";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{6, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2128,12 +2188,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_functions_fall_out_of_scop
 
             end
         end
-      )";
+@1      )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{6, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2149,13 +2209,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "function_parameters")
     const std::string source = R"(
         function abc(test)
 
-        end
+@1        end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2170,13 +2230,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "unsealed_table")
     const std::string source = R"(
         local tbl = {}
         tbl.prop = 5
-        tbl.
+        tbl.@1
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2194,13 +2254,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "unsealed_table_2")
         local tbl = {}
         local inner = { prop = 5 }
         tbl.inner = inner
-        tbl.inner.
+        tbl.inner.@1
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 18},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2218,13 +2278,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "cyclic_table")
         local abc = {}
         local def = { abc = abc }
         abc.def = def
-        abc.def.
+        abc.def.@1
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 16},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2248,14 +2308,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "table_union")
         type t1 = { a1 : string, b2 : number }
         type t2 = { b2 : string, c3 : string }
         function func(abc : t1 | t2)
-            abc.
+            abc.@1
         end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{4, 16},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2280,14 +2340,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "table_intersection")
         type t1 = { a1 : string, b2 : number }
         type t2 = { b2 : number, c3 : string }
         function func(abc : t1 & t2)
-            abc.
+            abc.@1
         end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{4, 16},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2303,7 +2363,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "table_intersection")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "get_suggestions_for_the_very_start_of_the_script")
 {
-    const std::string source = R"(
+    const std::string source = R"(@1
 
         function aaa() end
     )";
@@ -2311,7 +2371,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "get_suggestions_for_the_very_sta
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{0, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2326,7 +2386,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "studio_ice_1")
 {
     const std::string source = R"(
 --Woop
-@native
+\@native
 local function test()
 
 end
@@ -2334,13 +2394,13 @@ end
 
     const std::string updated = R"(
 --Woop
-@native
+\@native
 local function test()
 
 end
-function a
+function a@1
 )";
-    autocompleteFragmentInBothSolvers(source, updated, Position{6, 10}, [](FragmentAutocompleteStatusResult& result) {});
+    autocompleteFragmentInBothSolvers(source, updated, '1', [](FragmentAutocompleteStatusResult& result) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "method_call_inside_function_body")
@@ -2357,14 +2417,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "method_call_inside_function_body
         local game = { GetService=function(s) return 'hello' end }
 
         function a()
-            game:
+            game:@1
         end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{4, 17},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2383,14 +2443,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tbl_function_parameter")
 --!strict
 type Foo = {x : number, y : number}
 local function func(abc : Foo)
-   abc.
+   abc.@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 7},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2407,14 +2467,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "tbl_local_function_parameter")
 --!strict
 type Foo = {x : number, y : number}
 local function func(abc : Foo)
-   abc.
+   abc.@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 7},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2430,14 +2490,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "vec3_function_parameter"
     const std::string source = R"(
 --!strict
 local function func(abc : FakeVec)
-   abc.
+   abc.@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 7},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2453,14 +2513,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "vec3_local_function_para
     const std::string source = R"(
 --!strict
 local function func(abc : FakeVec)
-   abc.
+   abc.@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 7},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2478,14 +2538,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "function_parameter_not_r
 local function foo(abd: FakeVec)
 end
 local function bar(abc : FakeVec)
-   a
+   a@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{5, 5},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2502,12 +2562,12 @@ local t = 1
 )";
     const std::string updated = R"(
 t
-)";
+@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{2, 1},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2525,13 +2585,13 @@ local t = 1
 )";
     const std::string updated = R"(
 local t = 1
-t
+t@1
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{2, 1},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2553,13 +2613,13 @@ l
 )";
     const std::string updated = R"(
 local t = 1
-l
+l@1
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{2, 1},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.status == FragmentAutocompleteStatus::Success);
@@ -2574,14 +2634,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "do_not_recommend_results_in_mult
     std::string source = R"(--[[
 )";
     std::string dest = R"(--[[
-a
+a@1
 )";
 
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{1, 1},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2595,14 +2655,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_simple")
 -- sel
 -- retur
 -- fo
--- if
+-- if @1
 -- end
 -- the
 )";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 6},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2615,21 +2675,21 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments_blocks")
     const std::string source = R"(
 --[[
 comment 1
-]] local
+@1]]@2 local
 -- [[ comment 2]]
 --
 -- sdfsdfsdf
 --[[comment 3]]
---[[
+--[[  @3
 foo
-bar
+@4bar
 baz
 ]]
 )";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2639,7 +2699,7 @@ baz
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 2},
+        '2',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2650,7 +2710,7 @@ baz
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{8, 6},
+        '3',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2660,7 +2720,7 @@ baz
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{10, 0},
+        '4',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2671,16 +2731,16 @@ baz
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "no_recs_for_comments")
 {
     const std::string source = R"(
--- sel
--- retur
--- fo
---[[ sel ]]
-local  -- hello
+-- sel @1
+-- retur @2
+-- fo @3
+--[[ sel @4]]
+local @5 -- hell@6o
 )";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{1, 7},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2690,7 +2750,7 @@ local  -- hello
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{2, 9},
+        '2',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2700,7 +2760,7 @@ local  -- hello
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 6},
+        '3',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2710,7 +2770,7 @@ local  -- hello
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{4, 9},
+        '4',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2720,7 +2780,7 @@ local  -- hello
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{5, 6},
+        '5',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2731,7 +2791,7 @@ local  -- hello
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{5, 14},
+        '6',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2747,12 +2807,12 @@ if x == 5
 )";
     const std::string updated = R"(
 local x = 5
-if x == 5 then -- a comment
+if x == 5 then -- a comment @1
 )";
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{2, 28},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             CHECK(frag.result == std::nullopt);
@@ -2768,13 +2828,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_handles_pa
 
 )";
     const std::string updated = R"(
-type A = <>random non code text here
+type A = <>random non code text here  @1
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         updated,
-        Position{1, 38},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2791,13 +2851,13 @@ return { x = 0 }
 
     fileResolver.source["MainModule"] = R"(
 local result = require(script.A)
-local x = 1 + result.
+local x = 1 + result.@1
     )";
 
     autocompleteFragmentInBothSolvers(
         fileResolver.source["MainModule"],
         fileResolver.source["MainModule"],
-        Position{2, 21},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2827,11 +2887,11 @@ local m = {}
 -- and here
 function m:m1() end
 type nt = typeof(m)
-l
+l @1
 return m
 )";
 
-    autocompleteFragmentInBothSolvers(source, updated, Position{6, 2}, [](FragmentAutocompleteStatusResult& _) {});
+    autocompleteFragmentInBothSolvers(source, updated, '1', [](FragmentAutocompleteStatusResult& _) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "duped_alias")
@@ -2842,7 +2902,7 @@ type a = typeof({})
 )";
     const std::string dest = R"(
 type a = typeof({})
-type a = typeof({})
+type a = typeof({})@1
 )";
 
     // Re-parsing and typechecking a type alias in the fragment that was defined in the base module will assert in ConstraintGenerator::checkAliases
@@ -2850,7 +2910,7 @@ type a = typeof({})
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{2, 20},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
@@ -2868,7 +2928,7 @@ type U = {f : number, g : U}
 )";
     const std::string dest = R"(
 type U = {f : number, g : V}
-type V = {h : number, i : U?}
+type V = {h : number, i : U?} @1
 )";
 
     // Re-parsing and typechecking a type alias in the fragment that was defined in the base module will assert in ConstraintGenerator::checkAliases
@@ -2876,7 +2936,7 @@ type V = {h : number, i : U?}
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{2, 30},
+        '1',
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result->freshScope);
@@ -2910,17 +2970,16 @@ local Camera = workspace.CurrentCamera;
 UserInputService.InputBegan:Connect(function(Input)
     if (Input.KeyCode == Enum.KeyCode.One) then
         local Up = Input.Foo
-        local Vector = -(Up:Unit())
+        local Vector = -(Up:Unit()) @1
     end
 end)
 )";
 
-    autocompleteFragmentInBothSolvers(source, dest, Position{8, 36}, [](FragmentAutocompleteStatusResult& _) {});
+    autocompleteFragmentInBothSolvers(source, dest, '1', [](FragmentAutocompleteStatusResult& _) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_ensures_memory_isolation")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     ToStringOptions opt;
     opt.exhaustive = true;
     opt.exhaustive = true;
@@ -2998,11 +3057,11 @@ return module
 )";
 
     const std::string updated = R"(local module = {}
-function module.f
+function module.f@1
 return module
 )";
 
-    autocompleteFragmentInBothSolvers(source, updated, Position{1, 18}, [](FragmentAutocompleteStatusResult& result) {});
+    autocompleteFragmentInBothSolvers(source, updated, '1', [](FragmentAutocompleteStatusResult& result) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "ice_caused_by_mixed_mode_use")
@@ -3010,16 +3069,16 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "ice_caused_by_mixed_mode
     const std::string source =
         std::string("--[[\n\tPackage link auto-generated by Rotriever\n]]\nlocal PackageIndex = script.Parent._Index\n\nlocal Package = ") +
         "require(PackageIndex[\"ReactOtter\"][\"ReactOtter\"])\n\nexport type Goal = Package.Goal\nexport type SpringOptions " +
-        "= Package.SpringOptions\n\n\nreturn Pa";
+        "= Package.SpringOptions\n\n\nreturn Pa@1";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{11, 9},
+        '1',
         [](FragmentAutocompleteStatusResult& _) {
 
         }
     );
-    autocompleteFragmentInBothSolvers(source, source, Position{11, 9}, [](auto& _) {});
+    autocompleteFragmentInBothSolvers(source, source, '1', [](auto& _) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "free_type_in_old_solver_shouldnt_trigger_not_null_assertion")
@@ -3044,10 +3103,10 @@ local e = foo().x
 
 local f = foo().y
 
-z:a
+z:a@1
 )";
 
-    autocompleteFragmentInBothSolvers(source, dest, Position{8, 3}, [](FragmentAutocompleteStatusResult& _) {});
+    autocompleteFragmentInBothSolvers(source, dest, '1', [](FragmentAutocompleteStatusResult& _) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "interior_free_types_assertion_caused_by_free_type_inheriting_null_scope_from_table")
@@ -3071,10 +3130,10 @@ local e = foo().x
 
 local f = foo().y
 
-z = a.P.E
+z = a.P.E@1
 )";
 
-    autocompleteFragmentInBothSolvers(source, dest, Position{8, 9}, [](FragmentAutocompleteStatusResult& _) {});
+    autocompleteFragmentInBothSolvers(source, dest, '1', [](FragmentAutocompleteStatusResult& _) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "NotNull_nil_scope_assertion_caused_by_free_type_inheriting_null_scope_from_table")
@@ -3098,10 +3157,10 @@ local e = foo().x
 
 local f = foo().y
 
-z = a.P.E
+z = a.P.E@1
 )";
 
-    autocompleteFragmentInBothSolvers(source, dest, Position{8, 9}, [](FragmentAutocompleteStatusResult& _) {});
+    autocompleteFragmentInBothSolvers(source, dest, '1', [](FragmentAutocompleteStatusResult& _) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "user_defined_type_function_local")
@@ -3158,14 +3217,14 @@ local testArr: {{a: number, b: number}} = {
 }
 
 for _, v in testArr do
-    print(v.
+    print(v.@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{7, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
@@ -3197,14 +3256,14 @@ local testArr: {string} = {
 }
 
 for _, v in testArr do
-    print(v:)
+    print(v:@1)
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{7, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
@@ -3242,14 +3301,14 @@ function t.Do(fn : (Input) -> ())
 end
 
 t.Do(function (f)
-    f.
+    f.@1
 end)
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{10, 6},
+        '1',
         [](FragmentAutocompleteStatusResult& status)
         {
             CHECK(FragmentAutocompleteStatus::Success == status.status);
@@ -3264,12 +3323,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "differ_1")
 {
     const std::string source = R"()";
     const std::string dest = R"(local tbl = { foo = 1, bar = 2 };
-tbl.b)";
+tbl.b@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{1, 5},
+        '1',
         [](FragmentAutocompleteStatusResult& status)
         {
             CHECK(FragmentAutocompleteStatus::Success == status.status);
@@ -3293,12 +3352,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_test_both_emp
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_test_both_empty_e2e")
 {
-    const std::string source = R"()";
+    const std::string source = R"(@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{0, 0},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(FragmentAutocompleteStatus::Success == result.status);
@@ -3324,13 +3383,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_
     const std::string source = R"()";
     const std::string dest = R"(local f1 = 4
 local f2 = "a"
-local f3 = f
+local f3 = f@1
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{2, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(FragmentAutocompleteStatus::Success == result.status);
@@ -3346,14 +3405,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "block_diff_added_locals_
 {
     const std::string source = R"()";
     const std::string dest = R"(local f1 = 4
-local f2 = f
+local f2 = f@1
 local f3 = f
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{1, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(FragmentAutocompleteStatus::Success == result.status);
@@ -3400,11 +3459,11 @@ local f2 = 2 + 1)";
     const std::string dest = R"(local f1 = 4
 local f2 = 3
 local f3 = 3
-local foo = 8 + )";
+local foo = 8 + @1)";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 16},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(FragmentAutocompleteStatus::Success == result.status);
@@ -3440,12 +3499,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalReturn_a
     const std::string dest = R"(local function target(a: number, b: string) return a + #b end
 local function bar1(a: string) reutrn a .. 'x' end
 local function bar2(a: number) return -a end
-return target(bar)";
+return target(bar@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 17},
+        '1',
         [](FragmentAutocompleteStatusResult& status)
         {
             CHECK(FragmentAutocompleteStatus::Success == status.status);
@@ -3463,12 +3522,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "TypeCorrectLocalRank_ass
     const std::string dest = R"(local function target(a: number, b: string) return a + #b end
 local bar1 = 'hello'
 local bar2 = 4
-return target(bar)";
+return target(bar@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 17},
+        '1',
         [](FragmentAutocompleteStatusResult& status)
         {
             CHECK(FragmentAutocompleteStatus::Success == status.status);
@@ -3486,12 +3545,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "str_metata_table_finishe
 local foo = f)";
     const std::string dest = R"(local function foobar(): string return "" end
 local foo = foobar()
-foo:)";
+foo:@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{2, 4},
+        '1',
         [](FragmentAutocompleteStatusResult& res)
         {
             CHECK(FragmentAutocompleteStatus::Success == res.status);
@@ -3508,12 +3567,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "str_metata_table_redef")
     const std::string source = R"(local x = 42)";
     const std::string dest = R"(local x = 42
 local x = ""
-x:)";
+x:@1)";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{2, 2},
+        '1',
         [](FragmentAutocompleteStatusResult& res)
         {
             CHECK(FragmentAutocompleteStatus::Success == res.status);
@@ -3530,12 +3589,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "diff_multiple_blocks_on_
     const std::string source = R"(
 do local function foo() end; local x = ""; end do local function bar() end)";
     const std::string dest = R"(
-do local function foo() end; local x = ""; end do local function bar() end local x = {a : number}; b end )";
+do local function foo() end; local x = ""; end do local function bar() end local x = {a : number}; b @1end )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{1, 101},
+        '1',
         [](FragmentAutocompleteStatusResult& res)
         {
             CHECK(FragmentAutocompleteStatus::Success == res.status);
@@ -3563,7 +3622,7 @@ local function foo(t : {foo : string})
     local x = t.foo
     do
         if t then
-            x:
+            x:@1
         end
     end
 end
@@ -3571,7 +3630,7 @@ end
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{5, 14},
+        '1',
         [](FragmentAutocompleteStatusResult& res)
         {
             CHECK(FragmentAutocompleteStatus::Success == res.status);
@@ -3599,7 +3658,7 @@ local function foo(t : {foo : number})
         if t then
         else
             local x = 4
-            return x + t.
+            return x + t@1.
         end
     end
 end
@@ -3607,7 +3666,7 @@ end
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{6, 24},
+        '1',
         [](FragmentAutocompleteStatusResult& res)
         {
             CHECK(FragmentAutocompleteStatus::Success == res.status);
@@ -3635,11 +3694,11 @@ local Players = game:GetService("Players")
 
 Players.PlayerAdded:Connect(function(Player)
     for_,v in script.PlayerValue:GetChildren()do
-        v:L
+        v:L@1
     end
 end)
 )";
-    autocompleteFragmentInBothSolvers(source, dest, Position{5, 11}, [](auto& result) {});
+    autocompleteFragmentInBothSolvers(source, dest, '1', [](auto& result) {});
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_cond_no_then_recs_then")
@@ -3649,13 +3708,13 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_cond_no_then_recs_then")
     )";
 
     const std::string dest = R"(
-if x t
+if x t@1
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{1, 6},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3674,14 +3733,14 @@ end
 
     const std::string dest = R"(
 if x then
-e
+e@1
 end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{2, 1},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3707,14 +3766,14 @@ type T = {xa : number, y : number}
 local t : T = {xa = 3, y = 3}
 
 if t.x then
-elseif t.xa t
+elseif t.xa t@1
 end
     )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{5, 13},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3742,14 +3801,14 @@ type T = {xa : number, y : number}
 local t : T = {xa = 3, y = 3}
 
 if t.x then
-elseif t.  then
+elseif t.@1  then
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{5, 9},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3783,13 +3842,13 @@ type Result<T,E> = Ok<T> | Err<E>
 local result = {} :: Result<number, string>
 
 if result.type == "ok" then
-    result.
+    result.@1
 end
 )";
     autocompleteFragmentInOldSolver(
         source,
         dest,
-        Position{8, 11},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3821,14 +3880,14 @@ type Result<T,E> = Ok<T> | Err<E>
 local result = {} :: Result<number, string>
 
 if result.type == "err" then
-    result.
+    result.@1
 end
 )";
 
     autocompleteFragmentInOldSolver(
         source,
         dest,
-        Position{8, 11},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3861,13 +3920,13 @@ type Result<T,E> = Ok<T> | Err<E>
 local result = {} :: Result<number, string>
 
 if result.type == "ok" then
-    result.
+    result.@1
 end
 )";
     autocompleteFragmentInNewSolver(
         source,
         dest,
-        Position{8, 11},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3899,14 +3958,14 @@ type Result<T,E> = Ok<T> | Err<E>
 local result = {} :: Result<number, string>
 
 if result.type == "err" then
-    result.
+    result.@1
 end
 )";
 
     autocompleteFragmentInNewSolver(
         source,
         dest,
-        Position{8, 11},
+        '1',
         [](auto& result)
         {
             REQUIRE(result.result);
@@ -3971,14 +4030,14 @@ type Service = {
 local Service: Service = {}
 
 function Service:Start()
-    self.
+    self.@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{9, 9},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4040,14 +4099,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "self_with_fancy_metatabl
         end
 
         function Account:report()
-            print("My balance is: " .. self. )
+            print("My balance is: " .. self.@1 )
         end
 )";
 
     autocompleteFragmentInNewSolver(
         source,
         dest,
-        Position{23, 44},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4080,14 +4139,14 @@ type Service = {
 local Service: Service = {}
 
 function Service:Start()
-    self:
+    self:@1
 end
 )";
 
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{9, 9},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4110,12 +4169,13 @@ local s =
     const std::string dest = R"(
 type Foo = {x : number, x1 : string, x2 : boolean}
 local e : Foo = {x = 1, x1 = "1", x2 = true}
-local s = `{e. }`
+local s = `{e.@1 }`
 )";
+
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 14},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4128,7 +4188,6 @@ local s = `{e. }`
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "string_interpolation_format_provides_results_inside_of_function_call")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     const std::string source = R"(
 type T = {x : number, y : number, z : number}
 local e = {x = 1, y = 2, z = 3}
@@ -4137,12 +4196,13 @@ print(`{e.x}`)
     const std::string dest = R"(
 type T = {x : number, y : number, z : number}
 local e = {x = 1, y = 2, z = 3}
-print(`{e.x} {e.}`)
+print(`{e.x} {e.@1}`)
 )";
+
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 16},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4155,17 +4215,16 @@ print(`{e.x} {e.}`)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_in_should_rec")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number}
 local x : T = ({} :: T)
-for _,n in pairs(x.) do
+for _,n in pairs(x.@1) do
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{3, 19},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4177,7 +4236,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_no_do")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4187,13 +4245,13 @@ end
     const std::string dest = R"(
 type T = { x : {[number] : number}, y: number, z : number}
 local x : T = ({} :: T)
-for i = x.
+for i = x.@1
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 10},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4206,7 +4264,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_with_do_in_step")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4216,13 +4273,13 @@ end
     const std::string dest = R"(
 type T = { x : {[number] : number}, y: number, z : number}
 local x : T = ({} :: T)
-for i = x.y, 100, x. do
+for i = x.y, 100, x.@1 do
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 20},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4235,7 +4292,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_with_do_in_max_delete")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4245,13 +4301,13 @@ end
     const std::string dest = R"(
 type T = { x : {[number] : number}, y: number, z : number}
 local x : T = ({} :: T)
-for i = x.y, x. do
+for i = x.y, x.@1 do
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 15},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4264,7 +4320,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "for_expr_in_should_rec_with_do_in_max_add")
 {
-    ScopedFastFlag sff{FFlag::LuauForInProvidesRecommendations, true};
     const std::string source = R"(
 type T = { x : {[number] : number}, y: number, z: number}
 local x : T = ({} :: T)
@@ -4274,13 +4329,13 @@ end
     const std::string dest = R"(
 type T = { x : {[number] : number}, y: number, z : number}
 local x : T = ({} :: T)
-for i = x.y, x. do
+for i = x.y, x.@1 do
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{3, 15},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4293,8 +4348,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "correctly_grab_innermost_refinement")
 {
-    ScopedFastFlag _{FFlag::LuauFragmentAutocompleteTakesInnermostRefinement, true};
-
     const std::string source = R"(
 --!strict
 type Type1 = { Type: "Type1", CommonKey: string, Type1Key: string }
@@ -4317,7 +4370,7 @@ type UnionType = Type1 | Type2
 local foo: UnionType? = nil
 if foo then
     if foo.Type == "Type2" then
-        foo.
+        foo.@1
     end
 end
     )";
@@ -4325,7 +4378,7 @@ end
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{9, 12},
+        '1',
         [](FragmentAutocompleteStatusResult& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4337,12 +4390,11 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "hot_comment_should_rec")
 {
-    ScopedFastFlag sff{FFlag::LuauSuggestHotComments, true};
-    const std::string source = R"(--!)";
+    const std::string source = R"(--!@1)";
     autocompleteFragmentInBothSolvers(
         source,
         source,
-        Position{0, 3},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4372,13 +4424,13 @@ type Pool = { numbers: { number }}
 
 local function foobar(p)
     local pool = p :: Pool
-    if #pool.
+    if #pool.@1
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{5, 13},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
@@ -4403,17 +4455,267 @@ type Pool = { x : number }
 
 local function foobar(p)
     local pool = p :: Pool
-    if -pool.
+    if -pool.@1
 end
 )";
     autocompleteFragmentInBothSolvers(
         source,
         dest,
-        Position{5, 13},
+        '1',
         [](auto& result)
         {
             CHECK(!result.result->acResults.entryMap.empty());
             CHECK(result.result->acResults.entryMap.count("x"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "method_in_unfinished_repeat_body_eof")
+{
+    std::string source = R"(
+local t = {}
+function t:Foo() end
+repeat)";
+
+    std::string dest = R"(
+local t = {}
+function t:Foo() end
+repeat
+t:@1)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("Foo"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "method_in_unfinished_repeat_body_not_eof")
+{
+    std::string source = R"(
+local t = {}
+function t:Foo() end
+repeat
+t
+
+local function whatever() end
+)";
+
+    std::string dest = R"(
+local t = {}
+function t:Foo() end
+repeat
+t:@1
+
+local function whatever() end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("Foo"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "in_place_edit_of_for_loop_before_in_keyword_returns_fragment_starting_from_for")
+{
+    ScopedFastFlag sff{FFlag::LuauForInRangesConsiderInLocation, true};
+    std::string source = R"(
+local x = {}
+for i, value in x do
+    print(i)
+end
+)";
+
+    std::string dest = R"(
+local x = {}
+for @1, value in x do
+    print(i)
+end
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "bidirectionally_inferred_table_member")
+{
+    std::string source = R"(
+type Foo = { foo1: string, bar1: number }
+type Bar = { foo2: boolean, bar2: string }
+type Baz = { foo3: number, bar3: boolean }
+
+local X: Foo & Bar & Baz = {}
+)";
+
+    std::string dest = R"(
+type Foo = { foo1: string, bar1: number }
+type Bar = { foo2: boolean, bar2: string }
+type Baz = { foo3: number, bar3: boolean }
+
+local X: Foo & Bar & Baz = { f@1 }
+
+)";
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("foo1") > 0);
+            CHECK(result.result->acResults.entryMap.count("foo2") > 0);
+            CHECK(result.result->acResults.entryMap.count("foo3") > 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "oss_1850")
+{
+    std::string source = R"(
+type t = { name: "t", } | { name: "ts", person: "dog" }
+
+local t:t
+if t.name == "ts" then
+end
+    )";
+    std::string dest = R"(
+type t = { name: "t", } | { name: "ts", person: "dog" }
+
+local t:t
+if t.name == "ts" then
+    t.@1
+end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](auto& result)
+        {
+            CHECK(!result.result->acResults.entryMap.empty());
+            CHECK(result.result->acResults.entryMap.count("name") > 0);
+            CHECK(result.result->acResults.entryMap.count("person") > 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "anonymous_autofilled_generic_type_pack_vararg")
+{
+    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
+
+    std::string source = R"(
+local function foo<A>(a: (...A) -> number, ...: A)
+	return a(...)
+end
+    )";
+
+    std::string dest = R"(
+local function foo<A>(a: (...A) -> number, ...: A)
+	return a(...)
+end
+
+foo(@1)
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            const std::string EXPECTED_INSERT = "function(...): number  end";
+            REQUIRE(frag.result);
+            REQUIRE(frag.result->acResults.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+            CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+            CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+            REQUIRE(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+            CHECK_EQ(EXPECTED_INSERT, *frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "anonymous_autofilled_generic_named_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
+
+    std::string source = R"(
+local function foo<A>(f: (a: A) -> number, a: A)
+	return f(a)
+end
+    )";
+
+    std::string dest = R"(
+local function foo<A>(f: (a: A) -> number, a: A)
+	return f(a)
+end
+
+foo(@1)
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            const std::string EXPECTED_INSERT = "function(a): number  end";
+            REQUIRE(frag.result);
+            REQUIRE(frag.result->acResults.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+            CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+            CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+            REQUIRE(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+            CHECK_EQ(EXPECTED_INSERT, *frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "anonymous_autofilled_generic_return_type")
+{
+    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
+
+    std::string source = R"(
+local function foo<A>(f: () -> A)
+	return f()
+end
+    )";
+
+    std::string dest = R"(
+local function foo<A>(f: () -> A)
+	return f()
+end
+
+foo(@1)
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            const std::string EXPECTED_INSERT = "function()  end";
+            REQUIRE(frag.result);
+            REQUIRE(frag.result->acResults.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+            CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+            CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+            REQUIRE(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+            CHECK_EQ(EXPECTED_INSERT, *frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
         }
     );
 }

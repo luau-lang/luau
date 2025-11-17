@@ -80,7 +80,7 @@ std::optional<LValue> tryGetLValue(const AstExpr& node)
 Symbol getBaseSymbol(const LValue& lvalue)
 {
     const LValue* current = &lvalue;
-    while (auto field = get<Field>(*current))
+    while (get<Field>(*current))
         current = baseof(*current);
 
     const Symbol* symbol = get<Symbol>(*current);

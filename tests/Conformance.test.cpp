@@ -34,17 +34,14 @@ void luaC_validate(lua_State* L);
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
-LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
-LUAU_FASTFLAG(LuauCodeGenVectorLerp)
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
-LUAU_FASTFLAG(LuauCodeGenBetterBytecodeAnalysis)
+LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
+LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
+LUAU_FASTFLAG(LuauStacklessPcall)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -195,7 +192,7 @@ using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 static StateRef runConformance(
     const char* name,
     void (*setup)(lua_State* L) = nullptr,
-    void (*yield)(lua_State* L) = nullptr,
+    bool (*yield)(lua_State* L) = nullptr,
     lua_State* initialLuaState = nullptr,
     lua_CompileOptions* options = nullptr,
     bool skipCodegen = false,
@@ -279,19 +276,42 @@ static StateRef runConformance(
     int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
 
-    if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
-    {
-        Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
+    Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
 
+    if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
         Luau::CodeGen::compile(L, -1, nativeOpts);
+
+    // Extra test for lowering on both platforms with assembly generation
+    if (luau_codegen_supported())
+    {
+
+        Luau::CodeGen::AssemblyOptions assemblyOptions;
+        assemblyOptions.compilationOptions = nativeOpts;
+
+        assemblyOptions.includeAssembly = true;
+        assemblyOptions.includeIr = true;
+        assemblyOptions.includeOutlinedCode = true;
+        assemblyOptions.includeIrTypes = true;
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::A64;
+        std::string a64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions);
+        CHECK(!a64.empty());
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::X64_SystemV;
+        std::string x64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions);
+        CHECK(!x64.empty());
     }
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
     while (yield && (status == LUA_YIELD || status == LUA_BREAK))
     {
-        yield(L);
-        status = lua_resume(L, nullptr, 0);
+        bool resumeError = yield(L);
+
+        if (resumeError)
+            status = lua_resumeerror(L, nullptr);
+        else
+            status = lua_resume(L, nullptr, 0);
     }
 
     luaC_validate(L);
@@ -738,6 +758,8 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
+    ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
+
     runConformance("errors.luau");
 }
 
@@ -820,8 +842,6 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
-    ScopedFastFlag luauXpcallContNoYield{DFFlag::LuauXpcallContNoYield, true};
-
     runConformance("coroutine.luau");
 }
 
@@ -836,7 +856,7 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
+    ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
 
     runConformance(
         "pcall.luau",
@@ -1162,10 +1182,9 @@ TEST_CASE("VectorLibrary")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauTypeCheckerVectorLerp, true},
+        {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
-        {FFlag::LuauCodeGenVectorLerp, true},
-        {FFlag::LuauCodeGenBetterBytecodeAnalysis, true}
+        {FFlag::LuauCodeGenVectorLerp2, true}
     };
 
     lua_CompileOptions copts = defaultOptions();
@@ -1385,7 +1404,7 @@ TEST_CASE("Debugger")
             );
             lua_setglobal(L, "breakpoint");
         },
-        [](lua_State* L)
+        [](lua_State* L) -> bool
         {
             CHECK(breakhits % 2 == 1);
 
@@ -1483,6 +1502,8 @@ TEST_CASE("Debugger")
                 lua_resume(interruptedthread, nullptr, 0);
                 interruptedthread = nullptr;
             }
+
+            return false;
         },
         nullptr,
         &copts,
@@ -1519,7 +1540,7 @@ TEST_CASE("InterruptInspection")
                 skipbreak = !skipbreak;
             };
         },
-        [](lua_State* L)
+        [](lua_State* L) -> bool
         {
             // Debug info can be retrieved from every location
             lua_Debug ar = {};
@@ -1534,6 +1555,8 @@ TEST_CASE("InterruptInspection")
                 },
                 nullptr
             );
+
+            return false;
         },
         nullptr,
         nullptr,
@@ -1614,7 +1637,7 @@ TEST_CASE("NDebugGetUpValue")
     runConformance(
         "ndebug_upvalues.luau",
         nullptr,
-        [](lua_State* L)
+        [](lua_State* L) -> bool
         {
             lua_checkstack(L, LUA_MINSTACK);
 
@@ -1629,6 +1652,8 @@ TEST_CASE("NDebugGetUpValue")
             CHECK(strcmp(u, "") == 0);
             CHECK(lua_tointeger(L, -1) == 5);
             lua_pop(L, 2);
+
+            return false;
         },
         nullptr,
         &copts,
@@ -1741,13 +1766,22 @@ TEST_CASE("ApiTables")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
+    int lu1 = 1;
+    int lu2 = 2;
+
     lua_newtable(L);
     lua_pushnumber(L, 123.0);
     lua_setfield(L, -2, "key");
     lua_pushnumber(L, 456.0);
     lua_rawsetfield(L, -2, "key2");
-    lua_pushstring(L, "test");
+    lua_pushstring(L, "key3");
     lua_rawseti(L, -2, 5);
+    lua_pushstring(L, "key4");
+    lua_rawsetp(L, -2, &lu1);
+    lua_pushstring(L, "key5");
+    lua_rawsetptagged(L, -2, &lu2, 1);
+    lua_pushstring(L, "key6");
+    lua_rawsetptagged(L, -2, &lu2, 2);
 
     // lua_gettable
     lua_pushstring(L, "key");
@@ -1773,7 +1807,24 @@ TEST_CASE("ApiTables")
 
     // lua_rawgeti
     CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
-    CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    CHECK(strcmp(lua_tostring(L, -1), "key3") == 0);
+    lua_pop(L, 1);
+
+    // lua_rawgetp
+    CHECK(lua_rawgetp(L, -1, &lu1) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key4") == 0);
+    lua_pop(L, 1);
+
+    // lua_rawsetptagged
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 1) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key5") == 0);
+    lua_pop(L, 1);
+
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 2) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key6") == 0);
+    lua_pop(L, 1);
+
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 0) == LUA_TNIL);
     lua_pop(L, 1);
 
     // lua_clonetable
@@ -1874,14 +1925,46 @@ TEST_CASE("ApiCalls")
         lua_pop(L, 1);
     }
 
+    // lua_call variadic
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L, 200);
+        lua_call(L, 1, LUA_MULTRET);
+        CHECK(lua_gettop(L) == 200);
+        lua_pop(L, 200);
+    }
+
     // lua_pcall
     {
         lua_getfield(L, LUA_GLOBALSINDEX, "add");
         lua_pushnumber(L, 40);
         lua_pushnumber(L, 2);
-        lua_pcall(L, 2, 1, 0);
+        int status = lua_pcall(L, 2, 1, 0);
+        CHECK(status == LUA_OK);
         CHECK(lua_isnumber(L, -1));
         CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
+
+    // lua_pcall variadic
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L, 200);
+        int status = lua_pcall(L, 1, LUA_MULTRET, 0);
+        CHECK(status == LUA_OK);
+        CHECK(lua_gettop(L) == 200);
+        lua_pop(L, 200);
+    }
+
+    // baselib pcall variadic
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "pcall");
+        lua_getfield(L, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L, 200);
+        lua_call(L, 2, LUA_MULTRET);
+        CHECK(lua_gettop(L) == 201);
+        lua_pop(L, 200);
+        CHECK(lua_toboolean(L, -1) == 1);
         lua_pop(L, 1);
     }
 
@@ -1928,6 +2011,46 @@ TEST_CASE("ApiCalls")
         lua_pop(L, LUAI_MAXCSTACK - 1);
     }
 
+    // lua_resume does not make thread yieldable
+    {
+        lua_State* L2 = lua_newthread(L);
+
+        lua_pushcclosurek(
+            L2,
+            [](lua_State* L)
+            {
+                CHECK(lua_isyieldable(L) == 0);
+                return 0;
+            },
+            nullptr,
+            0,
+            nullptr
+        );
+        lua_call(L2, 0, 0);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "getnresults");
+        lua_pushinteger(L2, 1);
+        int status = lua_resume(L2, nullptr, 1);
+        REQUIRE(status == LUA_OK);
+        CHECK(lua_gettop(L2) == 1);
+        lua_pop(L2, 1);
+
+        lua_pushcclosurek(
+            L2,
+            [](lua_State* L)
+            {
+                CHECK(lua_isyieldable(L) == 0);
+                return 0;
+            },
+            nullptr,
+            0,
+            nullptr
+        );
+        lua_call(L2, 0, 0);
+
+        lua_pop(L, 1);
+    }
+
     // lua_equal with a sleeping thread wake up
     {
         lua_State* L2 = lua_newthread(L);
@@ -1949,6 +2072,8 @@ TEST_CASE("ApiCalls")
 
         CHECK(lua_equal(L2, -1, -2) == 1);
         lua_pop(L2, 2);
+
+        lua_pop(L, 1);
     }
 
     // lua_clonefunction + fenv
@@ -2008,6 +2133,7 @@ TEST_CASE("ApiCalls")
         lua_getfield(L, LUA_GLOBALSINDEX, "largealloc");
         int res = lua_pcall(L, 0, 0, 0);
         CHECK(res == LUA_ERRMEM);
+        lua_pop(L, 1);
     }
 
     // lua_pcall on OOM with an error handler
@@ -2017,7 +2143,7 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRMEM);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "oops") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
 
     // lua_pcall on OOM with an error handler that errors
@@ -2027,7 +2153,7 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRERR);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "error in error handling") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
 
     // lua_pcall on OOM with an error handler that OOMs
@@ -2037,7 +2163,7 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRMEM);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "not enough memory") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
 
     // lua_pcall on error with an error handler that OOMs
@@ -2047,8 +2173,10 @@ TEST_CASE("ApiCalls")
         int res = lua_pcall(L, 0, 1, -2);
         CHECK(res == LUA_ERRERR);
         CHECK((lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "error in error handling") == 0));
-        lua_pop(L, 1);
+        lua_pop(L, 2);
     }
+
+    CHECK(lua_gettop(L) == 0);
 }
 
 TEST_CASE("ApiAtoms")
@@ -2310,17 +2438,18 @@ TEST_CASE("TagMethodError")
     //   when doLuaBreak is true the test additionally calls lua_break to ensure breaking the debugger doesn't cause the VM to crash
     for (bool doLuaBreak : {false, true})
     {
-        expectedHits = {22, 32};
+        expectedHits = {37, 54, 73};
 
         static int index;
         static bool luaBreak;
         index = 0;
         luaBreak = doLuaBreak;
 
-        // 'yieldCallback' doesn't do anything, but providing the callback to runConformance
-        // ensures that the call to lua_break doesn't cause an error to be generated because
-        // runConformance doesn't expect the VM to be in the state LUA_BREAK.
-        auto yieldCallback = [](lua_State* L) {};
+        // To restore from a protected error break, we return 'true' so that test runner will use lua_resumeerror
+        auto yieldCallback = [](lua_State* L) -> bool
+        {
+            return true;
+        };
 
         runConformance(
             "tmerror.luau",
@@ -3155,8 +3284,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodeGenDirectBtest{FFlag::LuauCodeGenDirectBtest, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;

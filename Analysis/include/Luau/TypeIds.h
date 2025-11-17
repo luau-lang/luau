@@ -40,6 +40,8 @@ public:
     void retain(const TypeIds& tys);
     void clear();
 
+    void clearWithoutRealloc();
+
     TypeId front() const;
     iterator begin();
     iterator end();

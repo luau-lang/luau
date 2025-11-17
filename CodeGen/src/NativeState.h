@@ -44,7 +44,6 @@ struct NativeContext
     void (*luaV_dolen)(lua_State* L, StkId ra, const TValue* rb) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
-    void (*luaV_getimport)(lua_State* L, LuaTable* env, TValue* k, StkId res, uint32_t id, bool propagatenil) = nullptr;
     void (*luaV_concat)(lua_State* L, int total, int last) = nullptr;
 
     int (*luaH_getn)(LuaTable* t) = nullptr;

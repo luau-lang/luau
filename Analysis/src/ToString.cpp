@@ -21,8 +21,6 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -52,7 +50,7 @@ namespace
 struct FindCyclicTypes final : TypeVisitor
 {
     FindCyclicTypes()
-        : TypeVisitor("FindCyclicTypes", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeVisitor("FindCyclicTypes", /* skipBoundTypes */ true)
     {
     }
 
@@ -89,27 +87,10 @@ struct FindCyclicTypes final : TypeVisitor
     {
         if (!visited.insert(ty))
             return false;
-        if (FFlag::LuauSolverAgnosticStringification)
-        {
-            LUAU_ASSERT(ft.lowerBound);
-            LUAU_ASSERT(ft.upperBound);
-            traverse(ft.lowerBound);
-            traverse(ft.upperBound);
-        }
-        else if (FFlag::LuauSolverV2)
-        {
-            // TODO: Replace these if statements with assert()s when we
-            // delete FFlag::LuauSolverV2.
-            //
-            // When the old solver is used, these pointers are always
-            // unused. When the new solver is used, they are never null.
-
-            if (ft.lowerBound)
-                traverse(ft.lowerBound);
-            if (ft.upperBound)
-                traverse(ft.upperBound);
-        }
-
+        LUAU_ASSERT(ft.lowerBound);
+        LUAU_ASSERT(ft.upperBound);
+        traverse(ft.lowerBound);
+        traverse(ft.upperBound);
         return false;
     }
 
@@ -446,11 +427,7 @@ struct TypeStringifier
 
     void stringify(const std::string& name, const Property& prop)
     {
-        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-            return _newStringify(name, prop);
-
-        emitKey(name);
-        stringify(prop.type_DEPRECATED());
+        return _newStringify(name, prop);
     }
 
     void stringify(TypePackId tp);
@@ -509,96 +486,39 @@ struct TypeStringifier
         state.result.invalid = true;
 
         // Free types are guaranteed to have upper and lower bounds now.
-        if (FFlag::LuauSolverAgnosticStringification)
+        LUAU_ASSERT(ftv.lowerBound);
+        LUAU_ASSERT(ftv.upperBound);
+        const TypeId lowerBound = follow(ftv.lowerBound);
+        const TypeId upperBound = follow(ftv.upperBound);
+        if (get<NeverType>(lowerBound) && get<UnknownType>(upperBound))
         {
-            LUAU_ASSERT(ftv.lowerBound);
-            LUAU_ASSERT(ftv.upperBound);
-            const TypeId lowerBound = follow(ftv.lowerBound);
-            const TypeId upperBound = follow(ftv.upperBound);
-            if (get<NeverType>(lowerBound) && get<UnknownType>(upperBound))
-            {
-                state.emit("'");
-                state.emit(state.getName(ty));
-                if (FInt::DebugLuauVerboseTypeNames >= 1)
-                    state.emit(ftv.polarity);
-            }
-            else
-            {
-                state.emit("(");
-                if (!get<NeverType>(lowerBound))
-                {
-                    stringify(lowerBound);
-                    state.emit(" <: ");
-                }
-                state.emit("'");
-                state.emit(state.getName(ty));
-
-                if (FInt::DebugLuauVerboseTypeNames >= 1)
-                    state.emit(ftv.polarity);
-
-                if (!get<UnknownType>(upperBound))
-                {
-                    state.emit(" <: ");
-                    stringify(upperBound);
-                }
-                state.emit(")");
-            }
-            return;
+            state.emit("'");
+            state.emit(state.getName(ty));
+            if (FInt::DebugLuauVerboseTypeNames >= 1)
+                state.emit(ftv.polarity);
         }
-        else if (FFlag::LuauSolverV2 && ftv.lowerBound && ftv.upperBound)
+        else
         {
-            const TypeId lowerBound = follow(ftv.lowerBound);
-            const TypeId upperBound = follow(ftv.upperBound);
-            if (get<NeverType>(lowerBound) && get<UnknownType>(upperBound))
+            state.emit("(");
+            if (!get<NeverType>(lowerBound))
             {
-                state.emit("'");
-                state.emit(state.getName(ty));
-                if (FInt::DebugLuauVerboseTypeNames >= 1)
-                    state.emit(ftv.polarity);
+                stringify(lowerBound);
+                state.emit(" <: ");
             }
-            else
+            state.emit("'");
+            state.emit(state.getName(ty));
+
+            if (FInt::DebugLuauVerboseTypeNames >= 1)
+                state.emit(ftv.polarity);
+
+            if (!get<UnknownType>(upperBound))
             {
-                state.emit("(");
-                if (!get<NeverType>(lowerBound))
-                {
-                    stringify(lowerBound);
-                    state.emit(" <: ");
-                }
-                state.emit("'");
-                state.emit(state.getName(ty));
-
-                if (FInt::DebugLuauVerboseTypeNames >= 1)
-                    state.emit(ftv.polarity);
-
-                if (!get<UnknownType>(upperBound))
-                {
-                    state.emit(" <: ");
-                    stringify(upperBound);
-                }
-                state.emit(")");
+                state.emit(" <: ");
+                stringify(upperBound);
             }
-            return;
+            state.emit(")");
         }
-
-        if (FInt::DebugLuauVerboseTypeNames >= 1)
-            state.emit("free-");
-
-        state.emit(state.getName(ty));
-
-        if (FFlag::LuauSolverAgnosticStringification && FInt::DebugLuauVerboseTypeNames >= 1)
-            state.emit(ftv.polarity);
-        else if (FFlag::LuauSolverV2 && FInt::DebugLuauVerboseTypeNames >= 1)
-            state.emit(ftv.polarity);
-
-
-        if (FInt::DebugLuauVerboseTypeNames >= 2)
-        {
-            state.emit("-");
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-                state.emitLevel(ftv.scope);
-            else
-                state.emit(ftv.level);
-        }
+        return;
     }
 
     void operator()(TypeId, const BoundType& btv)
@@ -626,10 +546,7 @@ struct TypeStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-                state.emitLevel(gtv.scope);
-            else
-                state.emit(gtv.level);
+            state.emitLevel(gtv.scope);
         }
     }
 
@@ -729,11 +646,8 @@ struct TypeStringifier
             state.emit(">");
         }
 
-        if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-        {
-            if (ftv.isCheckedFunction)
-                state.emit("@checked ");
-        }
+        if (ftv.isCheckedFunction)
+            state.emit("@checked ");
 
         state.emit("(");
 
@@ -826,35 +740,16 @@ struct TypeStringifier
 
         std::string openbrace = "@@@";
         std::string closedbrace = "@@@?!";
-        switch (state.opts.hideTableKind
-                    ? ((FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification) ? TableState::Sealed : TableState::Unsealed)
-                    : ttv.state)
+        switch (state.opts.hideTableKind ? TableState::Sealed : ttv.state)
         {
         case TableState::Sealed:
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-            {
-                openbrace = "{";
-                closedbrace = "}";
-            }
-            else
-            {
-                state.result.invalid = true;
-                openbrace = "{|";
-                closedbrace = "|}";
-            }
+            openbrace = "{";
+            closedbrace = "}";
             break;
         case TableState::Unsealed:
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-            {
-                state.result.invalid = true;
-                openbrace = "{|";
-                closedbrace = "|}";
-            }
-            else
-            {
-                openbrace = "{";
-                closedbrace = "}";
-            }
+            state.result.invalid = true;
+            openbrace = "{|";
+            closedbrace = "|}";
             break;
         case TableState::Free:
             state.result.invalid = true;
@@ -1356,10 +1251,7 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-                state.emitLevel(pack.scope);
-            else
-                state.emit(pack.level);
+            state.emitLevel(pack.scope);
         }
 
         state.emit("...");
@@ -1378,10 +1270,7 @@ struct TypePackStringifier
         if (FInt::DebugLuauVerboseTypeNames >= 2)
         {
             state.emit("-");
-            if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticStringification)
-                state.emitLevel(pack.scope);
-            else
-                state.emit(pack.level);
+            state.emitLevel(pack.scope);
         }
 
         state.emit("...");
@@ -2082,6 +1971,29 @@ std::string dump(const Constraint& c)
     std::string s = toString(c, opts);
     printf("%s\n", s.c_str());
     return s;
+}
+
+// Converts the given number index into a human-readable string for that index to be used in errors.
+// e.g. the index `0` becomes `1st`, `1` becomes `2nd`, `11` becomes `12th`, etc.
+std::string toHumanReadableIndex(size_t number)
+{
+    size_t humanIndex = number + 1;
+    size_t finalDigit = humanIndex % 10;
+
+    if (humanIndex > 10 && humanIndex < 20)
+        return std::to_string(humanIndex) + "th";
+
+    switch (finalDigit)
+    {
+    case 1:
+        return std::to_string(humanIndex) + "st";
+    case 2:
+        return std::to_string(humanIndex) + "nd";
+    case 3:
+        return std::to_string(humanIndex) + "rd";
+    default:
+        return std::to_string(humanIndex) + "th";
+    }
 }
 
 std::optional<std::string> getFunctionNameAsString(const AstExpr& expr)

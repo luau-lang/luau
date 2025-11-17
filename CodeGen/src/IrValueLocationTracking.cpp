@@ -14,7 +14,7 @@ IrValueLocationTracking::IrValueLocationTracking(IrFunction& function)
     vmRegValue.fill(kInvalidInstIdx);
 }
 
-void IrValueLocationTracking::setRestoreCallack(void* context, void (*callback)(void* context, IrInst& inst))
+void IrValueLocationTracking::setRestoreCallback(void* context, void (*callback)(void* context, IrInst& inst))
 {
     restoreCallbackCtx = context;
     restoreCallback = callback;
@@ -54,7 +54,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
-    case IrCmd::GET_IMPORT:
     case IrCmd::GET_CACHED_IMPORT:
         invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
@@ -98,8 +97,10 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
     case IrCmd::CMP_ANY:
+    case IrCmd::CMP_TAG:
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
+    case IrCmd::JUMP_EQ_TAG:
     case IrCmd::SET_TABLE:
     case IrCmd::SET_UPVALUE:
     case IrCmd::INTERRUPT:
@@ -130,7 +131,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::MOD_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
-    case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::FLOOR_NUM:
     case IrCmd::CEIL_NUM:
@@ -173,6 +173,11 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
         // If this is not the last use of the stored value, we can restore it from this new location
         if (inst.b.kind == IrOpKind::Inst && function.instOp(inst.b).lastUse != instIdx)
             recordRestoreOp(inst.b.index, inst.a);
+        break;
+    case IrCmd::STORE_SPLIT_TVALUE:
+        // If this is not the last use of the stored value, we can restore it from this new location
+        if (inst.c.kind == IrOpKind::Inst && function.instOp(inst.c).lastUse != instIdx)
+            recordRestoreOp(inst.c.index, inst.a);
         break;
     default:
         break;

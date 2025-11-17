@@ -173,8 +173,12 @@ bool isValidAlias(const std::string& alias)
     if (!aliasIsNotAPath)
         return false;
 
-    for (char ch : alias)
+    for (size_t i = 0; i < alias.size(); i++)
     {
+        char ch = alias[i];
+        if (i == 0 && ch == '@')
+            continue;
+
         bool isupper = 'A' <= ch && ch <= 'Z';
         bool islower = 'a' <= ch && ch <= 'z';
         bool isdigit = '0' <= ch && ch <= '9';
@@ -185,7 +189,7 @@ bool isValidAlias(const std::string& alias)
     return true;
 }
 
-static Error parseAlias(
+Error parseAlias(
     Config& config,
     const std::string& aliasKey,
     const std::string& aliasValue,
@@ -364,11 +368,6 @@ Error parseConfig(const std::string& contents, Config& config, const ConfigOptio
             }
         }
     );
-}
-
-const Config& NullConfigResolver::getConfig(const ModuleName& name) const
-{
-    return defaultConfig;
 }
 
 } // namespace Luau

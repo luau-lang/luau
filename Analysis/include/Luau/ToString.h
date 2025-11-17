@@ -127,6 +127,10 @@ inline std::string toStringNamedFunction(const std::string& funcName, const Func
     return toStringNamedFunction(funcName, ftv, opts);
 }
 
+// Converts the given number index into a human-readable string for that index to be used in errors.
+// e.g. the index `0` becomes `1st`, `1` becomes `2nd`, `11` becomes `12th`, etc.
+std::string toHumanReadableIndex(size_t number);
+
 std::optional<std::string> getFunctionNameAsString(const AstExpr& expr);
 
 // It could be useful to see the text representation of a type during a debugging session instead of exploring the content of the class

@@ -18,8 +18,6 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
-LUAU_FASTFLAG(LuauParseIncompleteInterpStringsWithLocation)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -990,7 +988,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
-    ScopedFastFlag sff{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto columnOfEndBraceError = [this](const char* code)
     {
         try
@@ -3849,8 +3846,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "parse_parametrized_attribute_on_function_stat")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
-
     AstStatBlock* stat = parse(R"(
 @[deprecated{ use = "greetng", reason = "Using <hello> is too causal"}]
 function hello(x, y)
@@ -3871,7 +3866,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "non_literal_attribute_arguments_is_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     ParseResult result = tryParse(R"(
 @[deprecated{ reason = reasonString }]
 function hello(x, y)
@@ -3885,7 +3879,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "unknown_arguments_for_depricated_is_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     ParseResult result = tryParse(R"(
 @[deprecated({}, "Very deprecated")]
 function hello(x, y)
@@ -3926,15 +3919,12 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "do_not_hang_on_incomplete_attribute_list")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     ParseResult result = tryParse(R"(
 @[]
 function hello(x, y)
     return x + y
 end)");
-    checkFirstErrorForAttributes(
-        result.errors, 1, Location(Position(1, 0), Position(1, 3)), "Attribute list cannot be empty"
-    );
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 0), Position(1, 3)), "Attribute list cannot be empty");
 
     result = tryParse(R"(@[)");
 
@@ -3954,9 +3944,7 @@ end)");
         local function foo() end
     )");
 
-    checkFirstErrorForAttributes(
-        result.errors, 1, Location(Position(1, 8), Position(1, 13)), "Expected ']' (to close '@[' at line 1), got 'local'"
-    );
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 8), Position(1, 13)), "Expected ']' (to close '@[' at line 1), got 'local'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")
@@ -4432,7 +4420,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_string_union_indexers")
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_at_eof")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a)");
     const auto first = parseResult.root->body.data[0];
     auto expr = first->as<AstStatExpr>();
@@ -4453,7 +4440,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_backtick_at_eof")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a})");
     const auto first = parseResult.root->body.data[0];
     auto expr = first->as<AstStatExpr>();
@@ -4474,7 +4460,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_back
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_with_backtick_at_eof")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a`)");
     const auto first = parseResult.root->body.data[0];
     auto expr = first->as<AstStatExpr>();
@@ -4495,7 +4480,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_broken_string")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a
 )");
     const auto first = parseResult.root->body.data[0];
@@ -4517,7 +4501,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curl
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_backtick_broken_string")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a}
 )");
     const auto first = parseResult.root->body.data[0];
@@ -4539,7 +4522,6 @@ TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_back
 
 TEST_CASE_FIXTURE(Fixture, "parsing_incomplete_string_interpolation_missing_curly_with_backtick_broken_string")
 {
-    ScopedFastFlag _{FFlag::LuauParseIncompleteInterpStringsWithLocation, true};
     auto parseResult = tryParse(R"(print(`{e.x} {e.a`
 )");
     const auto first = parseResult.root->body.data[0];

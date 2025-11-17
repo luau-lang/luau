@@ -37,9 +37,15 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.use(inst.a);
         visitor.use(inst.b);
         break;
+    case IrCmd::CMP_TAG:
+        visitor.maybeUse(inst.a);
+        break;
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
         visitor.use(inst.a);
+        break;
+    case IrCmd::JUMP_EQ_TAG:
+        visitor.maybeUse(inst.a);
         break;
         // A <- B, C
     case IrCmd::DO_ARITH:
@@ -63,9 +69,6 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
     case IrCmd::DO_LEN:
         visitor.use(inst.b);
 
-        visitor.def(inst.a);
-        break;
-    case IrCmd::GET_IMPORT:
         visitor.def(inst.a);
         break;
     case IrCmd::GET_CACHED_IMPORT:

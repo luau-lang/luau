@@ -17,10 +17,11 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
+LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -72,22 +73,6 @@ namespace Luau
 {
 
 // this list of binary operator type functions is used for better stringification of type functions errors
-static const std::unordered_map<std::string, const char*> DEPRECATED_kBinaryOps{
-    {"add", "+"},
-    {"sub", "-"},
-    {"mul", "*"},
-    {"div", "/"},
-    {"idiv", "//"},
-    {"pow", "^"},
-    {"mod", "%"},
-    {"concat", ".."},
-    {"and", "and"},
-    {"or", "or"},
-    {"lt", "< or >="},
-    {"le", "<= or >"},
-    {"eq", "== or ~="}
-};
-
 static const std::unordered_map<std::string, const char*> kBinaryOps{
     {"add", "+"},
     {"sub", "-"},
@@ -107,7 +92,6 @@ static const std::unordered_map<std::string, const char*> kUnaryOps{{"unm", "-"}
 
 // this list of type functions will receive a special error indicating that the user should file a bug on the GitHub repository
 // putting a type function in this list indicates that it is expected to _always_ reduce
-static const std::unordered_set<std::string> DEPRECATED_kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect"};
 static const std::unordered_set<std::string> kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect", "and", "or"};
 
 struct ErrorConverter
@@ -126,9 +110,10 @@ struct ErrorConverter
             return "'" + s + "'";
         };
 
-        auto constructErrorMessage =
-            [&](std::string givenType, std::string wantedType, std::optional<std::string> givenModule, std::optional<std::string> wantedModule
-            ) -> std::string
+        auto constructErrorMessage = [&](std::string givenType,
+                                         std::string wantedType,
+                                         std::optional<std::string> givenModule,
+                                         std::optional<std::string> wantedModule) -> std::string
         {
             std::string given = givenModule ? quote(givenType) + " from " + quote(*givenModule) : quote(givenType);
             std::string wanted = wantedModule ? quote(wantedType) + " from " + quote(*wantedModule) : quote(wantedType);
@@ -188,7 +173,8 @@ struct ErrorConverter
         switch (e.context)
         {
         case UnknownSymbol::Binding:
-            return "Unknown global '" + e.name + "'";
+            return FFlag::LuauUnknownGlobalFixSuggestion ? "Unknown global '" + e.name + "'; consider assigning to it first"
+                                                         : "Unknown global '" + e.name + "'";
         case UnknownSymbol::Type:
             return "Unknown type '" + e.name + "'";
         }
@@ -227,6 +213,11 @@ struct ErrorConverter
 
         LUAU_ASSERT(!"Unknown context");
         return "";
+    }
+
+    std::string operator()(const Luau::CannotCompareUnrelatedTypes& e) const
+    {
+        return "Cannot compare unrelated types '" + toString(e.left) + "' and '" + toString(e.right) + "' with '" + toString(e.op) + "'";
     }
 
     std::string operator()(const Luau::OnlyTablesCanHaveMethods& e) const
@@ -419,17 +410,7 @@ struct ErrorConverter
         auto it = mtt->props.find("__call");
         if (it != mtt->props.end())
         {
-            if (FFlag::LuauSolverAgnosticStringification)
-            {
-                return it->second.readTy;
-            }
-            else
-            {
-                if (FFlag::LuauSolverV2)
-                    return it->second.readTy;
-                else
-                    return it->second.type_DEPRECATED();
-            }
+            return it->second.readTy;
         }
         else
             return std::nullopt;
@@ -672,8 +653,7 @@ struct ErrorConverter
         }
 
         // binary operators
-        const auto binaryOps = FFlag::LuauEagerGeneralization4 ? kBinaryOps : DEPRECATED_kBinaryOps;
-        if (auto binaryString = binaryOps.find(tfit->function->name); binaryString != binaryOps.end())
+        if (auto binaryString = kBinaryOps.find(tfit->function->name); binaryString != kBinaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
 
@@ -720,14 +700,14 @@ struct ErrorConverter
             if (tfit->typeArguments.size() != 2)
                 return "Type function instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
 
-            if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
+            if (get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
                 return "Second argument to " + tfit->function->name + "<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
             else // Property `indexer` does not exist on type `indexee`
                 return "Property '" + Luau::toString(tfit->typeArguments[1]) + "' does not exist on type '" + Luau::toString(tfit->typeArguments[0]) +
                        "'";
         }
 
-        if ((FFlag::LuauEagerGeneralization4 ? kUnreachableTypeFunctions : DEPRECATED_kUnreachableTypeFunctions).count(tfit->function->name))
+        if (kUnreachableTypeFunctions.count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
                    "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
@@ -779,25 +759,37 @@ struct ErrorConverter
 
     std::string operator()(const CheckedFunctionCallError& e) const
     {
-        // TODO: What happens if checkedFunctionName cannot be found??
-        if (FFlag::LuauNewNonStrictReportsOneIndexedErrors)
+        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+        {
+            return "the function '" + e.checkedFunctionName + "' expects to get a " + toString(e.expected) + " as its " +
+                   toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
+        }
+        else
+        {
+            // TODO: What happens if checkedFunctionName cannot be found??
             return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
                    std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
-        else
-            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
-                   ", but got '" + Luau::toString(e.passed) + "'";
+        }
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
     {
-        if (e.functionName.empty())
+        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
         {
-            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
+            std::string prefix = e.functionName.empty() ? "" : "in the function '" + e.functionName + "', '";
+            return prefix + "the argument '" + e.argument + "' is used in a way that will error at runtime";
         }
         else
         {
-            return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
-                   "' is used in a way that will run time error";
+            if (e.functionName.empty())
+            {
+                return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
+            }
+            else
+            {
+                return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
+                       "' is used in a way that will run time error";
+            }
         }
     }
 
@@ -818,8 +810,17 @@ struct ErrorConverter
 
     std::string operator()(const CheckedFunctionIncorrectArgs& e) const
     {
-        return "Checked Function " + e.functionName + " expects " + std::to_string(e.expected) + " arguments, but received " +
-               std::to_string(e.actual);
+
+        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+        {
+            return "the function '" + e.functionName + "' will error at runtime if it is not called with " + std::to_string(e.expected) +
+                   " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
+        }
+        else
+        {
+            return "Checked Function " + e.functionName + " expects " + std::to_string(e.expected) + " arguments, but received " +
+                   std::to_string(e.actual);
+        }
     }
 
     std::string operator()(const UnexpectedTypeInSubtyping& e) const
@@ -897,23 +898,25 @@ struct ErrorConverter
 
     std::string operator()(const GenericBoundsMismatch& e) const
     {
+        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         std::string lowerBounds;
         for (size_t i = 0; i < e.lowerBounds.size(); ++i)
         {
             if (i > 0)
-                lowerBounds += ", ";
+                lowerBounds += " | ";
             lowerBounds += Luau::toString(e.lowerBounds[i]);
         }
         std::string upperBounds;
         for (size_t i = 0; i < e.upperBounds.size(); ++i)
         {
             if (i > 0)
-                upperBounds += ", ";
+                upperBounds += " & ";
             upperBounds += Luau::toString(e.upperBounds[i]);
         }
 
-        return "The generic type parameter " + std::string{e.genericName} + "was found to have invalid bounds. Its lower bounds were [" +
-               lowerBounds + "], and its upper bounds were [" + upperBounds + "].";
+        return "No valid instantiation could be inferred for generic type parameter " + std::string{e.genericName} +
+               ". It was expected to be at least:\n\t" + lowerBounds + "\nand at most:\n\t" + upperBounds +
+               "\nbut these types are not compatible with one another.";
     }
 
     std::string operator()(const ExplicitlySpecifiedGenericsOnNonFunction& e) const
@@ -1103,6 +1106,11 @@ bool NotATable::operator==(const NotATable& rhs) const
 bool CannotExtendTable::operator==(const CannotExtendTable& rhs) const
 {
     return *tableType == *rhs.tableType && prop == rhs.prop && context == rhs.context;
+}
+
+bool CannotCompareUnrelatedTypes::operator==(const CannotCompareUnrelatedTypes& rhs) const
+{
+    return *left == *rhs.left && right == rhs.right && op == rhs.op;
 }
 
 bool OnlyTablesCanHaveMethods::operator==(const OnlyTablesCanHaveMethods& rhs) const
@@ -1417,10 +1425,12 @@ GenericBoundsMismatch::GenericBoundsMismatch(const std::string_view genericName,
     , lowerBounds(lowerBoundSet.take())
     , upperBounds(upperBoundSet.take())
 {
+    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
 }
 
 bool GenericBoundsMismatch::operator==(const GenericBoundsMismatch& rhs) const
 {
+    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
     return genericName == rhs.genericName && lowerBounds == rhs.lowerBounds && upperBounds == rhs.upperBounds;
 }
 
@@ -1483,6 +1493,11 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, CannotExtendTable>)
     {
         e.tableType = clone(e.tableType);
+    }
+    else if constexpr (std::is_same_v<T, CannotCompareUnrelatedTypes>)
+    {
+        e.left = clone(e.left);
+        e.right = clone(e.right);
     }
     else if constexpr (std::is_same_v<T, OnlyTablesCanHaveMethods>)
     {
@@ -1657,6 +1672,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, GenericBoundsMismatch>)
     {
+        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         for (auto& lowerBound : e.lowerBounds)
             lowerBound = clone(lowerBound);
         for (auto& upperBound : e.upperBounds)

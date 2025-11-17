@@ -4,7 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/StringUtils.h"
 
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 namespace Luau
@@ -23,20 +22,7 @@ static AstAttr* findAttributeInArray(const AstArray<AstAttr*> attributes, AstAtt
 
 static bool hasAttributeInArray(const AstArray<AstAttr*> attributes, AstAttr::Type attributeType)
 {
-    if (FFlag::LuauParametrizedAttributeSyntax)
-    {
-        return findAttributeInArray(attributes, attributeType) != nullptr;
-    }
-    else
-    {
-        for (const auto attribute : attributes)
-        {
-            if (attribute->type == attributeType)
-                return true;
-        }
-
-        return false;
-    }
+    return findAttributeInArray(attributes, attributeType) != nullptr;
 }
 
 static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
@@ -65,6 +51,14 @@ AstAttr::AstAttr(const Location& location, Type type, AstArray<AstExpr*> args)
     : AstNode(ClassIndex(), location)
     , type(type)
     , args(args)
+{
+}
+
+AstAttr::AstAttr(const Location& location, Type type, AstArray<AstExpr*> args, AstName name)
+    : AstNode(ClassIndex(), location)
+    , type(type)
+    , args(args)
+    , name(name)
 {
 }
 

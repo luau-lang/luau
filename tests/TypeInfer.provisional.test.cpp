@@ -18,7 +18,8 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
+LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -58,12 +59,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expectedWithNewSolver = R"(
+    const std::string expectedWithNewSolver =
+        R"(
         function f(a:{fn:()->(unknown,...unknown)}): ()
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(unknown,...unknown)}&(class|function|nil|number|string|thread|buffer|table)=a
+                local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|string|thread|buffer|table)=a
             end
         end
     )";
@@ -278,7 +280,6 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 // Just needs to fully support equality refinement. Which is annoying without type states.
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         type T = {x: string, y: number} | {x: nil, y: nil}
 
@@ -535,7 +536,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
-    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
@@ -839,7 +839,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity_but_any_is
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverAgnosticStringification, true};
     CheckResult result = check(R"(
         local t: {x: number?} = {x = nil}
 
@@ -965,7 +964,6 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
-    ScopedFastFlag sff_stringification{FFlag::LuauSolverAgnosticStringification, true};
     ScopedFastFlag sff{FFlag::LuauSolverV2, false};
 
     TypeArena arena;
@@ -1304,6 +1302,8 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cache
 // CLI-111113
 TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently")
 {
+    ScopedFastFlag sff{FFlag::LuauNoMoreComparisonTypeFunctions, true};
+
     CheckResult result = check(R"(
         function find_first<T>(tbl: {T}, el)
             for i, e in tbl do
@@ -1327,7 +1327,7 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
 
     if (FFlag::LuauSolverV2)
     {
-        LUAU_CHECK_ERROR_COUNT(2, result);
+        LUAU_CHECK_ERROR_COUNT(1, result);
         CHECK("<T>({T}, unknown) -> number" == toString(requireType("find_first")));
     }
     else
@@ -1375,6 +1375,135 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
     CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
     CHECK(Position{3, 56} == result.errors[0].location.begin);
     CHECK(Position{3, 61} == result.errors[0].location.end);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_indexer_satisfies_reading_property")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    // We would like this code to have _no_ errors, but it requires one of:
+    //  (a) Being able to express read-only indexers, as that is the type of
+    //      `__index` when it is a function.
+    //  (b) Metatable aware semantic subtyping for tables.
+    CheckResult result = check(R"(
+        local t = setmetatable({}, {
+            __index = function (_, _prop: string): number
+                return 42
+            end
+        })
+
+        local function readX(tbl: { read X: number })
+            print(tbl.X)
+        end
+
+        -- This should work as `__index` being a function should semantically
+        -- be the same as having an indexer.
+        readX(t)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ @metatable { __index: (unknown, string) -> number }, {  } }", toString(err->givenType, { /* exhaustive */ true}));
+    CHECK_EQ("{ read X: number }", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function __remove(__: number?) end
+
+        function __removeItem(self, itemId: number)
+            local index = self.getItem(itemId)
+            if index then
+               __remove(index)
+            end
+        end
+    )"));
+
+    // TODO CLI-168953: This is not correct. We should not be inferring `never`
+    // for the second return type of `getItem`.
+    CHECK_EQ("({ read getItem: (number) -> (never, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAddRefinementToAssertions, true},
+    };
+
+    CheckResult result = check(R"(
+        local foo: unknown = nil :: any
+        assert(typeof(foo) == "table")
+        if typeof(typeof(foo.x)) == "string" then
+        end
+    )");
+
+    // TODO CLI-174351: We should expect a TypeError: Type 'table' does not have key 'x' error here.
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_variadic_type_pack_read_only_prop")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo: { read bar: (...string) -> () } = {
+            bar = function (foobar)
+                print(foobar)
+            end
+        }
+    )"));
+
+    // CLI-174314: This should be `string`: we need to flatten and *extend*
+    // the type packs for function arguments, so that variadic type packs
+    // fill in.
+    CHECK_EQ("unknown", toString(requireTypeAtPosition({3, 24})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+
+    // CLI-169235: This is just wrong, we should be rejecting this code.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(
+            t: { [string]: number } | { [number]: number }
+        )
+            return t[true]
+        end
+    )"));
+
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        type dog = { name: string }
+        local function bark(arg: { [dog]: dog | { left: dog?, right: dog? } })
+            -- do something
+            return arg
+        end
+
+        local molly: dog = { name = "molly" }
+        local draco: dog = { name = "draco" }
+        local cindy: dog = { name = "cindy" }
+        local laika: dog = { name = "laika" }
+
+        -- this should work because they should match with the left-right dog variant with optionals!
+        bark{ [molly] = { left = laika }, [draco] = { right = cindy } }
+    )");
+
+
+    // FIXME(CLI-178738): This should actually be no errors.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(get<TypeMismatch>(result.errors[1]));
 }
 
 TEST_SUITE_END();

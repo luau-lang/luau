@@ -32,10 +32,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-LUAU_FASTFLAG(LuauEagerGeneralization4)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAGVARIABLE(LuauEnqueueUnionsOfDistributedTypeFunctions)
 
 namespace Luau
 {
@@ -54,7 +53,7 @@ struct InstanceCollector : TypeOnceVisitor
 
 
     InstanceCollector()
-        : TypeOnceVisitor("InstanceCollector", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InstanceCollector", /* skipBoundTypes */ true)
     {
     }
 
@@ -145,7 +144,7 @@ struct UnscopedGenericFinder : TypeOnceVisitor
     bool foundUnscoped = false;
 
     UnscopedGenericFinder()
-        : TypeOnceVisitor("UnscopedGenericFinder", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("UnscopedGenericFinder", /* skipBoundTypes */ true)
     {
     }
 
@@ -259,39 +258,8 @@ struct TypeFunctionReducer
         Okay,
     };
 
-    SkipTestResult DEPRECATED_testForSkippability(TypeId ty)
-    {
-        ty = follow(ty);
-
-        if (is<TypeFunctionInstanceType>(ty))
-        {
-            for (auto t : cyclicTypeFunctions)
-            {
-                if (ty == t)
-                    return SkipTestResult::CyclicTypeFunction;
-            }
-
-            if (!irreducible.contains(ty))
-                return SkipTestResult::Defer;
-
-            return SkipTestResult::Irreducible;
-        }
-        else if (is<GenericType>(ty))
-        {
-            if (FFlag::LuauEagerGeneralization4)
-                return SkipTestResult::Generic;
-            else
-                return SkipTestResult::Irreducible;
-        }
-
-        return SkipTestResult::Okay;
-    }
-
     SkipTestResult testForSkippability(TypeId ty)
     {
-        if (!FFlag::LuauEagerGeneralization4)
-            return DEPRECATED_testForSkippability(ty);
-
         VecDeque<TypeId> queue;
         DenseHashSet<TypeId> seen{nullptr};
 
@@ -307,13 +275,11 @@ struct TypeFunctionReducer
 
             if (auto tfit = get<TypeFunctionInstanceType>(t))
             {
-                if (FFlag::LuauEagerGeneralization4)
-                {
-                    if (tfit->state == TypeFunctionInstanceState::Stuck)
-                        return SkipTestResult::Stuck;
-                    else if (tfit->state == TypeFunctionInstanceState::Solved)
-                        return SkipTestResult::Generic;
-                }
+                if (tfit->state == TypeFunctionInstanceState::Stuck)
+                    return SkipTestResult::Stuck;
+                else if (tfit->state == TypeFunctionInstanceState::Solved)
+                    return SkipTestResult::Generic;
+
                 for (auto cyclicTy : cyclicTypeFunctions)
                 {
                     if (t == cyclicTy)
@@ -352,10 +318,7 @@ struct TypeFunctionReducer
         }
         else if (is<GenericTypePack>(ty))
         {
-            if (FFlag::LuauEagerGeneralization4)
-                return SkipTestResult::Generic;
-            else
-                return SkipTestResult::Irreducible;
+            return SkipTestResult::Generic;
         }
 
         return SkipTestResult::Okay;
@@ -417,9 +380,22 @@ struct TypeFunctionReducer
             result.messages.emplace_back(location, UserDefinedTypeFunctionError{std::move(message)});
 
         if (reduction.result)
+        {
             replace(subject, *reduction.result);
+            if (FFlag::LuauEnqueueUnionsOfDistributedTypeFunctions)
+            {
+                for (auto ty : reduction.freshTypes)
+                {
+                    if constexpr (std::is_same_v<T, TypeId>)
+                        queuedTys.push_back(ty);
+                    else if constexpr (std::is_same_v<T, TypePackId>)
+                        queuedTps.push_back(ty);
+                }
+            }
+        }
         else
         {
+            LUAU_ASSERT(reduction.freshTypes.empty());
             irreducible.insert(subject);
 
             if (reduction.error.has_value())
@@ -430,22 +406,19 @@ struct TypeFunctionReducer
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is uninhabited\n", toString(subject, {true}).c_str());
 
-                if (FFlag::LuauEagerGeneralization4)
+                if (getState(subject) == TypeFunctionInstanceState::Unsolved)
                 {
-                    if (getState(subject) == TypeFunctionInstanceState::Unsolved)
+                    if (reduction.reductionStatus == Reduction::Erroneous)
+                        setState(subject, TypeFunctionInstanceState::Stuck);
+                    else if (reduction.reductionStatus == Reduction::Irreducible)
+                        setState(subject, TypeFunctionInstanceState::Solved);
+                    else if (reduction.reductionStatus == Reduction::MaybeOk)
                     {
-                        if (reduction.reductionStatus == Reduction::Erroneous)
-                            setState(subject, TypeFunctionInstanceState::Stuck);
-                        else if (reduction.reductionStatus == Reduction::Irreducible)
-                            setState(subject, TypeFunctionInstanceState::Solved);
-                        else if (reduction.reductionStatus == Reduction::MaybeOk)
-                        {
-                            // We cannot make progress because something is unsolved, but we're also forcing.
-                            setState(subject, TypeFunctionInstanceState::Stuck);
-                        }
-                        else
-                            ctx->ice->ice("Unexpected TypeFunctionInstanceState");
+                        // We cannot make progress because something is unsolved, but we're also forcing.
+                        setState(subject, TypeFunctionInstanceState::Stuck);
                     }
+                    else
+                        ctx->ice->ice("Unexpected TypeFunctionInstanceState");
                 }
 
                 if constexpr (std::is_same_v<T, TypeId>)
@@ -492,7 +465,6 @@ struct TypeFunctionReducer
             if (skip == SkipTestResult::Stuck)
             {
                 // SkipTestResult::Stuck cannot happen when this flag is unset.
-                LUAU_ASSERT(FFlag::LuauEagerGeneralization4);
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is stuck!\n", toString(subject, {true}).c_str());
 
@@ -771,14 +743,9 @@ FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
 {
-    if (FFlag::LuauEagerGeneralization4)
-    {
-        if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
-            return true;
-        return is<BlockedType, PendingExpansionType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
-    }
-    else
-        return is<BlockedType, PendingExpansionType, TypeFunctionInstanceType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
+    if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
+        return true;
+    return is<BlockedType, PendingExpansionType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
 } // namespace Luau

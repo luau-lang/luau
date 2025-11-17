@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Error.h"
+#include "Luau/NativeStackGuard.h"
 
 #include <stdexcept>
 #include <exception>
@@ -12,25 +13,18 @@ namespace Luau
 
 struct RecursionLimitException : public InternalCompilerError
 {
-    RecursionLimitException(const std::string system)
-        : InternalCompilerError("Internal recursion counter limit exceeded in " + system)
-    {
-    }
+    explicit RecursionLimitException(const std::string& system);
 };
 
 struct RecursionCounter
 {
-    RecursionCounter(int* count)
-        : count(count)
-    {
-        ++(*count);
-    }
+    explicit RecursionCounter(int* count);
+    ~RecursionCounter();
 
-    ~RecursionCounter()
-    {
-        LUAU_ASSERT(*count > 0);
-        --(*count);
-    }
+    RecursionCounter(const RecursionCounter&) = delete;
+    RecursionCounter& operator=(const RecursionCounter&) = delete;
+    RecursionCounter(RecursionCounter&&) = delete;
+    RecursionCounter& operator=(RecursionCounter&&) = delete;
 
 protected:
     int* count;
@@ -38,14 +32,19 @@ protected:
 
 struct RecursionLimiter : RecursionCounter
 {
-    RecursionLimiter(const std::string system, int* count, int limit)
-        : RecursionCounter(count)
-    {
-        if (limit > 0 && *count > limit)
-        {
-            throw RecursionLimitException(system);
-        }
-    }
+    NativeStackGuard nativeStackGuard;
+
+    RecursionLimiter(const std::string& system, int* count, int limit);
+};
+
+struct NonExceptionalRecursionLimiter : RecursionCounter
+{
+    NativeStackGuard nativeStackGuard;
+
+    bool isOk(int limit) const;
+
+    NonExceptionalRecursionLimiter(int* count);
+
 };
 
 } // namespace Luau

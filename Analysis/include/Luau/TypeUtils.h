@@ -6,6 +6,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
+#include "Luau/VisitType.h"
 
 #include <memory>
 #include <optional>
@@ -336,6 +337,9 @@ bool isApproximatelyTruthyType(TypeId ty);
 // Unwraps any grouping expressions iteratively.
 AstExpr* unwrapGroup(AstExpr* expr);
 
+// Returns true if ty is optional, ie if it is a supertype of nil
+bool isOptionalType(TypeId ty, NotNull<BuiltinTypes> builtinTypes);
+
 // These are magic types used in `TypeChecker2` and `NonStrictTypeChecker`
 //
 // `_luau_print` causes it's argument to be printed out, as in:
@@ -385,5 +389,17 @@ private:
 TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 
+struct ContainsAnyGeneric final : public TypeOnceVisitor
+{
+    bool found = false;
+
+    explicit ContainsAnyGeneric();
+
+    bool visit(TypeId ty) override;
+    bool visit(TypePackId ty) override;
+
+    static bool hasAnyGeneric(TypeId ty);
+    static bool hasAnyGeneric(TypePackId tp);
+};
 
 } // namespace Luau

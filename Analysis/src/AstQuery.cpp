@@ -31,7 +31,8 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstExpr* expr) override
     {
-        if (expr->location.begin <= pos && pos <= expr->location.end)
+        // If the expression size is 0 (begin == end), we don't want to include it in the ancestry
+        if (expr->location.begin <= pos && pos <= expr->location.end && expr->location.begin != expr->location.end)
         {
             ancestry.push_back(expr);
             return true;
