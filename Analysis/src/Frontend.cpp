@@ -18,6 +18,7 @@
 #include "Luau/Scope.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeArena.h"
+#include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/VisitType.h"
@@ -41,12 +42,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAGVARIABLE(LuauPassTypeCheckLimitsEarly)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
-LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
-LUAU_FASTFLAGVARIABLE(LuauBatchedExecuteTask)
-LUAU_FASTFLAGVARIABLE(LuauAccumulateErrorsInOrder)
 
 namespace Luau
 {
@@ -285,37 +283,20 @@ ErrorVec accumulateErrors(
             continue;
 
         Module& module = *modulePtr;
+        size_t prevSize = result.size();
 
-        if (FFlag::LuauAccumulateErrorsInOrder)
-        {
-            size_t prevSize = result.size();
+        // Append module errors in reverse order
+        result.insert(result.end(), module.errors.rbegin(), module.errors.rend());
 
-            // Append module errors in reverse order
-            result.insert(result.end(), module.errors.rbegin(), module.errors.rend());
-
-            // Sort them in the reverse order as well
-            std::stable_sort(
-                result.begin() + prevSize,
-                result.end(),
-                [](const TypeError& e1, const TypeError& e2) -> bool
-                {
-                    return e1.location.begin > e2.location.begin;
-                }
-            );
-        }
-        else
-        {
-            std::sort(
-                module.errors.begin(),
-                module.errors.end(),
-                [](const TypeError& e1, const TypeError& e2) -> bool
-                {
-                    return e1.location.begin > e2.location.begin;
-                }
-            );
-
-            result.insert(result.end(), module.errors.begin(), module.errors.end());
-        }
+        // Sort them in the reverse order as well
+        std::stable_sort(
+            result.begin() + prevSize,
+            result.end(),
+            [](const TypeError& e1, const TypeError& e2) -> bool
+            {
+                return e1.location.begin > e2.location.begin;
+            }
+        );
     }
 
     // Now we reverse errors from all modules and since they were inserted and sorted in reverse, it should be in order
@@ -439,6 +420,20 @@ double getTimestamp()
 
 } // namespace
 
+static TypeCheckLimits makeTypeCheckLimits(const FrontendOptions& options)
+{
+    TypeCheckLimits limits;
+
+    if (options.moduleTimeLimitSec)
+        limits.finishTime = TimeTrace::getClock() + *options.moduleTimeLimitSec;
+    else
+        limits.finishTime = std::nullopt;
+
+    limits.cancellationToken = options.cancellationToken;
+
+    return limits;
+}
+
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
     : useNewLuauSolver(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old)
     , builtinTypes(NotNull{&builtinTypes_})
@@ -476,7 +471,7 @@ void Frontend::parse(const ModuleName& name)
         return;
 
     std::vector<ModuleName> buildQueue;
-    parseGraph(buildQueue, name, false);
+    parseGraph(buildQueue, name, {}, false);
 }
 
 void Frontend::parseModules(const std::vector<ModuleName>& names)
@@ -500,6 +495,7 @@ void Frontend::parseModules(const std::vector<ModuleName>& names)
         parseGraph(
             queue,
             name,
+            {},
             false,
             [&seen](const ModuleName& name)
             {
@@ -524,7 +520,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         return std::move(*result);
 
     std::vector<ModuleName> buildQueue;
-    bool cycleDetected = parseGraph(buildQueue, name, frontendOptions.forAutocomplete);
+    bool cycleDetected = parseGraph(buildQueue, name, makeTypeCheckLimits(frontendOptions), frontendOptions.forAutocomplete);
 
     DenseHashSet<Luau::ModuleName> seen{{}};
     std::vector<BuildQueueItem> buildQueueItems;
@@ -570,196 +566,6 @@ void Frontend::queueModuleCheck(const ModuleName& name)
     moduleQueue.push_back(name);
 }
 
-std::vector<ModuleName> Frontend::checkQueuedModules_DEPRECATED(
-    std::optional<FrontendOptions> optionOverride,
-    std::function<void(std::function<void()> task)> executeTask,
-    std::function<bool(size_t done, size_t total)> progress
-)
-{
-    FrontendOptions frontendOptions = optionOverride.value_or(options);
-    if (getLuauSolverMode() == SolverMode::New)
-        frontendOptions.forAutocomplete = false;
-
-    // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
-    std::vector<ModuleName> currModuleQueue;
-    std::swap(currModuleQueue, moduleQueue);
-
-    DenseHashSet<Luau::ModuleName> seen{{}};
-
-    std::shared_ptr<BuildQueueWorkState> state = std::make_shared<BuildQueueWorkState>();
-
-    for (const ModuleName& name : currModuleQueue)
-    {
-        if (seen.contains(name))
-            continue;
-
-        if (!isDirty(name, frontendOptions.forAutocomplete))
-        {
-            seen.insert(name);
-            continue;
-        }
-
-        std::vector<ModuleName> queue;
-        bool cycleDetected = parseGraph(
-            queue,
-            name,
-            frontendOptions.forAutocomplete,
-            [&seen](const ModuleName& name)
-            {
-                return seen.contains(name);
-            }
-        );
-
-        addBuildQueueItems(state->buildQueueItems, queue, cycleDetected, seen, frontendOptions);
-    }
-
-    if (state->buildQueueItems.empty())
-        return {};
-
-    // We need a mapping from modules to build queue slots
-    std::unordered_map<ModuleName, size_t> moduleNameToQueue;
-
-    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
-    {
-        BuildQueueItem& item = state->buildQueueItems[i];
-        moduleNameToQueue[item.name] = i;
-    }
-
-    // Default task execution is single-threaded and immediate
-    if (!executeTask)
-    {
-        executeTask = [](std::function<void()> task)
-        {
-            task();
-        };
-    }
-
-    state->executeTask_DEPRECATED = executeTask;
-    state->remaining = state->buildQueueItems.size();
-
-    // Record dependencies between modules
-    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
-    {
-        BuildQueueItem& item = state->buildQueueItems[i];
-
-        for (const ModuleName& dep : item.sourceNode->requireSet)
-        {
-            if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
-            {
-                if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
-                {
-                    item.dirtyDependencies++;
-
-                    state->buildQueueItems[moduleNameToQueue[dep]].reverseDeps.push_back(i);
-                }
-            }
-        }
-    }
-
-    // In the first pass, check all modules with no pending dependencies
-    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
-    {
-        if (state->buildQueueItems[i].dirtyDependencies == 0)
-            sendQueueItemTask_DEPRECATED(state, i);
-    }
-
-    // If not a single item was found, a cycle in the graph was hit
-    if (state->processing == 0)
-        sendQueueCycleItemTask(state);
-
-    std::vector<size_t> nextItems;
-    std::optional<size_t> itemWithException;
-    bool cancelled = false;
-
-    while (state->remaining != 0)
-    {
-        {
-            std::unique_lock guard(state->mtx);
-
-            // If nothing is ready yet, wait
-            state->cv.wait(
-                guard,
-                [state]
-                {
-                    return !state->readyQueueItems.empty();
-                }
-            );
-
-            // Handle checked items
-            for (size_t i : state->readyQueueItems)
-            {
-                const BuildQueueItem& item = state->buildQueueItems[i];
-
-                // If exception was thrown, stop adding new items and wait for processing items to complete
-                if (item.exception)
-                    itemWithException = i;
-
-                if (item.module && item.module->cancelled)
-                    cancelled = true;
-
-                if (itemWithException || cancelled)
-                    break;
-
-                recordItemResult(item);
-
-                // Notify items that were waiting for this dependency
-                for (size_t reverseDep : item.reverseDeps)
-                {
-                    BuildQueueItem& reverseDepItem = state->buildQueueItems[reverseDep];
-
-                    LUAU_ASSERT(reverseDepItem.dirtyDependencies != 0);
-                    reverseDepItem.dirtyDependencies--;
-
-                    // In case of a module cycle earlier, check if unlocked an item that was already processed
-                    if (!reverseDepItem.processing && reverseDepItem.dirtyDependencies == 0)
-                        nextItems.push_back(reverseDep);
-                }
-            }
-
-            LUAU_ASSERT(state->processing >= state->readyQueueItems.size());
-            state->processing -= state->readyQueueItems.size();
-
-            LUAU_ASSERT(state->remaining >= state->readyQueueItems.size());
-            state->remaining -= state->readyQueueItems.size();
-            state->readyQueueItems.clear();
-        }
-
-        if (progress)
-        {
-            if (!progress(state->buildQueueItems.size() - state->remaining, state->buildQueueItems.size()))
-                cancelled = true;
-        }
-
-        // Items cannot be submitted while holding the lock
-        for (size_t i : nextItems)
-            sendQueueItemTask_DEPRECATED(state, i);
-        nextItems.clear();
-
-        if (state->processing == 0)
-        {
-            // Typechecking might have been cancelled by user, don't return partial results
-            if (cancelled)
-                return {};
-
-            // We might have stopped because of a pending exception
-            if (itemWithException)
-                recordItemResult(state->buildQueueItems[*itemWithException]);
-        }
-
-        // If we aren't done, but don't have anything processing, we hit a cycle
-        if (state->remaining != 0 && state->processing == 0)
-            sendQueueCycleItemTask(state);
-    }
-
-    std::vector<ModuleName> checkedModules;
-    checkedModules.reserve(state->buildQueueItems.size());
-
-    for (size_t i = 0; i < state->buildQueueItems.size(); i++)
-        checkedModules.push_back(std::move(state->buildQueueItems[i].name));
-
-    return checkedModules;
-}
-
 std::vector<ModuleName> Frontend::checkQueuedModules(
     std::optional<FrontendOptions> optionOverride,
     std::function<void(std::vector<std::function<void()>> tasks)> executeTasks,
@@ -793,6 +599,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
         bool cycleDetected = parseGraph(
             queue,
             name,
+            makeTypeCheckLimits(frontendOptions),
             frontendOptions.forAutocomplete,
             [&seen](const ModuleName& name)
             {
@@ -993,7 +800,7 @@ std::optional<CheckResult> Frontend::getCheckResult(const ModuleName& name, bool
     return checkResult;
 }
 
-std::vector<ModuleName> Frontend::getRequiredScripts(const ModuleName& name)
+std::vector<ModuleName> Frontend::getRequiredScripts(const ModuleName& name, const TypeCheckLimits& limits)
 {
     RequireTraceResult require = requireTrace[name];
     if (isDirty(name))
@@ -1003,12 +810,12 @@ std::vector<ModuleName> Frontend::getRequiredScripts(const ModuleName& name)
         {
             return {};
         }
-        const Config& config = configResolver->getConfig(name);
+        const Config& config = configResolver->getConfig(name, limits);
         ParseOptions opts = config.parseOptions;
         opts.captureComments = true;
         SourceModule result = parse(name, source->source, opts);
         result.type = source->type;
-        require = traceRequires(fileResolver, result.root, name);
+        require = traceRequires(fileResolver, result.root, name, limits);
     }
     std::vector<std::string> requiredModuleNames;
     requiredModuleNames.reserve(require.requireList.size());
@@ -1022,6 +829,7 @@ std::vector<ModuleName> Frontend::getRequiredScripts(const ModuleName& name)
 bool Frontend::parseGraph(
     std::vector<ModuleName>& buildQueue,
     const ModuleName& root,
+    const TypeCheckLimits& limits,
     bool forAutocomplete,
     std::function<bool(const ModuleName&)> canSkip
 )
@@ -1043,7 +851,7 @@ bool Frontend::parseGraph(
     bool cyclic = false;
 
     {
-        auto [sourceNode, _] = getSourceNode(root);
+        auto [sourceNode, _] = getSourceNode(root, limits);
         if (sourceNode)
             stack.push_back(sourceNode);
     }
@@ -1118,7 +926,7 @@ bool Frontend::parseGraph(
                     }
                 }
 
-                auto [sourceNode, _] = getSourceNode(dep);
+                auto [sourceNode, _] = getSourceNode(dep, limits);
                 if (sourceNode)
                 {
                     stack.push_back(sourceNode);
@@ -1158,7 +966,7 @@ void Frontend::addBuildQueueItems(
 
         BuildQueueItem data{moduleName, fileResolver->getHumanReadableModuleName(moduleName), sourceNode, sourceModule};
 
-        data.config = configResolver->getConfig(moduleName);
+        data.config = configResolver->getConfig(moduleName, makeTypeCheckLimits(frontendOptions));
         data.environmentScope = getModuleEnvironment(*sourceModule, data.config, frontendOptions.forAutocomplete);
         data.recordJsonLog = FFlag::DebugLuauLogSolverToJson;
 
@@ -1205,28 +1013,51 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 
     TypeCheckLimits typeCheckLimits;
 
-    if (item.options.moduleTimeLimitSec)
-        typeCheckLimits.finishTime = TimeTrace::getClock() + *item.options.moduleTimeLimitSec;
-    else
-        typeCheckLimits.finishTime = std::nullopt;
-
-    // TODO: This is a dirty ad hoc solution for autocomplete timeouts
-    // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
-    // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-    if (item.options.applyInternalLimitScaling)
+    if (FFlag::LuauPassTypeCheckLimitsEarly)
     {
-        if (FInt::LuauTarjanChildLimit > 0)
-            typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
-        else
-            typeCheckLimits.instantiationChildLimit = std::nullopt;
+        typeCheckLimits = makeTypeCheckLimits(item.options);
 
-        if (FInt::LuauTypeInferIterationLimit > 0)
-            typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
-        else
-            typeCheckLimits.unifierIterationLimit = std::nullopt;
+        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+        if (item.options.applyInternalLimitScaling)
+        {
+            if (FInt::LuauTarjanChildLimit > 0)
+                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.instantiationChildLimit = std::nullopt;
+
+            if (FInt::LuauTypeInferIterationLimit > 0)
+                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.unifierIterationLimit = std::nullopt;
+        }
     }
+    else
+    {
+        if (item.options.moduleTimeLimitSec)
+            typeCheckLimits.finishTime = TimeTrace::getClock() + *item.options.moduleTimeLimitSec;
+        else
+            typeCheckLimits.finishTime = std::nullopt;
 
-    typeCheckLimits.cancellationToken = item.options.cancellationToken;
+        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+        if (item.options.applyInternalLimitScaling)
+        {
+            if (FInt::LuauTarjanChildLimit > 0)
+                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.instantiationChildLimit = std::nullopt;
+
+            if (FInt::LuauTypeInferIterationLimit > 0)
+                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.unifierIterationLimit = std::nullopt;
+        }
+
+        typeCheckLimits.cancellationToken = item.options.cancellationToken;
+    }
 
     if (item.options.forAutocomplete)
     {
@@ -1451,23 +1282,6 @@ void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, 
     state->cv.notify_one();
 }
 
-void Frontend::sendQueueItemTask_DEPRECATED(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
-{
-    BuildQueueItem& item = state->buildQueueItems[itemPos];
-
-    LUAU_ASSERT(!item.processing);
-    item.processing = true;
-
-    state->processing++;
-
-    state->executeTask_DEPRECATED(
-        [this, state, itemPos]()
-        {
-            performQueueItemTask(state, itemPos);
-        }
-    );
-}
-
 void Frontend::sendQueueItemTasks(std::shared_ptr<BuildQueueWorkState> state, const std::vector<size_t>& items)
 {
     std::vector<std::function<void()>> tasks;
@@ -1500,10 +1314,7 @@ void Frontend::sendQueueCycleItemTask(std::shared_ptr<BuildQueueWorkState> state
 
         if (!item.processing)
         {
-            if (FFlag::LuauBatchedExecuteTask)
-                sendQueueItemTasks(std::move(state), {i});
-            else
-                sendQueueItemTask_DEPRECATED(std::move(state), i);
+            sendQueueItemTasks(std::move(state), {i});
             break;
         }
     }
@@ -1620,7 +1431,7 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
 struct InternalTypeFinder : TypeOnceVisitor
 {
     InternalTypeFinder()
-        : TypeOnceVisitor("InternalTypeFinder", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InternalTypeFinder", /* skipBoundTypes */ true)
     {
     }
 
@@ -1743,8 +1554,7 @@ ModulePtr check(
 
     ConstraintSet constraintSet = cg.run(sourceModule.root);
     module->errors = std::move(constraintSet.errors);
-    if (FFlag::LuauNoConstraintGenRecursionLimitIce)
-        module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
+    module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
 
     ConstraintSolver cs{
         NotNull{&normalizer},
@@ -2000,7 +1810,7 @@ ModulePtr Frontend::check(
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
-std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& name)
+std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& name, const TypeCheckLimits& limits)
 {
     auto it = sourceNodes.find(name);
     if (it != sourceNodes.end() && !it->second->hasDirtySourceModule())
@@ -2031,14 +1841,14 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& 
         return {nullptr, nullptr};
     }
 
-    const Config& config = configResolver->getConfig(name);
+    const Config& config = configResolver->getConfig(name, limits);
     ParseOptions opts = config.parseOptions;
     opts.captureComments = true;
     SourceModule result = parse(name, source->source, opts);
     result.type = source->type;
 
     RequireTraceResult& require = requireTrace[name];
-    require = traceRequires(fileResolver, result.root, name);
+    require = traceRequires(fileResolver, result.root, name, limits);
 
     std::shared_ptr<SourceNode>& sourceNode = sourceNodes[name];
 

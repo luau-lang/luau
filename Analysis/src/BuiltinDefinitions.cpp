@@ -32,10 +32,12 @@
  */
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType3)
+LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
 
 namespace Luau
 {
@@ -556,7 +558,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreachi"].deprecated = true;
 
         attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
-        if (FFlag::LuauTableCloneClonesType3)
+        if (FFlag::LuauTableCloneClonesType4)
             attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
         attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
     }
@@ -1579,6 +1581,8 @@ bool MagicPack::infer(const MagicFunctionCallContext& context)
     return true;
 }
 
+// ({+ +}) -> {+ +}
+// <T: {}>(T) -> T
 std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     TypeChecker& typechecker,
     const ScopePtr& scope,
@@ -1586,13 +1590,15 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     WithPredicate<TypePackId> withPredicate
 )
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType3);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType4);
 
     auto [paramPack, _predicates] = std::move(withPredicate);
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
-    const auto& [paramTypes, paramTail] = flatten(paramPack);
+    // in the old solver, nonstrict in particular is really bad about inferring `...any` for things that are definitely present
+    // and the only real way for us to deal with this is to just be more permissive here
+    const auto& [paramTypes, paramTail] = extendTypePack(arena, typechecker.builtinTypes, paramPack, 1);
     if (paramTypes.empty() || expr.args.size == 0)
     {
         typechecker.reportError(expr.argLocation, CountMismatch{1, std::nullopt, 0});
@@ -1601,8 +1607,23 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
     TypeId inputType = follow(paramTypes[0]);
 
-    if (!get<TableType>(inputType))
-        return std::nullopt;
+    if (FFlag::LuauCloneForIntersectionsUnions)
+    {
+        if (!get<TableType>(inputType) && !get<IntersectionType>(inputType))
+            return std::nullopt;
+
+        if (auto intersectionTy = get<IntersectionType>(inputType))
+        {
+            for (auto ty : intersectionTy)
+                if (!get<TableType>(ty))
+                    return std::nullopt;
+        }
+    }
+    else
+    {
+        if (!get<TableType>(inputType))
+            return std::nullopt;
+    }
 
     CloneState cloneState{typechecker.builtinTypes};
     TypeId resultType = shallowClone(inputType, arena, cloneState, /* clonePersistentTypes */ false);
@@ -1613,7 +1634,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
 bool MagicClone::infer(const MagicFunctionCallContext& context)
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType3);
+    LUAU_ASSERT(FFlag::LuauTableCloneClonesType4);
 
     TypeArena* arena = context.solver->arena;
 
@@ -1709,7 +1730,8 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
+        if (!FFlag::LuauNewOverloadResolver)
+            context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }
 

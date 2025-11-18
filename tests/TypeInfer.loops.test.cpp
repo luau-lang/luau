@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 #include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -17,6 +18,8 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauIterableBindNotUnify)
+LUAU_FASTFLAG(LuauCheckForInWithSubtyping3)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -406,6 +409,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauCheckForInWithSubtyping3, true},
+    };
+
     CheckResult result = check(R"(
         function my_iter(state: string, index: number)
             return state, index
@@ -419,13 +427,23 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    // TODO, CLI-177651: The rough bidirectional rule with for-in loops ought to be:
+    //
+    //  for a, b in c, d, e
+    //  end
+    //
+    //  c => (A, B) -> (A, B)
+    //  d <= A
+    //  e <= B
+    //  ---
+    //  a => A
+    //  b => B
+    //
+    // That would give us the nice errors here of `my_state </: string` and `first_index </: number`
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK(get<TypeMismatch>(result.errors[1]));
-    CHECK(Location{{9, 29}, {9, 37}} == result.errors[0].location);
-
-    CHECK(get<TypeMismatch>(result.errors[1]));
-    CHECK(Location{{9, 39}, {9, 50}} == result.errors[1].location);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location{{9, 20}, {9, 27}} == result.errors[0].location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
@@ -1509,6 +1527,19 @@ TEST_CASE_FIXTURE(Fixture, "ensure_local_in_loop_does_not_escape")
     )"));
 
     CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1851_union_of_many_strings")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+--!strict
+type union = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+local example: { [union]: number } = {}
+
+for key in example do
+end
+    )"));
 }
 
 TEST_SUITE_END();

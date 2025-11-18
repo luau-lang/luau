@@ -1149,7 +1149,7 @@ FragmentTypeCheckResult typecheckFragment_(
                           }};
 
     if (FFlag::LuauFragmentRequiresCanBeResolvedToAModule)
-        frontend.requireTrace[incrementalModule->name] = traceRequires(frontend.fileResolver, root, incrementalModule->name);
+        frontend.requireTrace[incrementalModule->name] = traceRequires(frontend.fileResolver, root, incrementalModule->name, limits);
 
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);

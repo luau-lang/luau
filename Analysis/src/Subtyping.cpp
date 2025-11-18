@@ -33,35 +33,10 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPrimitiveAndGenericTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAGVARIABLE(LuauTryFindSubstitutionReturnOptional)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
 
 namespace Luau
 {
-
-struct VarianceFlipper
-{
-    Subtyping::Variance* variance;
-    Subtyping::Variance oldValue;
-
-    explicit VarianceFlipper(Subtyping::Variance* v)
-        : variance(v)
-        , oldValue(*v)
-    {
-        switch (oldValue)
-        {
-        case Subtyping::Variance::Covariant:
-            *variance = Subtyping::Variance::Contravariant;
-            break;
-        case Subtyping::Variance::Contravariant:
-            *variance = Subtyping::Variance::Covariant;
-            break;
-        }
-    }
-
-    ~VarianceFlipper()
-    {
-        *variance = oldValue;
-    }
-};
 
 bool SubtypingReasoning::operator==(const SubtypingReasoning& other) const
 {
@@ -684,13 +659,34 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
 
     return result;
 }
-SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, const std::vector<TypeId>& bindableGenerics)
+
+SubtypingResult Subtyping::isSubtype(
+    TypePackId subTp,
+    TypePackId superTp,
+    NotNull<Scope> scope,
+    const std::vector<TypeId>& bindableGenerics
+)
+{
+    const std::vector<TypePackId> bindableGenericPacks;
+    return isSubtype(subTp, superTp, scope, bindableGenerics, bindableGenericPacks);
+}
+
+SubtypingResult Subtyping::isSubtype(
+    TypePackId subTp,
+    TypePackId superTp,
+    NotNull<Scope> scope,
+    const std::vector<TypeId>& bindableGenerics,
+    const std::vector<TypePackId>& bindableGenericPacks
+)
 {
     LUAU_ASSERT(FFlag::LuauPassBindableGenericsByReference);
 
     SubtypingEnvironment env;
     for (TypeId g : bindableGenerics)
         env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
+
+    if (FFlag::LuauNewOverloadResolver)
+        env.mappedGenericPacks.pushFrame(bindableGenericPacks);
 
     SubtypingResult result = isCovariantWith(env, subTp, superTp, scope);
 
@@ -1545,8 +1541,6 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
 template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy, NotNull<Scope> scope)
 {
-    VarianceFlipper vf{&variance};
-
     SubtypingResult result = isCovariantWith(env, superTy, subTy, scope);
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Contravariant});

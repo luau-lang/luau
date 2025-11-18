@@ -24,13 +24,15 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
-LUAU_FASTFLAG(LuauPushTypeConstraintLambdas)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
+LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
+LUAU_FASTFLAG(LuauEGFixGenericsList)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2018,7 +2020,10 @@ u.b().foo()
         CHECK_EQ(toString(result.errors[2]), "Argument count mismatch. Function expects 1 to 3 arguments, but none are specified");
         CHECK_EQ(toString(result.errors[3]), "Argument count mismatch. Function expects 2 to 4 arguments, but none are specified");
         CHECK_EQ(toString(result.errors[4]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
-        CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 3 arguments, but only 1 is specified");
+        if (FFlag::LuauNewOverloadResolver)
+            CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 2 to 3 arguments, but only 1 is specified");
+        else
+            CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 3 arguments, but only 1 is specified");
         CHECK_EQ(toString(result.errors[6]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
         CHECK_EQ(toString(result.errors[7]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
         CHECK_EQ(toString(result.errors[8]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
@@ -2387,7 +2392,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauIncludeExplicitGenericPacks, true},
+        {FFlag::LuauEGFixGenericsList, true},
+    };
 
     CheckResult result = check(R"(
         local function apply<a, b..., c...>(f: (a, b...) -> c..., x: a)
@@ -2401,11 +2410,21 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
         apply(add, 5)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    CHECK(tpm);
-    CHECK_EQ(toString(tpm->wantedTp), "b...");
-    CHECK_EQ(toString(tpm->givenTp), "number");
+    if (FFlag::LuauNewOverloadResolver)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(Location{{2, 21}, {2, 22}} == result.errors.at(0).location);
+        CHECK_MESSAGE(get<TypePackMismatch>(result.errors.at(0)), "Expected TypePackMismatch but got " << result.errors.at(0));
+    }
+    else
+    {
+        // CLI-179222: This should error, specifically on the `f(x)` line, as we
+        // cannot _know_ that `f` takes no additional arguments, it takes some
+        // generic pack.
+        //
+        // Previously this did error but for a nonsense reason.
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
@@ -3270,17 +3289,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unnecessary_nil_in_lower_bound_of_generic")
     CheckResult result = check(
         Mode::Nonstrict,
         R"(
-function isAnArray(value)
-    if type(value) == "table" then
-        for index, _ in next, value do
-            -- assert index is not nil
-		    math.max(0, index)
-	    end
-        return true
-    else
-        return false
-    end
-end
+        function isAnArray(value)
+            if type(value) == "table" then
+                for index, _ in next, value do
+                    -- assert index is not nil
+                    math.max(0, index)
+                end
+                return true
+            else
+                return false
+            end
+        end
 )"
     );
 
@@ -3289,8 +3308,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "call_function_with_nothing_but_nil")
 {
-    ScopedFastFlag _{FFlag::LuauFixNilRightPad, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(n: number, x: string?, y: string?, z: string?) end
 
@@ -3302,8 +3319,6 @@ TEST_CASE_FIXTURE(Fixture, "call_function_with_nothing_but_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1640")
 {
-    ScopedFastFlag _{FFlag::LuauFixNilRightPad, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         table.create(1) -- top function call
@@ -3356,7 +3371,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauPushTypeConstraint2, true},
-        {FFlag::LuauPushTypeConstraintLambdas, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
         {FFlag::LuauPushTypeConstraintIntersection, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
@@ -3375,5 +3390,47 @@ TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
         end)
     )"));
 }
+
+TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_lambda_with_partially_resolved_generic")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo<T>(value: T)
+            return function<R>(callback: (T) -> R)
+            end
+        end
+
+        foo(3)(function (data)
+            local _ = data
+            return 42
+        end)
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({7, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_goes_through_ifelse")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Input = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        local function getInputs(isDragonPunch: boolean): { Input }
+            return if isDragonPunch then { "6", "8", "7" } else { "8", "7", "6" }
+        end
+    )"));
+}
+
 
 TEST_SUITE_END();

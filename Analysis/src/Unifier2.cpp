@@ -25,7 +25,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
-LUAU_FASTFLAGVARIABLE(LuauFixNilRightPad)
+LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 
 namespace Luau
 {
@@ -154,6 +154,17 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
             return UnifyResult::TooComplex;
 
         ++iterationCount;
+    }
+
+    // NOTE: It's a little odd that we are doing something non-exceptional for
+    // the core of unification but not for occurs check, which may throw an
+    // exception. It would be nice if, in the future, this were unified.
+    std::optional<NonExceptionalRecursionLimiter> nerl;
+    if (FFlag::LuauLimitUnificationRecursion)
+    {
+        nerl.emplace(&recursionCount);
+        if (!nerl->isOk(recursionLimit))
+            return UnifyResult::TooComplex;
     }
 
     subTy = follow(subTy);
@@ -625,6 +636,17 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         ++iterationCount;
     }
 
+    // NOTE: It's a little odd that we are doing something non-exceptional for
+    // the core of unification but not for occurs check, which may throw an
+    // exception. It would be nice if, in the future, this were unified.
+    std::optional<NonExceptionalRecursionLimiter> nerl;
+    if (FFlag::LuauLimitUnificationRecursion)
+    {
+        nerl.emplace(&recursionCount);
+        if (!nerl->isOk(recursionLimit))
+            return UnifyResult::TooComplex;
+    }
+
     subTp = follow(subTp);
     superTp = follow(superTp);
 
@@ -688,19 +710,8 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     auto [superTypes, superTail] = extendTypePack(*arena, builtinTypes, superTp, maxLength);
 
     // right-pad the subpack with nils if `superPack` is larger since that's what a function call does
-    if (FFlag::LuauFixNilRightPad)
-    {
-        if (subTypes.size() < maxLength)
-            subTypes.resize(maxLength, builtinTypes->nilType);
-    }
-    else
-    {
-        if (subTypes.size() < maxLength)
-        {
-            for (size_t i = 0; i <= maxLength - subTypes.size(); i++)
-                subTypes.push_back(builtinTypes->nilType);
-        }
-    }
+    if (subTypes.size() < maxLength)
+        subTypes.resize(maxLength, builtinTypes->nilType);
 
     if (subTypes.size() < maxLength || superTypes.size() < maxLength)
         return UnifyResult::Ok;

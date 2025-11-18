@@ -31,11 +31,11 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
-LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 using namespace Luau;
 
@@ -1363,14 +1363,16 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
+
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Unknown global 'foo'");
-    CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
+    CHECK(toString(result.errors[0]) == "Unknown global 'foo'; consider assigning to it first");
+    CHECK(toString(result.errors[1]) == "Unknown global 'foo'; consider assigning to it first");
 }
 
 TEST_CASE_FIXTURE(Fixture, "occurs_isnt_always_failure")
@@ -1788,6 +1790,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 {
     ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1798,7 +1801,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 14})));
 
     REQUIRE_EQ(1, result.errors.size());
-    CHECK_EQ("Unknown global 'foo'", toString(result.errors[0]));
+    CHECK_EQ("Unknown global 'foo'; consider assigning to it first", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiple_assignment")
@@ -2612,7 +2615,7 @@ TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_t
 
 TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoConstraintGenRecursionLimitIce, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     // Lowers the recursion limit for the constraint generator
     ScopedFastInt i{FInt::LuauCheckRecursionLimit, 5};
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, 5};
@@ -2700,15 +2703,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_err
 {
     ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
     CheckResult result = check(R"(
---!strict
-local function f(u: string) end
+        --!strict
+        local function f(u: string) end
 
-local t: {[any]: any} = {}
+        local t: {[any]: any} = {}
 
-for k in t do
-	f(k)
-end
-)");
+        for k in t do
+            f(k)
+        end
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -2718,9 +2721,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
     ScopedFastFlag _{FFlag::LuauMetatableAvoidSingletonUnion, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
-_ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
-for l0,l2 in setmetatable(_,_),l0,_ do
-end
+        _ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
+        for l0,l2 in setmetatable(_,_),l0,_ do
+        end
     )"));
 }
 

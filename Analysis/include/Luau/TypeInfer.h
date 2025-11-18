@@ -134,6 +134,7 @@ struct TypeChecker
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprInterpString& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprInstantiate& expr);
 
     TypeId checkExprTable(
         const ScopePtr& scope,
@@ -225,6 +226,14 @@ struct TypeChecker
         bool substituteFreeForNil = false,
         const std::vector<bool>& lhsAnnotations = {},
         const std::vector<std::optional<TypeId>>& expectedTypes = {}
+    );
+
+    TypeId instantiateTypeParameters(
+        const ScopePtr& scope,
+        TypeId baseType,
+        const AstArray<AstTypeOrPack>& explicitTypes,
+        const AstExpr* functionExpr,
+        const Location& location
     );
 
     static std::optional<AstExpr*> matchRequire(const AstExprCall& call);

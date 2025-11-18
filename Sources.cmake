@@ -1,17 +1,19 @@
 # Luau.Common Sources
-# Note: Until 3.19, INTERFACE targets couldn't have SOURCES property set
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
-    target_sources(Luau.Common PRIVATE
-        Common/include/Luau/Common.h
-        Common/include/Luau/Bytecode.h
-        Common/include/Luau/BytecodeUtils.h
-        Common/include/Luau/DenseHash.h
-        Common/include/Luau/ExperimentalFlags.h
-        Common/include/Luau/HashUtil.h
-        Common/include/Luau/Variant.h
-        Common/include/Luau/VecDeque.h
-    )
-endif()
+target_sources(Luau.Common PRIVATE
+    Common/include/Luau/Common.h
+    Common/include/Luau/Bytecode.h
+    Common/include/Luau/BytecodeUtils.h
+    Common/include/Luau/DenseHash.h
+    Common/include/Luau/ExperimentalFlags.h
+    Common/include/Luau/HashUtil.h
+    Common/include/Luau/StringUtils.h
+    Common/include/Luau/TimeTrace.h
+    Common/include/Luau/Variant.h
+    Common/include/Luau/VecDeque.h
+
+    Common/src/StringUtils.cpp
+    Common/src/TimeTrace.cpp
+)
 
 # Luau.Ast Sources
 target_sources(Luau.Ast PRIVATE
@@ -25,8 +27,6 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Parser.h
     Ast/include/Luau/ParseResult.h
     Ast/include/Luau/PrettyPrinter.h
-    Ast/include/Luau/StringUtils.h
-    Ast/include/Luau/TimeTrace.h
 
     Ast/src/Allocator.cpp
     Ast/src/Ast.cpp
@@ -36,8 +36,6 @@ target_sources(Luau.Ast PRIVATE
     Ast/src/Location.cpp
     Ast/src/Parser.cpp
     Ast/src/PrettyPrinter.cpp
-    Ast/src/StringUtils.cpp
-    Ast/src/TimeTrace.cpp
 )
 
 # Luau.Compiler Sources
@@ -487,7 +485,6 @@ if(TARGET Luau.UnitTest)
         tests/Generalization.test.cpp
         tests/InferPolarity.test.cpp
         tests/InsertionOrderedMap.test.cpp
-        tests/Instantiation2.test.cpp
         tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
@@ -527,6 +524,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.cfa.test.cpp
         tests/TypeInfer.classes.test.cpp
         tests/TypeInfer.definitions.test.cpp
+        tests/TypeInfer.typeInstantiations.test.cpp
         tests/TypeInfer.functions.test.cpp
         tests/TypeInfer.generics.test.cpp
         tests/TypeInfer.intersectionTypes.test.cpp
@@ -595,11 +593,13 @@ if(TARGET Luau.Require)
     Require/include/Luau/RequireNavigator.h
 
     # Internal headers
+    Require/src/AliasCycleTracker.h
     Require/src/Navigation.h
     Require/src/PathUtilities.h
     Require/src/RequireImpl.h
 
     # Source files
+    Require/src/AliasCycleTracker.cpp
     Require/src/Navigation.cpp
     Require/src/PathUtilities.cpp
     Require/src/Require.cpp

@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/TypeCheckLimits.h"
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -101,7 +103,7 @@ struct FileResolver
 
     virtual std::optional<SourceCode> readSource(const ModuleName& name) = 0;
 
-    virtual std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr)
+    virtual std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr, const TypeCheckLimits& limits)
     {
         return std::nullopt;
     }

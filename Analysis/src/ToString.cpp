@@ -21,7 +21,6 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -51,7 +50,7 @@ namespace
 struct FindCyclicTypes final : TypeVisitor
 {
     FindCyclicTypes()
-        : TypeVisitor("FindCyclicTypes", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeVisitor("FindCyclicTypes", /* skipBoundTypes */ true)
     {
     }
 
@@ -508,10 +507,10 @@ struct TypeStringifier
             }
             state.emit("'");
             state.emit(state.getName(ty));
-            
+
             if (FInt::DebugLuauVerboseTypeNames >= 1)
                 state.emit(ftv.polarity);
-            
+
             if (!get<UnknownType>(upperBound))
             {
                 state.emit(" <: ");
@@ -1776,6 +1775,11 @@ std::string dump(const std::vector<TypeId>& types)
     return toStringVector(types, dumpOptions());
 }
 
+std::string dump(const std::vector<TypePackId>& typePacks)
+{
+    return toStringVector(typePacks, dumpOptions());
+}
+
 std::string dump(DenseHashMap<TypeId, TypeId>& types)
 {
     std::string s = "{";
@@ -1836,6 +1840,18 @@ std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& op
         if (!s.empty())
             s += ", ";
         s += toString(ty, opts);
+    }
+    return s;
+}
+
+std::string toStringVector(const std::vector<TypePackId>& typePacks, ToStringOptions& opts)
+{
+    std::string s;
+    for (TypePackId typePack : typePacks)
+    {
+        if (!s.empty())
+            s += ", ";
+        s += toString(typePack, opts);
     }
     return s;
 }
@@ -1930,6 +1946,9 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             return "simplify " + tos(c.ty);
         else if constexpr (std::is_same_v<T, PushFunctionTypeConstraint>)
             return "push_function_type " + tos(c.expectedFunctionType) + " => " + tos(c.functionType);
+        else if constexpr (std::is_same_v<T, TypeInstantiationConstraint>)
+            return "explicitly_specified_constraints " + tos(c.functionType) + " (typeArguments = " + dump(c.typeArguments) +
+                   "), (typePackArguments = " + dump(c.typePackArguments) + ")";
         else if constexpr (std::is_same_v<T, PushTypeConstraint>)
             return "push_type " + tos(c.expectedType) + " => " + tos(c.targetType);
         else

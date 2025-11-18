@@ -16,58 +16,50 @@
 struct DemoFileResolver
     : Luau::FileResolver
 {
-    DemoFileResolver()
-        : Luau::FileResolver(nullptr)
-    {
-    }
-
-    std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name)
+    std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
     {
         auto it = source.find(name);
         if (it == source.end())
             return std::nullopt;
 
-        Luau::SourceCode::Type sourceType = Luau::SourceCode::Module;
-        auto it2 = sourceTypes.find(name);
-        if (it2 != sourceTypes.end())
-            sourceType = it2->second;
-
-        return Luau::SourceCode{it->second, sourceType};
+        return Luau::SourceCode{it->second, Luau::SourceCode::Module};
     }
 
-    std::optional<Luau::ModuleInfo> resolveModuleInfo(
-        const Luau::ModuleName& currentModuleName, const Luau::AstExpr& pathExpr)
+    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* expr, const Luau::TypeCheckLimits& limits) override
     {
+        if (Luau::AstExprGlobal* g = expr->as<Luau::AstExprGlobal>())
+            return Luau::ModuleInfo{g->name.value};
+
         return std::nullopt;
     }
 
-    const Luau::ModulePtr getModule(const Luau::ModuleName& moduleName) const
-    {
-        return nullptr;
-    }
-
-    bool moduleExists(const Luau::ModuleName& moduleName) const
-    {
-        return false;
-    }
-
-    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* expr)
-    {
-        return std::nullopt;
-    }
-
-    std::string getHumanReadableModuleName(const Luau::ModuleName& name) const
+    std::string getHumanReadableModuleName(const Luau::ModuleName& name) const override
     {
         return name;
     }
 
-    std::optional<std::string> getEnvironmentForModule(const Luau::ModuleName& name) const
+    std::optional<std::string> getEnvironmentForModule(const Luau::ModuleName& name) const override
     {
         return std::nullopt;
     }
 
     std::unordered_map<Luau::ModuleName, std::string> source;
-    std::unordered_map<Luau::ModuleName, Luau::SourceCode::Type> sourceTypes;
+};
+
+// Simple ConfigResolver for type checking on luau.org/demo that defaults to Strict mode
+struct DemoConfigResolver : Luau::ConfigResolver
+{
+    DemoConfigResolver()
+    {
+        defaultConfig.mode = Luau::Mode::Strict;
+    }
+
+    virtual const Luau::Config& getConfig(const Luau::ModuleName& name, const Luau::TypeCheckLimits& limits) const override
+    {
+        return defaultConfig;
+    }
+
+    Luau::Config defaultConfig;
 };
 
 static void setupState(lua_State* L)
@@ -148,41 +140,46 @@ static std::string runCode(lua_State* L, const std::string& source)
     }
 }
 
-extern "C" const char* checkScript(const char* source)
+extern "C" const char* checkScript(const char* source, int useNewSolver)
 {
-    static std::string result;
-    result.clear();
+    static std::string finalCheckResult;
+    finalCheckResult.clear();
 
     try
     {
         DemoFileResolver fileResolver;
-        Luau::NullConfigResolver configResolver;
+        DemoConfigResolver configResolver;
         Luau::FrontendOptions options;
 
         Luau::Frontend frontend(&fileResolver, &configResolver, options);
+        frontend.setLuauSolverMode(useNewSolver ? Luau::SolverMode::New : Luau::SolverMode::Old);
         // Add Luau builtins
         Luau::unfreeze(frontend.globals.globalTypes);
         Luau::registerBuiltinGlobals(frontend, frontend.globals);
         Luau::freeze(frontend.globals.globalTypes);
+
+        // restart
+        frontend.clear();
+        fileResolver.source.clear();
 
         fileResolver.source["main"] = source;
 
         Luau::CheckResult checkResult = frontend.check("main");
         for (const Luau::TypeError& err : checkResult.errors)
         {
-            if (!result.empty())
-                result += "\n";
-            result += std::to_string(err.location.begin.line + 1);
-            result += ": ";
-            result += Luau::toString(err);
+            if (!finalCheckResult.empty())
+                finalCheckResult += "\n";
+            finalCheckResult += std::to_string(err.location.begin.line + 1);
+            finalCheckResult += ": ";
+            finalCheckResult += Luau::toString(err);
         }
     }
     catch (const std::exception& e)
     {
-        result = e.what();
+        finalCheckResult = e.what();
     }
 
-    return result.empty() ? nullptr : result.c_str();
+    return finalCheckResult.empty() ? nullptr : finalCheckResult.c_str();
 }
 
 extern "C" const char* executeScript(const char* source)
@@ -208,5 +205,5 @@ extern "C" const char* executeScript(const char* source)
     // run code + collect error
     result = runCode(L, source);
 
-    return result.empty() ? NULL : result.c_str();
+    return result.empty() ? nullptr : result.c_str();
 }

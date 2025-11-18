@@ -16,8 +16,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenDirectCompare2)
-
 namespace Luau
 {
 namespace CodeGen
@@ -807,8 +805,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         break;
     case IrCmd::CMP_TAG:
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
-
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
             IrCondition cond = conditionOp(inst.c);
@@ -822,7 +818,6 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         break;
     case IrCmd::CMP_SPLIT_TVALUE:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare2);
         CODEGEN_ASSERT(inst.b.kind == IrOpKind::Constant);
 
         IrCondition cond = conditionOp(inst.e);

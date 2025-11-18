@@ -10,13 +10,16 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauTableCloneClonesType3)
+LUAU_FASTFLAG(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauSubtypingPrimitiveAndGenericTableTypes)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauCloneForIntersectionsUnions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -701,7 +704,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauNewOverloadResolver && FFlag::LuauSolverV2)
+    {
+        // Note, the function "_" places no constraints on its arguments.  They
+        // can therefore be nil.  They are therefore optional.  Only the
+        // select() call is invalid here.
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK(Location{{6, 17}, {6, 23}} == result.errors.at(0).location);
+        const CountMismatch* err = get<CountMismatch>(result.errors.at(0));
+        REQUIRE(err);
+        CHECK(1 == err->expected);
+
+        // "_" returns 0 values.
+        CHECK(0 == err->actual);
+    }
+    else if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[0]));
@@ -1267,6 +1285,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_persistent_skip")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_support_variadic_any_in_old_solver")
+{
+    ScopedFastFlag _{FFlag::LuauTableCloneClonesType4, true};
+
+    fileResolver.source["game/A"] = R"(
+        --!nonstrict
+        return function()
+            return {}
+        end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+        local _ = table.clone(A())
+    )";
+
+    CheckResult result = getFrontend().check("game/B");
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
     // In the new solver, nil can certainly be used where a generic is required, so all generic parameters are optional.
@@ -1283,13 +1321,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
     CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function 'a.b' expects 2 arguments, but only 1 is specified");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_intersection_of_tables")
+{
+    CheckResult result = check(R"(
+        type FIRST = {
+            some: string,
+        }
+
+        type SECOND = FIRST & {
+            thing: string,
+        }
+
+        local b: SECOND
+        -- c's type used to be FIRST, but should be the full type of SECOND
+        local c = table.clone(b)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::LuauSolverV2 || FFlag::LuauCloneForIntersectionsUnions)
+    {
+        CHECK_EQ("{ some: string } & { thing: string }", toString(requireType("c"), {true}));
+        CHECK_EQ("FIRST & { thing: string }", toString(requireType("c")));
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
 {
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
     CheckResult result = check(R"(
         local function f(a: typeof(f)) end
         )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Unknown global 'f'", toString(result.errors[0]));
+    CHECK_EQ("Unknown global 'f'; consider assigning to it first", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
@@ -1585,7 +1649,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
 {
-    ScopedFastFlag sff{FFlag::LuauTableCloneClonesType3, true};
+    ScopedFastFlag sff{FFlag::LuauTableCloneClonesType4, true};
     CheckResult result = check(R"(
         local t1 = {}
         t1.x = 5
@@ -1785,7 +1849,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_with_refined_any")
         --!strict
         local t: any = {"hello", "world"}
         if type(t) == "table" and next(t) then
-	        local foo, bar = next(t)
+            local foo, bar = next(t)
             local _ = foo
             local _ = bar
         end

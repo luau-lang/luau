@@ -25,11 +25,11 @@ LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauEnqueueUnionsOfDistributedTypeFunctions)
+LUAU_FASTFLAGVARIABLE(LuauGetmetatableError)
 
 namespace Luau
 {
@@ -1062,7 +1062,7 @@ struct FindRefinementBlockers : TypeOnceVisitor
     DenseHashSet<TypeId> found{nullptr};
 
     FindRefinementBlockers()
-        : TypeOnceVisitor("FindRefinementBlockers", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("FindRefinementBlockers", /* skipBoundTypes */ true)
     {
     }
 
@@ -2489,7 +2489,16 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
 
     if (auto primitive = get<PrimitiveType>(targetTy))
     {
-        result = primitive->metatable;
+        if (FFlag::LuauGetmetatableError && primitive->type == PrimitiveType::Table)
+        {
+            // If we have `table` then we could have something with a
+            // metatable, so claim the result is `table?`.
+            result = ctx->arena->addType(UnionType{{ctx->builtins->tableType, ctx->builtins->nilType}});
+        }
+        else
+        {
+            result = primitive->metatable;
+        }
         erroneous = false;
     }
 
@@ -2506,6 +2515,13 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
     if (get<AnyType>(targetTy))
     {
         // getmetatable<any> ~ any
+        result = targetTy;
+        erroneous = false;
+    }
+
+    if (FFlag::LuauGetmetatableError && get<ErrorType>(targetTy))
+    {
+        // getmetatable<error> ~ error
         result = targetTy;
         erroneous = false;
     }

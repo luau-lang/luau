@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
+LUAU_FASTFLAGVARIABLE(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
@@ -602,8 +603,9 @@ static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node
     }
 };
 
-static bool canSuggestInferredType(ScopePtr scope, TypeId ty)
+static bool canSuggestInferredType_DEPRECATED(ScopePtr scope, TypeId ty)
 {
+    LUAU_ASSERT(!FFlag::LuauDoNotSuggestGenericsInAnonFuncs);
     ty = follow(ty);
 
     // No point in suggesting 'any', invalid to suggest others
@@ -624,6 +626,52 @@ static bool canSuggestInferredType(ScopePtr scope, TypeId ty)
     }
 
     // We might still have a type with cycles or one that is too long, we'll check that later
+    return true;
+}
+
+static bool canSuggestInferredType(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauDoNotSuggestGenericsInAnonFuncs);
+    ty = follow(ty);
+
+    // No point in suggesting 'any', invalid to suggest others
+    if (get<AnyType>(ty) || get<ErrorType>(ty) || get<GenericType>(ty) || get<FreeType>(ty))
+        return false;
+
+    // No syntax for unnamed tables with a metatable
+    if (get<MetatableType>(ty))
+        return false;
+
+    if (const TableType* ttv = get<TableType>(ty))
+    {
+        if (ttv->name)
+            return true;
+
+        if (ttv->syntheticName)
+            return false;
+    }
+
+    // We might still have a type with cycles or one that is too long, we'll check that later
+    return true;
+}
+
+static bool canSuggestInferredType(TypePackId ty)
+{
+    LUAU_ASSERT(FFlag::LuauDoNotSuggestGenericsInAnonFuncs);
+    ty = follow(ty);
+
+    if (get<ErrorTypePack>(ty) || get<GenericTypePack>(ty) || get<FreeTypePack>(ty))
+        return false;
+
+    auto [head, tail] = flatten(ty);
+    for (TypeId headTy : head)
+    {
+        if (!canSuggestInferredType(headTy))
+            return false;
+    }
+
+    // We skip recursively checking the tail here, as it could be cyclic and
+    // cause stack overflows. This case is handled later.
     return true;
 }
 
@@ -748,10 +796,27 @@ static std::optional<std::string> tryToStringDetailed(const ScopePtr& scope, T t
 
 static std::optional<Name> tryGetTypeNameInScope(ScopePtr scope, TypeId ty, bool functionTypeArguments = false)
 {
-    if (!canSuggestInferredType(scope, ty))
-        return std::nullopt;
+    if (FFlag::LuauDoNotSuggestGenericsInAnonFuncs)
+    {
+        if (!canSuggestInferredType(ty))
+            return std::nullopt;
+    }
+    else
+    {
+        if (!canSuggestInferredType_DEPRECATED(scope, ty))
+            return std::nullopt;
+    }
 
     return tryToStringDetailed(scope, ty, functionTypeArguments);
+}
+
+static std::optional<Name> tryGetTypeNameInScope(ScopePtr scope, TypePackId tp, bool functionTypeArguments = false)
+{
+    LUAU_ASSERT(FFlag::LuauDoNotSuggestGenericsInAnonFuncs);
+    if (!canSuggestInferredType(tp))
+        return std::nullopt;
+
+    return tryToStringDetailed(scope, tp, functionTypeArguments);
 }
 
 static bool tryAddTypeCorrectSuggestion(AutocompleteEntryMap& result, ScopePtr scope, AstType* topType, TypeId inferredType, Position position)
@@ -1705,7 +1770,8 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
         std::optional<std::string> varArgType;
         if (const VariadicTypePack* pack = get<VariadicTypePack>(follow(*tail)))
         {
-            if (std::optional<std::string> res = tryToStringDetailed(scope, pack->ty, true))
+            if (std::optional<std::string> res = FFlag::LuauDoNotSuggestGenericsInAnonFuncs ? tryGetTypeNameInScope(scope, pack->ty, true)
+                                                                                            : tryToStringDetailed(scope, pack->ty, true))
                 varArgType = std::move(res);
         }
 
@@ -1720,7 +1786,8 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
     auto [rets, retTail] = Luau::flatten(funcTy.retTypes);
     if (const size_t totalRetSize = rets.size() + (retTail ? 1 : 0); totalRetSize > 0)
     {
-        if (std::optional<std::string> returnTypes = tryToStringDetailed(scope, funcTy.retTypes, true))
+        if (std::optional<std::string> returnTypes = FFlag::LuauDoNotSuggestGenericsInAnonFuncs ? tryGetTypeNameInScope(scope, funcTy.retTypes, true)
+                                                                                                : tryToStringDetailed(scope, funcTy.retTypes, true))
         {
             result += ": ";
             bool wrap = totalRetSize != 1;

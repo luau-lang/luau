@@ -12,7 +12,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauAddErrorCaseForIncompatibleTypePacks)
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -787,8 +786,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors2")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
 {
-    ScopedFastFlag sff{FFlag::LuauAddErrorCaseForIncompatibleTypePacks, true};
-
     CheckResult result = check(R"(
         type Y<T = string, U... = ...string> = { a: (T) -> U... }
         local a: Y<...number>

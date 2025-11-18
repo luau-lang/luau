@@ -13,8 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenDirectCompare2)
-LUAU_FASTFLAG(LuauCodegenNilStoreInvalidateValue2)
 LUAU_FASTFLAG(LuauCodegenStorePriority)
 
 using namespace Luau::CodeGen;
@@ -1775,8 +1773,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "CmpTagSimplification")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -1807,8 +1803,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "CmpSplitTagValueSimplification")
 {
-    ScopedFastFlag luauCodegenDirectCompare{FFlag::LuauCodegenDirectCompare2, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -4820,8 +4814,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NilStoreImplicitValueClear1")
 {
-    ScopedFastFlag luauCodegenNilStoreInvalidateValue2{FFlag::LuauCodegenNilStoreInvalidateValue2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4849,8 +4841,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NilStoreImplicitValueClear2")
 {
-    ScopedFastFlag luauCodegenNilStoreInvalidateValue2{FFlag::LuauCodegenNilStoreInvalidateValue2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
