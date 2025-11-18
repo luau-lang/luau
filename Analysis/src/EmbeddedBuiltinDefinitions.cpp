@@ -411,6 +411,14 @@ std::string getBuiltinDefinitionSource()
     std::string result = kBuiltinDefinitionBaseSrc;
 
     result += kBuiltinDefinitionBit32Src;
+    if (FFlag::LuauTypeCheckerMathIsNanInfFinite)
+    {
+        result += kBuiltinDefinitionMathSrc;
+    }
+    else
+    {
+        result += kBuiltinDefinitionMathSrc_DEPRECATED;
+    }
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
     if (FFlag::LuauUseTopTableForTableClearAndIsFrozen)
@@ -431,14 +439,6 @@ std::string getBuiltinDefinitionSource()
     else
     {
         result += kBuiltinDefinitionVectorSrc_DEPRECATED;
-    }
-    if (FFlag::LuauTypeCheckerMathIsNanInfFinite)
-    {
-        result += kBuiltinDefinitionMathSrc;
-    }
-    else
-    {
-        result += kBuiltinDefinitionMathSrc_DEPRECATED;
     }
 
     return result;
