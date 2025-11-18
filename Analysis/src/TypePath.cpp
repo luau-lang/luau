@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauConsiderErrorSuppressionInTypes)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
 LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
 // Maximum number of steps to follow when traversing a path. May not always
@@ -1094,7 +1095,11 @@ std::optional<TypeOrPack> traverse(const TypePackId root, const Path& path, cons
 {
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
+    {
+        if (FFlag::LuauNewOverloadResolver && state.encounteredErrorSuppression)
+            return builtinTypes->errorType;
         return state.current;
+    }
     else
         return std::nullopt;
 }

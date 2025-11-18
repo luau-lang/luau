@@ -25,6 +25,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
+LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 
 namespace Luau
 {
@@ -153,6 +154,17 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
             return UnifyResult::TooComplex;
 
         ++iterationCount;
+    }
+
+    // NOTE: It's a little odd that we are doing something non-exceptional for
+    // the core of unification but not for occurs check, which may throw an
+    // exception. It would be nice if, in the future, this were unified.
+    std::optional<NonExceptionalRecursionLimiter> nerl;
+    if (FFlag::LuauLimitUnificationRecursion)
+    {
+        nerl.emplace(&recursionCount);
+        if (!nerl->isOk(recursionLimit))
+            return UnifyResult::TooComplex;
     }
 
     subTy = follow(subTy);
@@ -622,6 +634,17 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
             return UnifyResult::TooComplex;
 
         ++iterationCount;
+    }
+
+    // NOTE: It's a little odd that we are doing something non-exceptional for
+    // the core of unification but not for occurs check, which may throw an
+    // exception. It would be nice if, in the future, this were unified.
+    std::optional<NonExceptionalRecursionLimiter> nerl;
+    if (FFlag::LuauLimitUnificationRecursion)
+    {
+        nerl.emplace(&recursionCount);
+        if (!nerl->isOk(recursionLimit))
+            return UnifyResult::TooComplex;
     }
 
     subTp = follow(subTp);

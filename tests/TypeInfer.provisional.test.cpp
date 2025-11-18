@@ -1479,4 +1479,31 @@ TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
 
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        type dog = { name: string }
+        local function bark(arg: { [dog]: dog | { left: dog?, right: dog? } })
+            -- do something
+            return arg
+        end
+
+        local molly: dog = { name = "molly" }
+        local draco: dog = { name = "draco" }
+        local cindy: dog = { name = "cindy" }
+        local laika: dog = { name = "laika" }
+
+        -- this should work because they should match with the left-right dog variant with optionals!
+        bark{ [molly] = { left = laika }, [draco] = { right = cindy } }
+    )");
+
+
+    // FIXME(CLI-178738): This should actually be no errors.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(get<TypeMismatch>(result.errors[1]));
+}
+
 TEST_SUITE_END();

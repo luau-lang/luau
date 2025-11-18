@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
+LUAU_FASTFLAG(LuauNewOverloadResolver)
 LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
 
 namespace Luau
@@ -1729,7 +1730,8 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
+        if (!FFlag::LuauNewOverloadResolver)
+            context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }
 

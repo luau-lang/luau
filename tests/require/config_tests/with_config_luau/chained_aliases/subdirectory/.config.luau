@@ -1,0 +1,12 @@
+return {
+    luau = {
+        aliases = {
+            passthroughinner = "./inner_dependency",
+            passthroughouter = "@outer",
+            dep = "@passthroughinner",
+            outerdep = "@outer/outer_dependency",
+            outerdir = "@passthroughouter",
+            brokenchain = "@missing"
+        }
+    }
+}

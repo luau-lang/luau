@@ -10,6 +10,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -550,6 +551,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ [string]: number, boolean: boolean, number: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_types")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauMorePermissiveNewtableType, true};
+
+    CheckResult result = check(R"(
+        type function gettable()
+            return types.newtable{[types.singleton("foo")] = { read = types.number }, [types.singleton("bar")] = { write = types.string }}
+        end
+
+        -- forcing an error here to check the exact type of the table
+        local function ok(idx: gettable<>): never return idx end
+    )");
+
+    // FIXME(CLI-178738): The first error should not exist, only the one described above.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(tm);
+    CHECK(toString(tm->givenType) == "{ write bar: string, read foo: number }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")

@@ -38,9 +38,9 @@ LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauTrackUniqueness)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
-LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAGVARIABLE(LuauNewOverloadResolver)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
@@ -565,7 +565,7 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
 
     TypeId* ty = module->astResolvedTypes.find(annotation);
 
-    if (FFlag::LuauNoConstraintGenRecursionLimitIce && module->constraintGenerationDidNotComplete && !ty)
+    if (module->constraintGenerationDidNotComplete && !ty)
         return builtinTypes->anyType;
 
     LUAU_ASSERT(ty);
@@ -1285,7 +1285,7 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
 
     TypeId* resultTy = module->astCompoundAssignResultTypes.find(stat);
 
-    if (FFlag::LuauNoConstraintGenRecursionLimitIce && module->constraintGenerationDidNotComplete && !resultTy)
+    if (module->constraintGenerationDidNotComplete && !resultTy)
         return;
 
     LUAU_ASSERT(resultTy);
@@ -1515,6 +1515,28 @@ void TypeChecker2::visit(AstExprVarargs* expr)
     // TODO!
 }
 
+static void reportAvailableOverloads(ErrorVec& errors, Location location, const std::vector<TypeId>& overloads)
+{
+    if (overloads.empty())
+        return;
+
+    std::stringstream s;
+    s << "Available overloads: ";
+
+    if (overloads.size() <= 1)
+        return;
+
+    for (size_t i = 0; i < overloads.size(); ++i)
+    {
+        if (i > 0)
+            s << ((i == overloads.size() - 1) ? "; and " : "; ");
+
+        s << toString(overloads[i]);
+    }
+
+    errors.emplace_back(location, ExtraInformation{s.str()});
+}
+
 void TypeChecker2::visitCall(AstExprCall* call)
 {
     TypePack args;
@@ -1682,6 +1704,120 @@ void TypeChecker2::visitCall(AstExprCall* call)
     DenseHashSet<TypeId> uniqueTypes{nullptr};
     if (FFlag::LuauTrackUniqueness)
         findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
+
+    if (FFlag::LuauNewOverloadResolver)
+    {
+        TypePackId argsPack = module->internalTypes.addTypePack(args);
+        const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
+
+        // We should have a fully solved type graph at this point.
+        // Maybe we should report an InternalError here instead?
+        LUAU_ASSERT(result2.potentialOverloads.empty());
+
+        /*
+         * If one overload matches, stop.  Nothing to report.
+         *
+         * If 2 or more overloads match, report that it is ambiguous.  List the overloads that match.
+         *
+         * If 0 overloads match:
+         *      If multiple overloads are arity matches, but are nonviable, report MultipleNonviableOverloads and report the overloads that have matching arities.
+         *          Note: Error suppressing overloads are ignored in this calculation!
+         *      If only one overload is an arity match but it is nonviable, report subtyping errors for just that.
+         *
+         *      If no overloads are arity matches, list all overloads.
+         */
+
+        // TODO: Handle the case where multiple overloads are viable.
+        if (!result2.ok.empty())
+            return;
+
+        std::vector<TypeId> overloadsToReport;
+
+        if (1 == result2.incompatibleOverloads.size())
+        {
+            for (const auto& [ty, reasons] : result2.incompatibleOverloads)
+            {
+                if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+                {
+                    for (const SubtypingReasoning& reason : *sr)
+                        resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
+                }
+                else if (const auto errorVec = get_if<ErrorVec>(&reasons))
+                {
+                    reportErrors(*errorVec);
+                }
+                else
+                    LUAU_ASSERT(!"Unreachable");
+            }
+
+            return;
+        }
+
+        // TODO: arity mismatches need expected/actual counts.
+        const auto [argHead, _argTail] = flatten(argsPack);
+        if (result2.incompatibleOverloads.size() > 1)
+        {
+            overloadsToReport.reserve(result2.nonFunctions.size());
+            for (const auto& [overloadTy, _reasons] : result2.incompatibleOverloads)
+            {
+                if (!isErrorSuppressing(call->location, overloadTy))
+                    overloadsToReport.emplace_back(overloadTy);
+            }
+
+            // If all nonviable overloads are error suppressing, don't report anything.
+            if (!overloadsToReport.empty())
+            {
+                reportError(MultipleNonviableOverloads{argHead.size()}, call->location);
+                reportAvailableOverloads(module->errors, call->location, overloadsToReport);
+            }
+
+            return;
+        }
+
+        LUAU_ASSERT(0 == result2.ok.size() && 0 == result2.incompatibleOverloads.size());
+
+        if (1 == result2.arityMismatches.size())
+        {
+            const TypeId fnTy = follow(result2.arityMismatches.front());
+            const FunctionType* fn = get<FunctionType>(fnTy);
+            LUAU_ASSERT(fn);
+
+            if (fn)
+            {
+                const bool isVariadic = Luau::isVariadic(fn->argTypes);
+
+                auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                reportError(
+                    CountMismatch{
+                        minParams,
+                        optMaxParams,
+                        argHead.size(),
+                        CountMismatch::Arg,
+                        isVariadic
+                    },
+                    call->func->location
+                );
+                return;
+            }
+        }
+
+        if (!result2.arityMismatches.empty())
+        {
+            std::stringstream ss;
+            ss << "No overload for function accepts " << argHead.size() << " arguments.";
+            reportError(GenericError{ss.str()}, call->func->location);
+            reportAvailableOverloads(module->errors, call->func->location, result2.arityMismatches);
+            return;
+        }
+
+        if (!result2.nonFunctions.empty())
+        {
+            reportError(CannotCallNonFunction{fnTy}, call->func->location);
+            return;
+        }
+
+        return;
+    }
 
     resolver.resolve(fnTy, &args, call->func, &argExprs, NotNull{&uniqueTypes});
 
@@ -1981,8 +2117,7 @@ void TypeChecker2::visit(AstExprFunction* fn)
     else if (get<ErrorType>(normalizedFnTy->errors))
     {
         // If we have an error type, we don't want to do anything else involving the normalized type
-        if (FFlag::LuauNoConstraintGenRecursionLimitIce)
-            normalizedFnTy = nullptr;
+        normalizedFnTy = nullptr;
     }
     else if (!normalizedFnTy->hasFunctions())
     {
@@ -3404,7 +3539,7 @@ void TypeChecker2::testIsSubtypeForInStat(const TypeId iterFunc, const TypeId pr
     if (r.isSubtype)
         return;
 
-    // TODO, CLI-177651: We do not get amazing errors from this, we probably 
+    // TODO, CLI-177651: We do not get amazing errors from this, we probably
     // want to do something more bidirectional here.
     explainError(iterFunc, prospectiveFunc, iterFuncLocation, r);
 }

@@ -27,6 +27,8 @@ struct lua_State;
 namespace Luau::Require
 {
 
+class AliasCycleTracker;
+
 // The ErrorHandler interface is used to report errors during navigation.
 // The default implementation does nothing but can be overridden to enable
 // custom error handling behavior.
@@ -110,8 +112,8 @@ private:
     using Error = std::optional<std::string>;
     [[nodiscard]] Error navigateImpl(std::string_view path);
     [[nodiscard]] Error navigateThroughPath(std::string_view path);
-    [[nodiscard]] Error navigateToAlias(const std::string& alias, const std::string& value);
-    [[nodiscard]] Error navigateToAndPopulateConfig(const std::string& desiredAlias);
+    [[nodiscard]] Error navigateToAlias(const std::string& alias, const Config& config, AliasCycleTracker cycleTracker);
+    [[nodiscard]] Error navigateToAndPopulateConfig(const std::string& desiredAlias, Config& config);
 
     [[nodiscard]] Error resetToRequirer();
     [[nodiscard]] Error jumpToAlias(const std::string& aliasPath);
