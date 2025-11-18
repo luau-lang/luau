@@ -13,6 +13,8 @@
 
 #define PCG32_INC 105
 
+LUAU_FASTFLAGVARIABLE(LuauMathIsNanInfFinite)
+
 static uint32_t pcg32_random(uint64_t* state)
 {
     uint64_t oldstate = *state;
@@ -427,6 +429,30 @@ static int math_lerp(lua_State* L)
     return 1;
 }
 
+static int math_isnan(lua_State* L)
+{
+    double x = luaL_checknumber(L, 1);
+
+    lua_pushboolean(L, isnan(x));
+    return 1;
+}
+
+static int math_isinf(lua_State* L)
+{
+    double x = luaL_checknumber(L, 1);
+
+    lua_pushboolean(L, isinf(x));
+    return 1;
+}
+
+static int math_isfinite(lua_State* L)
+{
+    double x = luaL_checknumber(L, 1);
+
+    lua_pushboolean(L, isfinite(x));
+    return 1;
+}
+
 static const luaL_Reg mathlib[] = {
     {"abs", math_abs},
     {"acos", math_acos},
@@ -477,6 +503,17 @@ int luaopen_math(lua_State* L)
     pcg32_seed(&L->global->rngstate, seed);
 
     luaL_register(L, LUA_MATHLIBNAME, mathlib);
+
+    if (FFlag::LuauMathIsNanInfFinite)
+    {
+        lua_pushcfunction(L, math_isnan, "isnan");
+        lua_setfield(L, -2, "isnan");
+        lua_pushcfunction(L, math_isinf, "isinf");
+        lua_setfield(L, -2, "isinf");
+        lua_pushcfunction(L, math_isfinite, "isfinite");
+        lua_setfield(L, -2, "isfinite");
+    }
+
     lua_pushnumber(L, PI);
     lua_setfield(L, -2, "pi");
     lua_pushnumber(L, HUGE_VAL);

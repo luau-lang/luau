@@ -637,7 +637,13 @@ enum LuauBuiltinFunction
     // math.lerp
     LBF_MATH_LERP,
 
+    // vector.lerp
     LBF_VECTOR_LERP,
+
+    // math.
+    LBF_MATH_ISNAN,
+    LBF_MATH_ISINF,
+    LBF_MATH_ISFINITE
 };
 
 // Capture type, used in LOP_CAPTURE

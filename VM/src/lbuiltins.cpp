@@ -1740,6 +1740,45 @@ static int luauF_lerp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
     return -1;
 }
 
+static int luauF_isnan(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double x = nvalue(arg0);
+
+        setbvalue(res, isnan(x));
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_isinf(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double x = nvalue(arg0);
+
+        setbvalue(res, isinf(x));
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_isfinite(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double x = nvalue(arg0);
+
+        setbvalue(res, isfinite(x));
+        return 1;
+    }
+
+    return -1;
+}
+
 static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     return -1;
@@ -1938,6 +1977,10 @@ const luau_FastFunction luauF_table[256] = {
     luauF_lerp,
 
     luauF_vectorlerp,
+
+    luauF_isnan,
+    luauF_isinf,
+    luauF_isfinite,
 
 // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
 // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.
