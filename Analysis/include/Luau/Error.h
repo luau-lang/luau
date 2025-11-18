@@ -535,6 +535,36 @@ struct GenericBoundsMismatch
     bool operator==(const GenericBoundsMismatch& rhs) const;
 };
 
+// Used `f<<T>>` where f is not a function
+struct InstantiateGenericsOnNonFunction
+{
+    enum class InterestingEdgeCase
+    {
+        None,
+        MetatableCall,
+        Intersection,
+    };
+
+    InterestingEdgeCase interestingEdgeCase;
+
+    bool operator==(const InstantiateGenericsOnNonFunction&) const;
+};
+
+// Provided too many generics inside `f<<T>>`
+struct TypeInstantiationCountMismatch
+{
+    std::optional<std::string> functionName;
+    TypeId functionType;
+
+    size_t providedTypes = 0;
+    size_t maximumTypes = 0;
+
+    size_t providedTypePacks = 0;
+    size_t maximumTypePacks = 0;
+
+    bool operator==(const TypeInstantiationCountMismatch&) const;
+};
+
 // Error when referencing a type function without providing explicit generics.
 //
 //  type function create_table_with_key()
@@ -609,8 +639,9 @@ using TypeErrorData = Variant<
     MultipleNonviableOverloads,
     RecursiveRestraintViolation,
     GenericBoundsMismatch,
-    UnappliedTypeFunction>;
-
+    UnappliedTypeFunction,
+    InstantiateGenericsOnNonFunction,
+    TypeInstantiationCountMismatch>;
 
 struct TypeErrorSummary
 {

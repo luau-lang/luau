@@ -35,6 +35,7 @@ void luaC_validate(lua_State* L);
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
@@ -894,6 +895,12 @@ TEST_CASE("PCall")
 TEST_CASE("Pack")
 {
     runConformance("tpack.luau");
+}
+
+TEST_CASE("ExplicitTypeInstantiations")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+    runConformance("explicit_type_instantiations.luau");
 }
 
 int singleYield(lua_State* L)

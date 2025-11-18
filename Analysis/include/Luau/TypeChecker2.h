@@ -173,6 +173,7 @@ private:
     void visit(AstExprTypeAssertion* expr);
     void visit(AstExprIfElse* expr);
     void visit(AstExprInterpString* interpString);
+    void visit(AstExprInstantiate* explicitTypeInstantiation);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
@@ -232,6 +233,8 @@ private:
     DenseHashSet<std::string> warnedGlobals{""};
 
     void suggestAnnotations(AstExprFunction* expr, TypeId ty);
+
+    void checkTypeInstantiation(AstExpr* baseFunctionExpr, TypeId fnType, const Location& location, const AstArray<AstTypeOrPack>& typeArguments);
 
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const;
     bool isErrorSuppressing(Location loc, TypeId ty);

@@ -13,6 +13,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 namespace Luau
 {
@@ -849,6 +850,11 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
             return visitExpr(i);
         else if (auto i = e->as<AstExprInterpString>())
             return visitExpr(i);
+        else if (auto i = e->as<AstExprInstantiate>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            return visitExpr(i);
+        }
         else if (auto error = e->as<AstExprError>())
             return visitExpr(error);
         else
@@ -1065,6 +1071,27 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
 
     return {defArena->freshCell(Symbol{}, i->location), nullptr};
 }
+
+DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInstantiate* i)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    for (const AstTypeOrPack& typeOrPack : i->typeArguments)
+    {
+        if (typeOrPack.type)
+        {
+            visitType(typeOrPack.type);
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            visitTypePack(typeOrPack.typePack);
+        }
+    }
+
+    return visitExpr(i->expr);
+}
+
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprError* error)
 {

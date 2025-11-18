@@ -18,6 +18,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAGVARIABLE(LuauUnknownGlobalFixSuggestion)
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace Luau
 {
 
@@ -189,6 +191,11 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
                 return false;
 
         return true;
+    }
+    CASE(AstExprInstantiate)
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        return similar(le->expr, re->expr);
     }
     else
     {

@@ -1775,6 +1775,11 @@ std::string dump(const std::vector<TypeId>& types)
     return toStringVector(types, dumpOptions());
 }
 
+std::string dump(const std::vector<TypePackId>& typePacks)
+{
+    return toStringVector(typePacks, dumpOptions());
+}
+
 std::string dump(DenseHashMap<TypeId, TypeId>& types)
 {
     std::string s = "{";
@@ -1835,6 +1840,18 @@ std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& op
         if (!s.empty())
             s += ", ";
         s += toString(ty, opts);
+    }
+    return s;
+}
+
+std::string toStringVector(const std::vector<TypePackId>& typePacks, ToStringOptions& opts)
+{
+    std::string s;
+    for (TypePackId typePack : typePacks)
+    {
+        if (!s.empty())
+            s += ", ";
+        s += toString(typePack, opts);
     }
     return s;
 }
@@ -1929,6 +1946,9 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             return "simplify " + tos(c.ty);
         else if constexpr (std::is_same_v<T, PushFunctionTypeConstraint>)
             return "push_function_type " + tos(c.expectedFunctionType) + " => " + tos(c.functionType);
+        else if constexpr (std::is_same_v<T, TypeInstantiationConstraint>)
+            return "explicitly_specified_constraints " + tos(c.functionType) + " (typeArguments = " + dump(c.typeArguments) +
+                   "), (typePackArguments = " + dump(c.typePackArguments) + ")";
         else if constexpr (std::is_same_v<T, PushTypeConstraint>)
             return "push_type " + tos(c.expectedType) + " => " + tos(c.targetType);
         else
