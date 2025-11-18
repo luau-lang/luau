@@ -3124,7 +3124,7 @@ TypeId TypeChecker::checkBinaryOperation(
         reportError(
             expr.location,
             GenericError{format(
-                "Binary operator '%s' not supported by typeArguments '%s' and '%s'",
+                "Binary operator '%s' not supported by types '%s' and '%s'",
                 toString(expr.op).c_str(),
                 toString(lhsType).c_str(),
                 toString(rhsType).c_str()
