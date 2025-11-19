@@ -16,7 +16,6 @@ LUAU_FASTFLAG(LuauSubtypingPrimitiveAndGenericTableTypes)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
-LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauNewOverloadResolver)
 LUAU_FASTFLAG(LuauCloneForIntersectionsUnions)
@@ -1888,7 +1887,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
     };
 
