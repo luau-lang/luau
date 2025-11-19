@@ -47,7 +47,7 @@ LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAGVARIABLE(LuauNoCustomHandlingOfReasonsingsForForIn)
 LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
-LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -3834,7 +3834,6 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
                 return {NormalizationResult::False, {}};
             else
                 return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
-            }
         }
         if (cls->indexer)
         {

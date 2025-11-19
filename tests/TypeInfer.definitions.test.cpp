@@ -13,6 +13,7 @@ LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -633,7 +634,10 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "vector_readonly")
 {
-    ScopedFastFlag sff = {FFlag::LuauSolverV2, true};
+    ScopedFastFlag _[] = {
+        { FFlag::LuauSolverV2, true },
+        { FFlag::LuauExternReadWriteAttributes, true }
+    };
 
     loadDefinition(R"(
         declare extern type vector with
@@ -661,7 +665,10 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
 {
-    ScopedFastFlag sff = {FFlag::LuauSolverV2, true};
+    ScopedFastFlag _[] = {
+        { FFlag::LuauSolverV2, true },
+        { FFlag::LuauExternReadWriteAttributes, true }
+    };
 
     loadDefinition(R"(
         declare extern type noread with

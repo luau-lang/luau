@@ -22,7 +22,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, f
 LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAttributes)
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
