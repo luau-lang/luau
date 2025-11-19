@@ -3,6 +3,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerMathIsNanInfFinite)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorReadOnly)
 LUAU_FASTFLAGVARIABLE(LuauUseTopTableForTableClearAndIsFrozen)
 
 LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
@@ -399,6 +400,7 @@ declare vector: {
     clamp: @checked (vec: vector, min: vector, max: vector) -> vector,
     max: @checked (vector, ...vector) -> vector,
     min: @checked (vector, ...vector) -> vector,
+    lerp: @checked (vec1: vector, vec2: vector, t: number) -> vector,
 
     zero: vector,
     one: vector,
@@ -432,7 +434,7 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     result += kBuiltinDefinitionBufferSrc;
-    if (FFlag::LuauTypeCheckerVectorLerp2)
+    if (FFlag::LuauTypeCheckerVectorReadOnly)
     {
         result += kBuiltinDefinitionVectorSrc;
     }

@@ -47,6 +47,7 @@ LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAGVARIABLE(LuauNoCustomHandlingOfReasonsingsForForIn)
 LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
+LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -2391,8 +2392,11 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
-    if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
-        visit(expr->left, ValueContext::LValue); // in compound assignments, the lhs is both read-from and written-to
+    if (FFlag::LuauExternReadWriteAttributes)
+    {
+        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+            visit(expr->left, ValueContext::LValue); // in compound assignments, the lhs is both read-from and written-to
+    }
 
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
@@ -3824,10 +3828,13 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
         {
-            if ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
+            if (FFlag::LuauExternReadWriteAttributes
+                && ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
+            )
                 return {NormalizationResult::False, {}};
             else
                 return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+            }
         }
         if (cls->indexer)
         {

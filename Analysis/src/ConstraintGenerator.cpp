@@ -55,6 +55,7 @@ LUAU_FASTFLAGVARIABLE(LuauMetatableAvoidSingletonUnion)
 LUAU_FASTFLAGVARIABLE(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExplicitGenericPacks)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -2137,14 +2138,22 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         if (props.count(propName) == 0)
         {
             Property tableProp;
-            if (prop.propAccess == AstTableAccess::Read)
-                tableProp = Property::readonly(propTy);
-            else if (prop.propAccess == AstTableAccess::Write)
-                tableProp = Property::writeonly(propTy);
-            else
-                tableProp = Property::rw(propTy);
 
-            tableProp.location = prop.location;
+            if (FFlag::LuauExternReadWriteAttributes)
+            {
+                if (prop.propAccess == AstTableAccess::Read)
+                    tableProp = Property::readonly(propTy);
+                else if (prop.propAccess == AstTableAccess::Write)
+                    tableProp = Property::writeonly(propTy);
+                else
+                    tableProp = Property::rw(propTy);
+
+                tableProp.location = prop.location;
+            }
+            else
+            {
+                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            }
 
             props[propName] = tableProp;
         }

@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, f
 LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAttributes)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -1461,17 +1462,20 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             {
                 AstTableAccess access = AstTableAccess::ReadWrite;
 
-                if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
+                if (FFlag::LuauExternReadWriteAttributes)
                 {
-                    if (AstName(lexer.current().name) == "read")
+                    if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
                     {
-                        access = AstTableAccess::Read;
-                        lexer.next();
-                    }
-                    else if (AstName(lexer.current().name) == "write")
-                    {
-                        access = AstTableAccess::Write;
-                        lexer.next();
+                        if (AstName(lexer.current().name) == "read")
+                        {
+                            access = AstTableAccess::Read;
+                            lexer.next();
+                        }
+                        else if (AstName(lexer.current().name) == "write")
+                        {
+                            access = AstTableAccess::Write;
+                            lexer.next();
+                        }
                     }
                 }
 
