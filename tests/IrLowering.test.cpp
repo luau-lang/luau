@@ -16,7 +16,6 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenFMA)
@@ -467,7 +466,6 @@ TEST_CASE("VectorLerp")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauVectorLerp, true},
         {FFlag::LuauCodeGenVectorLerp2, true}
     };
     if (FFlag::LuauCodeGenFMA)

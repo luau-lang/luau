@@ -25,7 +25,7 @@
 #endif
 #endif
 
-LUAU_FASTFLAG(LuauVectorLerp)
+LUAU_FASTFLAGVARIABLE(LuauVectorLerp)
 
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.

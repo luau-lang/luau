@@ -37,7 +37,6 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauStacklessPcall)
@@ -1190,7 +1189,6 @@ TEST_CASE("VectorLibrary")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauVectorLerp, true},
         {FFlag::LuauCodeGenVectorLerp2, true}
     };
 
