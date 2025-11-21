@@ -11,7 +11,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauRefineNoRefineAlways)
+LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(LuauEnqueueUnionsOfDistributedTypeFunctions)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauNormalizationPreservesAny)
+LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
 
 using namespace Luau;
 
@@ -2853,7 +2854,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_by_no_refine_should_always_reduce")
     // generalization.
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineNoRefineAlways, true},
+        {FFlag::LuauRefineNoRefineAlways2, true},
     };
 
     CheckResult result = check(R"(
@@ -3203,6 +3204,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181100_fast_track_refinement_against_unknown")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRefineNoRefineAlways2, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        local Class = {}
+        Class.__index = Class
+
+        type Class = setmetatable<{ A: number }, typeof(Class)>
+
+        function Class.Foo(x: Class, y: Class, z: Class)
+            if y == z then
+                return
+            end
+            local bar = y.A
+            print(bar)
+        end
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({13, 19})));
 }
 
 TEST_SUITE_END();

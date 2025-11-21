@@ -1030,9 +1030,19 @@ TypeFunctionTypeId serialize(TypeId ty, TypeFunctionRuntimeBuilderState* state)
     return TypeFunctionSerializer(state).serialize(ty);
 }
 
+TypeFunctionTypePackId serialize(TypePackId tp, TypeFunctionRuntimeBuilderState* state)
+{
+    return TypeFunctionSerializer(state).serialize(tp);
+}
+
 TypeId deserialize(TypeFunctionTypeId ty, TypeFunctionRuntimeBuilderState* state)
 {
     return TypeFunctionDeserializer(state).deserialize(ty);
+}
+
+TypePackId deserialize(TypeFunctionTypePackId tp, TypeFunctionRuntimeBuilderState* state)
+{
+    return TypeFunctionDeserializer(state).deserialize(tp);
 }
 
 } // namespace Luau

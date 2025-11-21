@@ -74,6 +74,13 @@ NavigationContext::NavigateResult RuntimeNavigationContext::jumpToAlias(const st
     return convertNavigateResult(config->jump_to_alias(L, ctx, path.c_str()));
 }
 
+NavigationContext::NavigateResult RuntimeNavigationContext::toAliasFallback(const std::string& aliasUnprefixed)
+{
+    if (!config->to_alias_fallback)
+        return NavigationContext::NavigateResult::NotFound;
+    return convertNavigateResult(config->to_alias_fallback(L, ctx, aliasUnprefixed.c_str()));
+}
+
 NavigationContext::NavigateResult RuntimeNavigationContext::toParent()
 {
     return convertNavigateResult(config->to_parent(L, ctx));

@@ -549,7 +549,6 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
             return cbool(isfinite(x));
         }
         break;
-
     }
 
     return cvar();

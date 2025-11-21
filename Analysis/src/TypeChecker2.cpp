@@ -45,7 +45,6 @@ LUAU_FASTFLAGVARIABLE(LuauNewOverloadResolver)
 LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
-LUAU_FASTFLAGVARIABLE(LuauNoCustomHandlingOfReasonsingsForForIn)
 LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
 
 namespace Luau
@@ -550,7 +549,7 @@ TypeId TypeChecker2::lookupAnnotation(AstType* annotation)
         {
             if (auto ann = ref->parameters.data[0].type)
             {
-                TypeId argTy = lookupAnnotation(ref->parameters.data[0].type);
+                TypeId argTy = lookupAnnotation(ann);
                 luauPrintLine(
                     format("_luau_print (%d, %d): %s\n", annotation->location.begin.line, annotation->location.begin.column, toString(argTy).c_str())
                 );

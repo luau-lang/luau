@@ -172,7 +172,6 @@ public:
 
     void vblendvps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, RegisterX64 mask);
     void vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, RegisterX64 mask);
-    void vblendvpd_DEPRECATED(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3);
 
     void vpshufps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t shuffle);
     void vpinsrd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t offset);

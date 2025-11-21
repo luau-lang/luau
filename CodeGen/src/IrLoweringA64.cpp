@@ -12,6 +12,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
+
 namespace Luau
 {
 namespace CodeGen
@@ -1786,13 +1788,20 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_SAFE_ENV:
     {
-        Label fresh; // used when guard aborts execution or jumps to a VM exit
-        RegisterA64 temp = regs.allocTemp(KindA64::x);
-        RegisterA64 tempw = castReg(KindA64::w, temp);
-        build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
-        build.ldrb(tempw, mem(temp, offsetof(LuaTable, safeenv)));
-        build.cbz(tempw, getTargetLabel(inst.a, fresh));
-        finalizeTargetLabel(inst.a, fresh);
+        if (FFlag::LuauCodegenBlockSafeEnv)
+        {
+            checkSafeEnv(inst.a, next);
+        }
+        else
+        {
+            Label fresh; // used when guard aborts execution or jumps to a VM exit
+            RegisterA64 temp = regs.allocTemp(KindA64::x);
+            RegisterA64 tempw = castReg(KindA64::w, temp);
+            build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
+            build.ldrb(tempw, mem(temp, offsetof(LuaTable, safeenv)));
+            build.cbz(tempw, getTargetLabel(inst.a, fresh));
+            finalizeTargetLabel(inst.a, fresh);
+        }
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -2806,6 +2815,17 @@ void IrLoweringA64::finalizeTargetLabel(IrOp op, Label& fresh)
         exitHandlerMap[vmExitOp(op)] = uint32_t(exitHandlers.size());
         exitHandlers.push_back({fresh, vmExitOp(op)});
     }
+}
+
+void IrLoweringA64::checkSafeEnv(IrOp target, const IrBlock& next)
+{
+    Label fresh; // used when guard aborts execution or jumps to a VM exit
+    RegisterA64 temp = regs.allocTemp(KindA64::x);
+    RegisterA64 tempw = castReg(KindA64::w, temp);
+    build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
+    build.ldrb(tempw, mem(temp, offsetof(LuaTable, safeenv)));
+    build.cbz(tempw, getTargetLabel(target, fresh));
+    finalizeTargetLabel(target, fresh);
 }
 
 RegisterA64 IrLoweringA64::tempDouble(IrOp op)

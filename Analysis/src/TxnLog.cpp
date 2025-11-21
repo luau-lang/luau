@@ -9,8 +9,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauOccursCheckInCommit)
-
 namespace Luau
 {
 
@@ -228,12 +226,7 @@ void TxnLog::commit()
         {
             const TypeId unfollowed = &rep.get()->pending;
 
-            if (FFlag::LuauOccursCheckInCommit)
-            {
-                if (!occurs(*this, unfollowed, ty))
-                    asMutable(ty)->reassign(*unfollowed);
-            }
-            else
+            if (!occurs(*this, unfollowed, ty))
                 asMutable(ty)->reassign(*unfollowed);
         }
     }

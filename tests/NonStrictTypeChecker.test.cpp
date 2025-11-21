@@ -15,8 +15,13 @@
 #include "doctest.h"
 #include <iostream>
 
+LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
+
+LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
+LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
 
 using namespace Luau;
 
@@ -852,5 +857,39 @@ end
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_block_recursion_limit")
+{
+    int limit = 250;
+
+    ScopedFastFlag sff{FFlag::LuauAddRecursionCounterToNonStrictTypeChecker, true};
+
+    ScopedFastInt luauNonStrictTypeCheckerRecursionLimit{FInt::LuauNonStrictTypeCheckerRecursionLimit, limit - 100};
+    ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit + 500};
+    ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit + 500};
+
+    CheckResult result = checkNonStrict(rep("do ", limit) + "local a = 1" + rep(" end", limit));
+
+    // Nonstrict recursion limit just exits early and doesn't produce an error
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+#if 0 // CLI-181303 requires a ConstraintGenerator::checkPack fix to succeed in debug on Windows
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_expr_recursion_limit")
+{
+    int limit = 250;
+
+    ScopedFastFlag sff{FFlag::LuauAddRecursionCounterToNonStrictTypeChecker, true};
+
+    ScopedFastInt luauNonStrictTypeCheckerRecursionLimit{FInt::LuauNonStrictTypeCheckerRecursionLimit, limit - 100};
+    ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit + 500};
+    ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit + 500};
+
+    CheckResult result = checkNonStrict(R"(("foo"))" + rep(":lower()", limit));
+
+    // Nonstrict recursion limit just exits early and doesn't produce an error
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+#endif
 
 TEST_SUITE_END();

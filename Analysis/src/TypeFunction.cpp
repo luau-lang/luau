@@ -35,6 +35,7 @@ LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAGVARIABLE(LuauEnqueueUnionsOfDistributedTypeFunctions)
+LUAU_FASTFLAGVARIABLE(LuauMarkUnscopedGenericsAsSolved)
 
 namespace Luau
 {
@@ -585,6 +586,12 @@ struct TypeFunctionReducer
 
                     // Let the caller know this type will not become reducible
                     result.irreducibleTypes.insert(subject);
+
+                    if (FFlag::LuauMarkUnscopedGenericsAsSolved)
+                    {
+                        if (getState(subject) == TypeFunctionInstanceState::Unsolved)
+                            setState(subject, TypeFunctionInstanceState::Solved);
+                    }
 
                     if (FFlag::DebugLuauLogTypeFamilies)
                         printf("Irreducible due to an unscoped generic type\n");
