@@ -333,6 +333,7 @@ private:
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
+    Inference check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(
         const ScopePtr& scope,
@@ -481,6 +482,8 @@ private:
     void recordInferredBinding(AstLocal* local, TypeId ty);
 
     void fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block);
+
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> resolveTypeArguments(const ScopePtr& scope, const AstArray<AstTypeOrPack>& typeArguments);
 
     /** Given a function type annotation, return a vector describing the expected types of the calls to the function
      *  For example, calling a function with annotation ((number) -> string & ((string) -> number))

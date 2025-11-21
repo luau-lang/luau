@@ -37,7 +37,7 @@ struct CompileOptions
     int debugLevel = 1;
 
     // type information is used to guide native code generation decisions
-    // information includes testable types for function arguments, locals, upvalues and some temporaries
+    // information includes testable typeArguments for function arguments, locals, upvalues and some temporaries
     // 0 - generate for native modules
     // 1 - generate for all modules
     int typeInfoLevel = 0;
@@ -57,7 +57,7 @@ struct CompileOptions
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
     const char* const* mutableGlobals = nullptr;
 
-    // null-terminated array of userdata types that will be included in the type information
+    // null-terminated array of userdata typeArguments that will be included in the type information
     const char* const* userdataTypes = nullptr;
 
     // null-terminated array of globals which act as libraries and have members with known type and/or constant value

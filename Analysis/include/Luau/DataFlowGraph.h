@@ -189,6 +189,7 @@ private:
     DataFlowResult visitExpr(AstExprTypeAssertion* t);
     DataFlowResult visitExpr(AstExprIfElse* i);
     DataFlowResult visitExpr(AstExprInterpString* i);
+    DataFlowResult visitExpr(AstExprInstantiate* i);
     DataFlowResult visitExpr(AstExprError* error);
 
     void visitLValue(AstExpr* e, DefId incomingDef);

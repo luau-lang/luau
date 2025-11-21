@@ -16,6 +16,12 @@ jobs:
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
+      - name: validate version format
+        run: |
+          if [[ ! "${{ github.event.inputs.version }}" =~ ^0\.[0-9]{3,}$ ]]; then
+            echo "Error: Version must be in the format 0.XYZ"
+            exit 1
+          fi
       - name: create release
         id: create_release
         uses: actions/create-release@v1

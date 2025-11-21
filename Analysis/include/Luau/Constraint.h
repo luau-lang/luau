@@ -99,6 +99,9 @@ struct FunctionCallConstraint
     class AstExprCall* callSite = nullptr;
     std::vector<std::optional<TypeId>> discriminantTypes;
 
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
+
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
     DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
@@ -292,6 +295,16 @@ struct PushFunctionTypeConstraint
     bool isSelf;
 };
 
+// Binds the function to a set of explicitly specified types,
+// for f<<T>>.
+struct TypeInstantiationConstraint
+{
+    TypeId functionType;
+    TypeId placeholderType;
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
+};
+
 struct PushTypeConstraint
 {
     TypeId expectedType;
@@ -321,7 +334,8 @@ using ConstraintV = Variant<
     EqualityConstraint,
     SimplifyConstraint,
     PushFunctionTypeConstraint,
-    PushTypeConstraint>;
+    PushTypeConstraint,
+    TypeInstantiationConstraint>;
 
 struct Constraint
 {

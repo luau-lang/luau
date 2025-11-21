@@ -10,6 +10,8 @@
 #include <limits>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -539,6 +541,14 @@ struct Printer
 
             const auto cstNode = lookupCstNode<CstExprCall>(a);
 
+            if (FFlag::LuauExplicitTypeExpressionInstantiation)
+            {
+                if (writeTypes && (a->typeArguments.size > 0 || (cstNode && cstNode->explicitTypes)))
+                {
+                    visualizeExplicitTypeInstantiation(a->typeArguments, cstNode && cstNode->explicitTypes ? cstNode->explicitTypes : nullptr);
+                }
+            }
+
             if (cstNode)
             {
                 if (cstNode->openParens)
@@ -818,6 +828,22 @@ struct Printer
             }
 
             writer.symbol(")");
+        }
+        else if (const auto& a = expr.as<AstExprInstantiate>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+            visualize(*a->expr);
+
+            if (writeTypes)
+            {
+                const CstExprExplicitTypeInstantiation* cstExprNode = lookupCstNode<CstExprExplicitTypeInstantiation>(a);
+
+                visualizeExplicitTypeInstantiation(
+                    a->typeArguments,
+                    cstExprNode ? &cstExprNode->instantiation : nullptr
+                );
+            }
         }
         else
         {
@@ -1839,6 +1865,54 @@ struct Printer
         {
             LUAU_ASSERT(!"Unknown AstType");
         }
+    }
+
+    void visualizeExplicitTypeInstantiation(
+        const AstArray<AstTypeOrPack>& typeArguments,
+        const CstTypeInstantiation* cstNode
+    )
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+        if (cstNode)
+        {
+            advance(cstNode->leftArrow1Position);
+        }
+        writer.symbol("<");
+
+        if (cstNode)
+        {
+            advance(cstNode->leftArrow2Position);
+        }
+        writer.symbol("<");
+
+        CommaSeparatorInserter comma(writer, cstNode ? cstNode->commaPositions.begin() : nullptr);
+        for (const auto& typeOrPack : typeArguments)
+        {
+            if (typeOrPack.type)
+            {
+                comma();
+                visualizeTypeAnnotation(*typeOrPack.type);
+            }
+            else
+            {
+                LUAU_ASSERT(typeOrPack.typePack);
+                comma();
+                visualizeTypePackAnnotation(*typeOrPack.typePack, /* forVarArg = */ false);
+            }
+        }
+
+        if (cstNode)
+        {
+            advance(cstNode->rightArrow1Position);
+        }
+        writer.symbol(">");
+
+        if (cstNode)
+        {
+            advance(cstNode->rightArrow2Position);
+        }
+        writer.symbol(">");
     }
 };
 

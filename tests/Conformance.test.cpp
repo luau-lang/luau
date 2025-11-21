@@ -35,12 +35,16 @@ void luaC_validate(lua_State* L);
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauStacklessPcall)
+LUAU_FASTFLAG(LuauMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauTypeCheckerMathIsNanInfFinite)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -677,6 +681,12 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag _[] =
+    {
+        {FFlag::LuauMathIsNanInfFinite, true},
+        {FFlag::LuauCompileMathIsNanInfFinite, true}
+    };
+
     runConformance("math.luau");
 }
 
@@ -885,6 +895,12 @@ TEST_CASE("PCall")
 TEST_CASE("Pack")
 {
     runConformance("tpack.luau");
+}
+
+TEST_CASE("ExplicitTypeInstantiations")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+    runConformance("explicit_type_instantiations.luau");
 }
 
 int singleYield(lua_State* L)
@@ -1282,6 +1298,13 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag _[] =
+    {
+        {FFlag::LuauMathIsNanInfFinite, true},
+        {FFlag::LuauCompileMathIsNanInfFinite, true},
+        {FFlag::LuauTypeCheckerMathIsNanInfFinite, true}
+    };
+
     runConformance(
         "types.luau",
         [](lua_State* L)

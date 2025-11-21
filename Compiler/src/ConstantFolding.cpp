@@ -7,6 +7,7 @@
 #include <vector>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauStringConstFolding2)
 LUAU_FASTFLAGVARIABLE(LuauInterpStringConstFolding)
 
@@ -620,6 +621,11 @@ struct ConstantVisitor : AstVisitor
                 for (AstExpr* expression : expr->expressions)
                     analyze(expression);
             }
+        }
+        else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            result = analyze(expr->expr);
         }
         else
         {

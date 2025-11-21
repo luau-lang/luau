@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAGVARIABLE(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
 LUAU_FASTFLAGVARIABLE(LuauIterableBindNotUnify)
@@ -881,6 +882,11 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*sc, constraint, force);
     else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
         success = tryDispatch(*pftc, constraint);
+    else if (auto esgc = get<TypeInstantiationConstraint>(*constraint))
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        success = tryDispatch(*esgc, constraint);
+    }
     else if (auto ptc = get<PushTypeConstraint>(*constraint))
         success = tryDispatch(*ptc, constraint, force);
     else
@@ -1531,6 +1537,14 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         {
             emplace<FreeTypePack>(constraint, c.result, constraint->scope, Polarity::Positive);
             trackInteriorFreeTypePack(constraint->scope, c.result);
+        }
+    }
+
+    if (FFlag::LuauExplicitTypeExpressionInstantiation)
+    {
+        if (!c.typeArguments.empty() || !c.typePackArguments.empty())
+        {
+            fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
         }
     }
 
@@ -2884,6 +2898,68 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
         bind(constraint, fn->retTypes, expectedFn->retTypes);
 
     return true;
+}
+
+bool ConstraintSolver::tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    bind(
+        constraint,
+        c.placeholderType,
+        instantiateFunctionType(c.functionType, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location)
+    );
+
+    return true;
+}
+
+TypeId ConstraintSolver::instantiateFunctionType(
+    TypeId functionTypeId,
+    const std::vector<TypeId>& typeArguments,
+    const std::vector<TypePackId>& typePackArguments,
+    NotNull<Scope> scope,
+    const Location& location
+)
+{
+    const FunctionType* ftv = get<FunctionType>(follow(functionTypeId));
+    if (!ftv)
+    {
+        return functionTypeId;
+    }
+
+    DenseHashMap<TypeId, TypeId> replacements{nullptr};
+    auto typeParametersIter = ftv->generics.begin();
+
+    for (const TypeId typeArgument : typeArguments)
+    {
+        if (typeParametersIter == ftv->generics.end())
+        {
+            break;
+        }
+
+        replacements[*typeParametersIter++] = typeArgument;
+    }
+
+    while (typeParametersIter != ftv->generics.end())
+    {
+        replacements[*typeParametersIter++] = freshType(arena, builtinTypes, scope, Polarity::Mixed);
+    }
+
+    DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
+    auto typePackParametersIter = ftv->genericPacks.begin();
+
+    for (const TypePackId typePackArgument : typePackArguments)
+    {
+        if (typePackParametersIter == ftv->genericPacks.end())
+        {
+            break;
+        }
+
+        replacementPacks[*typePackParametersIter++] = typePackArgument;
+    }
+
+    Replacer replacer{arena, std::move(replacements), std::move(replacementPacks)};
+    return replacer.substitute(functionTypeId).value_or(builtinTypes->errorType);
 }
 
 bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force)

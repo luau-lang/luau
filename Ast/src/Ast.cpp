@@ -4,6 +4,8 @@
 #include "Luau/Common.h"
 #include "Luau/StringUtils.h"
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 namespace Luau
 {
 
@@ -30,6 +32,19 @@ static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
 
     if (list.tailType)
         list.tailType->visit(visitor);
+}
+
+static void visitTypeOrPackArray(AstVisitor* visitor, const AstArray<AstTypeOrPack>& arrayOfTypeOrPack)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+
+    for (const AstTypeOrPack& param : arrayOfTypeOrPack)
+    {
+        if (param.type)
+            param.type->visit(visitor);
+        else
+            param.typePack->visit(visitor);
+    }
 }
 
 AstAttr::AstAttr(const Location& location, Type type, AstArray<AstExpr*> args)
@@ -210,13 +225,22 @@ void AstExprVarargs::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprCall::AstExprCall(const Location& location, AstExpr* func, const AstArray<AstExpr*>& args, bool self, const Location& argLocation)
+AstExprCall::AstExprCall(
+    const Location& location,
+    AstExpr* func,
+    const AstArray<AstExpr*>& args,
+    bool self,
+    const AstArray<AstTypeOrPack>& explicitTypes,
+    const Location& argLocation
+)
     : AstExpr(ClassIndex(), location)
     , func(func)
+    , typeArguments(explicitTypes)
     , args(args)
     , self(self)
     , argLocation(argLocation)
 {
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation || explicitTypes.size == 0);
 }
 
 void AstExprCall::visit(AstVisitor* visitor)
@@ -521,6 +545,23 @@ void AstExprInterpString::visit(AstVisitor* visitor)
             expr->visit(visitor);
     }
 }
+
+AstExprInstantiate::AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types)
+    : AstExpr(ClassIndex(), location)
+    , expr(expr)
+    , typeArguments(types)
+{
+    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+}
+
+void AstExprInstantiate::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+    {
+        visitTypeOrPackArray(visitor, typeArguments);
+    }
+}
+
 
 void AstExprError::visit(AstVisitor* visitor)
 {
@@ -1056,12 +1097,19 @@ void AstTypeReference::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
-        for (const AstTypeOrPack& param : parameters)
+        if (FFlag::LuauExplicitTypeExpressionInstantiation)
         {
-            if (param.type)
-                param.type->visit(visitor);
-            else
-                param.typePack->visit(visitor);
+            visitTypeOrPackArray(visitor, parameters);
+        }
+        else
+        {
+            for (const AstTypeOrPack& param : parameters)
+            {
+                if (param.type)
+                    param.type->visit(visitor);
+                else
+                    param.typePack->visit(visitor);
+            }
         }
     }
 }

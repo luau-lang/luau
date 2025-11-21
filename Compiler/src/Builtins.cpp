@@ -8,6 +8,7 @@
 #include <array>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorLerp)
+LUAU_FASTFLAGVARIABLE(LuauCompileMathIsNanInfFinite)
 
 namespace Luau
 {
@@ -141,6 +142,16 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_MATH_ROUND;
         if (builtin.method == "lerp")
             return LBF_MATH_LERP;
+
+        if (FFlag::LuauCompileMathIsNanInfFinite)
+        {
+            if (builtin.method == "isnan")
+                return LBF_MATH_ISNAN;
+            if (builtin.method == "isinf")
+                return LBF_MATH_ISINF;
+            if (builtin.method == "isfinite")
+                return LBF_MATH_ISFINITE;
+        }
     }
 
     if (builtin.object == "bit32")
@@ -561,6 +572,12 @@ BuiltinInfo getBuiltinInfo(int bfid)
 
     case LBF_MATH_LERP:
         return {3, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_MATH_ISNAN:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_MATH_ISINF:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+    case LBF_MATH_ISFINITE:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
     }
 
     LUAU_UNREACHABLE();
