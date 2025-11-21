@@ -22,7 +22,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
-LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways)
+LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
@@ -1304,27 +1304,37 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     }
 
     std::vector<TypeId> discriminantTypes;
-    for (size_t i = 1; i < typeParams.size(); i++)
-        discriminantTypes.push_back(follow(typeParams.at(i)));
-
-    if (FFlag::LuauRefineNoRefineAlways)
+    if (FFlag::LuauRefineNoRefineAlways2)
     {
-        bool hasAnyRealRefinements = false;
-        for (auto discriminant : discriminantTypes)
+        for (size_t i = 1; i < typeParams.size(); i++)
         {
+            auto discriminant = follow(typeParams[i]);
+
+            // Filter out any top level types that are meaningless to refine 
+            // against.
+            if (is<UnknownType, NoRefineType>(discriminant))
+                continue;
+
             // If the discriminant type is only:
-            // - The `*no-refine*` type or,
-            // - tables, metatables, unions, intersections, functions, or negations _containing_ `*no-refine*`.
+            // - The `*no-refine*` type (covered above) or;
+            // - tables, metatables, unions, intersections, functions, or 
+            //   negations containing `*no-refine*` (covered below).
             // There's no point in refining against it.
             ContainsRefinableType crt;
             crt.traverse(discriminant);
 
-            hasAnyRealRefinements = hasAnyRealRefinements || crt.found;
+            if (crt.found)
+                discriminantTypes.push_back(discriminant);
         }
 
         // if we don't have any real refinements, i.e. they're all `*no-refine*`, then we can reduce immediately.
-        if (!hasAnyRealRefinements)
+        if (discriminantTypes.empty())
             return {targetTy, {}};
+    }
+    else
+    {
+        for (size_t i = 1; i < typeParams.size(); i++)
+            discriminantTypes.push_back(follow(typeParams.at(i)));
     }
 
     const bool targetIsPending = isBlockedOrUnsolvedType(targetTy);
@@ -1385,8 +1395,8 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         }
         else
         {
-            // FFlag::LuauRefineNoRefineAlways moves this check upwards so that it runs even if the thing being refined is pending.
-            if (!FFlag::LuauRefineNoRefineAlways)
+            // FFlag::LuauRefineNoRefineAlways2 moves this check upwards so that it runs even if the thing being refined is pending.
+            if (!FFlag::LuauRefineNoRefineAlways2)
             {
                 // If the discriminant type is only:
                 // - The `*no-refine*` type or,

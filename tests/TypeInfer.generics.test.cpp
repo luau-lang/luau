@@ -13,7 +13,6 @@ LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
-LUAU_FASTFLAG(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
@@ -2047,11 +2046,8 @@ xpcall(v, print, x)
 TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_array")
 {
     ScopedFastFlag _[] = {
-        // These flags expose the issue
         {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
         {FFlag::DebugLuauStringSingletonBasedOnQuotes, true},
-        // And this flag fixes it
-        {FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds, true}
     };
     CheckResult res = check(R"(
         local function a<T>(arr: { T }) end
@@ -2064,10 +2060,7 @@ TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_a
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds, true}
-    };
+    ScopedFastFlag sff{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
 
     CheckResult res = check(R"(
         local function clear<T>(arr: { T }) table.clear(arr) end
@@ -2082,10 +2075,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic_2")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds, true}
-    };
+    ScopedFastFlag sff{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
 
     CheckResult res = check(R"(
         local function id<T>(arr: { T }): { T } return arr end

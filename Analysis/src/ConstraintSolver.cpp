@@ -46,13 +46,13 @@ LUAU_FASTFLAGVARIABLE(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAGVARIABLE(LuauScopedSeenSetInLookupTableProp)
 LUAU_FASTFLAGVARIABLE(LuauIterableBindNotUnify)
 LUAU_FASTFLAGVARIABLE(LuauAvoidOverloadSelectionForFunctionType)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstriantAlwaysCompletes)
+LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 
 namespace Luau
 {
@@ -2658,7 +2658,11 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
         unblock(r, constraint->location);
 
     for (TypeId ity : result.irreducibleTypes)
+    {
         uninhabitedTypeFunctions.insert(ity);
+        if (FFlag::LuauMarkUnscopedGenericsAsSolved)
+            unblock(ity, constraint->location);
+    }
 
     bool reductionFinished = result.blockedTypes.empty() && result.blockedPacks.empty();
 
@@ -3152,12 +3156,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     if (seen.contains(subjectType))
         return {};
 
-    std::optional<ScopedSeenSet<Set<TypeId>, TypeId>> ss; // This won't be needed once LuauScopedSeenSetInLookupTableProp is clipped.
-
-    if (FFlag::LuauScopedSeenSetInLookupTableProp)
-        ss.emplace(seen, subjectType);
-    else
-        seen.insert(subjectType);
+    ScopedSeenSet<Set<TypeId>, TypeId> ss{seen, subjectType};
 
     subjectType = follow(subjectType);
 

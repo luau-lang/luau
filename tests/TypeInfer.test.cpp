@@ -29,7 +29,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
-LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
@@ -2571,8 +2570,7 @@ do end
 #if 0 // CLI-166473: re-enable after flakiness is resolved
 TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_type")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}, {FFlag::LuauOccursCheckInCommit, true}};
-
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}};
 
     CheckResult result = check(R"(
         local any = nil :: any

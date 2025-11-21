@@ -35,6 +35,7 @@ LUAU_FASTFLAG(LuauNewOverloadResolver)
 LUAU_FASTFLAG(LuauGetmetatableError)
 LUAU_FASTFLAG(LuauSuppressIndexingIntoError)
 LUAU_FASTFLAG(LuauPushTypeConstriantAlwaysCompletes)
+LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6458,12 +6459,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1684")
         CHECK(get<TypeMismatch>(e));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "push_type_constraint_should_always_complete")
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2094_push_type_constraint_should_always_complete")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauPushTypeConstraint2, true},
         {FFlag::LuauPushTypeConstriantAlwaysCompletes, true},
+        {FFlag::LuauMarkUnscopedGenericsAsSolved, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -6481,6 +6484,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "push_type_constraint_should_always_complete"
             }
         end
     )"));
+
 }
 
 TEST_SUITE_END();

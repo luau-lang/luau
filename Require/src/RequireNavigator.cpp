@@ -81,25 +81,36 @@ Error Navigator::navigateImpl(std::string_view path)
         if (Error error = navigateToAndPopulateConfig(alias, config))
             return error;
 
-        if (!config.aliases.contains(alias))
+        if (config.aliases.contains(alias))
         {
-            if (alias != "self")
-                return "@" + alias + " is not a valid alias";
-
-            // If the alias is "@self", we reset to the requirer's context and
-            // navigate directly from there.
-            if (Error error = resetToRequirer())
+            if (Error error = navigateToAlias(alias, config, {}))
                 return error;
             if (Error error = navigateThroughPath(path))
                 return error;
 
             return std::nullopt;
         }
+        else
+        {
+            if (alias == "self")
+            {
+                // If the alias is "@self", we reset to the requirer's context and
+                // navigate directly from there.
+                if (Error error = resetToRequirer())
+                    return error;
+                if (Error error = navigateThroughPath(path))
+                    return error;
 
-        if (Error error = navigateToAlias(alias, config, {}))
-            return error;
-        if (Error error = navigateThroughPath(path))
-            return error;
+                return std::nullopt;
+            }
+
+            if (Error error = toAliasFallback(alias))
+                return error;
+            if (Error error = navigateThroughPath(path))
+                return error;
+
+            return std::nullopt;
+        }
     }
 
     if (pathType == PathType::RelativeToCurrent || pathType == PathType::RelativeToParent)
@@ -150,6 +161,7 @@ Error Navigator::navigateThroughPath(std::string_view path)
 
 Error Navigator::navigateToAlias(const std::string& alias, const Config& config, AliasCycleTracker cycleTracker)
 {
+    LUAU_ASSERT(config.aliases.contains(alias));
     std::string value = config.aliases.find(alias)->value;
     PathType pathType = getPathType(value);
 
@@ -174,6 +186,7 @@ Error Navigator::navigateToAlias(const std::string& alias, const Config& config,
             Config parentConfig;
             if (Error error = navigateToAndPopulateConfig(nextAlias, parentConfig))
                 return error;
+
             if (parentConfig.aliases.contains(nextAlias))
             {
                 if (Error error = navigateToAlias(nextAlias, parentConfig, {}))
@@ -181,7 +194,8 @@ Error Navigator::navigateToAlias(const std::string& alias, const Config& config,
             }
             else
             {
-                return "@" + nextAlias + " is not a valid alias";
+                if (Error error = toAliasFallback(nextAlias))
+                    return error;
             }
         }
 
@@ -201,6 +215,8 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
 {
     while (!config.aliases.contains(desiredAlias))
     {
+        config = {}; // Clear existing config data.
+
         NavigationContext::NavigateResult result = navigationContext.toParent();
         if (result == NavigationContext::NavigateResult::Ambiguous)
             return "could not navigate up the ancestry chain during search for alias \"" + desiredAlias + "\" (ambiguous)";
@@ -301,6 +317,18 @@ Error Navigator::navigateToChild(const std::string& component)
         return std::nullopt;
 
     std::string errorMessage = "could not resolve child component \"" + component + "\"";
+    if (result == NavigationContext::NavigateResult::Ambiguous)
+        errorMessage += " (ambiguous)";
+    return errorMessage;
+}
+
+Error Navigator::toAliasFallback(const std::string& aliasUnprefixed)
+{
+    NavigationContext::NavigateResult result = navigationContext.toAliasFallback(aliasUnprefixed);
+    if (result == NavigationContext::NavigateResult::Success)
+        return std::nullopt;
+
+    std::string errorMessage = "@" + aliasUnprefixed + " is not a valid alias";
     if (result == NavigationContext::NavigateResult::Ambiguous)
         errorMessage += " (ambiguous)";
     return errorMessage;

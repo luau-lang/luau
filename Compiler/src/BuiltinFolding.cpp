@@ -522,6 +522,33 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
             return cnum(v);
         }
         break;
+
+    case LBF_MATH_ISNAN:
+        if (count == 1 && args[0].type == Constant::Type_Number)
+        {
+            double x = args[0].valueNumber;
+
+            return cbool(isnan(x));
+        }
+        break;
+
+    case LBF_MATH_ISINF:
+        if (count == 1 && args[0].type == Constant::Type_Number)
+        {
+            double x = args[0].valueNumber;
+
+            return cbool(isinf(x));
+        }
+        break;
+
+    case LBF_MATH_ISFINITE:
+        if (count == 1 && args[0].type == Constant::Type_Number)
+        {
+            double x = args[0].valueNumber;
+
+            return cbool(isfinite(x));
+        }
+        break;
     }
 
     return cvar();

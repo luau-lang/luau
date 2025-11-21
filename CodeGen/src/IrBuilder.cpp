@@ -12,6 +12,10 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
+
+LUAU_FASTFLAG(LuauCodegenChainLink)
+
 namespace Luau
 {
 namespace CodeGen
@@ -172,7 +176,20 @@ void IrBuilder::buildFunctionIr(Proto* proto)
 
         // Begin new block at this instruction if it was in the bytecode or requested during translation
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
-            beginBlock(blockAtInst(i));
+        {
+            if (FFlag::LuauCodegenBlockSafeEnv)
+            {
+                IrOp block = blockAtInst(i);
+
+                beginBlock(block);
+
+                function.blockOp(block).startpc = uint32_t(i);
+            }
+            else
+            {
+                beginBlock(blockAtInst(i));
+            }
+        }
 
         // Numeric for loops require additional processing to maintain loop stack
         // Notably, this must be performed even when the block is dead so that we maintain the pairing FORNPREP-FORNLOOP
@@ -660,8 +677,92 @@ void IrBuilder::loadAndCheckTag(IrOp loc, uint8_t tag, IrOp fallback)
     inst(IrCmd::CHECK_TAG, inst(IrCmd::LOAD_TAG, loc), constTag(tag), fallback);
 }
 
-void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
+void IrBuilder::checkSafeEnv(int pcpos)
 {
+    IrBlock& active = function.blocks[activeBlockIdx];
+
+    // If the block start is associated with a bytecode position, we can perform an early safeenv check
+    if (active.startpc != kBlockNoStartPc)
+    {
+        // If the block hasn't cleared the safeenv flag yet, we can still set it at block entry
+        if ((active.flags & kBlockFlagSafeEnvClear) == 0)
+            active.flags |= kBlockFlagSafeEnvCheck;
+    }
+
+    inst(IrCmd::CHECK_SAFE_ENV, vmExit(pcpos));
+}
+
+void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenChainLink);
+
+    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+
+    auto redirect = [&instRedir](IrOp& op)
+    {
+        if (op.kind == IrOpKind::Inst)
+        {
+            if (const uint32_t* newIndex = instRedir.find(op.index))
+                op.index = *newIndex;
+            else
+                CODEGEN_ASSERT(!"Values can only be used if they are defined in the same block");
+        }
+    };
+
+    for (uint32_t sourceIdx : sourceIdxs)
+    {
+        const IrBlock& source = function.blocks[sourceIdx];
+
+        if (removeCurrentTerminator && inTerminatedBlock)
+        {
+            IrBlock& active = function.blocks[activeBlockIdx];
+            IrInst& term = function.instructions[active.finish];
+
+            kill(function, term);
+            inTerminatedBlock = false;
+        }
+
+        for (uint32_t index = source.start; index <= source.finish; index++)
+        {
+            CODEGEN_ASSERT(index < function.instructions.size());
+            IrInst clone = function.instructions[index];
+
+            // Skip pseudo instructions to make clone more compact, but validate that they have no users
+            if (isPseudo(clone.cmd))
+            {
+                CODEGEN_ASSERT(clone.useCount == 0);
+                continue;
+            }
+
+            redirect(clone.a);
+            redirect(clone.b);
+            redirect(clone.c);
+            redirect(clone.d);
+            redirect(clone.e);
+            redirect(clone.f);
+            redirect(clone.g);
+
+            addUse(function, clone.a);
+            addUse(function, clone.b);
+            addUse(function, clone.c);
+            addUse(function, clone.d);
+            addUse(function, clone.e);
+            addUse(function, clone.f);
+            addUse(function, clone.g);
+
+            // Instructions that referenced the original will have to be adjusted to use the clone
+            instRedir[index] = uint32_t(function.instructions.size());
+
+            // Reconstruct the fresh clone
+            inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f, clone.g);
+        }
+    }
+}
+
+void IrBuilder::clone_DEPRECATED(const IrBlock& source, bool removeCurrentTerminator)
+{
+    CODEGEN_ASSERT(!FFlag::LuauCodegenChainLink);
+
     DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
 
     auto redirect = [&instRedir](IrOp& op)
@@ -836,6 +937,12 @@ IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f, 
     {
         function.blocks[activeBlockIdx].finish = index;
         inTerminatedBlock = true;
+    }
+
+    if (FFlag::LuauCodegenBlockSafeEnv && canInvalidateSafeEnv(cmd))
+    {
+        // Mark that block has instruction with this flag
+        function.blocks[activeBlockIdx].flags |= kBlockFlagSafeEnvClear;
     }
 
     return {IrOpKind::Inst, index};
