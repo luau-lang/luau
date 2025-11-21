@@ -5,7 +5,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauScopedSeenSetInLookupTableProp);
 
 using namespace Luau;
 
@@ -64,8 +63,6 @@ TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "proper_let_generalization")
 
 TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "table_prop_access_diamond")
 {
-    ScopedFastFlag sff(FFlag::LuauScopedSeenSetInLookupTableProp, true);
-
     CheckResult result = check(R"(
         export type ItemDetails = { Id: number }
 

@@ -911,4 +911,20 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureMissing")
     }
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureDependOnInnerAlias")
+{
+    {
+        std::string path = getLuauDirectory(PathType::Relative) +
+                           "/tests/require/config_tests/with_config/chained_aliases/subdirectory/failing_requirer_inner_dependency";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"false", "error requiring module \"@dependoninner\": @passthroughinner is not a valid alias"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) +
+                           "/tests/require/config_tests/with_config_luau/chained_aliases/subdirectory/failing_requirer_inner_dependency";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"false", "error requiring module \"@dependoninner\": @passthroughinner is not a valid alias"});
+    }
+}
+
 TEST_SUITE_END();

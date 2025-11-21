@@ -1000,10 +1000,15 @@ enum class IrBlockKind : uint8_t
     Dead,
 };
 
+inline constexpr uint32_t kBlockNoStartPc = ~0u;
+
+inline constexpr uint8_t kBlockFlagSafeEnvCheck = 1 << 0;
+inline constexpr uint8_t kBlockFlagSafeEnvClear = 1 << 1;
+
 struct IrBlock
 {
     IrBlockKind kind;
-
+    uint8_t flags = 0;
     uint16_t useCount = 0;
 
     // 'start' and 'finish' define an inclusive range of instructions which belong to this block inside the function
@@ -1014,6 +1019,8 @@ struct IrBlock
     uint32_t sortkey = ~0u;
     uint32_t chainkey = 0;
     uint32_t expectedNextBlock = ~0u;
+
+    uint32_t startpc = kBlockNoStartPc;
 
     Label label;
 };

@@ -27,7 +27,6 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAGVARIABLE(LuauTrackUniqueness)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingUnionsAndIntersectionsInGenericBounds)
 LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPrimitiveAndGenericTableTypes)
@@ -865,23 +864,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
     SubtypingResult result;
 
-    if (auto subUnion = get<UnionType>(subTy); subUnion && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
-        result = isCovariantWith(env, subUnion, superTy, scope);
-    else if (auto superUnion = get<UnionType>(superTy); superUnion && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
-    {
-        result = isCovariantWith(env, subTy, superUnion, scope);
-        if (!result.isSubtype && !result.normalizationTooComplex)
-            result = trySemanticSubtyping(env, subTy, superTy, scope, result);
-    }
-    else if (auto superIntersection = get<IntersectionType>(superTy); superIntersection && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
-        result = isCovariantWith(env, subTy, superIntersection, scope);
-    else if (auto subIntersection = get<IntersectionType>(subTy); subIntersection && !FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
-    {
-        result = isCovariantWith(env, subIntersection, superTy, scope);
-        if (!result.isSubtype && !result.normalizationTooComplex)
-            result = trySemanticSubtyping(env, subTy, superTy, scope, result);
-    }
-    else if (get<AnyType>(superTy))
+    if (get<AnyType>(superTy))
         result = {true};
 
     // We have added this as an exception - the set of inhabitants of any is exactly the set of inhabitants of unknown (since error has no
@@ -895,8 +878,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result =
             isCovariantWith(env, builtinTypes->unknownType, superTy, scope).andAlso(isCovariantWith(env, builtinTypes->errorType, superTy, scope));
     }
-    else if (get<UnknownType>(superTy) && // flag delays recursing into unions and inters, so only handle this case if subTy isn't a union or inter
-             (FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds ? !get<UnionType>(subTy) && !get<IntersectionType>(subTy) : true))
+    else if (get<UnknownType>(superTy) && !get<UnionType>(subTy) && !get<IntersectionType>(subTy))
     {
         LUAU_ASSERT(!get<AnyType>(subTy));          // TODO: replace with ice.
         LUAU_ASSERT(!get<UnionType>(subTy));        // TODO: replace with ice.
@@ -951,25 +933,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         }
     }
     else if (auto subUnion = get<UnionType>(subTy))
-    {
-        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
         result = isCovariantWith(env, subUnion, superTy, scope);
-    }
     else if (auto superUnion = get<UnionType>(superTy))
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
         result = isCovariantWith(env, subTy, superUnion, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
     }
     else if (auto superIntersection = get<IntersectionType>(superTy))
-    {
-        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
         result = isCovariantWith(env, subTy, superIntersection, scope);
-    }
     else if (auto subIntersection = get<IntersectionType>(subTy))
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds);
         result = isCovariantWith(env, subIntersection, superTy, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
@@ -2797,26 +2771,21 @@ SubtypingResult Subtyping::checkGenericBounds(
         result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
     else if (!boundsResult.isSubtype)
     {
-        if (FFlag::LuauSubtypingUnionsAndIntersectionsInGenericBounds)
+        // Check if the bounds are error suppressing before reporting a mismatch
+        switch (shouldSuppressErrors(normalizer, lowerBound).orElse(shouldSuppressErrors(normalizer, upperBound)))
         {
-            // Check if the bounds are error suppressing before reporting a mismatch
-            switch (shouldSuppressErrors(normalizer, lowerBound).orElse(shouldSuppressErrors(normalizer, upperBound)))
-            {
-            case ErrorSuppression::Suppress:
-                break;
-            case ErrorSuppression::NormalizationFailed:
-                // intentionally fallthrough here since we couldn't prove this was error-suppressing
-                [[fallthrough]];
-            case ErrorSuppression::DoNotSuppress:
-                result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
-                break;
-            default:
-                LUAU_ASSERT(0);
-                break;
-            }
-        }
-        else
+        case ErrorSuppression::Suppress:
+            break;
+        case ErrorSuppression::NormalizationFailed:
+            // intentionally fallthrough here since we couldn't prove this was error-suppressing
+            [[fallthrough]];
+        case ErrorSuppression::DoNotSuppress:
             result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+            break;
+        default:
+            LUAU_ASSERT(0);
+            break;
+        }
     }
 
     result.andAlso(boundsResult);

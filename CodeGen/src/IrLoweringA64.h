@@ -38,6 +38,8 @@ struct IrLoweringA64
     Label& getTargetLabel(IrOp op, Label& fresh);
     void finalizeTargetLabel(IrOp op, Label& fresh);
 
+    void checkSafeEnv(IrOp target, const IrBlock& next);
+
     // Operand data build helpers
     // May emit data/address synthesis instructions
     RegisterA64 tempDouble(IrOp op);

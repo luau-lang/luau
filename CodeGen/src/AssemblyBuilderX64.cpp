@@ -948,12 +948,6 @@ void AssemblyBuilderX64::vblendvps(RegisterX64 dst, RegisterX64 src1, OperandX64
     placeAvx("vblendvps", dst, src1, src2, mask.index << 4, 0x4a, false, AVX_0F3A, AVX_66);
 }
 
-void AssemblyBuilderX64::vblendvpd_DEPRECATED(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3)
-{
-    // bits [7:4] of imm8 are used to select register for operand 4
-    placeAvx("vblendvpd", dst, src1, mask, src3.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
-}
-
 void AssemblyBuilderX64::vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, RegisterX64 mask)
 {
     // bits [7:4] of imm8 are used to select register for operand 4
