@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAGVARIABLE(LuauExplicitTypeExpressionInstantiationJsonEncoding)
 
 namespace Luau
 {
@@ -679,10 +679,8 @@ struct AstJsonEncoder : public AstVisitor
             "AstExprInstantiate",
             [&]()
             {
-                {
-                    PROP(expr);
-                    PROP(typeArguments);
-                }
+                PROP(expr);
+                PROP(typeArguments);
             }
         );
     }
@@ -1342,9 +1340,9 @@ struct AstJsonEncoder : public AstVisitor
 
     bool visit(class AstExprInstantiate* node) override
     {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        if (FFlag::LuauExplicitTypeExpressionInstantiationJsonEncoding)
+            write(node);
 
-        write(node);
         return false;
     }
 

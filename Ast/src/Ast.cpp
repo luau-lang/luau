@@ -6,6 +6,7 @@
 LUAU_FASTFLAGVARIABLE(LuauStandaloneParseType)
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAGVARIABLE(LuauExplicitTypeExpressionInstantiationVisitInnerExpr)
 
 namespace Luau
 {
@@ -560,7 +561,10 @@ void AstExprInstantiate::visit(AstVisitor* visitor)
     if (visitor->visit(this))
     {
         visitTypeOrPackArray(visitor, typeArguments);
-        expr->visit(visitor);
+        if (FFlag::LuauExplicitTypeExpressionInstantiationVisitInnerExpr)
+        {
+            expr->visit(visitor);
+        }
     }
 }
 
