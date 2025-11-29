@@ -1462,6 +1462,10 @@ public:
     {
         return visit(static_cast<AstExpr*>(node));
     }
+    virtual bool visit(class AstExprInstantiate* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
 
     virtual bool visit(class AstStat* node)
     {
