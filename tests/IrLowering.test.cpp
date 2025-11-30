@@ -470,7 +470,6 @@ TEST_CASE("VectorLerp")
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
         {FFlag::LuauCodeGenVectorLerp2, true},
-        {FFlag::LuauVectorLerp, true},
         {FFlag::LuauCodeGenVectorLerp2, true},
         {FFlag::LuauCodegenBlockSafeEnv, true}
     };
