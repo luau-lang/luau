@@ -1214,5 +1214,22 @@ IrBlock& getNextBlock(IrFunction& function, const std::vector<uint32_t>& sortedB
     return dummy;
 }
 
+IrBlock* tryGetNextBlockInChain(IrFunction& function, IrBlock& block)
+{
+    IrInst& termInst = function.instructions[block.finish];
+
+    // Follow the strict block chain
+    if (termInst.cmd == IrCmd::JUMP && termInst.a.kind == IrOpKind::Block)
+    {
+        IrBlock& target = function.blockOp(termInst.a);
+
+        // Has to have the same sorting key and a consecutive chain key
+        if (target.sortkey == block.sortkey && target.chainkey == block.chainkey + 1)
+            return &target;
+    }
+
+    return nullptr;
+}
+
 } // namespace CodeGen
 } // namespace Luau

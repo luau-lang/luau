@@ -4,25 +4,28 @@
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Common.h"
-#include "Luau/Simplify.h"
-#include "Luau/Type.h"
-#include "Luau/Subtyping.h"
-#include "Luau/Normalize.h"
+#include "Luau/Def.h"
 #include "Luau/Error.h"
+#include "Luau/Normalize.h"
+#include "Luau/RecursionCounter.h"
+#include "Luau/Simplify.h"
+#include "Luau/Subtyping.h"
 #include "Luau/TimeTrace.h"
+#include "Luau/ToString.h"
+#include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFunction.h"
-#include "Luau/Def.h"
-#include "Luau/ToString.h"
 #include "Luau/TypeUtils.h"
 
 #include <iterator>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
+LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 LUAU_FASTFLAGVARIABLE(LuauNonStrictFetchScopeOnce)
+LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
 
 namespace Luau
 {
@@ -318,6 +321,14 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatBlock* block)
     {
+        std::optional<RecursionCounter> _rc;
+        if (FFlag::LuauAddRecursionCounterToNonStrictTypeChecker)
+        {
+            _rc.emplace(&nonStrictRecursionCount);
+            if (FInt::LuauNonStrictTypeCheckerRecursionLimit > 0 && nonStrictRecursionCount >= FInt::LuauNonStrictTypeCheckerRecursionLimit)
+                return {};
+        }
+
         auto StackPusher = pushStack(block);
         NonStrictContext ctx;
 
@@ -511,6 +522,14 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExpr* expr, ValueContext context)
     {
+        std::optional<RecursionCounter> _rc;
+        if (FFlag::LuauAddRecursionCounterToNonStrictTypeChecker)
+        {
+            _rc.emplace(&nonStrictRecursionCount);
+            if (FInt::LuauNonStrictTypeCheckerRecursionLimit > 0 && nonStrictRecursionCount >= FInt::LuauNonStrictTypeCheckerRecursionLimit)
+                return {};
+        }
+
         auto pusher = pushStack(expr);
         if (auto e = expr->as<AstExprGroup>())
             return visit(e, context);
@@ -809,6 +828,14 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprTable* table)
     {
+        std::optional<RecursionCounter> _rc;
+        if (FFlag::LuauAddRecursionCounterToNonStrictTypeChecker)
+        {
+            _rc.emplace(&nonStrictRecursionCount);
+            if (FInt::LuauNonStrictTypeCheckerRecursionLimit > 0 && nonStrictRecursionCount >= FInt::LuauNonStrictTypeCheckerRecursionLimit)
+                return {};
+        }
+
         for (auto [_, key, value] : table->items)
         {
             if (key)
@@ -1291,6 +1318,8 @@ struct NonStrictTypeChecker
     }
 
 private:
+    int nonStrictRecursionCount = 0;
+
     TypeId getOrCreateNegation(TypeId baseType)
     {
         TypeId& cachedResult = cachedNegations[baseType];
@@ -1326,7 +1355,7 @@ void checkNonStrict(
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);
-    
+
     module->errors.erase(
         std::remove_if(
             module->errors.begin(),

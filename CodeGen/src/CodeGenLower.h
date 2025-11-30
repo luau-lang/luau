@@ -26,6 +26,7 @@ LUAU_FASTFLAG(DebugCodegenOptSize)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
+LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 
 namespace Luau
 {
@@ -158,6 +159,21 @@ inline bool lowerImpl(
         // To make sure the register and spill state is correct when blocks are lowered, we check that sorted block order matches the expected one
         if (block.expectedNextBlock != ~0u)
             CODEGEN_ASSERT(function.getBlockIndex(nextBlock) == block.expectedNextBlock);
+
+        // Block might establish a safe environment right at the start
+        if (FFlag::LuauCodegenBlockSafeEnv && (block.flags & kBlockFlagSafeEnvCheck) != 0)
+        {
+            if (options.includeIr)
+            {
+                if (options.includeIrPrefix == IncludeIrPrefix::Yes)
+                    build.logAppend("# ");
+
+                build.logAppend("  implicit CHECK_SAFE_ENV exit(%u)\n", block.startpc);
+            }
+
+            CODEGEN_ASSERT(block.startpc != kBlockNoStartPc);
+            lowering.checkSafeEnv(IrOp{IrOpKind::VmExit, block.startpc}, nextBlock);
+        }
 
         for (uint32_t index = block.start; index <= block.finish; index++)
         {

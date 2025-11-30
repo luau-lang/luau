@@ -679,11 +679,7 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
-    ScopedFastFlag _[] =
-    {
-        {FFlag::LuauMathIsNanInfFinite, true},
-        {FFlag::LuauCompileMathIsNanInfFinite, true}
-    };
+    ScopedFastFlag _[] = {{FFlag::LuauMathIsNanInfFinite, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}};
 
     runConformance("math.luau");
 }
@@ -1294,11 +1290,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag _[] =
-    {
-        {FFlag::LuauMathIsNanInfFinite, true},
-        {FFlag::LuauCompileMathIsNanInfFinite, true},
-        {FFlag::LuauTypeCheckerMathIsNanInfFinite, true}
+    ScopedFastFlag _[] = {
+        {FFlag::LuauMathIsNanInfFinite, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}, {FFlag::LuauTypeCheckerMathIsNanInfFinite, true}
     };
 
     runConformance(

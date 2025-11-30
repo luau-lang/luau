@@ -7901,11 +7901,7 @@ RETURN R1 -1
 
 TEST_CASE("BuiltinFolding")
 {
-    ScopedFastFlag _[]
-    {
-        {FFlag::LuauCompileTypeofFold, true},
-        {FFlag::LuauCompileMathIsNanInfFinite, true}
-    };
+    ScopedFastFlag _[]{{FFlag::LuauCompileTypeofFold, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}};
 
     CHECK_EQ(
         "\n" + compileFunction(

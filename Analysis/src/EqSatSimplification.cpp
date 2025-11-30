@@ -365,7 +365,7 @@ Id toId(
         return res;
     };
 
-    if (auto tt = get<TableType>(ty))
+    if (get<TableType>(ty))
         return egraph.add(TImportedTable{ty});
     else if (get<MetatableType>(ty))
         return egraph.add(TOpaque{ty});

@@ -61,6 +61,10 @@ public:
 
     virtual NavigateResult reset(const std::string& identifier) = 0;
     virtual NavigateResult jumpToAlias(const std::string& path) = 0;
+    virtual NavigateResult toAliasFallback(const std::string& aliasUnprefixed)
+    {
+        return NavigateResult::NotFound;
+    };
 
     virtual NavigateResult toParent() = 0;
     virtual NavigateResult toChild(const std::string& component) = 0;
@@ -119,6 +123,7 @@ private:
     [[nodiscard]] Error jumpToAlias(const std::string& aliasPath);
     [[nodiscard]] Error navigateToParent(std::optional<std::string> previousComponent);
     [[nodiscard]] Error navigateToChild(const std::string& component);
+    [[nodiscard]] Error toAliasFallback(const std::string& aliasUnprefixed);
 
     NavigationContext& navigationContext;
     ErrorHandler& errorHandler;

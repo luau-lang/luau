@@ -1325,6 +1325,7 @@ bb_0:
    %0 = LOAD_TAG R1
    CHECK_TAG %0, tnumber, bb_fallback_3
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN 1u
@@ -1364,6 +1365,7 @@ bb_0:
    %0 = LOAD_TAG R1
    CHECK_TAG %0, tnumber, bb_fallback_3
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN 2u
@@ -1399,6 +1401,7 @@ bb_0:
    %0 = LOAD_TAG R1
    CHECK_TAG %0, tboolean
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN 2u
@@ -1430,6 +1433,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
 bb_0:
    STORE_INT R1, 5i
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN 1u
@@ -1461,6 +1465,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumCmpRemoval")
 bb_0:
    STORE_DOUBLE R1, 4
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN 2u
@@ -1489,6 +1494,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DataFlowsThroughDirectJumpToUniqueSuccessor
 bb_0:
    STORE_TAG R0, tnumber
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    STORE_TAG R1, tnumber
@@ -1558,6 +1564,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "EntryBlockUseRemoval")
 bb_0:
    STORE_TAG R0, tnumber
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN R0, 0i
@@ -1596,6 +1603,7 @@ bb_0:
 bb_1:
    STORE_TAG R0, tnumber
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN R0, 0i
@@ -1634,6 +1642,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval2")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN R0, 0i
@@ -1641,6 +1650,7 @@ bb_1:
 bb_2:
    STORE_TAG R0, tnumber
    JUMP bb_3
+; glued to: bb_3
 
 bb_3:
    RETURN R0, 0i
@@ -1932,6 +1942,7 @@ bb_0:
    %0 = LOAD_TAG R2
    CHECK_TAG %0, tnumber, bb_fallback_1
    JUMP bb_linear_6
+; glued to: bb_linear_6
 
 bb_fallback_1:
    DO_LEN R1, R2
@@ -1948,6 +1959,7 @@ bb_fallback_3:
 
 bb_4:
    JUMP bb_5
+; glued to: bb_5
 
 bb_5:
    RETURN R0, 0i
@@ -3769,6 +3781,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagSelfEqualityCheckRemoval")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN 1u
@@ -4136,6 +4149,7 @@ bb_0:
    STORE_TAG R1, tnumber
    STORE_DOUBLE R1, 1
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
 ; predecessors: bb_0
