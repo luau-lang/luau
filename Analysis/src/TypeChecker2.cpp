@@ -2391,10 +2391,11 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
+    // This is a more general bug that I had to fix to get the tests passing
     if (FFlag::LuauExternReadWriteAttributes)
     {
         if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
-            visit(expr->left, ValueContext::LValue); // in compound assignments, the lhs is both read-from and written-to
+            visit(expr->left, ValueContext::LValue); // In compound assignments, the LHS is both read-from and written-to
     }
 
     visit(expr->left, ValueContext::RValue);
