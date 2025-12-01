@@ -2141,9 +2141,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
             if (FFlag::LuauExternReadWriteAttributes)
             {
-                if (prop.propAccess == AstTableAccess::Read)
+                if (prop.access == AstTableAccess::Read)
                     tableProp = Property::readonly(propTy);
-                else if (prop.propAccess == AstTableAccess::Write)
+                else if (prop.access == AstTableAccess::Write)
                     tableProp = Property::writeonly(propTy);
                 else
                     tableProp = Property::rw(propTy);

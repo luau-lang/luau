@@ -1055,7 +1055,7 @@ struct AstDeclaredExternTypeProperty
     AstType* ty = nullptr;
     bool isMethod = false;
     Location location;
-    AstTableAccess propAccess = AstTableAccess::ReadWrite;
+    AstTableAccess access = AstTableAccess::ReadWrite;
 };
 
 struct AstTableIndexer
