@@ -185,6 +185,11 @@ DataFlowGraph DataFlowGraphBuilder::build(
     return std::move(builder.graph);
 }
 
+DataFlowGraph DataFlowGraphBuilder::empty(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena)
+{
+    return DataFlowGraph{defArena, keyArena};
+}
+
 void DataFlowGraphBuilder::resolveCaptures()
 {
     for (const auto& [_, capture] : captures)

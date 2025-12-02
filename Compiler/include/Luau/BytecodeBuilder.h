@@ -67,6 +67,8 @@ public:
     void emitE(LuauOpcode op, int32_t e);
     void emitAux(uint32_t aux);
 
+    void undoEmit(LuauOpcode op);
+
     size_t emitLabel();
 
     [[nodiscard]] bool patchJumpD(size_t jumpLabel, size_t targetLabel);

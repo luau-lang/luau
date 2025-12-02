@@ -53,7 +53,10 @@ TEST_CASE_FIXTURE(Fixture, "as_expression_incorrect")
 
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add"
+            );
         }
         else
         {
@@ -103,7 +106,9 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible");
+            REQUIRE_EQ(
+                toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
+            );
         }
     }
 }
@@ -383,11 +388,17 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided")
 
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T>(...any) -> (). Expected at most 1 type parameter, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to 'f', which is typed as <T>(...any) -> (). Expected at most 1 type parameter, but 2 provided."
+            );
         }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T>() -> (). Expected at most 1 type parameter, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to 'f', which is typed as <T>() -> (). Expected at most 1 type parameter, but 2 provided."
+            );
         }
     }
 }
@@ -410,11 +421,17 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
 
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T...>(...any) -> (T...). Expected at most 1 type pack, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to 'f', which is typed as <T...>(...any) -> (T...). Expected at most 1 type pack, but 2 provided."
+            );
         }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 'f', which is typed as <T...>() -> (T...). Expected at most 1 type pack, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to 'f', which is typed as <T...>() -> (T...). Expected at most 1 type pack, but 2 provided."
+            );
         }
     }
 }
@@ -440,11 +457,17 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_method")
 
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to function typed as <T>(any) -> (). Expected at most 1 type parameter, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to function typed as <T>(any) -> (). Expected at most 1 type parameter, but 2 provided."
+            );
         }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 't.f', which is typed as <T>(any) -> (). Expected at most 1 type parameter, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to 't.f', which is typed as <T>(any) -> (). Expected at most 1 type parameter, but 2 provided."
+            );
         }
     }
 }
@@ -470,11 +493,17 @@ TEST_CASE_FIXTURE(Fixture, "too_many_type_packs_provided_method")
 
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to function typed as <T...>(any) -> (T...). Expected at most 1 type pack, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to function typed as <T...>(any) -> (T...). Expected at most 1 type pack, but 2 provided."
+            );
         }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Too many type parameters passed to 't.f', which is typed as <T...>(any) -> (T...). Expected at most 1 type pack, but 2 provided.");
+            REQUIRE_EQ(
+                toString(result.errors[0]),
+                "Too many type parameters passed to 't.f', which is typed as <T...>(any) -> (T...). Expected at most 1 type pack, but 2 provided."
+            );
         }
     }
 }

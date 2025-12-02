@@ -6,7 +6,6 @@
 #include "Luau/ConstraintSet.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/HashUtil.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
@@ -113,8 +112,6 @@ struct ConstraintGenerator
     // Needed to be able to enable error-suppression preservation for immediate refinements.
     NotNull<Normalizer> normalizer;
 
-    NotNull<Simplifier> simplifier;
-
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes{nullptr};
@@ -141,7 +138,6 @@ struct ConstraintGenerator
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<ModuleResolver> moduleResolver,
         NotNull<BuiltinTypes> builtinTypes,
@@ -381,6 +377,7 @@ private:
     TypeId resolveTableType(const ScopePtr& scope, AstType* ty, AstTypeTable* tab, bool inTypeArguments, bool replaceErrorWithFresh);
     TypeId resolveFunctionType(const ScopePtr& scope, AstType* ty, AstTypeFunction* fn, bool inTypeArguments, bool replaceErrorWithFresh);
 
+public:
     /**
      * Resolves a type from its AST annotation.
      * @param scope the scope that the type annotation appears within.
@@ -390,6 +387,7 @@ private:
      **/
     TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
+private:
     // resolveType() is recursive, but we only want to invoke
     // inferGenericPolarities() once at the very end.  We thus isolate the
     // recursive part of the algorithm to this internal helper.

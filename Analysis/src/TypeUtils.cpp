@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 
 namespace Luau
@@ -99,10 +98,8 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
-        else if (FFlag::LuauEmplaceNotPushBack)
-            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
         else
-            errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
+            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
 
         mtIndex = findMetatableEntry(builtinTypes, errors, *mtIndex, "__index", location);
     }
@@ -132,10 +129,7 @@ std::optional<TypeId> findMetatableEntry(
     const TableType* mtt = getTableType(unwrapped);
     if (!mtt)
     {
-        if (FFlag::LuauEmplaceNotPushBack)
-            errors.emplace_back(location, GenericError{"Metatable was not a table"});
-        else
-            errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
+        errors.emplace_back(location, GenericError{"Metatable was not a table"});
         return std::nullopt;
     }
 
@@ -239,10 +233,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
-        else if (FFlag::LuauEmplaceNotPushBack)
-            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
         else
-            errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
+            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
 
         mtIndex = findMetatableEntry(builtinTypes, errors, *mtIndex, "__index", location);
     }

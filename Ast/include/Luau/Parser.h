@@ -54,6 +54,16 @@ private:
 
 class Parser
 {
+    template<typename Node, typename F>
+    static ParseNodeResult<Node> runParse(
+        const char* buffer,
+        size_t bufferSize,
+        AstNameTable& names,
+        Allocator& allocator,
+        ParseOptions options,
+        F f
+    );
+
 public:
     static ParseResult parse(
         const char* buffer,
@@ -63,12 +73,20 @@ public:
         ParseOptions options = ParseOptions()
     );
 
-    static ParseExprResult parseExpr(
+    static ParseNodeResult<AstExpr> parseExpr(
         const char* buffer,
         std::size_t bufferSize,
         AstNameTable& names,
         Allocator& allocator,
         ParseOptions options = ParseOptions()
+    );
+
+    static ParseNodeResult<AstType> parseType(
+        const char* buffer,
+        std::size_t bufferSize,
+        AstNameTable& names,
+        Allocator& allocator,
+        ParseOptions options = {}
     );
 
 private:
@@ -285,6 +303,7 @@ private:
 
     // primaryexp -> prefixexp { `.' NAME | `[' exp `]' | TypeInstantiation | `:' NAME [TypeInstantiation] funcargs | funcargs }
     AstExpr* parsePrimaryExpr(bool asStatement);
+    AstExpr* parseMethodCall(Position start, AstExpr* expr);
 
     // asexp -> simpleexp [`::' Type]
     AstExpr* parseAssertionExpr();
@@ -311,10 +330,7 @@ private:
     AstExpr* parseInterpString();
 
     // TypeInstantiation ::= `<' `<' [TypeList] `>' `>'
-    AstArray<AstTypeOrPack> parseTypeInstantiationExpr(
-        CstTypeInstantiation* cstNodeOut = nullptr,
-        Location* endLocationOut = nullptr
-    );
+    AstArray<AstTypeOrPack> parseTypeInstantiationExpr(CstTypeInstantiation* cstNodeOut = nullptr, Location* endLocationOut = nullptr);
 
     AstExpr* parseExplicitTypeInstantiationExpr(Position start, AstExpr& basedOnExpr);
 

@@ -17,7 +17,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauIterableBindNotUnify)
 LUAU_FASTFLAG(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
 
@@ -259,10 +258,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauIterableBindNotUnify, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         function no_iter() end

@@ -112,6 +112,8 @@ struct DataFlowGraphBuilder
         NotNull<struct InternalErrorReporter> handle
     );
 
+    static DataFlowGraph empty(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena);
+
 private:
     DataFlowGraphBuilder(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena);
 

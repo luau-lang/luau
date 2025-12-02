@@ -5,7 +5,6 @@
 #include "Luau/AstQuery.h"
 #include "Luau/Autocomplete.h"
 #include "Luau/Common.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
@@ -1139,8 +1138,6 @@ FragmentTypeCheckResult typecheckFragment_(
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
 
-    SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
-
     // IncrementalModule gets moved at the end of the function, so capturing it here will cause SIGSEGV.
     // We'll capture just the name instead, since that's all we need to clean up the requireTrace at the end
     ScopedExit scopedExit{[&, name = incrementalModule->name]()
@@ -1158,7 +1155,6 @@ FragmentTypeCheckResult typecheckFragment_(
     ConstraintGenerator cg{
         incrementalModule,
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull{&resolver},
         frontend.builtinTypes,
@@ -1206,7 +1202,6 @@ FragmentTypeCheckResult typecheckFragment_(
     /// Initialize the constraint solver and run it
     ConstraintSolver cs{
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
@@ -1304,8 +1299,6 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
 
-    SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
-
     FrontendModuleResolver& resolver =
         FFlag::LuauUseWorkspacePropToChooseSolver ? getModuleResolver(frontend, opts) : getModuleResolver_DEPRECATED(frontend, opts);
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
@@ -1313,7 +1306,6 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     ConstraintGenerator cg{
         incrementalModule,
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull{&resolver},
         frontend.builtinTypes,
@@ -1361,7 +1353,6 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     /// Initialize the constraint solver and run it
     ConstraintSolver cs{
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),

@@ -3305,8 +3305,7 @@ TypeId TypeChecker::instantiateTypeParameters(
 
     if (!functionType)
     {
-        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
-            InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
+        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
 
         if (get<IntersectionType>(baseType))
         {

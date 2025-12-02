@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIndividualRecursionLimits)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 
@@ -195,10 +194,7 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
         if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
             return UnifyResult::Ok;
 
-        if (FFlag::LuauEmplaceNotPushBack)
-            incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
-        else
-            incompleteSubtypes.push_back(SubtypeConstraint{subTy, superTy});
+        incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
         return UnifyResult::Ok;
     }
 
@@ -668,10 +664,7 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTp) || uninhabitedTypeFunctions->contains(superTp)))
             return UnifyResult::Ok;
 
-        if (FFlag::LuauEmplaceNotPushBack)
-            incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
-        else
-            incompleteSubtypes.push_back(PackSubtypeConstraint{subTp, superTp});
+        incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
         return UnifyResult::Ok;
     }
 

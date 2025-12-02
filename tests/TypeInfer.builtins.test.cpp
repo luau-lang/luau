@@ -12,13 +12,11 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauSubtypingPrimitiveAndGenericTableTypes)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
-LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAG(LuauCloneForIntersectionsUnions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -704,7 +702,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
         end
     )");
 
-    if (FFlag::LuauNewOverloadResolver && FFlag::LuauSolverV2)
+    if (FFlag::LuauNewOverloadResolver2 && FFlag::LuauSolverV2)
     {
         // Note, the function "_" places no constraints on its arguments.  They
         // can therefore be nil.  They are therefore optional.  Only the
@@ -1789,7 +1787,7 @@ table.insert(1::any, 2::any)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_requires_all_fields")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauNoScopeShallNotSubsumeAll, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}};
+    ScopedFastFlag _{FFlag::LuauNoScopeShallNotSubsumeAll, true};
 
     CheckResult result = check(R"(
         local function huh(): { { x: number, y: string } }
@@ -1843,7 +1841,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_refinements_on_persistent_tables_known_
 TEST_CASE_FIXTURE(BuiltinsFixture, "next_with_refined_any")
 {
     ScopedFastFlag lsv2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff{FFlag::LuauSubtypingPrimitiveAndGenericTableTypes, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1864,7 +1861,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_with_refined_any")
 TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_with_refined_any")
 {
     ScopedFastFlag lsv2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff{FFlag::LuauSubtypingPrimitiveAndGenericTableTypes, true};
 
     CheckResult result = check(R"(
         --!strict

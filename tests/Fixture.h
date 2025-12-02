@@ -3,7 +3,6 @@
 
 #include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Config.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
@@ -146,8 +145,6 @@ struct Fixture
     TypeId requireTypeAlias(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
-    std::string canonicalize(TypeId ty);
-
     // While most flags can be flipped inside the unit test, some code changes affect the state that is part of Fixture initialization
     // Most often those are changes related to builtin type definitions.
     // In that case, flag can be forced to 'true' using the example below:
@@ -201,9 +198,6 @@ protected:
     bool forAutocomplete = false;
     std::optional<Frontend> frontend;
     BuiltinTypes* builtinTypes = nullptr;
-
-    TypeArena simplifierArena;
-    SimplifierPtr simplifier{nullptr, nullptr};
 
     std::vector<ScopedFastInt> dynamicScopedInts;
 };

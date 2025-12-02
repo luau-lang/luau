@@ -17,9 +17,8 @@
 #include <sstream>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauConsiderErrorSuppressionInTypes)
-LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
 // Maximum number of steps to follow when traversing a path. May not always
@@ -182,127 +181,85 @@ Path PathBuilder::build()
 
 PathBuilder& PathBuilder::readProp(std::string name)
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(Property{std::move(name), true});
-    else
-        components.push_back(Property{std::move(name), true});
+    components.emplace_back(Property{std::move(name), true});
     return *this;
 }
 
 PathBuilder& PathBuilder::writeProp(std::string name)
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(Property{std::move(name), false});
-    else
-        components.push_back(Property{std::move(name), false});
+    components.emplace_back(Property{std::move(name), false});
     return *this;
 }
 
 PathBuilder& PathBuilder::prop(std::string name)
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(Property{std::move(name)});
-    else
-        components.push_back(Property{std::move(name)});
+    components.emplace_back(Property{std::move(name)});
     return *this;
 }
 
 PathBuilder& PathBuilder::index(size_t i)
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(Index{i});
-    else
-        components.push_back(Index{i});
+    components.emplace_back(Index{i});
     return *this;
 }
 
 PathBuilder& PathBuilder::mt()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::Metatable);
-    else
-        components.push_back(TypeField::Metatable);
+    components.emplace_back(TypeField::Metatable);
     return *this;
 }
 
 PathBuilder& PathBuilder::lb()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::LowerBound);
-    else
-        components.push_back(TypeField::LowerBound);
+    components.emplace_back(TypeField::LowerBound);
     return *this;
 }
 
 PathBuilder& PathBuilder::ub()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::UpperBound);
-    else
-        components.push_back(TypeField::UpperBound);
+    components.emplace_back(TypeField::UpperBound);
     return *this;
 }
 
 PathBuilder& PathBuilder::indexKey()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::IndexLookup);
-    else
-        components.push_back(TypeField::IndexLookup);
+    components.emplace_back(TypeField::IndexLookup);
     return *this;
 }
 
 PathBuilder& PathBuilder::indexValue()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::IndexResult);
-    else
-        components.push_back(TypeField::IndexResult);
+    components.emplace_back(TypeField::IndexResult);
     return *this;
 }
 
 PathBuilder& PathBuilder::negated()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::Negated);
-    else
-        components.push_back(TypeField::Negated);
+    components.emplace_back(TypeField::Negated);
     return *this;
 }
 
 PathBuilder& PathBuilder::variadic()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(TypeField::Variadic);
-    else
-        components.push_back(TypeField::Variadic);
+    components.emplace_back(TypeField::Variadic);
     return *this;
 }
 
 PathBuilder& PathBuilder::args()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(PackField::Arguments);
-    else
-        components.push_back(PackField::Arguments);
+    components.emplace_back(PackField::Arguments);
     return *this;
 }
 
 PathBuilder& PathBuilder::rets()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(PackField::Returns);
-    else
-        components.push_back(PackField::Returns);
+    components.emplace_back(PackField::Returns);
     return *this;
 }
 
 PathBuilder& PathBuilder::tail()
 {
-    if (FFlag::LuauEmplaceNotPushBack)
-        components.emplace_back(PackField::Tail);
-    else
-        components.push_back(PackField::Tail);
+    components.emplace_back(PackField::Tail);
     return *this;
 }
 
@@ -1096,7 +1053,7 @@ std::optional<TypeOrPack> traverse(const TypePackId root, const Path& path, cons
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
     {
-        if (FFlag::LuauNewOverloadResolver && state.encounteredErrorSuppression)
+        if (FFlag::LuauNewOverloadResolver2 && state.encounteredErrorSuppression)
             return builtinTypes->errorType;
         return state.current;
     }

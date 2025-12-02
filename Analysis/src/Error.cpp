@@ -19,7 +19,6 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
@@ -898,7 +897,6 @@ struct ErrorConverter
 
     std::string operator()(const GenericBoundsMismatch& e) const
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         std::string lowerBounds;
         for (size_t i = 0; i < e.lowerBounds.size(); ++i)
         {
@@ -1000,6 +998,11 @@ struct ErrorConverter
     std::string operator()(const UnappliedTypeFunction&) const
     {
         return "Type functions always require `<>` when referenced.";
+    }
+
+    std::string operator()(const AmbiguousFunctionCall& afc) const
+    {
+        return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
     }
 };
 
@@ -1425,12 +1428,10 @@ GenericBoundsMismatch::GenericBoundsMismatch(const std::string_view genericName,
     , lowerBounds(lowerBoundSet.take())
     , upperBounds(upperBoundSet.take())
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
 }
 
 bool GenericBoundsMismatch::operator==(const GenericBoundsMismatch& rhs) const
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
     return genericName == rhs.genericName && lowerBounds == rhs.lowerBounds && upperBounds == rhs.upperBounds;
 }
 
@@ -1438,6 +1439,12 @@ bool UnappliedTypeFunction::operator==(const UnappliedTypeFunction& rhs) const
 {
     return true;
 }
+
+bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
+{
+    return function == rhs.function && arguments == rhs.arguments;
+}
+
 
 std::string toString(const TypeError& error)
 {
@@ -1672,7 +1679,6 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, GenericBoundsMismatch>)
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         for (auto& lowerBound : e.lowerBounds)
             lowerBound = clone(lowerBound);
         for (auto& upperBound : e.upperBounds)
@@ -1687,6 +1693,11 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
     {
+    }
+    else if constexpr (std::is_same_v<T, AmbiguousFunctionCall>)
+    {
+        e.function = clone(e.function);
+        e.arguments = clone(e.arguments);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
