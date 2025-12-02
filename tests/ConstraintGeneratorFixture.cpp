@@ -10,7 +10,6 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
-    , simplifier(newSimplifier(NotNull{&arena}, getBuiltins()))
     , forceTheFlag{FFlag::LuauSolverV2, true}
 {
     getFrontend(); // Force the frontend to exist in the constructor.
@@ -29,7 +28,6 @@ void ConstraintGeneratorFixture::generateConstraints(const std::string& code)
     cg = std::make_unique<ConstraintGenerator>(
         mainModule,
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(&moduleResolver),
         getBuiltins(),
@@ -51,7 +49,6 @@ void ConstraintGeneratorFixture::solve(const std::string& code)
     generateConstraints(code);
     ConstraintSolver cs{
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull{rootScope},
         constraints,

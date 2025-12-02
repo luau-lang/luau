@@ -9,8 +9,8 @@
 namespace Luau
 {
 
-// Search through the expression 'expr' for types that are known to represent
-// uniquely held references. Append these types to 'uniqueTypes'.
+// Search through the expression 'expr' for typeArguments that are known to represent
+// uniquely held references. Append these typeArguments to 'uniqueTypes'.
 void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstExpr* expr, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes);
 
 void findUniqueTypes(

@@ -10,6 +10,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("PrettyPrinterTests");
@@ -2124,6 +2126,26 @@ TEST_CASE("prettyPrint_function_attributes")
         function foo:bar()
         end
     )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
+TEST_CASE("transpile_explicit_type_instantiations")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    std::string code = "f<<A, B, C...>>() t.f<<A, B, C...>>() t:f<<A, B, C>>()";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    Allocator allocator;
+    AstNameTable names = {allocator};
+    ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
+    REQUIRE(parseResult.errors.empty());
+    CHECK_EQ(code, prettyPrintWithTypes(*parseResult.root));
+
+    // No types
+    CHECK_EQ("f              () t.f              () t:f           ()", prettyPrint(code).code);
+
+    code = "f < < A , B , C... > >( ) t.f < < A, B, C... > >  ( )  t:f< < A, B, C > > ( )";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 

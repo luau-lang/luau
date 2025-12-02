@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCompileUnusedUdataFix)
 LUAU_FASTFLAG(LuauCodegenFloatLoadStoreProp)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenChainLink)
+LUAU_FASTFLAG(LuauCodegenIntegerAddSub)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -143,7 +144,7 @@ static void initializeCodegen(lua_State* L)
     }
 }
 
-static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
+static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1, int optimizationLevel = 2)
 {
     Luau::Allocator allocator;
     Luau::AstNameTable names(allocator);
@@ -154,7 +155,7 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
 
     Luau::CompileOptions copts = {};
 
-    copts.optimizationLevel = 2;
+    copts.optimizationLevel = optimizationLevel;
     copts.debugLevel = debugLevel;
     copts.typeInfoLevel = 1;
     copts.vectorCtor = "vector";
@@ -2971,6 +2972,204 @@ bb_bytecode_1:
   STORE_TAG R3, tnumber
   INTERRUPT 16u
   RETURN R3, 1i
+)"
+    );
+}
+
+TEST_CASE("Bit32NoDoubleTemporariesAdd")
+{
+    ScopedFastFlag luauCodegenIntegerAddSub{FFlag::LuauCodegenIntegerAddSub, true};
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number, b: number)
+    local a = bit32.band(bit32.bor(a, 0) + bit32.bor(b, 0), 0xffff)
+    local b = bit32.band(bit32.bor(a, 0) + 127, 0xffff)
+    local c = bit32.band(254 + bit32.bor(a, 1), 0xffff)
+    return a, b, c
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %9 = LOAD_DOUBLE R0
+  %10 = NUM_TO_UINT %9
+  %19 = LOAD_DOUBLE R1
+  %20 = NUM_TO_UINT %19
+  %39 = ADD_INT %10, %20
+  %41 = BITAND_UINT %39, 65535i
+  %42 = UINT_TO_NUM %41
+  STORE_DOUBLE R2, %42
+  STORE_TAG R2, tnumber
+  %65 = ADD_INT %41, 127i
+  %67 = BITAND_UINT %65, 65535i
+  %68 = UINT_TO_NUM %67
+  STORE_SPLIT_TVALUE R3, tnumber, %68
+  %77 = BITOR_UINT %41, 1i
+  %91 = ADD_INT %77, 254i
+  %93 = BITAND_UINT %91, 65535i
+  %94 = UINT_TO_NUM %93
+  STORE_SPLIT_TVALUE R4, tnumber, %94
+  INTERRUPT 49u
+  RETURN R2, 3i
+)"
+    );
+}
+
+TEST_CASE("Bit32HasToUseDoubleTemporariesAdd")
+{
+    ScopedFastFlag luauCodegenIntegerAddSub{FFlag::LuauCodegenIntegerAddSub, true};
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number, b: number)
+    local a = bit32.band(bit32.bor(a, 0) + 0.75, 0xffff)
+    local b = bit32.band(bit32.bor(a, 0) + 1e30, 0xffff)
+    local c = bit32.band(1e30 + bit32.bor(a, 1), 0xffff)
+    return a, b, c
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %9 = LOAD_DOUBLE R0
+  %10 = NUM_TO_UINT %9
+  %13 = UINT_TO_NUM %10
+  %19 = ADD_NUM %13, 0.75
+  %26 = NUM_TO_UINT %19
+  %28 = BITAND_UINT %26, 65535i
+  %29 = UINT_TO_NUM %28
+  STORE_DOUBLE R2, %29
+  STORE_TAG R2, tnumber
+  %45 = ADD_NUM %29, 1e+30
+  %52 = NUM_TO_UINT %45
+  %54 = BITAND_UINT %52, 65535i
+  %55 = UINT_TO_NUM %54
+  STORE_SPLIT_TVALUE R3, tnumber, %55
+  %64 = BITOR_UINT %28, 1i
+  %65 = UINT_TO_NUM %64
+  %71 = ADD_NUM %65, 1e+30
+  %78 = NUM_TO_UINT %71
+  %80 = BITAND_UINT %78, 65535i
+  %81 = UINT_TO_NUM %80
+  STORE_SPLIT_TVALUE R4, tnumber, %81
+  INTERRUPT 42u
+  RETURN R2, 3i
+)"
+    );
+}
+
+TEST_CASE("Bit32NoDoubleTemporariesSub")
+{
+    ScopedFastFlag luauCodegenIntegerAddSub{FFlag::LuauCodegenIntegerAddSub, true};
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number, b: number)
+    local a = bit32.band(bit32.bor(a, 0) - bit32.bor(b, 0), 0xffff)
+    local b = bit32.band(bit32.bor(a, 0) - 127, 0xffff)
+    local c = bit32.band(254 - bit32.bor(a, 1), 0xffff)
+    return a, b, c
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %9 = LOAD_DOUBLE R0
+  %10 = NUM_TO_UINT %9
+  %19 = LOAD_DOUBLE R1
+  %20 = NUM_TO_UINT %19
+  %39 = SUB_INT %10, %20
+  %41 = BITAND_UINT %39, 65535i
+  %42 = UINT_TO_NUM %41
+  STORE_DOUBLE R2, %42
+  STORE_TAG R2, tnumber
+  %65 = SUB_INT %41, 127i
+  %67 = BITAND_UINT %65, 65535i
+  %68 = UINT_TO_NUM %67
+  STORE_SPLIT_TVALUE R3, tnumber, %68
+  %77 = BITOR_UINT %41, 1i
+  %91 = SUB_INT 254i, %77
+  %93 = BITAND_UINT %91, 65535i
+  %94 = UINT_TO_NUM %93
+  STORE_SPLIT_TVALUE R4, tnumber, %94
+  INTERRUPT 49u
+  RETURN R2, 3i
+)"
+    );
+}
+
+TEST_CASE("Bit32HasToUseDoubleTemporariesSub")
+{
+    ScopedFastFlag luauCodegenIntegerAddSub{FFlag::LuauCodegenIntegerAddSub, true};
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number, b: number)
+    local a = bit32.band(bit32.bor(a, 0) - 0.75, 0xffff)
+    local b = bit32.band(bit32.bor(a, 0) - 1e30, 0xffff)
+    local c = bit32.band(1e30 - bit32.bor(a, 1), 0xffff)
+    return a, b, c
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %9 = LOAD_DOUBLE R0
+  %10 = NUM_TO_UINT %9
+  %13 = UINT_TO_NUM %10
+  %19 = SUB_NUM %13, 0.75
+  %26 = NUM_TO_UINT %19
+  %28 = BITAND_UINT %26, 65535i
+  %29 = UINT_TO_NUM %28
+  STORE_DOUBLE R2, %29
+  STORE_TAG R2, tnumber
+  %45 = SUB_NUM %29, 1e+30
+  %52 = NUM_TO_UINT %45
+  %54 = BITAND_UINT %52, 65535i
+  %55 = UINT_TO_NUM %54
+  STORE_SPLIT_TVALUE R3, tnumber, %55
+  %64 = BITOR_UINT %28, 1i
+  %65 = UINT_TO_NUM %64
+  %71 = SUB_NUM 1e+30, %65
+  %78 = NUM_TO_UINT %71
+  %80 = BITAND_UINT %78, 65535i
+  %81 = UINT_TO_NUM %80
+  STORE_SPLIT_TVALUE R4, tnumber, %81
+  INTERRUPT 42u
+  RETURN R2, 3i
 )"
     );
 }

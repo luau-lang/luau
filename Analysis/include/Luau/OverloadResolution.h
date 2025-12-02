@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Location.h"
@@ -38,6 +37,50 @@ class Normalizer;
 // functions at all.
 using IncompatibilityReason = Variant<SubtypingReasonings, ErrorVec>;
 
+/**
+ * Struct representing "selecting" an overload from `OverloadResolution::resolveOverload`.
+ */
+struct SelectedOverload
+{
+    /**
+     * An unambiguous overload, if one can be selected. This is _not_ necessarily
+     * an overload that is valid for the argument pack provided. For example:
+     *
+     *  local f: ((string) -> "one") & ((string, string) -> "two")
+     *
+     *  -- We will select `(string) -> "one"` here based on arity. Type checking
+     *  -- will later inform us that `42` is not a string, but that's ok.
+     *  f(42)
+     */
+    std::optional<TypeId> overload;
+
+    /**
+     * Any associated constraints with selecting this overload. For example, in
+     * the code block:
+     *
+     *  local f: ((string, number) -> string) & ((number, boolean) -> number)
+     *  local function g(x)
+     *      -- When selecting an overload at this point, we'll reject the
+     *      -- second overload, and claim that this is the only possible
+     *      -- overload with a constraint of `x <: string`.
+     *      f(x, 42)
+     *   end
+     */
+    std::vector<ConstraintV> assumedConstraints;
+
+    /**
+     * Whether we should potentially defer selecting an overload, such as in:
+     *
+     *  local f: ((string) -> string) & ((number) -> number)
+     *  local function g(x)
+     *      -- There *may* be another constraint on `x` later that allows us to
+     *      -- unambiguously select an overload.
+     *      f(x)
+     *  end
+     */
+    bool shouldRetry;
+};
+
 struct OverloadResolution
 {
     // Overloads that will work
@@ -54,6 +97,18 @@ struct OverloadResolution
 
     // Overloads that will never work specifically because of an arity mismatch.
     std::vector<TypeId> arityMismatches;
+
+    // If a particular overload is a __call metamethod, then type inference
+    // needs to know so that it can prepend the self argument to the argument
+    // list when it infers.
+    DenseHashSet<TypeId> metamethods{nullptr};
+
+    /**
+     * Try to determine an unambiguous overload. See `SelectedOverload` for
+     * documentation.
+     */
+    SelectedOverload getUnambiguousOverload() const;
+
 };
 
 struct OverloadResolver
@@ -69,7 +124,6 @@ struct OverloadResolver
     OverloadResolver(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> arena,
-        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> scope,
@@ -80,7 +134,6 @@ struct OverloadResolver
 
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
-    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<Scope> scope;
@@ -116,6 +169,14 @@ struct OverloadResolver
     ) const;
 
 private:
+    void testFunctionOrUnion(
+        OverloadResolution& result,
+        TypeId fnTy,
+        TypePackId argsPack,
+        Location fnLocation,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes
+    );
+
     void testFunction(
         OverloadResolution& result,
         TypeId fnTy,
@@ -133,14 +194,17 @@ private:
     );
 
 public:
-    std::pair<Analysis, TypeId> selectOverload(
+    // We want to clip this with LuauNewOverloadResolver2, but there are other
+    // call sites such as `solveFunctionCall`.
+    std::pair<Analysis, TypeId> selectOverload_DEPRECATED(
         TypeId ty,
         TypePackId args,
         NotNull<DenseHashSet<TypeId>> uniqueTypes,
         bool useFreeTypeBounds
     );
 
-    void resolve(
+    // Clip with LuauNewOverloadResolver2
+    void resolve_DEPRECATED(
         TypeId fnTy,
         const TypePack* args,
         AstExpr* selfExpr,
@@ -149,8 +213,6 @@ public:
     );
 
 private:
-    std::optional<ErrorVec> testIsSubtype(const Location& location, TypeId subTy, TypeId superTy);
-    std::optional<ErrorVec> testIsSubtype(const Location& location, TypePackId subTy, TypePackId superTy);
     std::pair<Analysis, ErrorVec> checkOverload(
         TypeId fnTy,
         const TypePack* args,
@@ -243,7 +305,6 @@ struct SolveResult
 SolveResult solveFunctionCall(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter,

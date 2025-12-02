@@ -71,9 +71,10 @@ struct ParseResult
     CstNodeMap cstNodeMap{nullptr};
 };
 
-struct ParseExprResult
+template<typename Node>
+struct ParseNodeResult
 {
-    AstExpr* expr;
+    Node* root;
     size_t lines = 0;
 
     std::vector<HotComment> hotcomments;

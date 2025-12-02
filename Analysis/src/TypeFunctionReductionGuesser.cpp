@@ -13,9 +13,6 @@
 
 #include <optional>
 
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
-
-
 namespace Luau
 {
 struct InstanceCollector2 : TypeOnceVisitor
@@ -170,10 +167,7 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
         if (get<TypeFunctionInstanceType>(guess))
             continue;
 
-        if (FFlag::LuauEmplaceNotPushBack)
-            results.emplace_back(local->name.value, guess);
-        else
-            results.push_back({local->name.value, guess});
+        results.emplace_back(local->name.value, guess);
     }
 
     // Submit a guess for return types

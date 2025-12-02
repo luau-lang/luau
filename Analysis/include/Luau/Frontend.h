@@ -238,6 +238,15 @@ struct Frontend
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
     std::vector<ModuleName> getRequiredScripts(const ModuleName& name, const TypeCheckLimits& limits);
 
+    TypeId parseType(
+        NotNull<Allocator> allocator,
+        NotNull<AstNameTable> nameTable,
+        NotNull<InternalErrorReporter> iceHandler,
+        TypeCheckLimits limits,
+        NotNull<TypeArena> arena,
+        std::string_view source
+    );
+
 private:
     ModulePtr check(
         const SourceModule& sourceModule,

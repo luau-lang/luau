@@ -21,11 +21,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
-LUAU_FASTFLAGVARIABLE(LuauExternTableIndexersIntersect)
-LUAU_FASTFLAGVARIABLE(LuauSimplifyMoveTableProps)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauGetmetatableError)
 
@@ -277,7 +274,7 @@ Relation relateTableToExternType(const TableType* table, const ExternType* cls, 
     // If either the table or the extern type have an indexer, just bail.
     // There's rapidly diminishing returns on doing something smart for
     // indexers compared to refining exact members.
-    if (FFlag::LuauExternTableIndexersIntersect && (table->indexer || cls->indexer))
+    if (table->indexer || cls->indexer)
         return Relation::Intersects;
 
     for (auto& [name, prop] : table->props)
@@ -945,42 +942,11 @@ TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
     bool changed = false;
     size_t maxSize = DFInt::LuauSimplificationComplexityLimit;
 
-    if (FFlag::LuauReduceSetTypeStackPressure)
-    {
-        if (leftUnion->options.size() > maxSize)
-            return addIntersection(arena, builtinTypes, {left, right});
-
-        UnionBuilder ub(arena, builtinTypes);
-        ub.reserve(leftUnion->options.size());
-
-        for (TypeId part : leftUnion)
-        {
-            TypeId simplified = intersect(right, part);
-            changed |= simplified != part;
-
-            if (get<NeverType>(simplified))
-            {
-                changed = true;
-                continue;
-            }
-
-            ub.add(simplified);
-
-            // Initial combination size check could not predict nested union iteration
-            if (ub.size() > maxSize)
-                return addIntersection(arena, builtinTypes, {left, right});
-        }
-
-        if (!changed)
-            return left;
-
-        return ub.build();
-    }
-
-    std::set<TypeId> newParts;
-
     if (leftUnion->options.size() > maxSize)
-        return arena->addType(IntersectionType{{left, right}});
+        return addIntersection(arena, builtinTypes, {left, right});
+
+    UnionBuilder ub(arena, builtinTypes);
+    ub.reserve(leftUnion->options.size());
 
     for (TypeId part : leftUnion)
     {
@@ -993,21 +959,17 @@ TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
             continue;
         }
 
-        newParts.insert(simplified);
+        ub.add(simplified);
 
         // Initial combination size check could not predict nested union iteration
-        if (newParts.size() > maxSize)
-            return arena->addType(IntersectionType{{left, right}});
+        if (ub.size() > maxSize)
+            return addIntersection(arena, builtinTypes, {left, right});
     }
 
     if (!changed)
         return left;
-    else if (newParts.empty())
-        return builtinTypes->neverType;
-    else if (newParts.size() == 1)
-        return *begin(newParts);
-    else
-        return arena->addType(UnionType{std::vector<TypeId>(begin(newParts), end(newParts))});
+
+    return ub.build();
 }
 
 TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
@@ -1029,48 +991,23 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
     if (optionSize > maxSize)
         return arena->addType(IntersectionType{{left, right}});
 
-    if (FFlag::LuauReduceSetTypeStackPressure)
-    {
-        UnionBuilder ub{arena, builtinTypes};
-        for (TypeId leftPart : leftUnion)
-        {
-            for (TypeId rightPart : rightUnion)
-            {
-                TypeId simplified = intersect(leftPart, rightPart);
-
-                ub.add(simplified);
-
-                // Initial combination size check could not predict nested union iteration
-                if (ub.size() > maxSize)
-                    return addIntersection(arena, builtinTypes, {left, right});
-            }
-        }
-
-        return ub.build();
-    }
-
+    UnionBuilder ub{arena, builtinTypes};
     for (TypeId leftPart : leftUnion)
     {
         for (TypeId rightPart : rightUnion)
         {
             TypeId simplified = intersect(leftPart, rightPart);
-            if (get<NeverType>(simplified))
-                continue;
 
-            newParts.insert(simplified);
+            ub.add(simplified);
 
             // Initial combination size check could not predict nested union iteration
-            if (newParts.size() > maxSize)
-                return arena->addType(IntersectionType{{left, right}});
+            if (ub.size() > maxSize)
+                return addIntersection(arena, builtinTypes, {left, right});
         }
     }
 
-    if (newParts.empty())
-        return builtinTypes->neverType;
-    else if (newParts.size() == 1)
-        return *begin(newParts);
-    else
-        return arena->addType(UnionType{std::vector<TypeId>(begin(newParts), end(newParts))});
+    return ub.build();
+
 }
 
 TypeId TypeSimplifier::intersectNegatedUnion(TypeId left, TypeId right)
@@ -1509,12 +1446,7 @@ TypeId TypeSimplifier::intersectIntersectionWithType(TypeId left, TypeId right)
     LUAU_ASSERT(leftIntersection);
 
     if (leftIntersection->parts.size() > (size_t)DFInt::LuauSimplificationComplexityLimit)
-    {
-        if (FFlag::LuauReduceSetTypeStackPressure)
-            return addIntersection(arena, builtinTypes, {left, right});
-        else
-            return arena->addType(IntersectionType{{left, right}});
-    }
+        return addIntersection(arena, builtinTypes, {left, right});
 
     if (FFlag::LuauSimplifyIntersectionNoTreeSet)
     {
@@ -1717,25 +1649,13 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 
             if (areDisjoint)
             {
+                TableType merged{TableState::Sealed, TypeLevel{}, lt->scope};
+                merged.props = lt->props;
 
-                if (FFlag::LuauSimplifyMoveTableProps)
-                {
-                    TableType merged{TableState::Sealed, TypeLevel{}, lt->scope};
-                    merged.props = lt->props;
+                for (const auto& [name, rightProp] : rt->props)
+                    merged.props[name] = rightProp;
 
-                    for (const auto& [name, rightProp] : rt->props)
-                        merged.props[name] = rightProp;
-
-                    return arena->addType(std::move(merged));
-                }
-                else
-                {
-                    TableType::Props mergedProps = lt->props;
-                    for (const auto& [name, rightProp] : rt->props)
-                        mergedProps[name] = rightProp;
-
-                    return arena->addType(TableType{mergedProps, std::nullopt, TypeLevel{}, lt->scope, TableState::Sealed});
-                }
+                return arena->addType(std::move(merged));
             }
         }
 
@@ -1824,19 +1744,13 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
     if (isTypeVariable(left))
     {
         blockedTypes.insert(left);
-        if (FFlag::LuauReduceSetTypeStackPressure)
-            return addIntersection(arena, builtinTypes, {left, right});
-        else
-            return arena->addType(IntersectionType{{left, right}});
+        return addIntersection(arena, builtinTypes, {left, right});
     }
 
     if (isTypeVariable(right))
     {
         blockedTypes.insert(right);
-        if (FFlag::LuauReduceSetTypeStackPressure)
-            return addIntersection(arena, builtinTypes, {left, right});
-        else
-            return arena->addType(IntersectionType{{left, right}});
+        return addIntersection(arena, builtinTypes, {left, right});
     }
 
     if (get<UnionType>(left))
@@ -1887,47 +1801,8 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
     {
         bool changed = false;
 
-        if (FFlag::LuauReduceSetTypeStackPressure)
-        {
-            UnionBuilder ub(arena, builtinTypes);
-            ub.reserve(leftUnion->options.size());
-            for (TypeId part : leftUnion)
-            {
-                if (get<NeverType>(part))
-                {
-                    changed = true;
-                    continue;
-                }
-
-                Relation r = relate(part, right);
-                switch (r)
-                {
-                case Relation::Coincident:
-                case Relation::Superset:
-                    return left;
-                case Relation::Subset:
-                    ub.add(right);
-                    changed = true;
-                    break;
-                default:
-                    ub.add(part);
-                    ub.add(right);
-                    changed = true;
-                    break;
-                }
-            }
-
-            if (!changed)
-                return left;
-
-            // If the left-side is changed but has no parts, then the left-side union is uninhabited.
-            if (ub.size() == 0)
-                return right;
-
-            return ub.build();
-        }
-
-        std::set<TypeId> newParts;
+        UnionBuilder ub(arena, builtinTypes);
+        ub.reserve(leftUnion->options.size());
         for (TypeId part : leftUnion)
         {
             if (get<NeverType>(part))
@@ -1943,12 +1818,12 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
             case Relation::Superset:
                 return left;
             case Relation::Subset:
-                newParts.insert(right);
+                ub.add(right);
                 changed = true;
                 break;
             default:
-                newParts.insert(part);
-                newParts.insert(right);
+                ub.add(part);
+                ub.add(right);
                 changed = true;
                 break;
             }
@@ -1956,15 +1831,12 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
 
         if (!changed)
             return left;
-        if (0 == newParts.size())
-        {
-            // If the left-side is changed but has no parts, then the left-side union is uninhabited.
+
+        // If the left-side is changed but has no parts, then the left-side union is uninhabited.
+        if (ub.size() == 0)
             return right;
-        }
-        else if (1 == newParts.size())
-            return *begin(newParts);
-        else
-            return arena->addType(UnionType{std::vector<TypeId>{begin(newParts), end(newParts)}});
+
+        return ub.build();
     }
     else if (get<UnionType>(right))
         return union_(right, left);

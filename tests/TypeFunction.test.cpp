@@ -1764,7 +1764,6 @@ struct TFFixture
 
     InternalErrorReporter ice;
     UnifierSharedState unifierState{&ice};
-    SimplifierPtr simplifier = EqSatSimplification::newSimplifier(arena, getBuiltins());
     Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}, SolverMode::New};
     TypeCheckLimits limits;
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
@@ -1775,7 +1774,6 @@ struct TFFixture
         arena,
         getBuiltins(),
         NotNull{globalScope.get()},
-        NotNull{simplifier.get()},
         NotNull{&normalizer},
         NotNull{&runtime},
         NotNull{&ice},

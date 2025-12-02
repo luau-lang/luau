@@ -22,6 +22,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 using namespace Luau;
 
@@ -461,6 +462,24 @@ end
 )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     NONSTRICT_REQUIRE_CHECKED_ERR(Position(7, 10), "lower", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_instantiation")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+
+    CheckResult result = checkNonStrict(R"(
+        function array<T>(): {T}
+            return {}
+        end
+
+        local foo = array<<number>>()
+        local bar = array<<string>>()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{number}", toString(requireType("foo")));
+    CHECK_EQ("{string}", toString(requireType("bar")));
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "function_def_if_assignment_no_errors")

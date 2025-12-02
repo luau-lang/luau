@@ -19,7 +19,6 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
@@ -898,7 +897,6 @@ struct ErrorConverter
 
     std::string operator()(const GenericBoundsMismatch& e) const
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         std::string lowerBounds;
         for (size_t i = 0; i < e.lowerBounds.size(); ++i)
         {
@@ -919,9 +917,92 @@ struct ErrorConverter
                "\nbut these types are not compatible with one another.";
     }
 
+    std::string operator()(const InstantiateGenericsOnNonFunction& e) const
+    {
+        switch (e.interestingEdgeCase)
+        {
+        case InstantiateGenericsOnNonFunction::InterestingEdgeCase::None:
+            return "Cannot instantiate type parameters on something without type parameters.";
+        case InstantiateGenericsOnNonFunction::InterestingEdgeCase::MetatableCall:
+            // `__call` is complicated because `f<<T>>()` is interpreted as `f<<T>>` as its own expression that is then called.
+            // This is so that you can write code like `local f2 = f<<number>>`, and then call `f2()`.
+            // With metatables, it's not so obvious what this would result in.
+            return "Luau does not currently support explicitly instantiating a table with a `__call` metamethod. \
+                You may be able to work around this by creating a function that calls the table, and using that instead.";
+        case InstantiateGenericsOnNonFunction::InterestingEdgeCase::Intersection:
+            return "Luau does not currently support explicitly instantiating an overloaded function type.";
+        default:
+            LUAU_ASSERT(false);
+            return ""; // MSVC exhaustive
+        }
+    }
+
+    std::string operator()(const TypeInstantiationCountMismatch& e) const
+    {
+        LUAU_ASSERT(e.providedTypes > e.maximumTypes || e.providedTypePacks > e.maximumTypePacks);
+
+        std::string result = "Too many type parameters passed to ";
+
+        if (e.functionName)
+        {
+            result += "'";
+            result += *e.functionName;
+            result += "', which is typed as ";
+        }
+        else
+        {
+            result += "function typed as ";
+        }
+
+        result += toString(e.functionType);
+        result += ". Expected ";
+
+        if (e.providedTypes > e.maximumTypes)
+        {
+            result += "at most ";
+            result += std::to_string(e.maximumTypes);
+            result += " type parameter";
+            if (e.maximumTypes != 1)
+            {
+                result += "s";
+            }
+            result += ", but ";
+            result += std::to_string(e.providedTypes);
+            result += " provided";
+
+            if (e.providedTypePacks > e.maximumTypePacks)
+            {
+                result += ". Also expected ";
+            }
+        }
+
+        if (e.providedTypePacks > e.maximumTypePacks)
+        {
+            result += "at most ";
+            result += std::to_string(e.maximumTypePacks);
+            result += " type pack";
+            if (e.maximumTypePacks != 1)
+            {
+                result += "s";
+            }
+            result += ", but ";
+            result += std::to_string(e.providedTypePacks);
+            result += " provided";
+        }
+
+        result += ".";
+
+        return result;
+    }
+
     std::string operator()(const UnappliedTypeFunction&) const
     {
         return "Type functions always require `<>` when referenced.";
+    }
+
+    std::string operator()(const AmbiguousFunctionCall& afc) const
+    {
+        return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
     }
 };
 
@@ -1331,17 +1412,26 @@ bool MultipleNonviableOverloads::operator==(const MultipleNonviableOverloads& rh
     return attemptedArgCount == rhs.attemptedArgCount;
 }
 
+bool InstantiateGenericsOnNonFunction::operator==(const InstantiateGenericsOnNonFunction& rhs) const
+{
+    return interestingEdgeCase == rhs.interestingEdgeCase;
+}
+
+bool TypeInstantiationCountMismatch::operator==(const TypeInstantiationCountMismatch& rhs) const
+{
+    return functionName == rhs.functionName && functionType == rhs.functionType && providedTypes == rhs.providedTypes &&
+           maximumTypes == rhs.maximumTypes && providedTypePacks == rhs.providedTypePacks && maximumTypePacks == rhs.maximumTypePacks;
+}
+
 GenericBoundsMismatch::GenericBoundsMismatch(const std::string_view genericName, TypeIds lowerBoundSet, TypeIds upperBoundSet)
     : genericName(genericName)
     , lowerBounds(lowerBoundSet.take())
     , upperBounds(upperBoundSet.take())
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
 }
 
 bool GenericBoundsMismatch::operator==(const GenericBoundsMismatch& rhs) const
 {
-    LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
     return genericName == rhs.genericName && lowerBounds == rhs.lowerBounds && upperBounds == rhs.upperBounds;
 }
 
@@ -1349,6 +1439,12 @@ bool UnappliedTypeFunction::operator==(const UnappliedTypeFunction& rhs) const
 {
     return true;
 }
+
+bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
+{
+    return function == rhs.function && arguments == rhs.arguments;
+}
+
 
 std::string toString(const TypeError& error)
 {
@@ -1583,14 +1679,25 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, GenericBoundsMismatch>)
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         for (auto& lowerBound : e.lowerBounds)
             lowerBound = clone(lowerBound);
         for (auto& upperBound : e.upperBounds)
             upperBound = clone(upperBound);
     }
+    else if constexpr (std::is_same_v<T, InstantiateGenericsOnNonFunction>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, TypeInstantiationCountMismatch>)
+    {
+        e.functionType = clone(e.functionType);
+    }
     else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
     {
+    }
+    else if constexpr (std::is_same_v<T, AmbiguousFunctionCall>)
+    {
+        e.function = clone(e.function);
+        e.arguments = clone(e.arguments);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

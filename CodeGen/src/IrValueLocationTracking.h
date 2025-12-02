@@ -16,6 +16,9 @@ struct IrValueLocationTracking
 
     void setRestoreCallback(void* context, void (*callback)(void* context, IrInst& inst));
 
+    bool canBeRematerialized(IrCmd cmd);
+    bool canRematerializeArguments(IrInst& inst);
+
     void beforeInstLowering(IrInst& inst);
     void afterInstLowering(IrInst& inst, uint32_t instIdx);
 

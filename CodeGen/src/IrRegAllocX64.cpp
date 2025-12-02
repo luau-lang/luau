@@ -6,6 +6,8 @@
 
 #include "EmitCommonX64.h"
 
+LUAU_FASTFLAG(LuauCodegenChainedSpills)
+
 namespace Luau
 {
 namespace CodeGen
@@ -199,7 +201,8 @@ void IrRegAllocX64::preserve(IrInst& inst)
     spill.originalLoc = inst.regX64;
 
     // Loads from VmReg/VmConst don't have to be spilled, they can be restored from a register later
-    if (!hasRestoreOp(inst))
+    // When checking if value has a restore operation to spill it, we only allow it in the same block
+    if (FFlag::LuauCodegenChainedSpills ? !function.hasRestoreLocation(inst, /*limitToCurrentBlock*/ true) : !hasRestoreOp_DEPRECATED(inst))
     {
         unsigned i = findSpillStackSlot(spill.valueKind);
 
@@ -256,32 +259,84 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
         if (spills[i].instIdx == instIdx)
         {
             RegisterX64 reg = intoOriginalLocation ? takeReg(spills[i].originalLoc, instIdx) : allocReg(spills[i].originalLoc.size, instIdx);
-            OperandX64 restoreLocation = noreg;
 
-            // Previous call might have relocated the spill vector, so this reference can't be taken earlier
-            const IrSpillX64& spill = spills[i];
-
-            if (spill.stackSlot != kNoStackSlot)
+            if (FFlag::LuauCodegenChainedSpills)
             {
-                restoreLocation = addr[sSpillArea + spill.stackSlot * 8];
-                restoreLocation.memSize = reg.size;
+                // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
+                ValueRestoreLocation restoreLocation = function.findRestoreLocation(inst, /*limitToCurrentBlock*/ false);
 
-                usedSpillSlots.set(spill.stackSlot, false);
+                OperandX64 restoreAddr = noreg;
+
+                // Previous call might have relocated the spill vector, so this reference can't be taken earlier
+                const IrSpillX64& spill = spills[i];
+
+                if (spill.stackSlot != kNoStackSlot)
+                {
+                    restoreAddr = addr[sSpillArea + spill.stackSlot * 8];
+                    restoreAddr.memSize = reg.size;
+
+                    usedSpillSlots.set(spill.stackSlot, false);
+
+                    if (spill.valueKind == IrValueKind::Tvalue)
+                        usedSpillSlots.set(spill.stackSlot + 1, false);
+                }
+                else
+                {
+                    restoreAddr = getRestoreAddress(inst, restoreLocation);
+                }
 
                 if (spill.valueKind == IrValueKind::Tvalue)
-                    usedSpillSlots.set(spill.stackSlot + 1, false);
+                {
+                    build.vmovups(reg, restoreAddr);
+                }
+                else if (spill.valueKind == IrValueKind::Double)
+                {
+                    build.vmovsd(reg, restoreAddr);
+                }
+                else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double)
+                {
+                    // Handle restore of an int/uint value from a location storing a double number
+                    if (restoreLocation.conversionCmd == IrCmd::INT_TO_NUM)
+                        build.vcvttsd2si(reg, restoreAddr);
+                    else if (restoreLocation.conversionCmd == IrCmd::UINT_TO_NUM)
+                        build.vcvttsd2si(qwordReg(reg), restoreAddr); // Note: we perform 'uint64_t = (long long)double' for consistency with C++ code
+                    else
+                        CODEGEN_ASSERT(!"re-materialization not supported for this conversion command");
+                }
+                else
+                {
+                    build.mov(reg, restoreAddr);
+                }
             }
             else
             {
-                restoreLocation = getRestoreAddress(inst, getRestoreOp(inst));
-            }
+                OperandX64 restoreLocation = noreg;
 
-            if (spill.valueKind == IrValueKind::Tvalue)
-                build.vmovups(reg, restoreLocation);
-            else if (spill.valueKind == IrValueKind::Double)
-                build.vmovsd(reg, restoreLocation);
-            else
-                build.mov(reg, restoreLocation);
+                // Previous call might have relocated the spill vector, so this reference can't be taken earlier
+                const IrSpillX64& spill = spills[i];
+
+                if (spill.stackSlot != kNoStackSlot)
+                {
+                    restoreLocation = addr[sSpillArea + spill.stackSlot * 8];
+                    restoreLocation.memSize = reg.size;
+
+                    usedSpillSlots.set(spill.stackSlot, false);
+
+                    if (spill.valueKind == IrValueKind::Tvalue)
+                        usedSpillSlots.set(spill.stackSlot + 1, false);
+                }
+                else
+                {
+                    restoreLocation = getRestoreAddress_DEPRECATED(inst, getRestoreOp_DEPRECATED(inst));
+                }
+
+                if (spill.valueKind == IrValueKind::Tvalue)
+                    build.vmovups(reg, restoreLocation);
+                else if (spill.valueKind == IrValueKind::Double)
+                    build.vmovsd(reg, restoreLocation);
+                else
+                    build.mov(reg, restoreLocation);
+            }
 
             inst.regX64 = reg;
             inst.spilled = false;
@@ -346,25 +401,29 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
     return ~0u;
 }
 
-IrOp IrRegAllocX64::getRestoreOp(const IrInst& inst) const
+IrOp IrRegAllocX64::getRestoreOp_DEPRECATED(const IrInst& inst) const
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
+
     // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
-    if (IrOp location = function.findRestoreOp(inst, /*limitToCurrentBlock*/ false);
+    if (IrOp location = function.findRestoreOp_DEPRECATED(inst, /*limitToCurrentBlock*/ false);
         location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst)
         return location;
 
     return IrOp();
 }
 
-bool IrRegAllocX64::hasRestoreOp(const IrInst& inst) const
+bool IrRegAllocX64::hasRestoreOp_DEPRECATED(const IrInst& inst) const
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
+
     // When checking if value has a restore operation to spill it, we only allow it in the same block
-    IrOp location = function.findRestoreOp(inst, /*limitToCurrentBlock*/ true);
+    IrOp location = function.findRestoreOp_DEPRECATED(inst, /*limitToCurrentBlock*/ true);
 
     return location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst;
 }
 
-OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
+OperandX64 IrRegAllocX64::getRestoreAddress_DEPRECATED(const IrInst& inst, IrOp restoreOp)
 {
     CODEGEN_ASSERT(restoreOp.kind != IrOpKind::None);
 
@@ -385,6 +444,38 @@ OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
         return restoreOp.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(restoreOp)) : luauConstantValue(vmConstOp(restoreOp));
     case IrValueKind::Tvalue:
         return restoreOp.kind == IrOpKind::VmReg ? luauReg(vmRegOp(restoreOp)) : luauConstant(vmConstOp(restoreOp));
+    }
+
+    CODEGEN_ASSERT(!"Failed to find restore operand location");
+    return noreg;
+}
+
+OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, ValueRestoreLocation restoreLocation)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
+
+    IrOp op = restoreLocation.op;
+    CODEGEN_ASSERT(op.kind != IrOpKind::None);
+
+    [[maybe_unused]] IrValueKind instKind = getCmdValueKind(inst.cmd);
+
+    switch (restoreLocation.kind)
+    {
+    case IrValueKind::Unknown:
+    case IrValueKind::None:
+        CODEGEN_ASSERT(!"Invalid operand restore value kind");
+        break;
+    case IrValueKind::Tag:
+        return op.kind == IrOpKind::VmReg ? luauRegTag(vmRegOp(op)) : luauConstantTag(vmConstOp(op));
+    case IrValueKind::Int:
+        CODEGEN_ASSERT(op.kind == IrOpKind::VmReg);
+        return luauRegValueInt(vmRegOp(op));
+    case IrValueKind::Pointer:
+        return restoreLocation.op.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(op)) : luauConstantValue(vmConstOp(op));
+    case IrValueKind::Double:
+        return restoreLocation.op.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(op)) : luauConstantValue(vmConstOp(op));
+    case IrValueKind::Tvalue:
+        return restoreLocation.op.kind == IrOpKind::VmReg ? luauReg(vmRegOp(op)) : luauConstant(vmConstOp(op));
     }
 
     CODEGEN_ASSERT(!"Failed to find restore operand location");
