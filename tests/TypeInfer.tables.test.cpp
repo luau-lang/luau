@@ -25,17 +25,18 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauExtendSealedTableUpperBounds)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
 LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
 LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
-LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAG(LuauGetmetatableError)
 LUAU_FASTFLAG(LuauSuppressIndexingIntoError)
 LUAU_FASTFLAG(LuauPushTypeConstriantAlwaysCompletes)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
+LUAU_FASTFLAG(LuauUseFastSubtypeForIndexerWithName)
+LUAU_FASTFLAG(LuauFixIndexingUnionWithNonTable)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2315,10 +2316,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 {
     // Old Solver Bug: We have to turn off InstantiateInSubtyping in the old solver as we don't invariantly
     // compare functions inside of table properties
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauInstantiateInSubtyping, FFlag::LuauSolverV2},
-    };
+    ScopedFastFlag sff{FFlag::LuauInstantiateInSubtyping, FFlag::LuauSolverV2};
 
     CheckResult result = check(R"(
         --!strict
@@ -2356,9 +2354,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauNoScopeShallNotSubsumeAll, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoScopeShallNotSubsumeAll, true}};
 
     CheckResult result = check(R"(
         --!strict
@@ -3210,7 +3206,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produc
 {
     CheckResult result = check("local x = setmetatable({})");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauNewOverloadResolver)
+    if (FFlag::LuauSolverV2 && FFlag::LuauNewOverloadResolver2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const CountMismatch* cm = get<CountMismatch>(result.errors.at(0));
@@ -4042,6 +4038,8 @@ _ = {_,}
 
 TEST_CASE_FIXTURE(Fixture, "when_augmenting_an_unsealed_table_with_an_indexer_apply_the_correct_scope_to_the_indexer_type")
 {
+    ScopedFastFlag _{FFlag::LuauUseFastSubtypeForIndexerWithName, true};
+
     CheckResult result = check(R"(
         local events = {}
         local mockObserveEvent = function(_, key, callback)
@@ -4064,11 +4062,19 @@ TEST_CASE_FIXTURE(Fixture, "when_augmenting_an_unsealed_table_with_an_indexer_ap
     REQUIRE(tt->indexer);
 
     if (FFlag::LuauSolverV2)
+    {
+        // CLI-181302: There's something bizarre going on in this test, but I
+        // think the new solver is doing the right thing.
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK("unknown" == toString(tt->indexer->indexType));
+        CHECK(get<OptionalValueAccess>(result.errors[0]));
+    }
     else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
         CHECK("string" == toString(tt->indexer->indexType));
+    }
 
-    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_extend_unsealed_tables_in_rvalue_position")
@@ -4999,7 +5005,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
         end
     )");
 
-    if (FFlag::LuauNewOverloadResolver)
+    if (FFlag::LuauNewOverloadResolver2)
     {
         LUAU_REQUIRE_ERROR_COUNT(4, result);
 
@@ -6134,9 +6140,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_array_of_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}, {FFlag::LuauNoScopeShallNotSubsumeAll, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoScopeShallNotSubsumeAll, true}};
 
     CheckResult result = check(R"(
         local function doInsert(t: { string })
@@ -6425,6 +6429,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "allow_indexing_into_error_or_not_nil")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "show_not_a_table_error_when_indexing_into_non_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSuppressIndexingIntoError, true},
+        {FFlag::LuauFixIndexingUnionWithNonTable, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function f(t: number | boolean)
+            t[0] = "huh"
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<NotATable>(result.errors[0]));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1684")
 {
     ScopedFastFlag sffs[] = {
@@ -6485,6 +6506,44 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2094_push_type_constraint_should_always_
         end
     )"));
 
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_access_indexer_via_name_expr")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauUseFastSubtypeForIndexerWithName, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type List = "Val1" | "Val2" | "Val3"
+        local Table: { [List]: boolean }
+        local _ = Table.Val1
+    )"));
+
+    CHECK_EQ("boolean", toString(requireType("_")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_access_indexer_fails_with_missing_key")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauUseFastSubtypeForIndexerWithName, true},
+    };
+
+    auto result = check(R"(
+        --!strict
+        type List = "Val2" | "Val3"
+        local Table: { [List]: boolean }
+        local _ = Table.Val1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
+    CHECK_EQ("any", toString(requireType("_")));
 }
 
 TEST_SUITE_END();

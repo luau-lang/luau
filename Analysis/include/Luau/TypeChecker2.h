@@ -3,7 +3,6 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
@@ -61,7 +60,6 @@ struct Reasonings
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
@@ -73,7 +71,6 @@ void check(
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
-    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DcrLogger* logger;
     const NotNull<TypeCheckLimits> limits;
@@ -93,7 +90,6 @@ struct TypeChecker2
 
     TypeChecker2(
         NotNull<BuiltinTypes> builtinTypes,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<UnifierSharedState> unifierState,
         NotNull<TypeCheckLimits> limits,

@@ -5,7 +5,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 using namespace Luau;
 
@@ -364,7 +363,6 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauRefineDistributesOverUnions, true},
-        {FFlag::LuauReduceSetTypeStackPressure, true},
     };
 
     CheckResult result = check(R"(

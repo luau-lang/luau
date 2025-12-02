@@ -2143,10 +2143,7 @@ TEST_CASE("transpile_explicit_type_instantiations")
     CHECK_EQ(code, prettyPrintWithTypes(*parseResult.root));
 
     // No types
-    CHECK_EQ(
-        "f              () t.f              () t:f           ()",
-        prettyPrint(code).code
-    );
+    CHECK_EQ("f              () t.f              () t:f           ()", prettyPrint(code).code);
 
     code = "f < < A , B , C... > >( ) t.f < < A, B, C... > >  ( )  t:f< < A, B, C > > ( )";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);

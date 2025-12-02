@@ -34,9 +34,8 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
-LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
 
 namespace Luau
@@ -239,28 +238,19 @@ TypeId makeFunction(
 
     if (selfType)
     {
-        if (FFlag::LuauEmplaceNotPushBack)
-            ftv.argNames.emplace_back(Luau::FunctionArgument{"self", {}});
-        else
-            ftv.argNames.push_back(Luau::FunctionArgument{"self", {}});
+        ftv.argNames.emplace_back(Luau::FunctionArgument{"self", {}});
     }
 
     if (paramNames.size() != 0)
     {
         for (auto&& p : paramNames)
-            if (FFlag::LuauEmplaceNotPushBack)
-                ftv.argNames.emplace_back(Luau::FunctionArgument{p, Location{}});
-            else
-                ftv.argNames.push_back(Luau::FunctionArgument{std::move(p), {}});
+            ftv.argNames.emplace_back(Luau::FunctionArgument{p, Location{}});
     }
     else if (selfType)
     {
         // If argument names were not provided, but we have already added a name for 'self' argument, we have to fill remaining slots as well
         for (size_t i = 0; i < paramTypes.size(); i++)
-            if (FFlag::LuauEmplaceNotPushBack)
-                ftv.argNames.emplace_back(std::nullopt);
-            else
-                ftv.argNames.push_back(std::nullopt);
+            ftv.argNames.emplace_back(std::nullopt);
     }
 
     ftv.isCheckedFunction = checked;
@@ -1730,7 +1720,7 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        if (!FFlag::LuauNewOverloadResolver)
+        if (!FFlag::LuauNewOverloadResolver2)
             context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }

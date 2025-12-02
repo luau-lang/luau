@@ -580,6 +580,20 @@ struct UnappliedTypeFunction
     bool operator==(const UnappliedTypeFunction& rhs) const;
 };
 
+// Error when we have an ambiguous overload and cannot determine the correct
+// function call.
+//
+//  local f: ((number | string) -> "one") & ((number | boolean) -> "two")
+//  local g = f(42)
+//            ^^^^^ We cannot determine the correct call here
+struct AmbiguousFunctionCall
+{
+    TypeId function;
+    TypePackId arguments;
+
+    bool operator==(const AmbiguousFunctionCall& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -641,7 +655,8 @@ using TypeErrorData = Variant<
     GenericBoundsMismatch,
     UnappliedTypeFunction,
     InstantiateGenericsOnNonFunction,
-    TypeInstantiationCountMismatch>;
+    TypeInstantiationCountMismatch,
+    AmbiguousFunctionCall>;
 
 struct TypeErrorSummary
 {

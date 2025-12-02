@@ -6,7 +6,6 @@
 #include "Luau/ConstraintSet.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/Location.h"
 #include "Luau/Module.h"
@@ -101,7 +100,6 @@ struct ConstraintSolver
     NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;
-    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // The entire set of constraints that the solver is trying to resolve.
     ConstraintSet constraintSet;
@@ -167,7 +165,6 @@ struct ConstraintSolver
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
@@ -181,7 +178,6 @@ struct ConstraintSolver
     // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,

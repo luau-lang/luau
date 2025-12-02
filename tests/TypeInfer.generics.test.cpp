@@ -11,7 +11,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
@@ -1472,7 +1471,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
@@ -1993,7 +1991,6 @@ local u: U = t
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
     CheckResult res = check(R"(
         local func: <T>(T, (T) -> ()) -> () = nil :: any
         local foobar: (number) -> () = nil :: any
@@ -2009,7 +2006,6 @@ TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error_1")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
     CheckResult res = check(R"(
         --!strict
 
@@ -2045,10 +2041,7 @@ xpcall(v, print, x)
 
 TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_array")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::DebugLuauStringSingletonBasedOnQuotes, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauStringSingletonBasedOnQuotes, true};
     CheckResult res = check(R"(
         local function a<T>(arr: { T }) end
 
@@ -2060,8 +2053,6 @@ TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_a
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
-
     CheckResult res = check(R"(
         local function clear<T>(arr: { T }) table.clear(arr) end
         local a: { true | false }
@@ -2075,8 +2066,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic_2")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingReportGenericBoundMismatches2, true};
-
     CheckResult res = check(R"(
         local function id<T>(arr: { T }): { T } return arr end
         local a: { true | false }

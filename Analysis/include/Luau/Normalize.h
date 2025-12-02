@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/EqSatSimplification.h"
 #include "Luau/NotNull.h"
 #include "Luau/Set.h"
 #include "Luau/TypeFwd.h"
@@ -27,7 +26,6 @@ bool isSubtype(
     TypeId superTy,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     InternalErrorReporter& ice,
     SolverMode solverMode
 );
@@ -36,7 +34,6 @@ bool isSubtype(
     TypePackId superPack,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     InternalErrorReporter& ice,
     SolverMode solverMode
 );

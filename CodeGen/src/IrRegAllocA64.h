@@ -74,6 +74,8 @@ struct IrRegAllocA64
         int8_t slot;
     };
 
+    void restore(const Spill& s, RegisterA64 reg);
+
     // Spills the selected register
     void spill(Set& set, uint32_t index, uint32_t targetInstIdx);
 

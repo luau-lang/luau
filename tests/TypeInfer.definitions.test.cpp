@@ -12,7 +12,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -576,7 +575,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauNoMoreComparisonTypeFunctions, true},
-        {FFlag::LuauNoOrderingTypeFunctions, true},
     };
 
     CheckResult result = check(R"(

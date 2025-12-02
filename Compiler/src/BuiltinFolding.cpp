@@ -2,10 +2,13 @@
 #include "BuiltinFolding.h"
 
 #include "Luau/Bytecode.h"
+#include "Luau/Lexer.h"
 
+#include <array>
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileTypeofFold)
+LUAU_FASTFLAGVARIABLE(LuauCompileStringCharSubFold)
 
 namespace Luau
 {
@@ -14,6 +17,8 @@ namespace Compile
 
 const double kPi = 3.14159265358979323846;
 const double kRadDeg = kPi / 180.0;
+
+constexpr size_t kStringCharFoldLimit = 128;
 
 static Constant cvar()
 {
@@ -48,6 +53,14 @@ static Constant cstring(const char* v)
 {
     Constant res = {Constant::Type_String};
     res.stringLength = unsigned(strlen(v));
+    res.valueString = v;
+    return res;
+}
+
+static Constant cstring(const char* v, size_t len)
+{
+    Constant res = {Constant::Type_String};
+    res.stringLength = unsigned(len);
     res.valueString = v;
     return res;
 }
@@ -112,7 +125,7 @@ static uint32_t bit32(double v)
     return uint32_t(int64_t(v));
 }
 
-Constant foldBuiltin(int bfid, const Constant* args, size_t count)
+Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, size_t count)
 {
     switch (bfid)
     {
@@ -458,6 +471,32 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
         }
         break;
 
+    case LBF_STRING_CHAR:
+        if (FFlag::LuauCompileStringCharSubFold && count < kStringCharFoldLimit)
+        {
+            std::array<char, kStringCharFoldLimit> buf{};
+
+            for (size_t i = 0; i < count; i++)
+            {
+                if (args[i].type != Constant::Type_Number)
+                    return cvar();
+
+                int ch = int(args[i].valueNumber);
+
+                if ((unsigned char)(ch) != ch)
+                    return cvar();
+
+                buf[i] = ch;
+            }
+
+            if (count == 0)
+                return cstring("");
+
+            AstName name = stringTable.getOrAdd(buf.data(), count);
+            return cstring(name.value, count);
+        }
+        break;
+
     case LBF_STRING_LEN:
         if (count == 1 && args[0].type == Constant::Type_String)
             return cnum(double(args[0].stringLength));
@@ -466,6 +505,42 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
     case LBF_TYPEOF:
         if (count == 1 && args[0].type != Constant::Type_Unknown)
             return FFlag::LuauCompileTypeofFold ? ctypeof(args[0]) : ctype(args[0]);
+        break;
+
+    case LBF_STRING_SUB:
+        if (FFlag::LuauCompileStringCharSubFold && count >= 2 && args[0].type == Constant::Type_String && args[1].type == Constant::Type_Number)
+        {
+            if (count >= 3 && args[2].type != Constant::Type_Number)
+                return cvar();
+
+            const char* str = args[0].valueString;
+            unsigned len = args[0].stringLength;
+
+            int start = int(args[1].valueNumber);
+            int end = count >= 3 ? int(args[2].valueNumber) : int(len);
+
+            // Relative string position: negative means back from end
+            if (start < 0)
+                start += int(len) + 1;
+            if (end < 0)
+                end += int(len) + 1;
+
+            // If end is before the start of the string, substring is empty
+            if (end < 1)
+                return cstring("");
+
+            // Start clamped to the start of the string, end is clamped to the end
+            start = start < 1 ? 1 : start;
+            end = end > int(len) ? int(len) : end;
+
+            if (start <= end)
+            {
+                AstName name = stringTable.getOrAdd(str + (start - 1), end - start + 1);
+                return cstring(name.value, end - start + 1);
+            }
+
+            return cstring("");
+        }
         break;
 
     case LBF_MATH_CLAMP:

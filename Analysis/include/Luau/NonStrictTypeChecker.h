@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/DataFlowGraph.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Module.h"
 #include "Luau/NotNull.h"
 
@@ -16,7 +15,6 @@ struct TypeCheckLimits;
 
 void checkNonStrict(
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> ice,
     NotNull<UnifierSharedState> unifierState,

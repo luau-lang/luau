@@ -559,18 +559,6 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
     return it->second.type;
 }
 
-std::string Fixture::canonicalize(TypeId ty)
-{
-    if (!simplifier)
-        simplifier = newSimplifier(NotNull{&simplifierArena}, getBuiltins());
-
-    auto res = eqSatSimplify(NotNull{simplifier.get()}, ty);
-    if (res)
-        return toString(res->result);
-    else
-        return toString(ty);
-}
-
 std::string Fixture::decorateWithTypes(const std::string& code)
 {
     fileResolver.source[mainModuleName] = code;

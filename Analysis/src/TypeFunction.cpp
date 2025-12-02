@@ -11,10 +11,10 @@
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Type.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunctionReductionGuesser.h"
-#include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
@@ -31,11 +31,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 // when this value is set to a negative value, guessing will be totally disabled.
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
-LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAGVARIABLE(LuauEnqueueUnionsOfDistributedTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauMarkUnscopedGenericsAsSolved)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunctionsNoUninhabitedError)
 
 namespace Luau
 {
@@ -383,15 +381,12 @@ struct TypeFunctionReducer
         if (reduction.result)
         {
             replace(subject, *reduction.result);
-            if (FFlag::LuauEnqueueUnionsOfDistributedTypeFunctions)
+            for (auto ty : reduction.freshTypes)
             {
-                for (auto ty : reduction.freshTypes)
-                {
-                    if constexpr (std::is_same_v<T, TypeId>)
-                        queuedTys.push_back(ty);
-                    else if constexpr (std::is_same_v<T, TypePackId>)
-                        queuedTps.push_back(ty);
-                }
+                if constexpr (std::is_same_v<T, TypeId>)
+                    queuedTys.push_back(ty);
+                else if constexpr (std::is_same_v<T, TypePackId>)
+                    queuedTps.push_back(ty);
             }
         }
         else
@@ -423,7 +418,18 @@ struct TypeFunctionReducer
                 }
 
                 if constexpr (std::is_same_v<T, TypeId>)
-                    result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
+                {
+                    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+                    {
+                        if (const TypeFunctionInstanceType* tf = get<TypeFunctionInstanceType>(subject))
+                        {
+                            if (tf->function != &ctx->builtins->typeFunctions->userFunc)
+                                result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
+                        }
+                    }
+                    else
+                        result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
+                }
                 else if constexpr (std::is_same_v<T, TypePackId>)
                     result.errors.emplace_back(location, UninhabitedTypePackFunction{subject});
             }

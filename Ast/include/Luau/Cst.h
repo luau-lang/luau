@@ -4,8 +4,6 @@
 #include "Luau/Ast.h"
 #include "Luau/Location.h"
 
-#include <string>
-
 namespace Luau
 {
 
@@ -86,13 +84,13 @@ public:
 // Shared between the expression and call nodes
 struct CstTypeInstantiation
 {
-    Position leftArrow1Position = {0,0};
-    Position leftArrow2Position = {0,0};
+    Position leftArrow1Position = {0, 0};
+    Position leftArrow2Position = {0, 0};
 
     AstArray<Position> commaPositions = {};
 
-    Position rightArrow1Position = {0,0};
-    Position rightArrow2Position = {0,0};
+    Position rightArrow1Position = {0, 0};
+    Position rightArrow2Position = {0, 0};
 };
 
 class CstExprCall : public CstNode
@@ -220,7 +218,19 @@ class CstStatDo : public CstNode
 public:
     LUAU_CST_RTTI(CstStatDo)
 
-    explicit CstStatDo(Position endPosition);
+    explicit CstStatDo(Position statsStartPosition, Position endPosition);
+
+    Position statsStartPosition;
+    Position endPosition;
+};
+
+// Clip with FFlag::LuauCstStatBlock
+class CstStatDo_DEPRECATED : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatDo_DEPRECATED)
+
+    explicit CstStatDo_DEPRECATED(Position endPosition);
 
     Position endPosition;
 };

@@ -11,24 +11,19 @@
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
-#include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/UserDefinedTypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsArentGlobal)
-LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
-LUAU_FASTFLAG(LuauEnqueueUnionsOfDistributedTypeFunctions)
 LUAU_FASTFLAGVARIABLE(LuauGetmetatableError)
 
 namespace Luau
@@ -123,10 +118,7 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
         if (ctx->solver)
             ctx->pushConstraint(ReduceConstraint{resultTy});
 
-        if (FFlag::LuauEnqueueUnionsOfDistributedTypeFunctions)
-            return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
-        else
-            return {{resultTy, Reduction::MaybeOk, {}, {}}};
+        return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
     }
 
     return std::nullopt;
@@ -244,13 +236,8 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-    if (FFlag::LuauPassBindableGenericsByReference)
-    {
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else if (!subtyping.isSubtype_DEPRECATED(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     // `len` must return a `number`.
@@ -333,14 +320,8 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
 
     if (!FFlag::LuauEGFixGenericsList)
     {
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        if (FFlag::LuauPassBindableGenericsByReference)
-        {
-            if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-                return {std::nullopt, Reduction::Erroneous, {}, {}};
-        }
-        else if (!subtyping.isSubtype_DEPRECATED(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope)
-                      .isSubtype) // TODO: is this the right variance?
+        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
     }
 
@@ -354,7 +335,6 @@ TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<S
     : arena(cs->arena)
     , builtins(cs->builtinTypes)
     , scope(scope)
-    , simplifier(cs->simplifier)
     , normalizer(cs->normalizer)
     , typeFunctionRuntime(cs->typeFunctionRuntime)
     , ice(NotNull{&cs->iceReporter})
@@ -455,7 +435,6 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
         solveResult = solveFunctionCall(
             ctx->arena,
             ctx->builtins,
-            ctx->simplifier,
             ctx->normalizer,
             ctx->typeFunctionRuntime,
             ctx->ice,
@@ -472,7 +451,6 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
         solveResult = solveFunctionCall(
             ctx->arena,
             ctx->builtins,
-            ctx->simplifier,
             ctx->normalizer,
             ctx->typeFunctionRuntime,
             ctx->ice,
@@ -696,13 +674,8 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-    if (FFlag::LuauPassBindableGenericsByReference)
-    {
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else if (!subtyping.isSubtype_DEPRECATED(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
@@ -910,13 +883,8 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-    if (FFlag::LuauPassBindableGenericsByReference)
-    {
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else if (!subtyping.isSubtype_DEPRECATED(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     return {ctx->builtins->booleanType, Reduction::MaybeOk, {}, {}};
@@ -1044,13 +1012,8 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
     if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
 
-    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->simplifier, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-    if (FFlag::LuauPassBindableGenericsByReference)
-    {
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else if (!subtyping.isSubtype_DEPRECATED(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope).isSubtype) // TODO: is this the right variance?
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     return {ctx->builtins->booleanType, Reduction::MaybeOk, {}, {}};
@@ -1310,14 +1273,14 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         {
             auto discriminant = follow(typeParams[i]);
 
-            // Filter out any top level types that are meaningless to refine 
+            // Filter out any top level types that are meaningless to refine
             // against.
             if (is<UnknownType, NoRefineType>(discriminant))
                 continue;
 
             // If the discriminant type is only:
             // - The `*no-refine*` type (covered above) or;
-            // - tables, metatables, unions, intersections, functions, or 
+            // - tables, metatables, unions, intersections, functions, or
             //   negations containing `*no-refine*` (covered below).
             // There's no point in refining against it.
             ContainsRefinableType crt;
@@ -1377,100 +1340,76 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
         if (!frb.found.empty())
             return {nullptr, {frb.found.begin(), frb.found.end()}};
 
-        if (FFlag::DebugLuauEqSatSimplification)
+        // FFlag::LuauRefineNoRefineAlways2 moves this check upwards so that it runs even if the thing being refined is pending.
+        if (!FFlag::LuauRefineNoRefineAlways2)
         {
-            auto simplifyResult = eqSatSimplify(ctx->simplifier, ctx->arena->addType(IntersectionType{{target, discriminant}}));
-            if (simplifyResult)
-            {
-                if (ctx->solver)
-                {
-                    for (TypeId newTf : simplifyResult->newTypeFunctions)
-                        ctx->pushConstraint(ReduceConstraint{newTf});
-                }
-
-                return {simplifyResult->result, {}};
-            }
-            else
-                return {nullptr, {}};
+            // If the discriminant type is only:
+            // - The `*no-refine*` type or,
+            // - tables, metatables, unions, intersections, functions, or negations _containing_ `*no-refine*`.
+            // There's no point in refining against it.
+            ContainsRefinableType crt;
+            crt.traverse(discriminant);
+            if (!crt.found)
+                return {target, {}};
         }
-        else
+
+        if (auto ty = intersectWithSimpleDiscriminant(ctx->builtins, ctx->arena, target, discriminant))
+            return {*ty, {}};
+
+        // NOTE: This block causes us to refine too early in some cases.
+        if (auto negation = get<NegationType>(discriminant))
         {
-            // FFlag::LuauRefineNoRefineAlways2 moves this check upwards so that it runs even if the thing being refined is pending.
-            if (!FFlag::LuauRefineNoRefineAlways2)
-            {
-                // If the discriminant type is only:
-                // - The `*no-refine*` type or,
-                // - tables, metatables, unions, intersections, functions, or negations _containing_ `*no-refine*`.
-                // There's no point in refining against it.
-                ContainsRefinableType crt;
-                crt.traverse(discriminant);
-                if (!crt.found)
-                    return {target, {}};
-            }
-
-            if (auto ty = intersectWithSimpleDiscriminant(ctx->builtins, ctx->arena, target, discriminant))
-                return {*ty, {}};
-
-            // NOTE: This block causes us to refine too early in some cases.
-            if (auto negation = get<NegationType>(discriminant))
-            {
-                if (auto primitive = get<PrimitiveType>(follow(negation->ty)); primitive && primitive->type == PrimitiveType::NilType)
-                {
-                    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                    return {result.result, {}};
-                }
-            }
-
-            // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
-            // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
-            // We also fire for simple discriminants such as false? and ~(false?): the falsy and truthy types respectively.
-            if (is<TableType>(target) || isTruthyOrFalsyType(discriminant))
+            if (auto primitive = get<PrimitiveType>(follow(negation->ty)); primitive && primitive->type == PrimitiveType::NilType)
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
-                // Simplification considers free and generic types to be
-                // 'blocking', but that's not suitable for refine<>.
-                //
-                // If we are only blocked on those types, we consider
-                // the simplification a success and reduce.
-                if (std::all_of(
-                        begin(result.blockedTypes),
-                        end(result.blockedTypes),
-                        [](TypeId v)
-                        {
-                            return is<FreeType, GenericType>(follow(v));
-                        }
-                    ))
-                {
-                    return {result.result, {}};
-                }
-                else
-                    return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
-
                 return {result.result, {}};
             }
-
-
-            // In the general case, we'll still use normalization though.
-            TypeId intersection = ctx->arena->addType(IntersectionType{{target, discriminant}});
-            std::shared_ptr<const NormalizedType> normIntersection = ctx->normalizer->normalize(intersection);
-            std::shared_ptr<const NormalizedType> normType = ctx->normalizer->normalize(target);
-
-            // if the intersection failed to normalize, we can't reduce, but know nothing about inhabitance.
-            if (!normIntersection || !normType)
-                return {nullptr, {}};
-
-            TypeId resultTy = ctx->normalizer->typeFromNormal(*normIntersection);
-            // include the error type if the target type is error-suppressing and the intersection we computed is not
-            if (normType->shouldSuppressErrors() && !normIntersection->shouldSuppressErrors())
-            {
-                if (FFlag::LuauReduceSetTypeStackPressure)
-                    resultTy = addUnion(ctx->arena, ctx->builtins, {resultTy, ctx->builtins->errorType});
-                else
-                    resultTy = ctx->arena->addType(UnionType{{resultTy, ctx->builtins->errorType}});
-            }
-
-            return {resultTy, {}};
         }
+
+        // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
+        // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
+        // We also fire for simple discriminants such as false? and ~(false?): the falsy and truthy types respectively.
+        if (is<TableType>(target) || isTruthyOrFalsyType(discriminant))
+        {
+            SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
+            // Simplification considers free and generic types to be
+            // 'blocking', but that's not suitable for refine<>.
+            //
+            // If we are only blocked on those types, we consider
+            // the simplification a success and reduce.
+            if (std::all_of(
+                    begin(result.blockedTypes),
+                    end(result.blockedTypes),
+                    [](TypeId v)
+                    {
+                        return is<FreeType, GenericType>(follow(v));
+                    }
+                ))
+            {
+                return {result.result, {}};
+            }
+            else
+                return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+
+            return {result.result, {}};
+        }
+
+
+        // In the general case, we'll still use normalization though.
+        TypeId intersection = ctx->arena->addType(IntersectionType{{target, discriminant}});
+        std::shared_ptr<const NormalizedType> normIntersection = ctx->normalizer->normalize(intersection);
+        std::shared_ptr<const NormalizedType> normType = ctx->normalizer->normalize(target);
+
+        // if the intersection failed to normalize, we can't reduce, but know nothing about inhabitance.
+        if (!normIntersection || !normType)
+            return {nullptr, {}};
+
+        TypeId resultTy = ctx->normalizer->typeFromNormal(*normIntersection);
+        // include the error type if the target type is error-suppressing and the intersection we computed is not
+        if (normType->shouldSuppressErrors() && !normIntersection->shouldSuppressErrors())
+            resultTy = addUnion(ctx->arena, ctx->builtins, {resultTy, ctx->builtins->errorType});
+
+        return {resultTy, {}};
     };
 
     // refine target with each discriminant type in sequence (reverse of insertion order)
@@ -2098,7 +2037,7 @@ bool searchPropsAndIndexer(
             }
         }
 
-        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, ctx->simplifier, *ctx->ice, SolverMode::New))
+        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
         {
             TypeId idxResultTy = follow(tblIndexer->indexResultType);
 
@@ -2157,7 +2096,6 @@ bool tblIndexInto(
         SolveResult solveResult = solveFunctionCall(
             ctx->arena,
             ctx->builtins,
-            ctx->simplifier,
             ctx->normalizer,
             ctx->typeFunctionRuntime,
             ctx->ice,

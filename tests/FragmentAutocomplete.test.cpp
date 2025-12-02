@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
+LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -4716,6 +4717,35 @@ foo(@1)
             CHECK(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
             REQUIRE(frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
             CHECK_EQ(EXPECTED_INSERT, *frag.result->acResults.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_indexer_with_singleton_keys")
+{
+    ScopedFastFlag _{FFlag::LuauAutocompleteSingletonsInIndexer, true};
+
+    std::string source = R"(
+        type List = "Val1" | "Val2" | "Val3"
+        local Table: { [List]: boolean }
+    )";
+
+    std::string dest = R"(
+        type List = "Val1" | "Val2" | "Val3"
+        local Table: { [List]: boolean }
+        local _ = Table.@1
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Val1") > 0);
+            CHECK(frag.result->acResults.entryMap.count("Val2") > 0);
+            CHECK(frag.result->acResults.entryMap.count("Val3") > 0);
         }
     );
 }

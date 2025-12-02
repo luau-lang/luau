@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
+LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
 
 using namespace Luau;
 
@@ -5013,6 +5014,22 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_braced_attribute")
     CHECK_EQ(ac.entryMap.count("deprecated"), 1);
     CHECK_EQ(ac.entryMap.count("checked"), 1);
     CHECK_EQ(ac.entryMap.count("native"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
+{
+    ScopedFastFlag _{FFlag::LuauAutocompleteSingletonsInIndexer, true};
+
+    check(R"(
+        type List = "Val1" | "Val2" | "Val3"
+        local Table: { [List]: boolean }
+        local _ = Table.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("Val1"), 1);
+    CHECK_EQ(ac.entryMap.count("Val2"), 1);
+    CHECK_EQ(ac.entryMap.count("Val3"), 1);
 }
 
 TEST_SUITE_END();

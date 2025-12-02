@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/DenseHash.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Set.h"
 #include "Luau/SubtypingVariance.h"
 #include "Luau/TypeCheckLimits.h"
@@ -112,7 +111,6 @@ struct SubtypingResult
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
     SubtypingReasonings reasoning{kEmptyReasoning};
-    DenseHashMap<TypePackId, TypePackId> mappedGenericPacks_DEPRECATED{nullptr};
 
     // If this subtype result required testing free types, we might be making
     // assumptions about what the free type eventually resolves to.  If so,
@@ -132,6 +130,8 @@ struct SubtypingResult
     SubtypingResult& withSuperPath(TypePath::Path path);
     SubtypingResult& withErrors(ErrorVec& err);
     SubtypingResult& withError(TypeError err);
+
+    SubtypingResult& withAssumedConstraint(ConstraintV constraint);
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);
@@ -200,7 +200,6 @@ struct Subtyping
 {
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
-    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> iceReporter;
@@ -220,7 +219,6 @@ struct Subtyping
     Subtyping(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> typeArena,
-        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> iceReporter
@@ -255,13 +253,6 @@ struct Subtyping
         NotNull<Scope> scope,
         const std::vector<TypeId>& bindableGenerics,
         const std::vector<TypePackId>& bindableGenericPacks
-    );
-    // Clip with FFlagLuauPassBindableGenericsByReference
-    SubtypingResult isSubtype_DEPRECATED(
-        TypePackId subTp,
-        TypePackId superTp,
-        NotNull<Scope> scope,
-        std::optional<std::vector<TypeId>> bindableGenerics = std::nullopt
     );
 
 private:
@@ -467,9 +458,6 @@ private:
         NotNull<Scope> scope,
         std::string_view genericName
     );
-
-    // TODO: Clip with LuauSubtypingReportGenericBoundMismatches
-    SubtypingResult checkGenericBounds_DEPRECATED(const SubtypingEnvironment::GenericBounds& bounds, SubtypingEnvironment& env, NotNull<Scope> scope);
 
     static void maybeUpdateBounds(
         TypeId here,

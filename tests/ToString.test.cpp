@@ -14,7 +14,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -649,8 +648,6 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_intersection")
 {
-    ScopedFastFlag sff{FFlag::LuauReduceSetTypeStackPressure, true};
-
     CheckResult result = check(R"(
         function f() return f end
         local a: ((number) -> ()) & typeof(f)
