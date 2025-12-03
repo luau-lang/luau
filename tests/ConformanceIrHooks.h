@@ -3,20 +3,29 @@
 
 #include "Luau/IrBuilder.h"
 
-static const char* kUserdataRunTypes[] = {"extra", "color", "vec2", "mat3", nullptr};
+static const char* kUserdataRunTypes[] = {"extra", "color", "vec2", "mat3", "vertex", nullptr};
 
 constexpr uint8_t kUserdataExtra = 0;
 constexpr uint8_t kUserdataColor = 1;
 constexpr uint8_t kUserdataVec2 = 2;
 constexpr uint8_t kUserdataMat3 = 3;
+constexpr uint8_t kUserdataVertex = 4;
 
 // Userdata tags can be different from userdata bytecode type indices
 constexpr uint8_t kTagVec2 = 12;
+constexpr uint8_t kTagVertex = 13;
 
 struct Vec2
 {
     float x;
     float y;
+};
+
+struct Vertex
+{
+    float pos[3];
+    float normal[3];
+    float uv[2];
 };
 
 inline bool compareMemberName(const char* member, size_t memberLength, const char* str)
@@ -227,6 +236,16 @@ inline uint8_t userdataAccessBytecodeType(uint8_t type, const char* member, size
         if (compareMemberName(member, memberLength, "Row3"))
             return LBC_TYPE_VECTOR;
         break;
+    case kUserdataVertex:
+        if (compareMemberName(member, memberLength, "pos"))
+            return LBC_TYPE_VECTOR;
+
+        if (compareMemberName(member, memberLength, "normal"))
+            return LBC_TYPE_VECTOR;
+
+        if (compareMemberName(member, memberLength, "uv"))
+            return userdataIndexToType(kUserdataVec2);
+        break;
     }
 
     return LBC_TYPE_ANY;
@@ -324,6 +343,54 @@ inline bool userdataAccess(
         }
         break;
     case kUserdataMat3:
+        break;
+    case kUserdataVertex:
+        if (compareMemberName(member, memberLength, "pos"))
+        {
+            IrOp udata = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
+            build.inst(IrCmd::CHECK_USERDATA_TAG, udata, build.constInt(kTagVertex), build.vmExit(pcpos));
+
+            IrOp x = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, pos[0])), build.constTag(LUA_TUSERDATA));
+            IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, pos[1])), build.constTag(LUA_TUSERDATA));
+            IrOp z = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, pos[2])), build.constTag(LUA_TUSERDATA));
+
+            build.inst(IrCmd::STORE_VECTOR, build.vmReg(resultReg), x, y, z);
+            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TVECTOR));
+            return true;
+        }
+
+        if (compareMemberName(member, memberLength, "normal"))
+        {
+            IrOp udata = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
+            build.inst(IrCmd::CHECK_USERDATA_TAG, udata, build.constInt(kTagVertex), build.vmExit(pcpos));
+
+            IrOp x = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, normal[0])), build.constTag(LUA_TUSERDATA));
+            IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, normal[1])), build.constTag(LUA_TUSERDATA));
+            IrOp z = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, normal[2])), build.constTag(LUA_TUSERDATA));
+
+            build.inst(IrCmd::STORE_VECTOR, build.vmReg(resultReg), x, y, z);
+            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TVECTOR));
+            return true;
+        }
+
+        if (compareMemberName(member, memberLength, "uv"))
+        {
+            IrOp udata = build.inst(IrCmd::LOAD_POINTER, build.vmReg(sourceReg));
+            build.inst(IrCmd::CHECK_USERDATA_TAG, udata, build.constInt(kTagVertex), build.vmExit(pcpos));
+
+            IrOp x = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, uv[0])), build.constTag(LUA_TUSERDATA));
+            IrOp y = build.inst(IrCmd::BUFFER_READF32, udata, build.constInt(offsetof(Vertex, uv[1])), build.constTag(LUA_TUSERDATA));
+
+            build.inst(IrCmd::CHECK_GC);
+            IrOp result = build.inst(IrCmd::NEW_USERDATA, build.constInt(sizeof(Vec2)), build.constInt(kTagVec2));
+
+            build.inst(IrCmd::BUFFER_WRITEF32, result, build.constInt(offsetof(Vec2, x)), x, build.constTag(LUA_TUSERDATA));
+            build.inst(IrCmd::BUFFER_WRITEF32, result, build.constInt(offsetof(Vec2, y)), y, build.constTag(LUA_TUSERDATA));
+
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(resultReg), result);
+            build.inst(IrCmd::STORE_TAG, build.vmReg(resultReg), build.constTag(LUA_TUSERDATA));
+            return true;
+        }
         break;
     }
 

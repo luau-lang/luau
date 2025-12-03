@@ -5,8 +5,12 @@
 #include "Luau/DenseHash.h"
 
 #include "ConstantFolding.h"
+#include "Utils.h"
 
 #include <limits.h>
+
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauCompileCallCostModel)
 
 namespace Luau
 {
@@ -213,6 +217,11 @@ struct CostVisitor : AstVisitor
 
             return cost;
         }
+        else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
+        {
+            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            return model(expr->expr);
+        }
         else
         {
             LUAU_ASSERT(!"Unknown expression type");
@@ -293,6 +302,22 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatIf* node) override
     {
+        if (FFlag::LuauCompileCallCostModel)
+        {
+            if (isConstantFalse(constants, node->condition))
+            {
+                if (node->elsebody)
+                    node->elsebody->visit(this);
+                return false;
+            }
+
+            if (isConstantTrue(constants, node->condition))
+            {
+                node->thenbody->visit(this);
+                return false;
+            }
+        }
+
         // unconditional 'else' may require a jump after the 'if' body
         // note: this ignores cases when 'then' always terminates and also assumes comparison requires an extra instruction which may be false
         result += 1 + (node->elsebody && !node->elsebody->is<AstStatIf>());
@@ -371,6 +396,28 @@ struct CostVisitor : AstVisitor
         }
 
         return false;
+    }
+
+    bool visit(AstStatBlock* node) override
+    {
+        if (FFlag::LuauCompileCallCostModel)
+        {
+            for (size_t i = 0; i < node->body.size; ++i)
+            {
+                AstStat* stat = node->body.data[i];
+
+                stat->visit(this);
+
+                if (alwaysTerminates(constants, stat))
+                    break;
+            }
+
+            return false;
+        }
+        else
+        {
+            return true;
+        }
     }
 };
 

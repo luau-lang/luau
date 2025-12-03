@@ -4,11 +4,63 @@
 #include "luacode.h"
 
 #include "Luau/Common.h"
+#include "Luau/Frontend.h"
+#include "Luau/BuiltinDefinitions.h"
 
 #include <string>
 #include <memory>
 
 #include <string.h>
+
+// Simple FileResolver for type checking on luau.org/demo
+struct DemoFileResolver
+    : Luau::FileResolver
+{
+    std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
+    {
+        auto it = source.find(name);
+        if (it == source.end())
+            return std::nullopt;
+
+        return Luau::SourceCode{it->second, Luau::SourceCode::Module};
+    }
+
+    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* expr, const Luau::TypeCheckLimits& limits) override
+    {
+        if (Luau::AstExprGlobal* g = expr->as<Luau::AstExprGlobal>())
+            return Luau::ModuleInfo{g->name.value};
+
+        return std::nullopt;
+    }
+
+    std::string getHumanReadableModuleName(const Luau::ModuleName& name) const override
+    {
+        return name;
+    }
+
+    std::optional<std::string> getEnvironmentForModule(const Luau::ModuleName& name) const override
+    {
+        return std::nullopt;
+    }
+
+    std::unordered_map<Luau::ModuleName, std::string> source;
+};
+
+// Simple ConfigResolver for type checking on luau.org/demo that defaults to Strict mode
+struct DemoConfigResolver : Luau::ConfigResolver
+{
+    DemoConfigResolver()
+    {
+        defaultConfig.mode = Luau::Mode::Strict;
+    }
+
+    virtual const Luau::Config& getConfig(const Luau::ModuleName& name, const Luau::TypeCheckLimits& limits) const override
+    {
+        return defaultConfig;
+    }
+
+    Luau::Config defaultConfig;
+};
 
 static void setupState(lua_State* L)
 {
@@ -88,6 +140,48 @@ static std::string runCode(lua_State* L, const std::string& source)
     }
 }
 
+extern "C" const char* checkScript(const char* source, int useNewSolver)
+{
+    static std::string finalCheckResult;
+    finalCheckResult.clear();
+
+    try
+    {
+        DemoFileResolver fileResolver;
+        DemoConfigResolver configResolver;
+        Luau::FrontendOptions options;
+
+        Luau::Frontend frontend(&fileResolver, &configResolver, options);
+        frontend.setLuauSolverMode(useNewSolver ? Luau::SolverMode::New : Luau::SolverMode::Old);
+        // Add Luau builtins
+        Luau::unfreeze(frontend.globals.globalTypes);
+        Luau::registerBuiltinGlobals(frontend, frontend.globals);
+        Luau::freeze(frontend.globals.globalTypes);
+
+        // restart
+        frontend.clear();
+        fileResolver.source.clear();
+
+        fileResolver.source["main"] = source;
+
+        Luau::CheckResult checkResult = frontend.check("main");
+        for (const Luau::TypeError& err : checkResult.errors)
+        {
+            if (!finalCheckResult.empty())
+                finalCheckResult += "\n";
+            finalCheckResult += std::to_string(err.location.begin.line + 1);
+            finalCheckResult += ": ";
+            finalCheckResult += Luau::toString(err);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        finalCheckResult = e.what();
+    }
+
+    return finalCheckResult.empty() ? nullptr : finalCheckResult.c_str();
+}
+
 extern "C" const char* executeScript(const char* source)
 {
     // setup flags
@@ -111,5 +205,5 @@ extern "C" const char* executeScript(const char* source)
     // run code + collect error
     result = runCode(L, source);
 
-    return result.empty() ? NULL : result.c_str();
+    return result.empty() ? nullptr : result.c_str();
 }

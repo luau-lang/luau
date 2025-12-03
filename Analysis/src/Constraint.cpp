@@ -4,9 +4,6 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauExplicitSkipBoundTypes)
-LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
-
 namespace Luau
 {
 
@@ -23,7 +20,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
     bool traverseIntoTypeFunctions = true;
 
     explicit ReferenceCountInitializer(NotNull<TypeIds> result)
-        : TypeOnceVisitor("ReferenceCountInitializer", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
         , result(result)
     {
     }
@@ -88,8 +85,7 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     if (auto ec = get<EqualityConstraint>(*this))
     {
         rci.traverse(ec->resultType);
-        if (FFlag::LuauNoOrderingTypeFunctions)
-            rci.traverse(ec->assignmentType);
+        rci.traverse(ec->assignmentType);
     }
     else if (auto sc = get<SubtypeConstraint>(*this))
     {

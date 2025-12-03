@@ -3,7 +3,6 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
@@ -61,7 +60,6 @@ struct Reasonings
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
@@ -73,7 +71,6 @@ void check(
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
-    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DcrLogger* logger;
     const NotNull<TypeCheckLimits> limits;
@@ -93,7 +90,6 @@ struct TypeChecker2
 
     TypeChecker2(
         NotNull<BuiltinTypes> builtinTypes,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<UnifierSharedState> unifierState,
         NotNull<TypeCheckLimits> limits,
@@ -173,6 +169,7 @@ private:
     void visit(AstExprTypeAssertion* expr);
     void visit(AstExprIfElse* expr);
     void visit(AstExprInterpString* interpString);
+    void visit(AstExprInstantiate* explicitTypeInstantiation);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
@@ -232,6 +229,8 @@ private:
     DenseHashSet<std::string> warnedGlobals{""};
 
     void suggestAnnotations(AstExprFunction* expr, TypeId ty);
+
+    void checkTypeInstantiation(AstExpr* baseFunctionExpr, TypeId fnType, const Location& location, const AstArray<AstTypeOrPack>& typeArguments);
 
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const;
     bool isErrorSuppressing(Location loc, TypeId ty);

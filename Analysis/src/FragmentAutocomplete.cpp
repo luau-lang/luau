@@ -5,7 +5,6 @@
 #include "Luau/AstQuery.h"
 #include "Luau/Autocomplete.h"
 #include "Luau/Common.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
@@ -33,10 +32,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAGVARIABLE(LuauPopulateSelfTypesInFragment)
-LUAU_FASTFLAGVARIABLE(LuauForInProvidesRecommendations)
-LUAU_FASTFLAGVARIABLE(LuauFragmentAutocompleteTakesInnermostRefinement)
-LUAU_FASTFLAG(LuauSuggestHotComments)
 LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
@@ -121,7 +116,7 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
     {
         Location nonEmpty{nearestStatement->location.begin, cursorPosition};
         // If your sibling is a do block, do nothing
-        if (auto doEnd = nearestStatement->as<AstStatBlock>())
+        if (nearestStatement->as<AstStatBlock>())
             return empty;
 
         // If you're inside the body of the function and this is your sibling, empty fragment
@@ -158,27 +153,20 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
 
         if (auto forStat = nearestStatement->as<AstStatFor>())
         {
-
-            if (FFlag::LuauForInProvidesRecommendations)
-            {
-                if (forStat->step && forStat->step->location.containsClosed(cursorPosition))
-                    return {forStat->step->location.begin, cursorPosition};
-                if (forStat->to && forStat->to->location.containsClosed(cursorPosition))
-                    return {forStat->to->location.begin, cursorPosition};
-                if (forStat->from && forStat->from->location.containsClosed(cursorPosition))
-                    return {forStat->from->location.begin, cursorPosition};
-            }
+            if (forStat->step && forStat->step->location.containsClosed(cursorPosition))
+                return {forStat->step->location.begin, cursorPosition};
+            if (forStat->to && forStat->to->location.containsClosed(cursorPosition))
+                return {forStat->to->location.begin, cursorPosition};
+            if (forStat->from && forStat->from->location.containsClosed(cursorPosition))
+                return {forStat->from->location.begin, cursorPosition};
 
             if (!forStat->hasDo)
                 return nonEmpty;
             else
             {
-                if (FFlag::LuauForInProvidesRecommendations)
-                {
                     auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
                     if (completeableExtents.containsClosed(cursorPosition))
                         return nonEmpty;
-                }
 
                 return empty;
             }
@@ -190,21 +178,18 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 return nonEmpty;
             else
             {
-                if (FFlag::LuauForInProvidesRecommendations)
+                auto completeableExtents = Location{forIn->location.begin, forIn->doLocation.begin};
+                if (completeableExtents.containsClosed(cursorPosition))
                 {
-                    auto completeableExtents = Location{forIn->location.begin, forIn->doLocation.begin};
-                    if (completeableExtents.containsClosed(cursorPosition))
+                    if (!forIn->hasIn)
+                        return nonEmpty;
+                    else
                     {
-                        if (!forIn->hasIn)
+                        // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
+                        if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
                             return nonEmpty;
                         else
-                        {
-                            // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
-                            if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
-                                return nonEmpty;
-                            else
-                                return Location{forIn->inLocation.begin, cursorPosition};
-                        }
+                            return Location{forIn->inLocation.begin, cursorPosition};
                     }
                 }
                 return empty;
@@ -431,13 +416,10 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     {
                         if (globFun->location.contains(cursorPos))
                         {
-                            if (FFlag::LuauPopulateSelfTypesInFragment)
+                            if (auto local = globFun->func->self)
                             {
-                                if (auto local = globFun->func->self)
-                                {
-                                    localStack.push_back(local);
-                                    localMap[local->name] = local;
-                                }
+                                localStack.push_back(local);
+                                localMap[local->name] = local;
                             }
 
                             for (AstLocal* loc : globFun->func->args)
@@ -708,8 +690,7 @@ void cloneTypesFromFragment(
                 //  end
                 //
                 // We could find another binding for `syms` and then set _that_.
-                if (FFlag::LuauFragmentAutocompleteTakesInnermostRefinement)
-                    break;
+                break;
             }
         }
     }
@@ -1157,8 +1138,6 @@ FragmentTypeCheckResult typecheckFragment_(
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
 
-    SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
-
     // IncrementalModule gets moved at the end of the function, so capturing it here will cause SIGSEGV.
     // We'll capture just the name instead, since that's all we need to clean up the requireTrace at the end
     ScopedExit scopedExit{[&, name = incrementalModule->name]()
@@ -1167,7 +1146,7 @@ FragmentTypeCheckResult typecheckFragment_(
                           }};
 
     if (FFlag::LuauFragmentRequiresCanBeResolvedToAModule)
-        frontend.requireTrace[incrementalModule->name] = traceRequires(frontend.fileResolver, root, incrementalModule->name);
+        frontend.requireTrace[incrementalModule->name] = traceRequires(frontend.fileResolver, root, incrementalModule->name, limits);
 
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
@@ -1176,7 +1155,6 @@ FragmentTypeCheckResult typecheckFragment_(
     ConstraintGenerator cg{
         incrementalModule,
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull{&resolver},
         frontend.builtinTypes,
@@ -1224,7 +1202,6 @@ FragmentTypeCheckResult typecheckFragment_(
     /// Initialize the constraint solver and run it
     ConstraintSolver cs{
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
@@ -1322,8 +1299,6 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
 
-    SimplifierPtr simplifier = newSimplifier(NotNull{&incrementalModule->internalTypes}, frontend.builtinTypes);
-
     FrontendModuleResolver& resolver =
         FFlag::LuauUseWorkspacePropToChooseSolver ? getModuleResolver(frontend, opts) : getModuleResolver_DEPRECATED(frontend, opts);
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
@@ -1331,7 +1306,6 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     ConstraintGenerator cg{
         incrementalModule,
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull{&resolver},
         frontend.builtinTypes,
@@ -1379,7 +1353,6 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     /// Initialize the constraint solver and run it
     ConstraintSolver cs{
         NotNull{&normalizer},
-        NotNull{simplifier.get()},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
         borrowConstraints(cg.constraints),
@@ -1486,61 +1459,31 @@ FragmentAutocompleteStatusResult tryFragmentAutocomplete(
     StringCompletionCallback stringCompletionCB
 )
 {
-    if (FFlag::LuauSuggestHotComments)
+    bool isInHotComment = isWithinHotComment(context.freshParse.hotcomments, cursorPosition);
+    if (isWithinComment(context.freshParse.commentLocations, cursorPosition) && !isInHotComment)
+        return {FragmentAutocompleteStatus::Success, std::nullopt};
+    // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
+    try
     {
-        bool isInHotComment = isWithinHotComment(context.freshParse.hotcomments, cursorPosition);
-        if (isWithinComment(context.freshParse.commentLocations, cursorPosition) && !isInHotComment)
-            return {FragmentAutocompleteStatus::Success, std::nullopt};
-        // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
-        try
-        {
-            Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
-                frontend,
-                context.newSrc,
-                moduleName,
-                cursorPosition,
-                context.opts,
-                std::move(stringCompletionCB),
-                context.DEPRECATED_fragmentEndPosition,
-                context.freshParse.root,
-                context.reporter,
-                isInHotComment
-            );
-            return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
-        }
-        catch (const Luau::InternalCompilerError& e)
-        {
-            if (FFlag::DebugLogFragmentsFromAutocomplete)
-                logLuau("tryFragmentAutocomplete exception", e.what());
-            return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
-        }
+        Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
+            frontend,
+            context.newSrc,
+            moduleName,
+            cursorPosition,
+            context.opts,
+            std::move(stringCompletionCB),
+            context.DEPRECATED_fragmentEndPosition,
+            context.freshParse.root,
+            context.reporter,
+            isInHotComment
+        );
+        return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
     }
-    else
+    catch (const Luau::InternalCompilerError& e)
     {
-        if (isWithinComment(context.freshParse.commentLocations, cursorPosition))
-            return {FragmentAutocompleteStatus::Success, std::nullopt};
-        // TODO: we should calculate fragmentEnd position here, by using context.newAstRoot and cursorPosition
-        try
-        {
-            Luau::FragmentAutocompleteResult fragmentAutocomplete = Luau::fragmentAutocomplete(
-                frontend,
-                context.newSrc,
-                moduleName,
-                cursorPosition,
-                context.opts,
-                std::move(stringCompletionCB),
-                context.DEPRECATED_fragmentEndPosition,
-                context.freshParse.root,
-                context.reporter
-            );
-            return {FragmentAutocompleteStatus::Success, std::move(fragmentAutocomplete)};
-        }
-        catch (const Luau::InternalCompilerError& e)
-        {
-            if (FFlag::DebugLogFragmentsFromAutocomplete)
-                logLuau("tryFragmentAutocomplete exception", e.what());
-            return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
-        }
+        if (FFlag::DebugLogFragmentsFromAutocomplete)
+            logLuau("tryFragmentAutocomplete exception", e.what());
+        return {FragmentAutocompleteStatus::InternalIce, std::nullopt};
     }
 }
 
@@ -1579,7 +1522,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
         cursorPosition,
         frontend.fileResolver,
         std::move(callback),
-        FFlag::LuauSuggestHotComments && isInHotComment
+        isInHotComment
     );
     freeze(tcResult.incrementalModule->internalTypes);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);

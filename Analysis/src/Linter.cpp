@@ -15,7 +15,10 @@
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+
+LUAU_FASTFLAGVARIABLE(LuauUnknownGlobalFixSuggestion)
+
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 
 namespace Luau
 {
@@ -189,6 +192,11 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
 
         return true;
     }
+    CASE(AstExprInstantiate)
+    {
+        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        return similar(le->expr, re->expr);
+    }
     else
     {
         LUAU_ASSERT(!"Unknown expression type");
@@ -268,7 +276,13 @@ private:
             Global* g = globals.find(gv->name);
 
             if (!g || (!g->assigned && !g->builtin))
-                emitWarning(*context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'", gv->name.value);
+                emitWarning(
+                    *context,
+                    LintWarning::Code_UnknownGlobal,
+                    gv->location,
+                    FFlag::LuauUnknownGlobalFixSuggestion ? "Unknown global '%s'; consider assigning to it first" : "Unknown global '%s'",
+                    gv->name.value
+                );
             else if (g->deprecated)
             {
                 if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
@@ -2295,7 +2309,7 @@ private:
 
         if (shouldReport)
         {
-            if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+            if (fty->deprecatedInfo != nullptr)
             {
                 report(node->location, node->local->name.value, *fty->deprecatedInfo);
             }
@@ -2315,7 +2329,7 @@ private:
 
         if (shouldReport)
         {
-            if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+            if (fty->deprecatedInfo != nullptr)
             {
                 report(node->location, node->name.value, *fty->deprecatedInfo);
             }
@@ -2399,7 +2413,7 @@ private:
                             className = global->name.value;
 
                         const char* functionName = node->index.value;
-                        if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+                        if (fty->deprecatedInfo != nullptr)
                         {
                             report(node->location, className, functionName, *fty->deprecatedInfo);
                         }
@@ -2440,7 +2454,7 @@ private:
 
                             const char* functionName = node->index.value;
 
-                            if (FFlag::LuauParametrizedAttributeSyntax && fty->deprecatedInfo != nullptr)
+                            if (fty->deprecatedInfo != nullptr)
                             {
                                 report(node->location, className, functionName, *fty->deprecatedInfo);
                             }

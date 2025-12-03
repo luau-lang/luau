@@ -9,9 +9,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSimplifyAnyAndUnion)
 LUAU_FASTFLAG(LuauSimplifyRefinementOfReadOnlyProperty)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
+LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 
 namespace
 {
@@ -624,8 +624,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "cyclic_never_union_and_string")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "any & (error | string)")
 {
-    ScopedFastFlag sff{FFlag::LuauSimplifyAnyAndUnion, true};
-
     TypeId errStringTy = arena->addType(UnionType{{getBuiltins()->errorType, getBuiltins()->stringType}});
 
     auto res = intersect(builtinTypes->anyType, errStringTy);
@@ -635,8 +633,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "any & (error | string)")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "(error | string) & any")
 {
-    ScopedFastFlag sff{FFlag::LuauSimplifyAnyAndUnion, true};
-
     TypeId errStringTy = arena->addType(UnionType{{getBuiltins()->errorType, getBuiltins()->stringType}});
 
     auto res = intersect(errStringTy, builtinTypes->anyType);
@@ -685,12 +681,18 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
 {
-    TypeId emptyTable = arena->addType(TableType{});
+    ScopedFastFlag _{FFlag::LuauSimplifyIntersectionNoTreeSet, true};
+
+    TableType empty;
+    empty.state = TableState::Sealed;
+    TypeId emptyTable = arena->addType(std::move(empty));
+
     TableType nonEmpty;
     nonEmpty.props["p"] = arena->addType(UnionType{{getBuiltins()->numberType, getBuiltins()->stringType}});
+    nonEmpty.state = TableState::Sealed;
     TypeId nonEmptyTable = arena->addType(std::move(nonEmpty));
-    // FIXME CLI-170522: This is wrong.
-    CHECK("never" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
+
+    CHECK("{ p: number | string }" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
 }
 
 TEST_SUITE_END();

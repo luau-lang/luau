@@ -14,10 +14,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
-LUAU_FASTFLAGVARIABLE(LuauVariadicAnyPackShouldBeErrorSuppressing)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
 
 namespace Luau
 {
@@ -101,10 +98,8 @@ std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, Er
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
-        else if (FFlag::LuauEmplaceNotPushBack)
-            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
         else
-            errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
+            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
 
         mtIndex = findMetatableEntry(builtinTypes, errors, *mtIndex, "__index", location);
     }
@@ -134,10 +129,7 @@ std::optional<TypeId> findMetatableEntry(
     const TableType* mtt = getTableType(unwrapped);
     if (!mtt)
     {
-        if (FFlag::LuauEmplaceNotPushBack)
-            errors.emplace_back(location, GenericError{"Metatable was not a table"});
-        else
-            errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
+        errors.emplace_back(location, GenericError{"Metatable was not a table"});
         return std::nullopt;
     }
 
@@ -241,10 +233,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
-        else if (FFlag::LuauEmplaceNotPushBack)
-            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
         else
-            errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
+            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
 
         mtIndex = findMetatableEntry(builtinTypes, errors, *mtIndex, "__index", location);
     }
@@ -384,7 +374,7 @@ TypePack extendTypePack(
 
             return result;
         }
-        else if (auto etp = getMutable<ErrorTypePack>(pack))
+        else if (getMutable<ErrorTypePack>(pack))
         {
             while (result.head.size() < length)
                 result.head.push_back(builtinTypes->errorType);
@@ -507,13 +497,10 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId
 {
     // Flatten t where t = ...any will produce a type pack [ {}, t]
     // which trivially fails the tail check below, which is why we need to special case here
-    if (FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing)
+    if (auto tpId = get<VariadicTypePack>(follow(tp)))
     {
-        if (auto tpId = get<VariadicTypePack>(follow(tp)))
-        {
-            if (get<AnyType>(follow(tpId->ty)))
-                return ErrorSuppression::Suppress;
-        }
+        if (get<AnyType>(follow(tpId->ty)))
+            return ErrorSuppression::Suppress;
     }
 
     auto [tys, tail] = flatten(tp);
@@ -750,8 +737,6 @@ AstExpr* unwrapGroup(AstExpr* expr)
 
 bool isOptionalType(TypeId ty, NotNull<BuiltinTypes> builtinTypes)
 {
-    LUAU_ASSERT(FFlag::LuauFilterOverloadsByArity);
-
     ty = follow(ty);
 
     if (ty == builtinTypes->nilType || ty == builtinTypes->anyType || ty == builtinTypes->unknownType)
@@ -928,7 +913,35 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
     return ub.build();
 }
 
+ContainsAnyGeneric::ContainsAnyGeneric()
+    : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
+{
+}
+bool ContainsAnyGeneric::visit(TypeId ty)
+{
+    found = found || is<GenericType>(ty);
+    return !found;
+}
 
+bool ContainsAnyGeneric::visit(TypePackId ty)
+{
+    found = found || is<GenericTypePack>(follow(ty));
+    return !found;
+}
+
+bool ContainsAnyGeneric::hasAnyGeneric(TypeId ty)
+{
+    ContainsAnyGeneric cg;
+    cg.traverse(ty);
+    return cg.found;
+}
+
+bool ContainsAnyGeneric::hasAnyGeneric(TypePackId tp)
+{
+    ContainsAnyGeneric cg;
+    cg.traverse(tp);
+    return cg.found;
+}
 
 
 } // namespace Luau

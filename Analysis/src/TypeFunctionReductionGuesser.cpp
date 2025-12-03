@@ -13,10 +13,6 @@
 
 #include <optional>
 
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
-
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
-
 namespace Luau
 {
 struct InstanceCollector2 : TypeOnceVisitor
@@ -27,7 +23,7 @@ struct InstanceCollector2 : TypeOnceVisitor
     DenseHashSet<TypeId> instanceArguments{nullptr};
 
     InstanceCollector2()
-        : TypeOnceVisitor("InstanceCollector2", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InstanceCollector2", /* skipBoundTypes */ true)
     {
     }
 
@@ -171,10 +167,7 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
         if (get<TypeFunctionInstanceType>(guess))
             continue;
 
-        if (FFlag::LuauEmplaceNotPushBack)
-            results.emplace_back(local->name.value, guess);
-        else
-            results.push_back({local->name.value, guess});
+        results.emplace_back(local->name.value, guess);
     }
 
     // Submit a guess for return types
@@ -184,7 +177,7 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
         recommendedAnnotation = builtins->unknownType;
     else
         recommendedAnnotation = follow(*guessedReturnType);
-    if (auto t = get<TypeFunctionInstanceType>(recommendedAnnotation))
+    if (get<TypeFunctionInstanceType>(recommendedAnnotation))
         recommendedAnnotation = builtins->unknownType;
 
     toInfer.clear();
@@ -270,14 +263,14 @@ std::optional<TypeId> TypeFunctionReductionGuesser::tryAssignOperandType(TypeId 
 {
     // Because we collect innermost instances first, if we see a type function instance as an operand,
     // We try to check if we guessed a type for it
-    if (auto tfit = get<TypeFunctionInstanceType>(ty))
+    if (get<TypeFunctionInstanceType>(ty))
     {
         if (functionReducesTo.contains(ty))
             return {functionReducesTo[ty]};
     }
 
     // If ty is a generic, we need to check if we inferred a substitution
-    if (auto gt = get<GenericType>(ty))
+    if (get<GenericType>(ty))
     {
         if (substitutable.contains(ty))
             return {substitutable[ty]};
@@ -338,12 +331,12 @@ void TypeFunctionReductionGuesser::inferTypeFunctionSubstitutions(TypeId ty, con
         {
             TypeId arg = follow(instance->typeArguments[i]);
             TypeId inference = follow(result.operandInference[i]);
-            if (auto tfit = get<TypeFunctionInstanceType>(arg))
+            if (get<TypeFunctionInstanceType>(arg))
             {
                 if (!functionReducesTo.contains(arg))
                     functionReducesTo.try_insert(arg, inference);
             }
-            else if (auto gt = get<GenericType>(arg))
+            else if (get<GenericType>(arg))
                 substitutable[arg] = inference;
         }
     }

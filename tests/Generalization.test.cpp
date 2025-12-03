@@ -16,9 +16,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -394,9 +391,7 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingReportGenericBoundMismatches2, true}, {FFlag::LuauSubtypingGenericsDoesntUseVariance, true}
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
 local func: <T>(T, (T) -> ()) -> () = nil :: any

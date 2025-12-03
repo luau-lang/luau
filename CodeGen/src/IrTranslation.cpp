@@ -12,7 +12,7 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenDirectCompare)
+LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 
 namespace Luau
 {
@@ -272,7 +272,6 @@ void translateInstJumpxEqNil(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqNilShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -320,7 +319,6 @@ void translateInstJumpxEqB(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqBShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -377,7 +375,6 @@ void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqNShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -433,7 +430,6 @@ void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void translateInstJumpxEqSShortcut(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
     int rr = LUAU_INSN_A(pc[2]);
 
     int ra = LUAU_INSN_A(*pc);
@@ -881,7 +877,10 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
-    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos + getOpLength(opcode)));
+    if (FFlag::LuauCodegenBlockSafeEnv)
+        build.checkSafeEnv(pcpos + getOpLength(opcode));
+    else
+        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos + getOpLength(opcode)));
 
     BuiltinImplResult br = translateBuiltin(
         build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, builtinArg3, nparams, nresults, fallback, pcpos + getOpLength(opcode)
@@ -1071,7 +1070,11 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     // fast-path: pairs/next
-    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    if (FFlag::LuauCodegenBlockSafeEnv)
+        build.checkSafeEnv(pcpos);
+    else
+        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
     IrOp tagC = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 2));
@@ -1099,7 +1102,11 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     IrOp finish = build.block(IrBlockKind::Internal);
 
     // fast-path: ipairs/inext
-    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    if (FFlag::LuauCodegenBlockSafeEnv)
+        build.checkSafeEnv(pcpos);
+    else
+        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
     IrOp tagC = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 2));
@@ -1327,7 +1334,11 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     int k = LUAU_INSN_D(*pc);
     uint32_t aux = pc[1];
 
-    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    if (FFlag::LuauCodegenBlockSafeEnv)
+        build.checkSafeEnv(pcpos);
+    else
+        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+
     build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));
 }
 

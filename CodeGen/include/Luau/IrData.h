@@ -15,6 +15,8 @@
 
 struct Proto;
 
+LUAU_FASTFLAG(LuauCodegenChainedSpills)
+
 namespace Luau
 {
 namespace CodeGen
@@ -236,14 +238,14 @@ enum class IrCmd : uint8_t
     // Perform a comparison of two tags. Result is an integer register containing 0 or 1
     CMP_TAG,
     // A, B: tag
-    // C: condition (eq/neq)
+    // C: condition (eq/not_eq)
 
     // Perform tag and value comparison. Result is an integer register containing 0 or 1
     CMP_SPLIT_TVALUE,
     // A: tag
-    // B: tag (constant: boolean/string)
+    // B: tag (constant: boolean/number/string)
     // C, D: value
-    // E: condition (eq/neq)
+    // E: condition (eq/not_eq)
 
     // Unconditional jump
     // A: block/vmexit/undef
@@ -1000,10 +1002,15 @@ enum class IrBlockKind : uint8_t
     Dead,
 };
 
+inline constexpr uint32_t kBlockNoStartPc = ~0u;
+
+inline constexpr uint8_t kBlockFlagSafeEnvCheck = 1 << 0;
+inline constexpr uint8_t kBlockFlagSafeEnvClear = 1 << 1;
+
 struct IrBlock
 {
     IrBlockKind kind;
-
+    uint8_t flags = 0;
     uint16_t useCount = 0;
 
     // 'start' and 'finish' define an inclusive range of instructions which belong to this block inside the function
@@ -1014,6 +1021,8 @@ struct IrBlock
     uint32_t sortkey = ~0u;
     uint32_t chainkey = 0;
     uint32_t expectedNextBlock = ~0u;
+
+    uint32_t startpc = kBlockNoStartPc;
 
     Label label;
 };
@@ -1058,6 +1067,13 @@ struct BytecodeTypeInfo
     std::vector<uint32_t> regTypeOffsets;
 };
 
+struct ValueRestoreLocation
+{
+    IrOp op;             // Operand representing the location (Rn/Kn)
+    IrValueKind kind;    // The kind of value at the restore location
+    IrCmd conversionCmd; // Type conversion instruction that was used to store the value at the restore location
+};
+
 struct IrFunction
 {
     std::vector<IrBlock> blocks;
@@ -1073,7 +1089,8 @@ struct IrFunction
     uint32_t endLocation = 0;
 
     // For each instruction, an operand that can be used to recompute the value
-    std::vector<IrOp> valueRestoreOps;
+    std::vector<IrOp> valueRestoreOps_DEPRECATED; // TODO: Remove with FFlagLuauCodegenChainedSpills
+    std::vector<ValueRestoreLocation> valueRestoreOps_NEW;
     std::vector<uint32_t> validRestoreOpBlocks;
 
     BytecodeTypeInfo bcTypeInfo;
@@ -1217,17 +1234,21 @@ struct IrFunction
         return uint32_t(&inst - instructions.data());
     }
 
-    void recordRestoreOp(uint32_t instIdx, IrOp location)
+    void recordRestoreOp_DEPRECATED(uint32_t instIdx, IrOp location)
     {
-        if (instIdx >= valueRestoreOps.size())
-            valueRestoreOps.resize(instIdx + 1);
+        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
 
-        valueRestoreOps[instIdx] = location;
+        if (instIdx >= valueRestoreOps_DEPRECATED.size())
+            valueRestoreOps_DEPRECATED.resize(instIdx + 1);
+
+        valueRestoreOps_DEPRECATED[instIdx] = location;
     }
 
-    IrOp findRestoreOp(uint32_t instIdx, bool limitToCurrentBlock) const
+    IrOp findRestoreOp_DEPRECATED(uint32_t instIdx, bool limitToCurrentBlock) const
     {
-        if (instIdx >= valueRestoreOps.size())
+        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
+
+        if (instIdx >= valueRestoreOps_DEPRECATED.size())
             return {};
 
         // When spilled, values can only reference restore operands in the current block chain
@@ -1238,18 +1259,69 @@ struct IrFunction
                 const IrBlock& block = blocks[blockIdx];
 
                 if (instIdx >= block.start && instIdx <= block.finish)
-                    return valueRestoreOps[instIdx];
+                    return valueRestoreOps_DEPRECATED[instIdx];
             }
 
             return {};
         }
 
-        return valueRestoreOps[instIdx];
+        return valueRestoreOps_DEPRECATED[instIdx];
     }
 
-    IrOp findRestoreOp(const IrInst& inst, bool limitToCurrentBlock) const
+    IrOp findRestoreOp_DEPRECATED(const IrInst& inst, bool limitToCurrentBlock) const
     {
-        return findRestoreOp(getInstIndex(inst), limitToCurrentBlock);
+        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
+
+        return findRestoreOp_DEPRECATED(getInstIndex(inst), limitToCurrentBlock);
+    }
+
+    void recordRestoreLocation(uint32_t instIdx, ValueRestoreLocation location)
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
+        CODEGEN_ASSERT(location.op.kind == IrOpKind::None || location.op.kind == IrOpKind::VmReg || location.op.kind == IrOpKind::VmConst);
+
+        if (instIdx >= valueRestoreOps_NEW.size())
+            valueRestoreOps_NEW.resize(instIdx + 1);
+
+        valueRestoreOps_NEW[instIdx] = location;
+    }
+
+    ValueRestoreLocation findRestoreLocation(uint32_t instIdx, bool limitToCurrentBlock) const
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
+
+        if (instIdx >= valueRestoreOps_NEW.size())
+            return {};
+
+        // When spilled, values can only reference restore operands in the current block chain
+        if (limitToCurrentBlock)
+        {
+            for (uint32_t blockIdx : validRestoreOpBlocks)
+            {
+                const IrBlock& block = blocks[blockIdx];
+
+                if (instIdx >= block.start && instIdx <= block.finish)
+                    return valueRestoreOps_NEW[instIdx];
+            }
+
+            return {};
+        }
+
+        return valueRestoreOps_NEW[instIdx];
+    }
+
+    ValueRestoreLocation findRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
+
+        return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock);
+    }
+
+    bool hasRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
+
+        return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock).op.kind != IrOpKind::None;
     }
 
     BytecodeTypes getBytecodeTypesAt(int pcpos) const

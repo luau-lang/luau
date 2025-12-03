@@ -1,0 +1,7 @@
+return {
+    luau = {
+        aliases = {
+            dep = "./this_should_not_be_read_by_init_luau",
+        }
+    }
+}

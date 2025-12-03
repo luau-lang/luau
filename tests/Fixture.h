@@ -3,7 +3,6 @@
 
 #include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Config.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
@@ -88,7 +87,7 @@ struct TestFileResolver
 
     std::optional<SourceCode> readSource(const ModuleName& name) override;
 
-    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override;
+    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr, const TypeCheckLimits& limits) override;
 
     std::string getHumanReadableModuleName(const ModuleName& name) const override;
 
@@ -104,7 +103,7 @@ struct TestConfigResolver : ConfigResolver
     Config defaultConfig;
     std::unordered_map<ModuleName, Config> configFiles;
 
-    const Config& getConfig(const ModuleName& name) const override;
+    const Config& getConfig(const ModuleName& name, const TypeCheckLimits& limits = {}) const override;
 };
 
 struct Fixture
@@ -145,8 +144,6 @@ struct Fixture
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
     TypeId requireTypeAlias(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
-
-    std::string canonicalize(TypeId ty);
 
     // While most flags can be flipped inside the unit test, some code changes affect the state that is part of Fixture initialization
     // Most often those are changes related to builtin type definitions.
@@ -189,6 +186,11 @@ struct Fixture
     const BuiltinTypeFunctions& getBuiltinTypeFunctions();
     virtual Frontend& getFrontend();
 
+    // On platforms that support it, adjust our internal stack guard to
+    // limit how much address space we should use before we blow up.  We
+    // use this to test the stack guard itself.
+    void limitStackSize(size_t size);
+
 private:
     bool hasDumpedErrors = false;
 
@@ -197,8 +199,7 @@ protected:
     std::optional<Frontend> frontend;
     BuiltinTypes* builtinTypes = nullptr;
 
-    TypeArena simplifierArena;
-    SimplifierPtr simplifier{nullptr, nullptr};
+    std::vector<ScopedFastInt> dynamicScopedInts;
 };
 
 struct BuiltinsFixture : Fixture

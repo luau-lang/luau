@@ -11,10 +11,10 @@
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Type.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeFunctionReductionGuesser.h"
-#include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
@@ -31,10 +31,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 // when this value is set to a negative value, guessing will be totally disabled.
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
-LUAU_FASTFLAG(DebugLuauEqSatSimplification)
-
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
+LUAU_FASTFLAGVARIABLE(LuauMarkUnscopedGenericsAsSolved)
+LUAU_FASTFLAGVARIABLE(LuauUserTypeFunctionsNoUninhabitedError)
 
 namespace Luau
 {
@@ -53,7 +52,7 @@ struct InstanceCollector : TypeOnceVisitor
 
 
     InstanceCollector()
-        : TypeOnceVisitor("InstanceCollector", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("InstanceCollector", /* skipBoundTypes */ true)
     {
     }
 
@@ -144,7 +143,7 @@ struct UnscopedGenericFinder : TypeOnceVisitor
     bool foundUnscoped = false;
 
     UnscopedGenericFinder()
-        : TypeOnceVisitor("UnscopedGenericFinder", FFlag::LuauExplicitSkipBoundTypes)
+        : TypeOnceVisitor("UnscopedGenericFinder", /* skipBoundTypes */ true)
     {
     }
 
@@ -380,9 +379,19 @@ struct TypeFunctionReducer
             result.messages.emplace_back(location, UserDefinedTypeFunctionError{std::move(message)});
 
         if (reduction.result)
+        {
             replace(subject, *reduction.result);
+            for (auto ty : reduction.freshTypes)
+            {
+                if constexpr (std::is_same_v<T, TypeId>)
+                    queuedTys.push_back(ty);
+                else if constexpr (std::is_same_v<T, TypePackId>)
+                    queuedTps.push_back(ty);
+            }
+        }
         else
         {
+            LUAU_ASSERT(reduction.freshTypes.empty());
             irreducible.insert(subject);
 
             if (reduction.error.has_value())
@@ -409,7 +418,18 @@ struct TypeFunctionReducer
                 }
 
                 if constexpr (std::is_same_v<T, TypeId>)
-                    result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
+                {
+                    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+                    {
+                        if (const TypeFunctionInstanceType* tf = get<TypeFunctionInstanceType>(subject))
+                        {
+                            if (tf->function != &ctx->builtins->typeFunctions->userFunc)
+                                result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
+                        }
+                    }
+                    else
+                        result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
+                }
                 else if constexpr (std::is_same_v<T, TypePackId>)
                     result.errors.emplace_back(location, UninhabitedTypePackFunction{subject});
             }
@@ -572,6 +592,12 @@ struct TypeFunctionReducer
 
                     // Let the caller know this type will not become reducible
                     result.irreducibleTypes.insert(subject);
+
+                    if (FFlag::LuauMarkUnscopedGenericsAsSolved)
+                    {
+                        if (getState(subject) == TypeFunctionInstanceState::Unsolved)
+                            setState(subject, TypeFunctionInstanceState::Solved);
+                    }
 
                     if (FFlag::DebugLuauLogTypeFamilies)
                         printf("Irreducible due to an unscoped generic type\n");

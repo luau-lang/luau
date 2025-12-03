@@ -6,7 +6,6 @@
 #include "Luau/ConstraintSet.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/Location.h"
 #include "Luau/Module.h"
@@ -101,7 +100,6 @@ struct ConstraintSolver
     NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;
-    NotNull<Simplifier> simplifier;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     // The entire set of constraints that the solver is trying to resolve.
     ConstraintSet constraintSet;
@@ -167,7 +165,6 @@ struct ConstraintSolver
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
@@ -181,7 +178,6 @@ struct ConstraintSolver
     // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
@@ -218,18 +214,6 @@ private:
 
     void generalizeOneType(TypeId ty);
 
-    /**
-     * Bind a type variable to another type.
-     *
-     * A constraint is required and will validate that blockedTy is owned by this
-     * constraint. This prevents one constraint from interfering with another's
-     * blocked types.
-     *
-     * Bind will also unblock the type variable for you.
-     */
-    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
-    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
-
     template<typename T, typename... Args>
     void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
 
@@ -253,7 +237,7 @@ public:
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
-
+    bool tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint);
 
     bool tryDispatchHasIndexer(
         int& recursionDepth,
@@ -405,6 +389,18 @@ public:
     void shiftReferences(TypeId source, TypeId target);
 
     /**
+     * Bind a type variable to another type.
+     *
+     * A constraint is required and will validate that blockedTy is owned by this
+     * constraint. This prevents one constraint from interfering with another's
+     * blocked types.
+     *
+     * Bind will also unblock the type variable for you.
+     */
+    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
+    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
+
+    /**
      * Generalizes the given free type if the reference counting allows it.
      * @param the scope to generalize in
      * @param type the free type we want to generalize
@@ -462,8 +458,21 @@ public:
     void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
-    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+
+    // Clip with LuauSimplifyIntersectionNoTreeSet
+    TypeId simplifyIntersection_DEPRECATED(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
+
+    TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeIds parts);
+
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
+
+    TypeId instantiateFunctionType(
+        TypeId functionTypeId,
+        const std::vector<TypeId>& typeArguments,
+        const std::vector<TypePackId>& typePackArguments,
+        NotNull<Scope> scope,
+        const Location& location
+    );
 
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 

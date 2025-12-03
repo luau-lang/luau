@@ -13,6 +13,8 @@
 
 #include <stddef.h>
 
+LUAU_FASTFLAG(LuauCodegenChainLink)
+
 namespace Luau
 {
 namespace CodeGen
@@ -142,8 +144,78 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
     return targetInst.lastUse;
 }
 
-std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlock& block)
+std::pair<uint32_t, uint32_t> getLiveInOutValueCount_NEW(IrFunction& function, IrBlock& start, bool visitChain)
 {
+    CODEGEN_ASSERT(FFlag::LuauCodegenChainLink);
+
+    // TODO: the function is not called often, but having a small vector would help here
+    std::vector<uint32_t> blocks;
+
+    if (visitChain)
+    {
+        for (IrBlock* block = &start; block; block = tryGetNextBlockInChain(function, *block))
+            blocks.push_back(function.getBlockIndex(*block));
+    }
+    else
+    {
+        blocks.push_back(function.getBlockIndex(start));
+    }
+
+    uint32_t liveIns = 0;
+    uint32_t liveOuts = 0;
+
+    for (uint32_t blockIdx : blocks)
+    {
+        const IrBlock& block = function.blocks[blockIdx];
+
+        // If an operand refers to something inside the current block chain, it completes the instruction we marked as 'live out'
+        // If it refers to something outside, it has to be a 'live in'
+        auto checkOp = [&function, &blocks, &liveIns, &liveOuts](IrOp op)
+        {
+            if (op.kind == IrOpKind::Inst)
+            {
+                for (uint32_t blockIdx : blocks)
+                {
+                    const IrBlock& block = function.blocks[blockIdx];
+
+                    if (op.index >= block.start && op.index <= block.finish)
+                    {
+                        CODEGEN_ASSERT(liveOuts != 0);
+                        liveOuts--;
+                        return;
+                    }
+                }
+
+                liveIns++;
+            }
+        };
+
+        for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
+        {
+            IrInst& inst = function.instructions[instIdx];
+
+            if (isPseudo(inst.cmd))
+                continue;
+
+            liveOuts += inst.useCount;
+
+            checkOp(inst.a);
+            checkOp(inst.b);
+            checkOp(inst.c);
+            checkOp(inst.d);
+            checkOp(inst.e);
+            checkOp(inst.f);
+            checkOp(inst.g);
+        }
+    }
+
+    return std::make_pair(liveIns, liveOuts);
+}
+
+std::pair<uint32_t, uint32_t> getLiveInOutValueCount_DEPRECATED(IrFunction& function, IrBlock& block)
+{
+    CODEGEN_ASSERT(!FFlag::LuauCodegenChainLink);
+
     uint32_t liveIns = 0;
     uint32_t liveOuts = 0;
 
@@ -181,12 +253,18 @@ std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlo
 
 uint32_t getLiveInValueCount(IrFunction& function, IrBlock& block)
 {
-    return getLiveInOutValueCount(function, block).first;
+    if (FFlag::LuauCodegenChainLink)
+        return getLiveInOutValueCount_NEW(function, block, false).first;
+    else
+        return getLiveInOutValueCount_DEPRECATED(function, block).first;
 }
 
 uint32_t getLiveOutValueCount(IrFunction& function, IrBlock& block)
 {
-    return getLiveInOutValueCount(function, block).second;
+    if (FFlag::LuauCodegenChainLink)
+        return getLiveInOutValueCount_NEW(function, block, false).second;
+    else
+        return getLiveInOutValueCount_DEPRECATED(function, block).second;
 }
 
 void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, uint8_t varargStart)

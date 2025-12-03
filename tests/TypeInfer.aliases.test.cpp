@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauInitializeDefaultGenericParamsAtProgramPoint)
-LUAU_FASTFLAG(LuauAddErrorCaseForIncompatibleTypePacks)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -340,10 +339,9 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
     CHECK_EQ(getBuiltins()->numberType, tm->givenType);
 }
 
-#if 0 // CLI-169898: temporarily disabled for stack overflow in unoptimized build
-// Check that recursive intersection type doesn't generate an OOM
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
+    // Check that recursive intersection type doesn't generate an OOM
     CheckResult result = check(R"(
         function _(l0:(t0)&((t0)&(((t0)&((t0)->()))->(typeof(_),typeof(# _)))),l39,...):any
         end
@@ -351,7 +349,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
         _(_)
     )");
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")
 {
@@ -1106,7 +1103,7 @@ type Foo<T> = Foo<T>
 
 TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_bad_pack_use_warns")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauAddErrorCaseForIncompatibleTypePacks, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
 type Foo<T> = Foo<T...>
@@ -1348,7 +1345,6 @@ local A = {}
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     LUAU_CHECK_ERROR(result, UnknownSymbol);
 }
-
 
 
 TEST_SUITE_END();

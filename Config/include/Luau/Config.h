@@ -54,20 +54,6 @@ private:
     DenseHashMap<std::string, std::unique_ptr<std::string>> configLocationCache{""};
 };
 
-struct ConfigResolver
-{
-    virtual ~ConfigResolver() {}
-
-    virtual const Config& getConfig(const ModuleName& name) const = 0;
-};
-
-struct NullConfigResolver : ConfigResolver
-{
-    Config defaultConfig;
-
-    virtual const Config& getConfig(const ModuleName& name) const override;
-};
-
 std::optional<std::string> parseModeString(Mode& mode, const std::string& modeString, bool compat = false);
 std::optional<std::string> parseLintRuleString(
     LintOptions& enabledLints,
@@ -90,6 +76,13 @@ struct ConfigOptions
     };
     std::optional<AliasOptions> aliasOptions = std::nullopt;
 };
+
+std::optional<std::string> parseAlias(
+    Config& config,
+    const std::string& aliasKey,
+    const std::string& aliasValue,
+    const std::optional<ConfigOptions::AliasOptions>& aliasOptions
+);
 
 std::optional<std::string> parseConfig(const std::string& contents, Config& config, const ConfigOptions& options = ConfigOptions{});
 

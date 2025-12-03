@@ -71,19 +71,6 @@ struct RequireTracer : AstVisitor
         return true;
     }
 
-    AstExpr* getDependent_DEPRECATED(AstExpr* node)
-    {
-        if (AstExprLocal* expr = node->as<AstExprLocal>())
-            return locals[expr->local];
-        else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
-            return expr->expr;
-        else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
-            return expr->expr;
-        else if (AstExprCall* expr = node->as<AstExprCall>(); expr && expr->self)
-            return expr->func->as<AstExprIndexName>()->expr;
-        else
-            return nullptr;
-    }
     AstNode* getDependent(AstNode* node)
     {
         if (AstExprLocal* expr = node->as<AstExprLocal>())
@@ -106,7 +93,7 @@ struct RequireTracer : AstVisitor
             return nullptr;
     }
 
-    void process()
+    void process(const TypeCheckLimits& limits)
     {
         ModuleInfo moduleContext{currentModuleName};
 
@@ -145,11 +132,11 @@ struct RequireTracer : AstVisitor
                 else if (context && (expr->is<AstTypeTypeof>() || expr->is<AstExprTypeAssertion>()))
                     info = *context; // typeof type annotations will resolve to the typeof content
                 else if (AstExpr* asExpr = expr->asExpr())
-                    info = fileResolver->resolveModule(context, asExpr);
+                    info = fileResolver->resolveModule(context, asExpr, limits);
             }
             else if (AstExpr* asExpr = expr->asExpr())
             {
-                info = fileResolver->resolveModule(&moduleContext, asExpr);
+                info = fileResolver->resolveModule(&moduleContext, asExpr, limits);
             }
 
             if (info)
@@ -186,12 +173,12 @@ struct RequireTracer : AstVisitor
     std::vector<AstExprCall*> requireCalls;
 };
 
-RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName)
+RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName, const TypeCheckLimits& limits)
 {
     RequireTraceResult result;
     RequireTracer tracer{result, fileResolver, currentModuleName};
     root->visit(&tracer);
-    tracer.process();
+    tracer.process(limits);
     return result;
 }
 

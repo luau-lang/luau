@@ -13,11 +13,8 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauLimitDynamicConstraintSolving3)
 LUAU_FASTINT(LuauSolverConstraintLimit)
-LUAU_FASTFLAG(LuauNameConstraintRestrictRecursiveTypes)
 
 using namespace Luau;
 
@@ -818,7 +815,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_function_mutation")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     fileResolver.source["game/A"] = R"(
 function test2(a: number, b: string)
@@ -847,7 +844,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_types_are_scrubbed_from_module")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauLimitDynamicConstraintSolving3, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -866,7 +862,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauLimitDynamicConstraintSolving3, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -882,7 +877,7 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauLimitDynamicConstraintSolving3, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
 
@@ -912,8 +907,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_local_alias_shouldnt_shadow_imported_type")
 {
-    ScopedFastFlag _{FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
-
     fileResolver.source["game/A"] = R"(
         export type bad<T> = {T}
         return {}
@@ -940,8 +933,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_local_alias_shouldnt_shadow_imported
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 {
-    ScopedFastFlag _{FFlag::LuauNameConstraintRestrictRecursiveTypes, true};
-
     fileResolver.source["game/A"] = R"(
         export type bad<T> = {bad<{T}>}
         return {}

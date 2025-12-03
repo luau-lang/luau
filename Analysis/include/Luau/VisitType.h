@@ -10,7 +10,6 @@
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 
 namespace Luau
 {
@@ -228,7 +227,7 @@ struct GenericTypeVisitor
         // non-bound type. If we do the check later, then we might
         // get slightly different behavior depending on the exact
         // entry point for cyclic types.
-        if (FFlag::LuauReduceSetTypeStackPressure && is<BoundType>(ty) && skipBoundTypes)
+        if (is<BoundType>(ty) && skipBoundTypes)
             ty = follow(ty);
 
         RecursionLimiter limiter{visitorName, &recursionCounter, FInt::LuauVisitRecursionLimit};
@@ -241,21 +240,11 @@ struct GenericTypeVisitor
 
         if (auto btv = get<BoundType>(ty))
         {
-            if (FFlag::LuauReduceSetTypeStackPressure)
-            {
-                // At this point, we know that `skipBoundTypes` is false, as
-                // otherwise we would have hit the above branch.
-                LUAU_ASSERT(!skipBoundTypes);
-                if (visit(ty, *btv))
-                    traverse(btv->boundTo);
-            }
-            else
-            {
-                if (skipBoundTypes)
-                    traverse(btv->boundTo);
-                else if (visit(ty, *btv))
-                    traverse(btv->boundTo);
-            }
+            // At this point, we know that `skipBoundTypes` is false, as
+            // otherwise we would have hit the above branch.
+            LUAU_ASSERT(!skipBoundTypes);
+            if (visit(ty, *btv))
+                traverse(btv->boundTo);
         }
         else if (auto ftv = get<FreeType>(ty))
         {

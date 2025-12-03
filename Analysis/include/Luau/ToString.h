@@ -127,6 +127,10 @@ inline std::string toStringNamedFunction(const std::string& funcName, const Func
     return toStringNamedFunction(funcName, ftv, opts);
 }
 
+// Converts the given number index into a human-readable string for that index to be used in errors.
+// e.g. the index `0` becomes `1st`, `1` becomes `2nd`, `11` becomes `12th`, etc.
+std::string toHumanReadableIndex(size_t number);
+
 std::optional<std::string> getFunctionNameAsString(const AstExpr& expr);
 
 // It could be useful to see the text representation of a type during a debugging session instead of exploring the content of the class
@@ -136,6 +140,7 @@ std::string dump(const std::optional<TypeId>& ty);
 std::string dump(TypePackId ty);
 std::string dump(const std::optional<TypePackId>& ty);
 std::string dump(const std::vector<TypeId>& types);
+std::string dump(const std::vector<TypePackId>& types);
 std::string dump(DenseHashMap<TypeId, TypeId>& types);
 std::string dump(DenseHashMap<TypePackId, TypePackId>& types);
 
@@ -159,4 +164,5 @@ inline std::string toString(const TypeOrPack& tyOrTp)
 std::string dump(const TypeOrPack& tyOrTp);
 
 std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& opts);
+std::string toStringVector(const std::vector<TypePackId>& typePacks, ToStringOptions& opts);
 } // namespace Luau

@@ -12,7 +12,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauUnfinishedRepeatAncestryFix)
 
 namespace Luau
 {
@@ -32,22 +31,11 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstExpr* expr) override
     {
-        if (FFlag::LuauUnfinishedRepeatAncestryFix)
+        // If the expression size is 0 (begin == end), we don't want to include it in the ancestry
+        if (expr->location.begin <= pos && pos <= expr->location.end && expr->location.begin != expr->location.end)
         {
-            // If the expression size is 0 (begin == end), we don't want to include it in the ancestry
-            if (expr->location.begin <= pos && pos <= expr->location.end && expr->location.begin != expr->location.end)
-            {
-                ancestry.push_back(expr);
-                return true;
-            }
-        }
-        else
-        {
-            if (expr->location.begin <= pos && pos <= expr->location.end)
-            {
-                ancestry.push_back(expr);
-                return true;
-            }
+            ancestry.push_back(expr);
+            return true;
         }
         return false;
     }

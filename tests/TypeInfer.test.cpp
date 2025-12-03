@@ -27,16 +27,13 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
-LUAU_FASTFLAG(LuauInferActualIfElseExprType2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
-LUAU_FASTFLAG(LuauOccursCheckInCommit)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
-LUAU_FASTFLAG(LuauNoConstraintGenRecursionLimitIce)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
+LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
+LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 using namespace Luau;
 
@@ -299,18 +296,13 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_tr
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-#if 0
-// CLI-29798
 TEST_CASE_FIXTURE(Fixture, "crazy_complexity")
 {
     CheckResult result = check(R"(
         --!nonstrict
         A:A():A():A():A():A():A():A():A():A():A():A()
     )");
-
-    MESSAGE("OK!  Allocated ", typeChecker.types.size(), " types");
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
 {
@@ -675,7 +667,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "invalide_deprecated_attribute_doesn't_chrash_checker")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
     CheckResult result = check(R"(
 @[deprecated{ reason = reasonString }]
 function hello(x: number, y: number): number
@@ -1370,14 +1361,16 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
+
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Unknown global 'foo'");
-    CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
+    CHECK(toString(result.errors[0]) == "Unknown global 'foo'; consider assigning to it first");
+    CHECK(toString(result.errors[1]) == "Unknown global 'foo'; consider assigning to it first");
 }
 
 TEST_CASE_FIXTURE(Fixture, "occurs_isnt_always_failure")
@@ -1795,6 +1788,7 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 {
     ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
+    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1805,7 +1799,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 14})));
 
     REQUIRE_EQ(1, result.errors.size());
-    CHECK_EQ("Unknown global 'foo'", toString(result.errors[0]));
+    CHECK_EQ("Unknown global 'foo'; consider assigning to it first", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiple_assignment")
@@ -2091,8 +2085,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_generalize_one_remove_type_assert_2")
     LUAU_REQUIRE_NO_ERROR(result, ConstraintSolvingIncompleteError);
 }
 
-#if 0
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_simplify_combinatorial_explosion")
 {
     ScopedFastFlag sffs[] = {
@@ -2109,8 +2101,6 @@ _ = {[(_G)]=_,[_[_[_]][_[_]][nil][_]]={_G=_,},_[_[_]][_][_],n0={[_]=_,_G=_,},248
 local _
     )"));
 }
-
-#endif
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_missing_follow_table_freeze")
 {
@@ -2436,10 +2426,7 @@ end then _._G else ...
 
 TEST_CASE_FIXTURE(Fixture, "oss_1815_verbatim")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInferActualIfElseExprType2, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         --!strict
@@ -2468,10 +2455,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1815_verbatim")
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_bidirectional_inference")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInferActualIfElseExprType2, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type foo = {
@@ -2489,10 +2473,7 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_bidirectional_inference")
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_two_errors")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInferActualIfElseExprType2, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         type foo = {
@@ -2548,10 +2529,7 @@ TEST_CASE_FIXTURE(Fixture, "non_standalone_constraint_solving_incomplete_is_hidd
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_type_pack_follow")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
-    };
+    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
 local _ = {[0]=_,}
@@ -2591,8 +2569,7 @@ do end
 #if 0 // CLI-166473: re-enable after flakiness is resolved
 TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_type")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}, {FFlag::LuauOccursCheckInCommit, true}};
-
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, false}};
 
     CheckResult result = check(R"(
         local any = nil :: any
@@ -2635,7 +2612,7 @@ TEST_CASE_FIXTURE(Fixture, "txnlog_checks_for_occurrence_before_self_binding_a_t
 
 TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauNoConstraintGenRecursionLimitIce, true}};
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     // Lowers the recursion limit for the constraint generator
     ScopedFastInt i{FInt::LuauCheckRecursionLimit, 5};
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, 5};
@@ -2676,30 +2653,8 @@ TEST_CASE_FIXTURE(Fixture, "nested_functions_can_depend_on_outer_generics")
     CHECK("number" == toString(tm->givenType));
 }
 
-TEST_CASE_FIXTURE(Fixture, "avoid_unification_inferring_never_for_refined_param")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTryToOptimizeSetTypeUnification, true},
-    };
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
-        local function __remove(__: number?) end
-
-        function __removeItem(self, itemId: number)
-            local index = self.getItem(itemId)
-            if index then
-               __remove(index)
-            end
-        end
-    )"));
-
-    CHECK_EQ("({ read getItem: (number) -> (number?, ...unknown) }, number) -> ()", toString(requireType("__removeItem")));
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "unterminated_function_body_causes_constraint_generator_crash")
 {
-    ScopedFastFlag _{FFlag::LuauDontReferenceScopePtrFromHashTable, true};
     // This should not crash
     CheckResult result = check(R"(
 export type t = {
@@ -2738,6 +2693,34 @@ export type t12 = {
 	pb:number
 }
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_error")
+{
+    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
+    CheckResult result = check(R"(
+        --!strict
+        local function f(u: string) end
+
+        local t: {[any]: any} = {}
+
+        for k in t do
+            f(k)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
+{
+    ScopedFastFlag _{FFlag::LuauMetatableAvoidSingletonUnion, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        _ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
+        for l0,l2 in setmetatable(_,_),l0,_ do
+        end
+    )"));
 }
 
 TEST_SUITE_END();

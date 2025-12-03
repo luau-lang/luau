@@ -406,6 +406,27 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithFileAmbiguity")
     );
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithAmbiguityInAliasDiscovery")
+{
+    char executable[] = "luau";
+    std::vector<std::string> paths = {
+        getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/parent_ambiguity/folder/requirer.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/config_tests/with_config/parent_ambiguity/folder/requirer.luau",
+        getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/parent_ambiguity/folder/requirer.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/config_tests/with_config_luau/parent_ambiguity/folder/requirer.luau",
+    };
+
+    for (const std::string& path : paths)
+    {
+        std::vector<char> pathStr(path.size() + 1);
+        strncpy(pathStr.data(), path.c_str(), path.size());
+        pathStr[path.size()] = '\0';
+
+        char* argv[2] = {executable, pathStr.data()};
+        CHECK_EQ(replMain(2, argv), 0);
+    }
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireWithDirectoryAmbiguity")
 {
     std::string ambiguousPath = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/ambiguous_directory_requirer";
@@ -615,23 +636,44 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")
 {
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/alias_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"true", "result from dependency"});
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/src/alias_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from dependency"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/alias_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from dependency"});
+    }
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
 {
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/parent_alias_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"true", "result from other_dependency"});
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/src/parent_alias_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from other_dependency"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/parent_alias_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from other_dependency"});
+    }
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAliasPointingToDirectory")
 {
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/directory_alias_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"true", "result from subdirectory_dependency"});
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/src/directory_alias_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from subdirectory_dependency"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/directory_alias_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from subdirectory_dependency"});
+    }
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasThatDoesNotExist")
@@ -666,6 +708,20 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasHasIllegalFormat")
     assertOutputContainsAll({"false", " is not a valid alias"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasNotParsedIfConfigsAmbiguous")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/config_ambiguity/requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "could not resolve alias \"dep\" (ambiguous configuration file)"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "CannotRequireConfigLuau")
+{
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/config_cannot_be_required/requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "could not resolve child component \".config\""});
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireFromLuauBinary")
 {
     char executable[] = "luau";
@@ -676,8 +732,10 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireFromLuauBinary")
         getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/module.luau",
         getLuauDirectory(PathType::Relative) + "/tests/require/without_config/nested/init.luau",
         getLuauDirectory(PathType::Absolute) + "/tests/require/without_config/nested/init.luau",
-        getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/submodule/init.luau",
-        getLuauDirectory(PathType::Absolute) + "/tests/require/with_config/src/submodule/init.luau",
+        getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/src/submodule/init.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/config_tests/with_config/src/submodule/init.luau",
+        getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/submodule/init.luau",
+        getLuauDirectory(PathType::Absolute) + "/tests/require/config_tests/with_config_luau/src/submodule/init.luau",
     };
 
     for (const std::string& path : paths)
@@ -799,6 +857,74 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireVector")
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/types/vector";
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "1, 2, 3"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesSuccess")
+{
+    {
+        std::string path =
+            getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/chained_aliases/subdirectory/successful_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from inner_dependency", "result from outer_dependency"});
+    }
+    {
+        std::string path =
+            getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/chained_aliases/subdirectory/successful_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from inner_dependency", "result from outer_dependency"});
+    }
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureCyclic")
+{
+    {
+        std::string path =
+            getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/chained_aliases/subdirectory/failing_requirer_cyclic";
+        runProtectedRequire(path);
+        assertOutputContainsAll(
+            {"false", "error requiring module \"@cyclicentry\": detected alias cycle (@cyclic1 -> @cyclic2 -> @cyclic3 -> @cyclic1)"}
+        );
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) +
+                           "/tests/require/config_tests/with_config_luau/chained_aliases/subdirectory/failing_requirer_cyclic";
+        runProtectedRequire(path);
+        assertOutputContainsAll(
+            {"false", "error requiring module \"@cyclicentry\": detected alias cycle (@cyclic1 -> @cyclic2 -> @cyclic3 -> @cyclic1)"}
+        );
+    }
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureMissing")
+{
+    {
+        std::string path =
+            getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/chained_aliases/subdirectory/failing_requirer_missing";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"false", "error requiring module \"@brokenchain\": @missing is not a valid alias"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) +
+                           "/tests/require/config_tests/with_config_luau/chained_aliases/subdirectory/failing_requirer_missing";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"false", "error requiring module \"@brokenchain\": @missing is not a valid alias"});
+    }
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureDependOnInnerAlias")
+{
+    {
+        std::string path = getLuauDirectory(PathType::Relative) +
+                           "/tests/require/config_tests/with_config/chained_aliases/subdirectory/failing_requirer_inner_dependency";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"false", "error requiring module \"@dependoninner\": @passthroughinner is not a valid alias"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) +
+                           "/tests/require/config_tests/with_config_luau/chained_aliases/subdirectory/failing_requirer_inner_dependency";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"false", "error requiring module \"@dependoninner\": @passthroughinner is not a valid alias"});
+    }
 }
 
 TEST_SUITE_END();

@@ -6,14 +6,13 @@
 
 #include <type_traits>
 
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2);
-
 namespace Luau
 {
 
 std::ostream& operator<<(std::ostream& stream, const Position& position)
 {
-    return stream << "{ line = " << position.line << ", col = " << position.column << " }";
+    // We add one so that the numbers we display match what people see in their text editors.
+    return stream << "{ line = " << (position.line + 1) << ", col = " << (position.column + 1) << " }";
 }
 
 std::ostream& operator<<(std::ostream& stream, const Location& location)
@@ -275,7 +274,6 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "RecursiveRestraintViolation";
     else if constexpr (std::is_same_v<T, GenericBoundsMismatch>)
     {
-        LUAU_ASSERT(FFlag::LuauSubtypingReportGenericBoundMismatches2);
         stream << "GenericBoundsMismatch { genericName = " << std::string{err.genericName} << ", lowerBounds = [";
         for (size_t i = 0; i < err.lowerBounds.size(); ++i)
         {
@@ -292,8 +290,17 @@ static void errorToString(std::ostream& stream, const T& err)
         }
         stream << "] }";
     }
+    else if constexpr (std::is_same_v<T, InstantiateGenericsOnNonFunction>)
+        stream << "InstantiateGenericsOnNonFunctionInstantiateGenericsOnNonFunction { interestingEdgeCase = " << err.interestingEdgeCase << " }";
+    else if constexpr (std::is_same_v<T, TypeInstantiationCountMismatch>)
+        stream << "TypeInstantiationCountMismatch { functionName = " << err.functionName.value_or("<unknown>")
+               << ", functionType = " << toString(err.functionType) << ", providedTypes = " << err.providedTypes
+               << ", maximumTypes = " << err.maximumTypes << ", providedTypePacks = " << err.providedTypePacks
+               << ", maximumTypePacks = " << err.maximumTypePacks << " }";
     else if constexpr (std::is_same_v<T, UnappliedTypeFunction>)
         stream << "UnappliedTypeFunction {}";
+    else if constexpr (std::is_same_v<T, AmbiguousFunctionCall>)
+        stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
@@ -306,6 +313,22 @@ std::ostream& operator<<(std::ostream& stream, const CannotAssignToNever::Reason
         return stream << "PropertyNarrowed";
     default:
         return stream << "UnknownReason";
+    }
+}
+
+std::ostream& operator<<(std::ostream& stream, const InstantiateGenericsOnNonFunction::InterestingEdgeCase& edgeCase)
+{
+    switch (edgeCase)
+    {
+    case InstantiateGenericsOnNonFunction::InterestingEdgeCase::None:
+        return stream << "None";
+    case InstantiateGenericsOnNonFunction::InterestingEdgeCase::MetatableCall:
+        return stream << "MetatableCall";
+    case InstantiateGenericsOnNonFunction::InterestingEdgeCase::Intersection:
+        return stream << "Intersection";
+    default:
+        LUAU_ASSERT(false);
+        return stream << "Unknown";
     }
 }
 

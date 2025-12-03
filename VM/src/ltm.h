@@ -11,7 +11,6 @@
 // clang-format off
 typedef enum
 {
-    
     TM_INDEX,
     TM_NEWINDEX,
     TM_MODE,
@@ -22,7 +21,6 @@ typedef enum
 
     TM_EQ, // last tag method with `fast' access
 
-    
     TM_ADD,
     TM_SUB,
     TM_MUL,
@@ -32,7 +30,6 @@ typedef enum
     TM_POW,
     TM_UNM,
 
-    
     TM_LT,
     TM_LE,
     TM_CONCAT,

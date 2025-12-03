@@ -54,7 +54,7 @@ void foldConstants(
     bool foldLibraryK,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
-    AstNameTable& names
+    AstNameTable& stringTable
 );
 
 } // namespace Compile

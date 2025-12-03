@@ -44,6 +44,7 @@ struct IrLoweringX64
     void jumpOrAbortOnUndef(IrOp target, const IrBlock& next);
 
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
+    void checkSafeEnv(IrOp target, const IrBlock& next);
 
     // Operand data lookup helpers
     OperandX64 memRegDoubleOp(IrOp op);

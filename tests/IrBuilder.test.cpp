@@ -13,6 +13,7 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodegenStorePriority)
 
 using namespace Luau::CodeGen;
 
@@ -1324,6 +1325,7 @@ bb_0:
    %0 = LOAD_TAG R1
    CHECK_TAG %0, tnumber, bb_fallback_3
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN 1u
@@ -1363,6 +1365,7 @@ bb_0:
    %0 = LOAD_TAG R1
    CHECK_TAG %0, tnumber, bb_fallback_3
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN 2u
@@ -1398,6 +1401,7 @@ bb_0:
    %0 = LOAD_TAG R1
    CHECK_TAG %0, tboolean
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN 2u
@@ -1429,6 +1433,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
 bb_0:
    STORE_INT R1, 5i
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN 1u
@@ -1460,6 +1465,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumCmpRemoval")
 bb_0:
    STORE_DOUBLE R1, 4
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN 2u
@@ -1488,6 +1494,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DataFlowsThroughDirectJumpToUniqueSuccessor
 bb_0:
    STORE_TAG R0, tnumber
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    STORE_TAG R1, tnumber
@@ -1557,6 +1564,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "EntryBlockUseRemoval")
 bb_0:
    STORE_TAG R0, tnumber
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN R0, 0i
@@ -1595,6 +1603,7 @@ bb_0:
 bb_1:
    STORE_TAG R0, tnumber
    JUMP bb_2
+; glued to: bb_2
 
 bb_2:
    RETURN R0, 0i
@@ -1633,6 +1642,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval2")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN R0, 0i
@@ -1640,6 +1650,7 @@ bb_1:
 bb_2:
    STORE_TAG R0, tnumber
    JUMP bb_3
+; glued to: bb_3
 
 bb_3:
    RETURN R0, 0i
@@ -1770,6 +1781,120 @@ bb_0:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "CmpTagSimplification")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp eq = build.cond(IrCondition::Equal);
+    IrOp neq = build.cond(IrCondition::NotEqual);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::CMP_TAG, build.constTag(tnil), build.constTag(tnumber), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.inst(IrCmd::CMP_TAG, build.constTag(tnumber), build.constTag(tnumber), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(2), build.inst(IrCmd::CMP_TAG, build.constTag(tnil), build.constTag(tnumber), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(3), build.inst(IrCmd::CMP_TAG, build.constTag(tnumber), build.constTag(tnumber), neq));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(4));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 0i
+   STORE_INT R1, 1i
+   STORE_INT R2, 1i
+   STORE_INT R3, 0i
+   RETURN R0, 4i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "CmpSplitTagValueSimplification")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+    IrOp valueBoolean = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
+    IrOp valueNan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
+
+    IrOp opTag = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+    IrOp opNil = build.constTag(tnil);
+    IrOp opBool = build.constTag(tboolean);
+    IrOp opNum = build.constTag(tnumber);
+
+    IrOp eq = build.cond(IrCondition::Equal);
+    IrOp neq = build.cond(IrCondition::NotEqual);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(2), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNil, opBool, build.constInt(0), valueBoolean, eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(3), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(4), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(1), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(5), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(6), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(1), eq));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(7), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNil, opBool, build.constInt(0), valueBoolean, neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(8), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(9), build.inst(IrCmd::CMP_SPLIT_TVALUE, opBool, opBool, build.constInt(0), build.constInt(1), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(11), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, build.constDouble(0), build.constDouble(1), neq));
+
+    // When we compare known values, but unknown tags, cases can either be fully folded or simplified to a tag check
+    build.inst(IrCmd::STORE_INT, build.vmReg(12), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(13), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(1), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(14), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(0), eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(15), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(1), eq));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(16), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(17), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opBool, build.constInt(0), build.constInt(1), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(18), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(0), neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(19), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, build.constDouble(0), build.constDouble(1), neq));
+
+    // NaN is always fun to consider
+    build.inst(IrCmd::STORE_INT, build.vmReg(20), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, valueNan, valueNan, eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(21), build.inst(IrCmd::CMP_SPLIT_TVALUE, opNum, opNum, valueNan, valueNan, neq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(22), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, valueNan, valueNan, eq));
+    build.inst(IrCmd::STORE_INT, build.vmReg(23), build.inst(IrCmd::CMP_SPLIT_TVALUE, opTag, opNum, valueNan, valueNan, neq));
+
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(21));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %2 = LOAD_TAG R0
+   STORE_INT R2, 0i
+   STORE_INT R3, 1i
+   STORE_INT R4, 0i
+   STORE_INT R5, 1i
+   STORE_INT R6, 0i
+   STORE_INT R7, 1i
+   STORE_INT R8, 0i
+   STORE_INT R9, 1i
+   STORE_INT R10, 0i
+   STORE_INT R11, 1i
+   %23 = CMP_TAG %2, tboolean, eq
+   STORE_INT R12, %23
+   STORE_INT R13, 0i
+   %27 = CMP_TAG %2, tnumber, eq
+   STORE_INT R14, %27
+   STORE_INT R15, 0i
+   %31 = CMP_TAG %2, tboolean, not_eq
+   STORE_INT R16, %31
+   STORE_INT R17, 1i
+   %35 = CMP_TAG %2, tnumber, not_eq
+   STORE_INT R18, %35
+   STORE_INT R19, 1i
+   STORE_INT R20, 0i
+   STORE_INT R21, 1i
+   STORE_INT R22, 0i
+   STORE_INT R23, 1i
+   RETURN R2, 21i
+
+)");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("LinearExecutionFlowExtraction");
@@ -1817,6 +1942,7 @@ bb_0:
    %0 = LOAD_TAG R2
    CHECK_TAG %0, tnumber, bb_fallback_1
    JUMP bb_linear_6
+; glued to: bb_linear_6
 
 bb_fallback_1:
    DO_LEN R1, R2
@@ -1833,6 +1959,7 @@ bb_fallback_3:
 
 bb_4:
    JUMP bb_5
+; glued to: bb_5
 
 bb_5:
    RETURN R0, 0i
@@ -2797,6 +2924,49 @@ bb_0:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore3")
+{
+    ScopedFastFlag luauCodegenStorePriority{FFlag::LuauCodegenStorePriority, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+
+    // Obscure the R0 state by only storing the value (tag was established in a previous block not visible here)
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(2));
+
+    // In the future, STORE_INT might imply that the tag is LUA_TBOOLEAN, but today it is used for other integer stores too
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), build.vmExit(1));
+
+    // Secondary load for store propagation
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0)));
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(2));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 2i
+   %1 = LOAD_TAG R0
+   CHECK_TAG %1, tnumber, exit(1)
+   STORE_TAG R2, tnumber
+   %4 = LOAD_DOUBLE R0
+   STORE_DOUBLE R2, %4
+   %6 = LOAD_TVALUE R0
+   STORE_TVALUE R1, %6
+   STORE_TAG R1, tboolean
+   RETURN R1, 1i
+
+)");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Analysis");
@@ -3611,6 +3781,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagSelfEqualityCheckRemoval")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
    RETURN 1u
@@ -3978,6 +4149,7 @@ bb_0:
    STORE_TAG R1, tnumber
    STORE_DOUBLE R1, 1
    JUMP bb_1
+; glued to: bb_1
 
 bb_1:
 ; predecessors: bb_0
@@ -4649,6 +4821,59 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "VectorOverCombinedNumber")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    STORE_VECTOR R0, 8, 16, 32, tvector
+   RETURN R0, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NilStoreImplicitValueClear1")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tboolean));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_TAG R0, tnil
+   STORE_INT R0, 1i
+   STORE_TAG R0, tboolean
+   RETURN R0, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NilStoreImplicitValueClear2")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+    IrOp value = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnil));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), value);
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
+    build.inst(IrCmd::CHECK_TAG, tag, build.constTag(tnil), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_TAG R0, tnil
    RETURN R0, 1i
 
 )");

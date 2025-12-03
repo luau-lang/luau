@@ -642,6 +642,24 @@ const TValue* luaH_getstr(LuaTable* t, TString* key)
 }
 
 /*
+** search function for lightuserdata
+*/
+const TValue* luaH_getp(LuaTable* t, void* key, int tag)
+{
+    LuaNode* n = hashpointer(t, key);
+    for (;;)
+    { // check whether `key' is somewhere in the chain
+        const TKey* nk = gkey(n);
+        if (ttislightuserdata(nk) && pvalue(nk) == key && lightuserdatatag(nk) == tag)
+            return gval(n); // that's it
+        if (gnext(n) == 0)
+            break;
+        n += gnext(n);
+    }
+    return luaO_nilobject;
+}
+
+/*
 ** main search function
 */
 const TValue* luaH_get(LuaTable* t, const TValue* key)
@@ -725,6 +743,19 @@ TValue* luaH_setstr(lua_State* L, LuaTable* t, TString* key)
     {
         TValue k;
         setsvalue(L, &k, key);
+        return newkey(L, t, &k);
+    }
+}
+
+TValue* luaH_setp(lua_State* L, LuaTable* t, void* key, int tag)
+{
+    const TValue* p = luaH_getp(t, key, tag);
+    if (p != luaO_nilobject)
+        return cast_to(TValue*, p);
+    else
+    {
+        TValue k;
+        setpvalue(&k, key, tag);
         return newkey(L, t, &k);
     }
 }

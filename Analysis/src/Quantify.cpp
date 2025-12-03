@@ -8,7 +8,6 @@
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauExplicitSkipBoundTypes)
 
 namespace Luau
 {

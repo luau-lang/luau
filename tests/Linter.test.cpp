@@ -8,7 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauParametrizedAttributeSyntax)
+LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 using namespace Luau;
 
@@ -40,10 +40,11 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 {
+    ScopedFastFlag sff{FFlag::LuauUnknownGlobalFixSuggestion, true};
     LintResult result = lint("--!nocheck\nreturn foo");
 
     REQUIRE(1 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'");
+    CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'; consider assigning to it first");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
@@ -1875,8 +1876,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
 {
-    ScopedFastFlag sff{FFlag::LuauParametrizedAttributeSyntax, true};
-
     // @deprecated works on local functions
     {
         LintResult result = lint(R"(

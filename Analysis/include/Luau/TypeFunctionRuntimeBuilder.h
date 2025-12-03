@@ -31,6 +31,9 @@ struct TypeFunctionRuntimeBuilderState
 };
 
 TypeFunctionTypeId serialize(TypeId ty, TypeFunctionRuntimeBuilderState* state);
+TypeFunctionTypePackId serialize(TypePackId tp, TypeFunctionRuntimeBuilderState* state);
+
 TypeId deserialize(TypeFunctionTypeId ty, TypeFunctionRuntimeBuilderState* state);
+TypePackId deserialize(TypeFunctionTypePackId tp, TypeFunctionRuntimeBuilderState* state);
 
 } // namespace Luau

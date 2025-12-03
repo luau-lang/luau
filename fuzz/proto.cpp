@@ -12,14 +12,16 @@
 #include "Luau/Linter.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
+#include "Luau/PrettyPrinter.h"
 #include "Luau/ToString.h"
-#include "Luau/Transpiler.h"
 #include "Luau/TypeInfer.h"
 
 #include "lua.h"
 #include "lualib.h"
 
 #include <chrono>
+#include <string>
+#include <vector>
 #include <cstring>
 
 static bool getEnvParam(const char* name, bool def)
@@ -36,7 +38,7 @@ const bool kFuzzCompiler = getEnvParam("LUAU_FUZZ_COMPILER", true);
 const bool kFuzzLinter = getEnvParam("LUAU_FUZZ_LINTER", true);
 const bool kFuzzTypeck = getEnvParam("LUAU_FUZZ_TYPE_CHECK", true);
 const bool kFuzzVM = getEnvParam("LUAU_FUZZ_VM", true);
-const bool kFuzzTranspile = getEnvParam("LUAU_FUZZ_TRANSPILE", true);
+const bool kFuzzPrettyPrint = getEnvParam("LUAU_FUZZ_PRETTY_PRINT", true);
 const bool kFuzzCodegenVM = getEnvParam("LUAU_FUZZ_CODEGEN_VM", true);
 const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
 const bool kFuzzUseNewSolver = getEnvParam("LUAU_FUZZ_NEW_SOLVER", false);
@@ -98,6 +100,11 @@ void* allocate(void* ud, void* ptr, size_t osize, size_t nsize)
     }
 }
 
+int lua_silence(lua_State* L)
+{
+    return 0;
+}
+
 lua_State* createGlobalState()
 {
     lua_State* L = lua_newstate(allocate, NULL);
@@ -108,6 +115,15 @@ lua_State* createGlobalState()
     lua_callbacks(L)->interrupt = interrupt;
 
     luaL_openlibs(L);
+
+    std::vector<luaL_Reg> funcs;
+    funcs.push_back({"print", lua_silence}); // do not let fuzz input to print to stdout
+    funcs.push_back({nullptr, nullptr});     // "null" terminate the list of functions to register
+
+    lua_pushvalue(L, LUA_GLOBALSINDEX);
+    luaL_register(L, nullptr, funcs.data());
+    lua_pop(L, 1);
+
     luaL_sandbox(L);
 
     return L;
@@ -201,7 +217,7 @@ struct FuzzFileResolver : Luau::FileResolver
         return Luau::SourceCode{it->second, Luau::SourceCode::Module};
     }
 
-    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* expr) override
+    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* expr, const Luau::TypeCheckLimits& _limits) override
     {
         if (Luau::AstExprGlobal* g = expr->as<Luau::AstExprGlobal>())
             return Luau::ModuleInfo{g->name.value};
@@ -231,7 +247,7 @@ struct FuzzConfigResolver : Luau::ConfigResolver
         defaultConfig.parseOptions.captureComments = true;
     }
 
-    virtual const Luau::Config& getConfig(const Luau::ModuleName& name) const override
+    virtual const Luau::Config& getConfig(const Luau::ModuleName& name, const Luau::TypeCheckLimits& _limits) const override
     {
         return defaultConfig;
     }
@@ -353,12 +369,12 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
         }
     }
 
-    if (kFuzzTranspile)
+    if (kFuzzPrettyPrint)
     {
         for (Luau::ParseResult& parseResult : parseResults)
         {
             if (parseResult.root)
-                transpileWithTypes(*parseResult.root);
+                prettyPrintWithTypes(*parseResult.root);
         }
     }
 

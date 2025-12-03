@@ -5,6 +5,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
+LUAU_FASTFLAG(LuauCodegenFloatLoadStoreProp)
+
 namespace Luau
 {
 namespace CodeGen
@@ -162,20 +164,49 @@ inline bool hasResult(IrCmd cmd)
     return false;
 }
 
-inline bool hasSideEffects(IrCmd cmd)
+inline bool canInvalidateSafeEnv(IrCmd cmd)
 {
-    if (cmd == IrCmd::INVOKE_FASTCALL)
+    switch (cmd)
+    {
+    case IrCmd::CMP_ANY:
+    case IrCmd::DO_ARITH:
+    case IrCmd::DO_LEN:
+    case IrCmd::GET_TABLE:
+    case IrCmd::SET_TABLE:
+    case IrCmd::CONCAT: // TODO: if only strings and numbers are concatenated, there will be no user calls
+    case IrCmd::CALL:
+    case IrCmd::FORGLOOP_FALLBACK:
+    case IrCmd::FALLBACK_GETGLOBAL:
+    case IrCmd::FALLBACK_SETGLOBAL:
+    case IrCmd::FALLBACK_GETTABLEKS:
+    case IrCmd::FALLBACK_SETTABLEKS:
+    case IrCmd::FALLBACK_NAMECALL:
+    case IrCmd::FALLBACK_FORGPREP:
         return true;
+    default:
+        break;
+    }
 
-    // Instructions that don't produce a result most likely have other side-effects to make them useful
-    // Right now, a full switch would mirror the 'hasResult' function, so we use this simple condition
-    return !hasResult(cmd);
+    return false;
 }
 
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
     return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+}
+
+inline bool hasSideEffects(IrCmd cmd)
+{
+    if (cmd == IrCmd::INVOKE_FASTCALL)
+        return true;
+
+    if (FFlag::LuauCodegenFloatLoadStoreProp && isPseudo(cmd))
+        return false;
+
+    // Instructions that don't produce a result most likely have other side-effects to make them useful
+    // Right now, a full switch would mirror the 'hasResult' function, so we use this simple condition
+    return !hasResult(cmd);
 }
 
 IrValueKind getCmdValueKind(IrCmd cmd);
@@ -236,6 +267,9 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function);
 // Returns first non-dead block that comes after block at index 'i' in the sorted blocks array
 // 'dummy' block is returned if the end of array was reached
 IrBlock& getNextBlock(IrFunction& function, const std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i);
+
+// Returns next block in a chain, marked by 'constPropInBlockChains' optimization pass
+IrBlock* tryGetNextBlockInChain(IrFunction& function, IrBlock& block);
 
 } // namespace CodeGen
 } // namespace Luau

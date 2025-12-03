@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Instantiation2.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
 
@@ -16,11 +17,7 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauVariadicAnyPackShouldBeErrorSuppressing)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
-LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
 
@@ -70,13 +67,11 @@ struct SubtypeFixture : Fixture
     TypeArena arena;
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
-    SimplifierPtr simplifier = newSimplifier(NotNull{&arena}, getBuiltins());
     Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
-    ScopedFastFlag sff1{FFlag::LuauPassBindableGenericsByReference, true};
 
     ScopePtr rootScope{new Scope(getBuiltins()->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -86,9 +81,7 @@ struct SubtypeFixture : Fixture
 
     Subtyping mkSubtyping()
     {
-        return Subtyping{
-            getBuiltins(), NotNull{&arena}, NotNull{simplifier.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}
-        };
+        return Subtyping{getBuiltins(), NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}};
     }
 
     TypePackId pack(std::initializer_list<TypeId> tys)
@@ -218,7 +211,7 @@ struct SubtypeFixture : Fixture
     TypeId booleanAndTrueType = meet(getBuiltins()->booleanType, getBuiltins()->trueType);
 
     /**
-     * class
+     * userdata
      * \- Root
      *    |- Child
      *    |  |-GrandchildOne
@@ -974,12 +967,12 @@ TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->stringType
 TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->threadType));
 TEST_IS_NOT_SUBTYPE(getBuiltins()->unknownType, negate(getBuiltins()->bufferType));
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Root <: userdata")
 {
     CHECK_IS_SUBTYPE(rootClass, getBuiltins()->externType);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: userdata")
 {
     CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), getBuiltins()->externType);
 }
@@ -994,17 +987,17 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child | Root <: Root")
     CHECK_IS_SUBTYPE(join(childClass, rootClass), rootClass);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), getBuiltins()->externType);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, rootClass), getBuiltins()->externType);
 }
 
-TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: class")
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), getBuiltins()->externType);
 }
@@ -1405,9 +1398,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_function_instance")
 {
-    ScopedFastFlag sff{FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true};
-    ScopedFastFlag sff1{FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true};
-
     TypeId longTy = arena.addType(
         UnionType{
             {getBuiltins()->booleanType,
@@ -1440,10 +1430,65 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
     }
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "(number, number...) <!: (number, string...)")
+{
+    TypePackId leftTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->numberType}));
+    TypePackId rightTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->stringType}));
+
+    CHECK_IS_NOT_SUBTYPE(leftTp, rightTp);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_union_type_path")
+{
+    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
+    TypeId subTy = arena.addType(UnionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
+    TypeId superTy = getBuiltins()->booleanType;
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+
+    for (const SubtypingReasoning& reasoning : result.reasoning)
+    {
+        if (reasoning.subPath.empty() && reasoning.superPath.empty())
+            continue;
+
+        std::optional<TypeId> optSubLeaf = traverseForType(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeId> optSuperLeaf = traverseForType(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+
+        if (!optSubLeaf || !optSuperLeaf)
+            CHECK(false);
+
+        if (optSubLeaf != getBuiltins()->errorType)
+            CHECK(false);
+    }
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_intersect_type_path")
+{
+    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
+
+    TypeId subTy = getBuiltins()->booleanType;
+    TypeId superTy = arena.addType(IntersectionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+
+    for (const SubtypingReasoning& reasoning : result.reasoning)
+    {
+        if (reasoning.subPath.empty() && reasoning.superPath.empty())
+            continue;
+
+        std::optional<TypeId> optSubLeaf = traverseForType(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeId> optSuperLeaf = traverseForType(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+
+        if (!optSubLeaf || !optSuperLeaf)
+            CHECK(false);
+
+        if (optSuperLeaf != getBuiltins()->errorType)
+            CHECK(false);
+    }
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "(() -> number) -> () <: (<T>() -> T) -> ()")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = fn({nothingToNumberType}, {});
     TypeId f2 = fn({genericNothingToTType}, {});
     CHECK_IS_SUBTYPE(f1, f2);
@@ -1451,8 +1496,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(() -> number) -> () <: (<T>() -> T) -> ()")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> ()) -> () <: (<T>(T) -> ()) -> ()")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = fn({numberToNothingType}, {});
     TypeId f2 = fn({genericTToNothingType}, {});
     CHECK_IS_SUBTYPE(f1, f2);
@@ -1460,8 +1503,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> ()) -> () <: (<T>(T) -> ()) -> (
 
 TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> number) -> () <: (<T>(T) -> T) -> ()")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = fn({numberToNumberType}, {});
     TypeId f2 = fn({genericTToTType}, {});
     CHECK_IS_SUBTYPE(f1, f2);
@@ -1469,8 +1510,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "((number) -> number) -> () <: (<T>(T) -> T) -
 
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>(x: T, y: T, f: (T, T) -> T) -> T <: (number, number, <U>(U, U) -> add<U, U>) -> number")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     TypeId f1 = arena.addType(FunctionType(
         {genericT},
         {},
@@ -1495,8 +1534,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>(x: T, y: T, f: (T, T) -> T) -> T <: (numb
 
 TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> (<A...>(A...) -> ()) <: (string -> ((number) -> ())")
 {
-    ScopedFastFlag sff{FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true};
-
     // <A...>(A...) -> ()
     TypeId asToNothing = arena.addType(FunctionType({}, {genericAs}, genericAs, getBuiltins()->emptyTypePack, std::nullopt, false));
     TypeId f1 = arena.addType(FunctionType({}, {genericAs}, genericAs, pack({asToNothing}), std::nullopt, false));
@@ -1507,10 +1544,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> (<A...>(A...) -> ()) <: (stri
 
 TEST_CASE_FIXTURE(SubtypeFixture, "no_caching_type_function_instances_with_mapped_generics")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingGenericsDoesntUseVariance, true};
-
     // (<U>(U) -> keyof<U>, <U>(U) -> keyof<U>) </: (({"a" : number}) -> "a", ({"b" : number}) -> "a")
-
     TypeId keyOfU = arena.addType(TypeFunctionInstanceType{builtinTypeFunctions.keyofFunc, {genericU}});
     // <U>(U) -> keyof<U>
     TypeId uToKeyOfU = arena.addType(FunctionType({genericU}, {}, arena.addTypePack({genericU}), arena.addTypePack({keyOfU})));
@@ -1770,7 +1804,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "free_types_might_be_subtypes")
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_pack_should_suppress_errors_during_overload_resolution")
 {
-    ScopedFastFlag sff{FFlag::LuauVariadicAnyPackShouldBeErrorSuppressing, true};
     auto res = check(R"(
 type ActionCallback = (string) -> ...any
 
@@ -1781,6 +1814,44 @@ function bindAction(callback: ActionCallback)
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(res);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
+{
+    TypeArena arena;
+    Scope scope(getBuiltins()->anyTypePack);
+
+    TypeId genericT = arena.addType(GenericType{"T"});
+
+    TypeId idTy = arena.addType(
+        FunctionType{/* generics */ {genericT},
+                     /* genericPacks */ {},
+                     /* argTypes */ arena.addTypePack({genericT}),
+                     /* retTypes */ arena.addTypePack({genericT})}
+    );
+
+    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+
+    TypeId freeTy = arena.freshType(getBuiltins(), &scope);
+    FreeType* ft = getMutable<FreeType>(freeTy);
+    REQUIRE(ft);
+    ft->lowerBound = idTy;
+    ft->upperBound = getBuiltins()->unknownType;
+
+    genericSubstitutions[genericT] = freeTy;
+
+    CHECK("<T>(T) -> T" == toString(idTy));
+
+    std::optional<TypeId> res = instantiate2(
+        &arena, std::move(genericSubstitutions), std::move(genericPackSubstitutions), NotNull{&subtyping}, NotNull{rootScope.get()}, idTy
+    );
+
+    // Substitutions should not mutate the original type!
+    CHECK("<T>(T) -> T" == toString(idTy));
+
+    REQUIRE(res);
+    CHECK("<T>(T) -> T" == toString(*res));
 }
 
 TEST_SUITE_END();

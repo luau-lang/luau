@@ -16,11 +16,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodeGenUnassignedBcTargetAbort)
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
-LUAU_FASTFLAGVARIABLE(LuauCodeGenVBlendpdReorder)
-LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
-LUAU_FASTFLAG(LuauCodegenDirectCompare)
+LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
+LUAU_FASTFLAG(LuauCodegenIntegerAddSub)
 
 namespace Luau
 {
@@ -47,25 +44,6 @@ IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, 
     );
 
     build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
-}
-
-void IrLoweringX64::storeDoubleAsFloat(OperandX64 dst, IrOp src)
-{
-    ScopedRegX64 tmp{regs, SizeX64::xmmword};
-
-    if (src.kind == IrOpKind::Constant)
-    {
-        build.vmovss(tmp.reg, build.f32(float(doubleOp(src))));
-    }
-    else if (src.kind == IrOpKind::Inst)
-    {
-        build.vcvtsd2ss(tmp.reg, regOp(src), regOp(src));
-    }
-    else
-    {
-        CODEGEN_ASSERT(!"Unsupported instruction form");
-    }
-    build.vmovss(dst, tmp.reg);
 }
 
 void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
@@ -396,12 +374,45 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::SUB_INT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.regX64 == regOp(inst.a) && intOp(inst.b) == 1)
-            build.dec(inst.regX64);
-        else if (inst.regX64 == regOp(inst.a))
-            build.sub(inst.regX64, intOp(inst.b));
+        if (FFlag::LuauCodegenIntegerAddSub)
+        {
+            if (inst.a.kind == IrOpKind::Inst)
+            {
+                if (inst.b.kind == IrOpKind::Constant)
+                {
+                    if (inst.regX64 != regOp(inst.a))
+                        build.lea(inst.regX64, addr[regOp(inst.a) - intOp(inst.b)]);
+                    else
+                        build.sub(inst.regX64, intOp(inst.b));
+                }
+                else
+                {
+                    // If result reuses the source, we can subtract in place, otherwise we need to setup our initial value
+                    if (inst.regX64 != regOp(inst.a))
+                        build.mov(inst.regX64, regOp(inst.a));
+
+                    build.sub(inst.regX64, regOp(inst.b));
+                }
+            }
+            else if (inst.b.kind == IrOpKind::Inst)
+            {
+                build.mov(inst.regX64, intOp(inst.a));
+                build.sub(inst.regX64, regOp(inst.b));
+            }
+            else
+            {
+                CODEGEN_ASSERT(!"Unsupported instruction form");
+            }
+        }
         else
-            build.lea(inst.regX64, addr[regOp(inst.a) - intOp(inst.b)]);
+        {
+            if (inst.regX64 == regOp(inst.a) && intOp(inst.b) == 1)
+                build.dec(inst.regX64);
+            else if (inst.regX64 == regOp(inst.a))
+                build.sub(inst.regX64, intOp(inst.b));
+            else
+                build.lea(inst.regX64, addr[regOp(inst.a) - intOp(inst.b)]);
+        }
         break;
     case IrCmd::ADD_NUM:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
@@ -680,10 +691,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // If arg < 0 then tmp1 is -1 and mask-bit is 0, result is -1
         // If arg == 0 then tmp1 is 0 and mask-bit is 0, result is 0
         // If arg > 0 then tmp1 is 0 and mask-bit is 1, result is 1
-        if (FFlag::LuauCodeGenVBlendpdReorder)
-            build.vblendvpd(inst.regX64, tmp1.reg, inst.regX64, build.f64x2(1, 1));
-        else
-            build.vblendvpd_DEPRECATED(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
+        build.vblendvpd(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
         break;
     }
     case IrCmd::SELECT_NUM:
@@ -701,17 +709,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
 
         if (inst.a.kind == IrOpKind::Inst)
-            if (FFlag::LuauCodeGenVBlendpdReorder)
-                build.vblendvpd(inst.regX64, regOp(inst.a), tmp.reg, memRegDoubleOp(inst.b));
-            else
-                build.vblendvpd_DEPRECATED(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b), tmp.reg);
+            build.vblendvpd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b), tmp.reg);
         else
         {
             build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
-            if (FFlag::LuauCodeGenVBlendpdReorder)
-                build.vblendvpd(inst.regX64, inst.regX64, tmp.reg, memRegDoubleOp(inst.b));
-            else
-                build.vblendvpd_DEPRECATED(inst.regX64, inst.regX64, memRegDoubleOp(inst.b), tmp.reg);
+            build.vblendvpd(inst.regX64, inst.regX64, memRegDoubleOp(inst.b), tmp.reg);
         }
         break;
     }
@@ -873,8 +875,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_INT:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodeGenDirectBtest);
-
         // Cannot reuse operand registers as a target because we have to modify it before the comparison
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
@@ -924,7 +924,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_TAG:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
         // Cannot reuse operand registers as a target because we have to modify it before the comparison
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
@@ -946,7 +945,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CMP_SPLIT_TVALUE:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenDirectCompare);
         // Cannot reuse operand registers as a target because we have to modify it before the comparison
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
@@ -1262,6 +1260,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::NUM_TO_UINT:
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
+        // Note: we perform 'uint64_t = (long long)double' for consistency with C++ code
         build.vcvttsd2si(qwordReg(inst.regX64), memRegDoubleOp(inst.a));
         break;
     case IrCmd::NUM_TO_VEC:
@@ -1585,13 +1584,20 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     case IrCmd::CHECK_SAFE_ENV:
     {
-        ScopedRegX64 tmp{regs, SizeX64::qword};
+        if (FFlag::LuauCodegenBlockSafeEnv)
+        {
+            checkSafeEnv(inst.a, next);
+        }
+        else
+        {
+            ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        build.mov(tmp.reg, sClosure);
-        build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
-        build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
+            build.mov(tmp.reg, sClosure);
+            build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
+            build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
 
-        jumpOrAbortOnUndef(ConditionX64::Equal, inst.a, next);
+            jumpOrAbortOnUndef(ConditionX64::Equal, inst.a, next);
+        }
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -2360,8 +2366,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     valueTracker.afterInstLowering(inst, index);
 
-    if (FFlag::LuauCodeGenRegAutoSpillA64)
-        regs.currInstIdx = kInvalidInstIdx;
+    regs.currInstIdx = kInvalidInstIdx;
 
     regs.freeLastUseRegs(inst, index);
 }
@@ -2405,12 +2410,9 @@ void IrLoweringX64::finishFunction()
         build.jmp(helpers.updatePcAndContinueInVm);
     }
 
-    if (FFlag::LuauCodeGenUnassignedBcTargetAbort)
-    {
-        // An undefined instruction is placed after the function to be used as an aborting jump offset
-        function.endLocation = build.setLabel().location;
-        build.ud2();
-    }
+    // An undefined instruction is placed after the function to be used as an aborting jump offset
+    function.endLocation = build.setLabel().location;
+    build.ud2();
 
     if (stats)
     {
@@ -2506,6 +2508,36 @@ void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrB
 void IrLoweringX64::jumpOrAbortOnUndef(IrOp target, const IrBlock& next)
 {
     jumpOrAbortOnUndef(ConditionX64::Count, target, next);
+}
+
+void IrLoweringX64::storeDoubleAsFloat(OperandX64 dst, IrOp src)
+{
+    ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+    if (src.kind == IrOpKind::Constant)
+    {
+        build.vmovss(tmp.reg, build.f32(float(doubleOp(src))));
+    }
+    else if (src.kind == IrOpKind::Inst)
+    {
+        build.vcvtsd2ss(tmp.reg, regOp(src), regOp(src));
+    }
+    else
+    {
+        CODEGEN_ASSERT(!"Unsupported instruction form");
+    }
+    build.vmovss(dst, tmp.reg);
+}
+
+void IrLoweringX64::checkSafeEnv(IrOp target, const IrBlock& next)
+{
+    ScopedRegX64 tmp{regs, SizeX64::qword};
+
+    build.mov(tmp.reg, sClosure);
+    build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
+    build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
+
+    jumpOrAbortOnUndef(ConditionX64::Equal, target, next);
 }
 
 OperandX64 IrLoweringX64::memRegDoubleOp(IrOp op)

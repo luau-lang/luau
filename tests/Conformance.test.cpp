@@ -34,20 +34,18 @@ void luaC_validate(lua_State* L);
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContErrorHandling)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodeGenDirectBtest)
+LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauVectorLerp)
 LUAU_FASTFLAG(LuauCompileVectorLerp)
-LUAU_FASTFLAG(LuauTypeCheckerVectorLerp)
-LUAU_FASTFLAG(LuauCodeGenVectorLerp)
-LUAU_DYNAMIC_FASTFLAG(LuauXpcallContNoYield)
-LUAU_FASTFLAG(LuauCodeGenBetterBytecodeAnalysis)
-LUAU_FASTFLAG(LuauCodeGenRegAutoSpillA64)
-LUAU_FASTFLAG(LuauCodeGenRestoreFromSplitStore)
+LUAU_FASTFLAG(LuauTypeCheckerVectorLerp2)
+LUAU_FASTFLAG(LuauCodeGenVectorLerp2)
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauResumeFix)
+LUAU_FASTFLAG(LuauMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauTypeCheckerMathIsNanInfFinite)
+LUAU_FASTFLAG(LuauCodegenChainedSpills)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -282,11 +280,100 @@ static StateRef runConformance(
     int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
 
+    Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
+
     if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
     {
-        Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
+        Luau::CodeGen::CompilationResult result = Luau::CodeGen::compile(L, -1, nativeOpts);
 
-        Luau::CodeGen::compile(L, -1, nativeOpts);
+        CHECK(result.result == Luau::CodeGen::CodeGenCompilationResult::Success);
+
+        if (result.hasErrors())
+        {
+            for (const Luau::CodeGen::ProtoCompilationFailure& protoFailure : result.protoFailures)
+            {
+                switch (protoFailure.result)
+                {
+                case Luau::CodeGen::CodeGenCompilationResult::Success:
+                case Luau::CodeGen::CodeGenCompilationResult::NothingToCompile:
+                case Luau::CodeGen::CodeGenCompilationResult::NotNativeModule:
+                case Luau::CodeGen::CodeGenCompilationResult::CodeGenNotInitialized:
+                case Luau::CodeGen::CodeGenCompilationResult::CodeGenAssemblerFinalizationFailure:
+                case Luau::CodeGen::CodeGenCompilationResult::AllocationFailed:
+                    // These cases cannot be the Proto failure reason
+                    FAIL("Unexpected main code generation failure result");
+                    break;
+
+                case Luau::CodeGen::CodeGenCompilationResult::CodeGenOverflowInstructionLimit:
+                    MESSAGE(
+                        "Function '",
+                        protoFailure.debugname.empty() ? "(anonymous)" : protoFailure.debugname,
+                        "':",
+                        protoFailure.line,
+                        " exceeded total module instruction limit"
+                    );
+                    break;
+                case Luau::CodeGen::CodeGenCompilationResult::CodeGenOverflowBlockLimit:
+                    MESSAGE(
+                        "Function '",
+                        protoFailure.debugname.empty() ? "(anonymous)" : protoFailure.debugname,
+                        "':",
+                        protoFailure.line,
+                        " exceeded function code block limit"
+                    );
+                    break;
+                case Luau::CodeGen::CodeGenCompilationResult::CodeGenOverflowBlockInstructionLimit:
+                    MESSAGE(
+                        "Function '",
+                        protoFailure.debugname.empty() ? "(anonymous)" : protoFailure.debugname,
+                        "':",
+                        protoFailure.line,
+                        " exceeded single code block instruction limit"
+                    );
+                    break;
+                case Luau::CodeGen::CodeGenCompilationResult::CodeGenLoweringFailure:
+                    MESSAGE(
+                        "Function '",
+                        protoFailure.debugname.empty() ? "(anonymous)" : protoFailure.debugname,
+                        "':",
+                        protoFailure.line,
+                        " encountered an internal lowering failure"
+                    );
+                    break;
+                case Luau::CodeGen::CodeGenCompilationResult::Count:
+                    LUAU_ASSERT(false);
+                }
+            }
+        }
+    }
+
+    // Extra test for lowering on both platforms with assembly generation
+    if (luau_codegen_supported())
+    {
+        Luau::CodeGen::AssemblyOptions assemblyOptions;
+        assemblyOptions.compilationOptions = nativeOpts;
+
+        assemblyOptions.includeAssembly = true;
+        assemblyOptions.includeIr = true;
+        assemblyOptions.includeOutlinedCode = true;
+        assemblyOptions.includeIrTypes = true;
+
+        Luau::CodeGen::LoweringStats stats;
+        stats.functionStatsFlags = Luau::CodeGen::FunctionStatsFlags::FunctionStats_Enable;
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::A64;
+        std::string a64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions, &stats);
+        CHECK(!a64.empty());
+
+        CHECK(stats.regAllocErrors == 0);
+        CHECK(stats.loweringErrors == 0);
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::X64_SystemV;
+        std::string x64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions, &stats);
+        CHECK(!x64.empty());
+
+        CHECK(stats.regAllocErrors == 0);
+        CHECK(stats.loweringErrors == 0);
     }
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
@@ -665,6 +752,8 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag _[] = {{FFlag::LuauMathIsNanInfFinite, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}};
+
     runConformance("math.luau");
 }
 
@@ -745,7 +834,6 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
     ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
 
     runConformance("errors.luau");
@@ -830,8 +918,6 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
-    ScopedFastFlag luauXpcallContNoYield{DFFlag::LuauXpcallContNoYield, true};
-
     runConformance("coroutine.luau");
 }
 
@@ -846,7 +932,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag luauXpcallContErrorHandling{DFFlag::LuauXpcallContErrorHandling, true};
     ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
 
     runConformance(
@@ -877,6 +962,12 @@ TEST_CASE("PCall")
 TEST_CASE("Pack")
 {
     runConformance("tpack.luau");
+}
+
+TEST_CASE("ExplicitTypeInstantiations")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+    runConformance("explicit_type_instantiations.luau");
 }
 
 int singleYield(lua_State* L)
@@ -1167,10 +1258,9 @@ TEST_CASE("VectorLibrary")
 {
     ScopedFastFlag _[]{
         {FFlag::LuauCompileVectorLerp, true},
-        {FFlag::LuauTypeCheckerVectorLerp, true},
+        {FFlag::LuauTypeCheckerVectorLerp2, true},
         {FFlag::LuauVectorLerp, true},
-        {FFlag::LuauCodeGenVectorLerp, true},
-        {FFlag::LuauCodeGenBetterBytecodeAnalysis, true}
+        {FFlag::LuauCodeGenVectorLerp2, true}
     };
 
     lua_CompileOptions copts = defaultOptions();
@@ -1275,6 +1365,10 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag _[] = {
+        {FFlag::LuauMathIsNanInfFinite, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}, {FFlag::LuauTypeCheckerMathIsNanInfFinite, true}
+    };
+
     runConformance(
         "types.luau",
         [](lua_State* L)
@@ -1752,13 +1846,22 @@ TEST_CASE("ApiTables")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
+    int lu1 = 1;
+    int lu2 = 2;
+
     lua_newtable(L);
     lua_pushnumber(L, 123.0);
     lua_setfield(L, -2, "key");
     lua_pushnumber(L, 456.0);
     lua_rawsetfield(L, -2, "key2");
-    lua_pushstring(L, "test");
+    lua_pushstring(L, "key3");
     lua_rawseti(L, -2, 5);
+    lua_pushstring(L, "key4");
+    lua_rawsetp(L, -2, &lu1);
+    lua_pushstring(L, "key5");
+    lua_rawsetptagged(L, -2, &lu2, 1);
+    lua_pushstring(L, "key6");
+    lua_rawsetptagged(L, -2, &lu2, 2);
 
     // lua_gettable
     lua_pushstring(L, "key");
@@ -1784,7 +1887,24 @@ TEST_CASE("ApiTables")
 
     // lua_rawgeti
     CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
-    CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    CHECK(strcmp(lua_tostring(L, -1), "key3") == 0);
+    lua_pop(L, 1);
+
+    // lua_rawgetp
+    CHECK(lua_rawgetp(L, -1, &lu1) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key4") == 0);
+    lua_pop(L, 1);
+
+    // lua_rawsetptagged
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 1) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key5") == 0);
+    lua_pop(L, 1);
+
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 2) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "key6") == 0);
+    lua_pop(L, 1);
+
+    CHECK(lua_rawgetptagged(L, -1, &lu2, 0) == LUA_TNIL);
     lua_pop(L, 1);
 
     // lua_clonetable
@@ -1871,8 +1991,6 @@ static int cpcallTest(lua_State* L)
 
 TEST_CASE("ApiCalls")
 {
-    ScopedFastFlag luauResumeFix{FFlag::LuauResumeFix, true};
-
     StateRef globalState = runConformance("apicalls.luau", nullptr, nullptr, lua_newstate(limitedRealloc, nullptr));
     lua_State* L = globalState.get();
 
@@ -3246,10 +3364,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodeGenDirectBtest{FFlag::LuauCodeGenDirectBtest, true};
-    ScopedFastFlag luauCodeGenRegAutoSpillA64{FFlag::LuauCodeGenRegAutoSpillA64, true};
-    ScopedFastFlag luauCodeGenRestoreFromSplitStore{FFlag::LuauCodeGenRestoreFromSplitStore, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -3302,6 +3416,28 @@ TEST_CASE("Native")
         nullptr,
         &copts
     );
+}
+
+TEST_CASE("NativeIntegerSpills")
+{
+    ScopedFastFlag luauCodegenChainedSpills{FFlag::LuauCodegenChainedSpills, true};
+
+    lua_CompileOptions copts = defaultOptions();
+
+    SUBCASE("O0")
+    {
+        copts.optimizationLevel = 0;
+    }
+    SUBCASE("O1")
+    {
+        copts.optimizationLevel = 1;
+    }
+    SUBCASE("O2")
+    {
+        copts.optimizationLevel = 2;
+    }
+
+    runConformance("native_integer_spills.luau", nullptr, nullptr, nullptr, &copts);
 }
 
 TEST_CASE("NativeTypeAnnotations")

@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCompileUnusedUdataFix)
+LUAU_FASTFLAG(LuauCompileStringCharSubFold)
+LUAU_FASTFLAG(LuauCompileCallCostModel)
+
 namespace Luau
 {
 
@@ -486,6 +490,16 @@ void BytecodeBuilder::emitAux(uint32_t aux)
     lines.push_back(debugLine);
 }
 
+void BytecodeBuilder::undoEmit(LuauOpcode op)
+{
+    LUAU_ASSERT(FFlag::LuauCompileCallCostModel);
+    LUAU_ASSERT(!insns.empty());
+    LUAU_ASSERT((insns.back() & 0xff) == op);
+
+    insns.pop_back();
+    lines.pop_back();
+}
+
 size_t BytecodeBuilder::emitLabel()
 {
     return insns.size();
@@ -697,8 +711,11 @@ void BytecodeBuilder::finalize()
         // Write the mapping between used type name indices and their name
         for (uint32_t i = 0; i < uint32_t(userdataTypes.size()); i++)
         {
-            writeByte(bytecode, i + 1);
-            writeVarInt(bytecode, userdataTypes[i].nameRef);
+            if (!FFlag::LuauCompileUnusedUdataFix || userdataTypes[i].used)
+            {
+                writeByte(bytecode, i + 1);
+                writeVarInt(bytecode, userdataTypes[i].nameRef);
+            }
         }
 
         // 0 marks the end of the mapping
@@ -1815,6 +1832,23 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
                 formatAppend(result, "'%.*s'", int(str.length), str.data);
             else
                 formatAppend(result, "'%.*s'...", 32, str.data);
+        }
+        else if (FFlag::LuauCompileStringCharSubFold)
+        {
+            formatAppend(result, "'");
+
+            for (size_t i = 0; i < str.length && i < 32; ++i)
+            {
+                if (unsigned(str.data[i]) < ' ')
+                    formatAppend(result, "\\x%02X", uint8_t(str.data[i]));
+                else
+                    formatAppend(result, "%c", str.data[i]);
+            }
+
+            if (str.length >= 32)
+                formatAppend(result, "'...");
+            else
+                formatAppend(result, "'");
         }
         break;
     }

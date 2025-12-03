@@ -6,7 +6,6 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
-#include "Luau/VisitType.h"
 
 #include "ClassFixture.h"
 #include "Fixture.h"
@@ -21,18 +20,16 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
-LUAU_FASTFLAG(LuauSubtypingGenericsDoesntUseVariance)
-LUAU_FASTFLAG(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauSubtypingGenericPacksDoesntUseVariance)
-LUAU_FASTFLAG(LuauReturnMappedGenericPacksFromSubtyping3)
-LUAU_FASTFLAG(LuauFixNilRightPad)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
-LUAU_FASTFLAG(LuauFilterOverloadsByArity)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
+LUAU_FASTFLAG(LuauPushTypeConstraint2)
+LUAU_FASTFLAG(LuauPushTypeConstraintIntersection)
+LUAU_FASTFLAG(LuauPushTypeConstraintSingleton)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
+LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
+LUAU_FASTFLAG(LuauEGFixGenericsList)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -247,8 +244,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 
 TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_count")
 {
-    ScopedFastFlag _{FFlag::LuauFilterOverloadsByArity, true};
-
     CheckResult result = check(R"(
         local multiply: ((number)->number) & ((number)->string) & ((number, number)->number)
         multiply("")
@@ -1241,6 +1236,8 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 
 TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
 {
+    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
+
     CheckResult result = check(R"(
         type Overload = ((string) -> string) & ((number, number) -> number)
         local abc: Overload
@@ -1251,13 +1248,12 @@ TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
 
     LUAU_REQUIRE_ERRORS(result);
     CHECK_EQ("string", toString(requireType("x")));
-    // the new solver does not currently "favor" arity-matching overloads when the call itself is ill-typed.
+    CHECK_EQ("number", toString(requireType("y")));
     if (FFlag::LuauSolverV2)
-        CHECK_EQ("string", toString(requireType("y")));
+        // FIXME CLI-180645: Should this be string|number?
+        CHECK_EQ("*error-type*", toString(requireType("z")));
     else
-        CHECK_EQ("number", toString(requireType("y")));
-    // Should this be string|number?
-    CHECK_EQ("string", toString(requireType("z")));
+        CHECK_EQ("string", toString(requireType("z")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
@@ -1444,9 +1440,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingReportGenericBoundMismatches2, true},
-        {FFlag::LuauNoOrderingTypeFunctions, true},
-        {FFlag::LuauSubtypingGenericsDoesntUseVariance, true},
         {FFlag::LuauNoScopeShallNotSubsumeAll, true},
     };
 
@@ -1963,8 +1956,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
     if (FFlag::LuauSolverV2)
     {
         LUAU_CHECK_NO_ERRORS(result);
-        if (!FFlag::LuauSubtypingGenericsDoesntUseVariance) // FIXME CLI-162439, the below fails on Linux with the flag on
-            CHECK("<a>({ read p: { read q: a } }) -> (a & ~(false?))?" == toString(requireType("g")));
+        // FIXME CLI-162439, the below fails on Linux with the flag on
+        // CHECK("<a>({ read p: { read q: a } }) -> (a & ~(false?))?" == toString(requireType("g")));
     }
     else
     {
@@ -2023,7 +2016,10 @@ u.b().foo()
         CHECK_EQ(toString(result.errors[2]), "Argument count mismatch. Function expects 1 to 3 arguments, but none are specified");
         CHECK_EQ(toString(result.errors[3]), "Argument count mismatch. Function expects 2 to 4 arguments, but none are specified");
         CHECK_EQ(toString(result.errors[4]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
-        CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 3 arguments, but only 1 is specified");
+        if (FFlag::LuauNewOverloadResolver2)
+            CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 2 to 3 arguments, but only 1 is specified");
+        else
+            CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function expects 3 arguments, but only 1 is specified");
         CHECK_EQ(toString(result.errors[6]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
         CHECK_EQ(toString(result.errors[7]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
         CHECK_EQ(toString(result.errors[8]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
@@ -2394,8 +2390,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingGenericPacksDoesntUseVariance, true},
-        {FFlag::LuauReturnMappedGenericPacksFromSubtyping3, true},
+        {FFlag::LuauIncludeExplicitGenericPacks, true},
+        {FFlag::LuauEGFixGenericsList, true},
     };
 
     CheckResult result = check(R"(
@@ -2410,11 +2406,21 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
         apply(add, 5)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    CHECK(tpm);
-    CHECK_EQ(toString(tpm->wantedTp), "b...");
-    CHECK_EQ(toString(tpm->givenTp), "number");
+    if (FFlag::LuauNewOverloadResolver2)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(Location{{2, 21}, {2, 22}} == result.errors.at(0).location);
+        CHECK_MESSAGE(get<TypePackMismatch>(result.errors.at(0)), "Expected TypePackMismatch but got " << result.errors.at(0));
+    }
+    else
+    {
+        // CLI-179222: This should error, specifically on the `f(x)` line, as we
+        // cannot _know_ that `f` takes no additional arguments, it takes some
+        // generic pack.
+        //
+        // Previously this did error but for a nonsense reason.
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
@@ -2610,8 +2616,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
 {
     if (!FFlag::LuauSolverV2)
         return;
-
-    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
 
     CheckResult result = check(R"(
         function fib(n, u)
@@ -2864,19 +2868,24 @@ return _
 
 TEST_CASE_FIXTURE(Fixture, "cannot_call_union_of_functions")
 {
+    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
+
     CheckResult result = check(R"(
-        local f: (() -> ()) | (() -> () -> ()) = nil :: any
-        f()
-    )");
+         local f: (() -> ()) | (() -> () -> ()) = nil :: any
+         f()
+     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    std::string expected = R"(Cannot call a value of the union type:
+    if (FFlag::LuauSolverV2)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        std::string expected = R"(Cannot call a value of the union type:
   | () -> ()
   | () -> () -> ()
 We are unable to determine the appropriate result type for such a call.)";
-
-    CHECK(expected == toString(result.errors[0]));
+        CHECK(expected == toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
@@ -3276,22 +3285,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unnecessary_nil_in_lower_bound_of_generic")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions, true};
-
     CheckResult result = check(
         Mode::Nonstrict,
         R"(
-function isAnArray(value)
-    if type(value) == "table" then
-        for index, _ in next, value do
-            -- assert index is not nil
-		    math.max(0, index)
-	    end
-        return true
-    else
-        return false
-    end
-end
+        function isAnArray(value)
+            if type(value) == "table" then
+                for index, _ in next, value do
+                    -- assert index is not nil
+                    math.max(0, index)
+                end
+                return true
+            else
+                return false
+            end
+        end
 )"
     );
 
@@ -3300,8 +3307,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "call_function_with_nothing_but_nil")
 {
-    ScopedFastFlag _{FFlag::LuauFixNilRightPad, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(n: number, x: string?, y: string?, z: string?) end
 
@@ -3313,8 +3318,6 @@ TEST_CASE_FIXTURE(Fixture, "call_function_with_nothing_but_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1640")
 {
-    ScopedFastFlag _{FFlag::LuauFixNilRightPad, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         table.create(1) -- top function call
@@ -3343,6 +3346,263 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1854")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_119545_pass_lambda_inside_table")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type foo1 = { foo: (number) -> () }
+        type foo2 = { read foo: (number) -> () }
+        local function bar1(foo: foo1) end
+        local function bar2(foo: foo2) end
+
+        local baz = { foo = function(number: number) end, }
+        bar1(baz)
+        bar2(baz)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::LuauPushTypeConstraintIntersection, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(callback: () -> (() -> ())?)
+        end
+
+        local someCondition: boolean = true
+
+        foo(function()
+            if someCondition then
+                return nil
+            end
+            return function() end
+        end)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_lambda_with_partially_resolved_generic")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo<T>(value: T)
+            return function<R>(callback: (T) -> R)
+            end
+        end
+
+        foo(3)(function (data)
+            local _ = data
+            return 42
+        end)
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({7, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_goes_through_ifelse")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraint2, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Input = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        local function getInputs(isDragonPunch: boolean): { Input }
+            return if isDragonPunch then { "6", "8", "7" } else { "8", "7", "6" }
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_one_ok_one_potential")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto result = check(R"(
+        local f: ((number) -> "one") & ((string) -> "two")
+
+        local g = f(42)
+        local h = f("huh")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("\"one\"", toString(requireType("g")));
+    CHECK_EQ("\"two\"", toString(requireType("h")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto result = check(R"(
+        local f: ((number | string) -> "one") & ((number | boolean) -> "two")
+        local g = f(42)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<AmbiguousFunctionCall>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->arguments));
+    CHECK_EQ("((boolean | number) -> \"two\") & ((number | string) -> \"one\")", toString(err->function));
+    // FIXME CLI-180645: This probably ought to be `"one" | "two"`
+    CHECK_EQ("*error-type*", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_pick_better_arity")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto result = check(R"(
+        local f: ((number) -> "one") & ((number, number) -> "two")
+        -- Casting here so that we always hit the case in overload selection
+        -- where one part has the correct arity but incorrect argument types,
+        -- and the other has the incorrect arity.
+        local g = f("s" :: string)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+    CHECK_EQ("\"one\"", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_no_compatible_option")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto result = check(R"(
+        local f: ((number) -> "one") & ((boolean) -> "two")
+        local g = f("s" :: string)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    // FIXME CLI-180645: This probably ought to be `"one" | "two"`
+    CHECK_EQ("*error-type*", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_bad_arity")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto result = check(R"(
+        local function foo<T>(f: ((number, number) -> "one") & T)
+            local huh = f(42)
+            local _ = huh
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    // FIXME CLI-180638: This ought to be "one."
+    //
+    // We should be able to select the only callable overload here, but when
+    // we do, for some reason, we then consider the inferred overload to be
+    // a subtype of the available overloads, and select a nonsense overload
+    // like `(number) -> "one"`. That being said, prior to the new overload
+    // resolver in the new solver, we didn't error on the above code at all.
+    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_union_of_functions")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto result = check(R"(
+        local function foo(f: (() -> (number)) | (() -> (string)))
+            return f()
+        end
+
+        local g = foo(nil :: any)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // FIXME CLI-180824
+    //
+    // This was the case prior to the new overload resolver, unfortunately,
+    // but we should claim that calling a union of functions returns a
+    // union of its type packs. At best we'll probably end up doing a pairwise
+    // union, which should be sound but not complete.
+    CHECK_EQ("number", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_needs_to_retry")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    auto results = check(R"(
+        type RGB = { r: number, b: number, g: number }
+        local BrickColor: ((number) -> RGB) & ((number, number, number) -> RGB) & ((string) -> RGB)
+        function Lightning(li, Color)
+            li.BrickColor = BrickColor(Color)
+        end
+    )");
+
+    // FIXME: We do something reasonable and pick the first overload, but this
+    // could be undesirable if, say, there's a later constraint that tells us that
+    // `Color` in `Lightning` is a `string`.
+    LUAU_REQUIRE_NO_ERRORS(results);
+    CHECK_EQ("({ BrickColor: RGB }, number) -> ()", toString(requireType("Lightning")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_unambiguous_with_constraint")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauNewOverloadResolver2, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local f: ((string, number) -> string) & ((number, boolean) -> number)
+        local function g(x)
+            -- When selecting an overload at this point, we'll reject the
+            -- second overload, and claim that this is the only possible
+            -- overload with a constraint of `x <: string`.
+            f(x, 42)
+        end
+    )"));
+
+    CHECK_EQ("(string) -> ()", toString(requireType("g")));
 }
 
 TEST_SUITE_END();

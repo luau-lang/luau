@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/EqSatSimplification.h"
 #include "Luau/NotNull.h"
 #include "Luau/Set.h"
 #include "Luau/TypeFwd.h"
@@ -27,7 +26,6 @@ bool isSubtype(
     TypeId superTy,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     InternalErrorReporter& ice,
     SolverMode solverMode
 );
@@ -36,7 +34,6 @@ bool isSubtype(
     TypePackId superPack,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     InternalErrorReporter& ice,
     SolverMode solverMode
 );
@@ -202,6 +199,8 @@ enum class NormalizationResult
 // * G is a union of generic/free/blocked types, intersected with a normalized type
 struct NormalizedType
 {
+    NotNull<BuiltinTypes> builtinTypes;
+
     // The top part of the type.
     // This type is either never, unknown, or any.
     // If this type is not never, all the other fields are null.
@@ -315,6 +314,8 @@ class Normalizer
     DenseHashMap<TypeId, bool> cachedIsInhabited{nullptr};
     DenseHashMap<std::pair<TypeId, TypeId>, bool, TypeIdPairHash> cachedIsInhabitedIntersection{{nullptr, nullptr}};
 
+    std::optional<int> fuel{std::nullopt};
+
     bool withinResourceLimits();
     bool useNewLuauSolver() const;
 
@@ -340,13 +341,29 @@ public:
 
     // If this returns null, the typechecker should emit a "too complex" error
     std::shared_ptr<const NormalizedType> normalize(TypeId ty);
-    void clearNormal(NormalizedType& norm);
 
+    void clearCaches();
+
+    NormalizationResult isIntersectionInhabited(TypeId left, TypeId right);
+
+    // Check for inhabitance
+    NormalizationResult isInhabited(TypeId ty);
+    NormalizationResult isInhabited(const NormalizedType* norm);
+
+    // -------- Convert back from a normalized type to a type
+    TypeId typeFromNormal(const NormalizedType& norm);
+
+    std::optional<TypePackId> intersectionOfTypePacks(TypePackId here, TypePackId there);
+
+    // Move to private with LuauNormalizerStepwiseFuel
+    std::optional<TypePackId> intersectionOfTypePacks_INTERNAL(TypePackId here, TypePackId there);
+
+private:
     // ------- Cached TypeIds
     TypeId unionType(TypeId here, TypeId there);
     TypeId intersectionType(TypeId here, TypeId there);
     const TypeIds* cacheTypeIds(TypeIds tys);
-    void clearCaches();
+    void clearNormal(NormalizedType& norm);
 
     // ------- Normalizing unions
     void unionTysWithTy(TypeIds& here, TypeId there);
@@ -387,7 +404,6 @@ public:
     void intersectExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres);
     void intersectExternTypesWithExternType(NormalizedExternType& heres, TypeId there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
-    std::optional<TypePackId> intersectionOfTypePacks(TypePackId here, TypePackId there);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);
     void intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSetTypes);
     void intersectTables(TypeIds& heres, const TypeIds& theres);
@@ -409,18 +425,20 @@ public:
         Set<TypeId>& seenSet
     );
 
-    // Check for inhabitance
-    NormalizationResult isInhabited(TypeId ty);
     NormalizationResult isInhabited(TypeId ty, Set<TypeId>& seen);
-    NormalizationResult isInhabited(const NormalizedType* norm);
     NormalizationResult isInhabited(const NormalizedType* norm, Set<TypeId>& seen);
 
     // Check for intersections being inhabited
-    NormalizationResult isIntersectionInhabited(TypeId left, TypeId right);
     NormalizationResult isIntersectionInhabited(TypeId left, TypeId right, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);
 
-    // -------- Convert back from a normalized type to a type
-    TypeId typeFromNormal(const NormalizedType& norm);
+
+    // Fuel setup
+
+    bool initializeFuel();
+    void clearFuel();
+    void consumeFuel();
+
+    friend struct FuelInitializer;
 };
 
 } // namespace Luau

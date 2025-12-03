@@ -6,6 +6,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeOrPack.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Unifiable.h"
 #include "Luau/VisitType.h"
 

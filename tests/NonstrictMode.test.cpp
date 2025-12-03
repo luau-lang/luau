@@ -60,8 +60,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_coul
     REQUIRE_EQ("(any) -> (...any)", toString(t));
 }
 
-#if 0
-// Maybe we want this?
 TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 {
     CheckResult result = check(R"(
@@ -72,7 +70,6 @@ TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 
     REQUIRE_NE(*getBuiltins()->anyType, *requireType("foo"));
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
 {

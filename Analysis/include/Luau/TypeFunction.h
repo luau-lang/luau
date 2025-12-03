@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/Constraint.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/Error.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeCheckLimits.h"
@@ -32,7 +31,6 @@ struct TypeFunctionContext
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtins;
     NotNull<Scope> scope;
-    NotNull<Simplifier> simplifier;
     NotNull<Normalizer> normalizer;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> ice;
@@ -51,7 +49,6 @@ struct TypeFunctionContext
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtins,
         NotNull<Scope> scope,
-        NotNull<Simplifier> simplifier,
         NotNull<Normalizer> normalizer,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> ice,
@@ -60,7 +57,6 @@ struct TypeFunctionContext
         : arena(arena)
         , builtins(builtins)
         , scope(scope)
-        , simplifier(simplifier)
         , normalizer(normalizer)
         , typeFunctionRuntime(typeFunctionRuntime)
         , ice(ice)
@@ -108,6 +104,10 @@ struct TypeFunctionReductionResult
     std::optional<std::string> error;
     /// Messages printed out from user-defined type functions
     std::vector<std::string> messages;
+    /// Some type function reduction rules may _create_ type functions (e.g.
+    /// the numeric type functions can "distribute" over an inner union). If
+    /// any type functions were created this way, we must add them here.
+    std::vector<Ty> freshTypes;
 };
 
 template<typename T>

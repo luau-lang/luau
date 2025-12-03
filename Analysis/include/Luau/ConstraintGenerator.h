@@ -6,7 +6,6 @@
 #include "Luau/ConstraintSet.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
-#include "Luau/EqSatSimplification.h"
 #include "Luau/HashUtil.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
@@ -113,8 +112,6 @@ struct ConstraintGenerator
     // Needed to be able to enable error-suppression preservation for immediate refinements.
     NotNull<Normalizer> normalizer;
 
-    NotNull<Simplifier> simplifier;
-
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes{nullptr};
@@ -141,7 +138,6 @@ struct ConstraintGenerator
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
-        NotNull<Simplifier> simplifier,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<ModuleResolver> moduleResolver,
         NotNull<BuiltinTypes> builtinTypes,
@@ -333,6 +329,7 @@ private:
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
+    Inference check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(
         const ScopePtr& scope,
@@ -380,6 +377,7 @@ private:
     TypeId resolveTableType(const ScopePtr& scope, AstType* ty, AstTypeTable* tab, bool inTypeArguments, bool replaceErrorWithFresh);
     TypeId resolveFunctionType(const ScopePtr& scope, AstType* ty, AstTypeFunction* fn, bool inTypeArguments, bool replaceErrorWithFresh);
 
+public:
     /**
      * Resolves a type from its AST annotation.
      * @param scope the scope that the type annotation appears within.
@@ -389,6 +387,7 @@ private:
      **/
     TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
+private:
     // resolveType() is recursive, but we only want to invoke
     // inferGenericPolarities() once at the very end.  We thus isolate the
     // recursive part of the algorithm to this internal helper.
@@ -481,6 +480,8 @@ private:
     void recordInferredBinding(AstLocal* local, TypeId ty);
 
     void fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block);
+
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> resolveTypeArguments(const ScopePtr& scope, const AstArray<AstTypeOrPack>& typeArguments);
 
     /** Given a function type annotation, return a vector describing the expected types of the calls to the function
      *  For example, calling a function with annotation ((number) -> string & ((string) -> number))

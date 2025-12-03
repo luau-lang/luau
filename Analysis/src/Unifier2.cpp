@@ -23,11 +23,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIndividualRecursionLimits)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
-LUAU_FASTFLAG(LuauEmplaceNotPushBack)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
-LUAU_FASTFLAGVARIABLE(LuauUnifyShortcircuitSomeIntersectionsAndUnions)
-LUAU_FASTFLAGVARIABLE(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAGVARIABLE(LuauFixNilRightPad)
+LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 
 namespace Luau
 {
@@ -158,6 +155,17 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
         ++iterationCount;
     }
 
+    // NOTE: It's a little odd that we are doing something non-exceptional for
+    // the core of unification but not for occurs check, which may throw an
+    // exception. It would be nice if, in the future, this were unified.
+    std::optional<NonExceptionalRecursionLimiter> nerl;
+    if (FFlag::LuauLimitUnificationRecursion)
+    {
+        nerl.emplace(&recursionCount);
+        if (!nerl->isOk(recursionLimit))
+            return UnifyResult::TooComplex;
+    }
+
     subTy = follow(subTy);
     superTy = follow(superTy);
 
@@ -186,10 +194,7 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
         if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
             return UnifyResult::Ok;
 
-        if (FFlag::LuauEmplaceNotPushBack)
-            incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
-        else
-            incompleteSubtypes.push_back(SubtypeConstraint{subTy, superTy});
+        incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
         return UnifyResult::Ok;
     }
 
@@ -214,67 +219,19 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     if (subFn && superFn)
         return unify_(subTy, superFn);
 
-    if (FFlag::LuauTryToOptimizeSetTypeUnification)
-    {
-        auto subUnion = get<UnionType>(subTy);
-        auto superUnion = get<UnionType>(superTy);
+    auto subUnion = get<UnionType>(subTy);
+    auto superUnion = get<UnionType>(superTy);
+    if (subUnion)
+        return unify_(subUnion, superTy);
+    else if (superUnion)
+        return unify_(subTy, superUnion);
 
-        auto subIntersection = get<IntersectionType>(subTy);
-        auto superIntersection = get<IntersectionType>(superTy);
-
-        // This is, effectively, arranged to avoid the following:
-        //
-        //  'a & T <: U | V => 'a & T <: U and 'a & T <: V
-        //
-
-        // For T <: U & V and T | U <: V, these two cases are entirely correct.
-
-        // We decompose T <: U & V above into T <: U and T <: V ...
-        if (superIntersection)
-            return unify_(subTy, superIntersection);
-
-        // ... and T | U <: V into T <: V and U <: V.
-        if (subUnion)
-            return unify_(subUnion, superTy);
-
-        // This, T & U <: V, erroneously is decomposed into T <: U and T <: V,
-        // even though technically we only need one of the above to hold.
-        // However, this ordering means that we avoid ...
-        if (subIntersection)
-            return unify_(subIntersection, superTy);
-
-        // T <: U | V decomposing into T <: U and T <: V is incorrect, and
-        // can result in some really strange user-visible bugs. Consider:
-        //
-        //  'a & ~(false?) <: string | number
-        //
-        // Intuitively, this should place a constraint of `string | number`
-        // on the upper bound of `'a`. But if we hit this case, then we
-        // end up with something like:
-        //
-        //  'a & ~(false?) <: string and 'a & ~(false?) <: number
-        //
-        // ... which will result in `'a` having `string & number` as its
-        // upper bound, and being inferred to `never`.
-        if (superUnion)
-            return unify_(subTy, superUnion);
-    }
-    else
-    {
-        auto subUnion = get<UnionType>(subTy);
-        auto superUnion = get<UnionType>(superTy);
-        if (subUnion)
-            return unify_(subUnion, superTy);
-        else if (superUnion)
-            return unify_(subTy, superUnion);
-
-        auto subIntersection = get<IntersectionType>(subTy);
-        auto superIntersection = get<IntersectionType>(superTy);
-        if (subIntersection)
-            return unify_(subIntersection, superTy);
-        else if (superIntersection)
-            return unify_(subTy, superIntersection);
-    }
+    auto subIntersection = get<IntersectionType>(subTy);
+    auto superIntersection = get<IntersectionType>(superTy);
+    if (subIntersection)
+        return unify_(subIntersection, superTy);
+    else if (superIntersection)
+        return unify_(subTy, superIntersection);
 
     auto subNever = get<NeverType>(subTy);
     auto superNever = get<NeverType>(superTy);
@@ -449,15 +406,12 @@ UnifyResult Unifier2::unify_(const UnionType* subUnion, TypeId superTy)
 
 UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
 {
-    if (FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+    subTy = follow(subTy);
+    // T <: T | U1 | U2 | ... | Un is trivially true, so we don't gain any information by unifying
+    for (const auto superOption : superUnion)
     {
-        subTy = follow(subTy);
-        // T <: T | U1 | U2 | ... | Un is trivially true, so we don't gain any information by unifying
-        for (const auto superOption : superUnion)
-        {
-            if (subTy == superOption)
-                return UnifyResult::Ok;
-        }
+        if (subTy == superOption)
+            return UnifyResult::Ok;
     }
 
     UnifyResult result = UnifyResult::Ok;
@@ -474,15 +428,12 @@ UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
 
 UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, TypeId superTy)
 {
-    if (FFlag::LuauUnifyShortcircuitSomeIntersectionsAndUnions)
+    superTy = follow(superTy);
+    // T & I1 & I2 & ... & In <: T is trivially true, so we don't gain any information by unifying
+    for (const auto subOption : subIntersection)
     {
-        superTy = follow(superTy);
-        // T & I1 & I2 & ... & In <: T is trivially true, so we don't gain any information by unifying
-        for (const auto subOption : subIntersection)
-        {
-            if (superTy == subOption)
-                return UnifyResult::Ok;
-        }
+        if (superTy == subOption)
+            return UnifyResult::Ok;
     }
 
     UnifyResult result = UnifyResult::Ok;
@@ -681,6 +632,17 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         ++iterationCount;
     }
 
+    // NOTE: It's a little odd that we are doing something non-exceptional for
+    // the core of unification but not for occurs check, which may throw an
+    // exception. It would be nice if, in the future, this were unified.
+    std::optional<NonExceptionalRecursionLimiter> nerl;
+    if (FFlag::LuauLimitUnificationRecursion)
+    {
+        nerl.emplace(&recursionCount);
+        if (!nerl->isOk(recursionLimit))
+            return UnifyResult::TooComplex;
+    }
+
     subTp = follow(subTp);
     superTp = follow(superTp);
 
@@ -702,10 +664,7 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTp) || uninhabitedTypeFunctions->contains(superTp)))
             return UnifyResult::Ok;
 
-        if (FFlag::LuauEmplaceNotPushBack)
-            incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
-        else
-            incompleteSubtypes.push_back(PackSubtypeConstraint{subTp, superTp});
+        incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
         return UnifyResult::Ok;
     }
 
@@ -744,19 +703,8 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     auto [superTypes, superTail] = extendTypePack(*arena, builtinTypes, superTp, maxLength);
 
     // right-pad the subpack with nils if `superPack` is larger since that's what a function call does
-    if (FFlag::LuauFixNilRightPad)
-    {
-        if (subTypes.size() < maxLength)
-            subTypes.resize(maxLength, builtinTypes->nilType);
-    }
-    else
-    {
-        if (subTypes.size() < maxLength)
-        {
-            for (size_t i = 0; i <= maxLength - subTypes.size(); i++)
-                subTypes.push_back(builtinTypes->nilType);
-        }
-    }
+    if (subTypes.size() < maxLength)
+        subTypes.resize(maxLength, builtinTypes->nilType);
 
     if (subTypes.size() < maxLength || superTypes.size() < maxLength)
         return UnifyResult::Ok;
