@@ -360,6 +360,24 @@ static BuiltinImplResult translateBuiltinMathUnary(IrBuilder& build, IrCmd cmd, 
     return {BuiltinImplType::Full, 1};
 }
 
+static BuiltinImplResult translateBuiltinMathIsNan(IrBuilder& build, int nparams, int ra, int arg, int nresults, int pcpos)
+{
+    if (nparams < 1 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    builtinCheckDouble(build, build.vmReg(arg), pcpos);
+
+    IrOp varg = builtinLoadDouble(build, build.vmReg(arg));
+    IrOp result = build.inst(IrCmd::CMP_ANY, varg, varg, build.cond(IrCondition::Equal));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), result);
+
+    if (ra != arg)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+
+    return {BuiltinImplType::Full, 1};
+}
+
 static BuiltinImplResult translateBuiltinType(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults)
 {
     if (nparams < 1 || nresults > 1)
@@ -1457,6 +1475,8 @@ BuiltinImplResult translateBuiltin(
         return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
+    case LBF_MATH_ISNAN:
+        return translateBuiltinMathIsNan(build, nparams, ra, arg, nresults, pcpos);
     default:
         return {BuiltinImplType::None, -1};
     }
