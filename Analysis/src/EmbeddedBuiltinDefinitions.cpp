@@ -4,7 +4,7 @@
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorLerp2)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerMathIsNanInfFinite)
 LUAU_FASTFLAGVARIABLE(LuauUseTopTableForTableClearAndIsFrozen)
-
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
 
 namespace Luau
@@ -449,6 +449,59 @@ static constexpr const char* kBuiltinDefinitionTypeMethodSrc = R"BUILTIN_SRC(
 
 export type type = {
     tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
+         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
+
+    is: (self: type, arg: string) -> boolean,
+
+    -- for singleton type
+    value: (self: type) -> (string | boolean | nil),
+
+    -- for negation type
+    inner: (self: type) -> type,
+
+    -- for union and intersection types
+    components: (self: type) -> {type},
+
+    -- for table type
+    setproperty: (self: type, key: type, value: type?) -> (),
+    setreadproperty: (self: type, key: type, value: type?) -> (),
+    setwriteproperty: (self: type, key: type, value: type?) -> (),
+    readproperty: (self: type, key: type) -> type?,
+    writeproperty: (self: type, key: type) -> type?,
+    properties: (self: type) -> { [type]: { read: type?, write: type? } },
+    setindexer: (self: type, index: type, result: type) -> (),
+    setreadindexer: (self: type, index: type, result: type) -> (),
+    setwriteindexer: (self: type, index: type, result: type) -> (),
+    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
+    readindexer: (self: type) -> { index: type, result: type }?,
+    writeindexer: (self: type) -> { index: type, result: type }?,
+    setmetatable: (self: type, arg: type) -> (),
+    metatable: (self: type) -> type?,
+
+    -- for function type
+    setparameters: (self: type, head: {type}?, tail: type?) -> (),
+    parameters: (self: type) -> { head: {type}?, tail: type? },
+    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
+    returns: (self: type) -> { head: {type}?, tail: type? },
+    setgenerics: (self: type, {type}?) -> (),
+    generics: (self: type) -> {type},
+
+    -- for class type
+    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
+    readparent: (self: type) -> type?,
+    writeparent: (self: type) -> type?,
+
+    -- for generic type
+    name: (self: type) -> string?,
+    ispack: (self: type) -> boolean,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED = R"BUILTIN_SRC(
+
+export type type = {
+    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
          "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
 
     is: (self: type, arg: string) -> boolean,
@@ -549,8 +602,12 @@ declare types: {
 
 std::string getTypeFunctionDefinitionSource()
 {
+    std::string result;
 
-    std::string result = kBuiltinDefinitionTypeMethodSrc;
+    if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+        result += kBuiltinDefinitionTypeMethodSrc;
+    else
+        result +=  kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
 
     if (FFlag::LuauMorePermissiveNewtableType)
         result += kBuiltinDefinitionTypesLibSrc;

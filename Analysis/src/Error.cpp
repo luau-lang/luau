@@ -21,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -361,7 +362,12 @@ struct ErrorConverter
 
         TypeId t = follow(e.table);
         if (get<ExternType>(t))
-            s += "class";
+        {
+            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+                s += "external type";
+            else
+                s += "class";
+        }
         else
             s += "table";
 
