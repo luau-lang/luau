@@ -16,6 +16,7 @@ using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -426,6 +427,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "class_unification_type_mismatch_is_correct
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_field_access_error")
 {
+    ScopedFastFlag sff = { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true };
+
     CheckResult result = check(R"(
 local b: Vector2? = nil
 local a = b.X + b.Z
@@ -436,7 +439,7 @@ b.X = 2 -- real Vector2.X is also read-only
     LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors.at(0)));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
-    CHECK_EQ("Key 'Z' not found in class 'Vector2'", toString(result.errors[2]));
+    CHECK_EQ("Key 'Z' not found in external type 'Vector2'", toString(result.errors[2]));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
 }
 
@@ -715,19 +718,23 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
     // Check that we string key are rejected if the indexer's key type is not compatible with string
     {
+        ScopedFastFlag sff = { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true };
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             x.key = 1
         )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
     }
     {
+        ScopedFastFlag sff = { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true };
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             x["key"] = 1
         )");
         if (FFlag::LuauSolverV2)
-            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
     }
@@ -740,19 +747,23 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
         CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
     }
     {
+        ScopedFastFlag sff = { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true };
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             local y = x.key
         )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
     }
     {
+        ScopedFastFlag sff = { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true };
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             local y = x["key"]
         )");
         if (FFlag::LuauSolverV2)
-            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in class 'IndexableNumericKeyClass'");
+            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in external type 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
     }

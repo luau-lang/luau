@@ -20,6 +20,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauNormalizationPreservesAny)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAG(LuauFixSubtypingOfNegations)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 using namespace Luau;
 
@@ -1687,6 +1688,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_properties_should_not_refine_extern_types_to_never")
 {
+    ScopedFastFlag sff = { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true };
 
     CheckResult result = check(R"(
         local weld: WeldConstraint = nil :: any
@@ -1698,7 +1700,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_propertie
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), "Key 'Part8' not found in class 'WeldConstraint'");
+    CHECK_EQ(toString(result.errors[0]), "Key 'Part8' not found in external type 'WeldConstraint'");
 
     CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
     if (FFlag::LuauSolverV2)
