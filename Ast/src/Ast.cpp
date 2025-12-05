@@ -2,7 +2,8 @@
 #include "Luau/Ast.h"
 
 #include "Luau/Common.h"
-#include "Luau/StringUtils.h"
+
+LUAU_FASTFLAGVARIABLE(LuauStandaloneParseType)
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 

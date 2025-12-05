@@ -28,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenInterruptIsNotForWrites)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFloatLoadStoreProp)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAGVARIABLE(LuauCodegenChainLink)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerAddSub)
 
 namespace Luau
 {
@@ -97,6 +98,17 @@ static uint8_t tryGetTagForTypename(std::string_view name, bool forTypeof)
         return LUA_TBUFFER;
 
     return 0xff;
+}
+
+// Check if we can treat double as an integer in addition and subtraction
+static bool safeIntegerConstant(double value)
+{
+    // Within 32 bits, note that we allow both max unsigned number as well as a negative counterpart
+    // Doubles are actually ok within even larger bounds (but not exactly 2^53), but we use the function in 32 bit optimizations
+    if (value < -4294967295.0 || value > 4294967295.0)
+        return false;
+
+    return double((long long)value) == value;
 }
 
 // Data we know about the current VM state
@@ -1344,6 +1356,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
         // These instructions don't have an effect on register/memory state we are tracking
     case IrCmd::NOP:
+        break;
     case IrCmd::LOAD_ENV:
         break;
     case IrCmd::GET_ARR_ADDR:
@@ -1574,11 +1587,81 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::NUM_TO_UINT:
-        if (IrInst* src = function.asInstOp(inst.a); src && src->cmd == IrCmd::UINT_TO_NUM)
-            substitute(function, inst, src->a);
-        else
+    {
+        if (FFlag::LuauCodegenIntegerAddSub)
+        {
+            IrInst* src = function.asInstOp(inst.a);
+
+            if (src && src->cmd == IrCmd::UINT_TO_NUM)
+            {
+                substitute(function, inst, src->a);
+                break;
+            }
+
+            if (src && src->cmd == IrCmd::ADD_NUM)
+            {
+                IrInst* addSrc1 = function.asInstOp(src->a);
+                std::optional<double> addNum1 = function.asDoubleOp(src->a);
+                IrInst* addSrc2 = function.asInstOp(src->b);
+                std::optional<double> addNum2 = function.asDoubleOp(src->b);
+
+                if (addSrc1 && addSrc1->cmd == IrCmd::UINT_TO_NUM && addSrc2 && addSrc2->cmd == IrCmd::UINT_TO_NUM)
+                {
+                    // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
+                    replace(function, block, index, {IrCmd::ADD_INT, addSrc1->a, addSrc2->a});
+                    break;
+                }
+                else if (addNum1 && safeIntegerConstant(*addNum1) && addSrc2 && addSrc2->cmd == IrCmd::UINT_TO_NUM)
+                {
+                    // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
+                    replace(function, block, index, {IrCmd::ADD_INT, build.constInt(unsigned((long long)*addNum1)), addSrc2->a});
+                    break;
+                }
+                else if (addSrc1 && addSrc1->cmd == IrCmd::UINT_TO_NUM && addNum2 && safeIntegerConstant(*addNum2))
+                {
+                    // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
+                    replace(function, block, index, {IrCmd::ADD_INT, addSrc1->a, build.constInt(unsigned((long long)*addNum2))});
+                    break;
+                }
+            }
+            else if (src && src->cmd == IrCmd::SUB_NUM)
+            {
+                IrInst* addSrc1 = function.asInstOp(src->a);
+                std::optional<double> addNum1 = function.asDoubleOp(src->a);
+                IrInst* addSrc2 = function.asInstOp(src->b);
+                std::optional<double> addNum2 = function.asDoubleOp(src->b);
+
+                if (addSrc1 && addSrc1->cmd == IrCmd::UINT_TO_NUM && addSrc2 && addSrc2->cmd == IrCmd::UINT_TO_NUM)
+                {
+                    // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
+                    replace(function, block, index, {IrCmd::SUB_INT, addSrc1->a, addSrc2->a});
+                    break;
+                }
+                else if (addNum1 && safeIntegerConstant(*addNum1) && addSrc2 && addSrc2->cmd == IrCmd::UINT_TO_NUM)
+                {
+                    // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
+                    replace(function, block, index, {IrCmd::SUB_INT, build.constInt(unsigned((long long)*addNum1)), addSrc2->a});
+                    break;
+                }
+                else if (addSrc1 && addSrc1->cmd == IrCmd::UINT_TO_NUM && addNum2 && safeIntegerConstant(*addNum2))
+                {
+                    // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
+                    replace(function, block, index, {IrCmd::SUB_INT, addSrc1->a, build.constInt(unsigned((long long)*addNum2))});
+                    break;
+                }
+            }
+
             state.substituteOrRecord(inst, index);
+        }
+        else
+        {
+            if (IrInst* src = function.asInstOp(inst.a); src && src->cmd == IrCmd::UINT_TO_NUM)
+                substitute(function, inst, src->a);
+            else
+                state.substituteOrRecord(inst, index);
+        }
         break;
+    }
     case IrCmd::CHECK_ARRAY_SIZE:
     {
         std::optional<int> arrayIndex = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));

@@ -22,7 +22,6 @@ LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauTrackUniqueness)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
@@ -295,8 +294,6 @@ TEST_CASE_FIXTURE(Fixture, "compare_strings")
 
 TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_metatable")
 {
-    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
-
     CheckResult result = check(R"(
         local a = {}
         local b = {}
@@ -319,8 +316,6 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
 {
-    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
-
     CheckResult result = check(R"(
         local M = {}
         function M.new()
@@ -867,8 +862,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators")
 {
-    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
-
     CheckResult result = check(R"(
         local a: boolean = true
         local b: boolean = false
@@ -893,8 +886,6 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators2")
 {
-    ScopedFastFlag _{FFlag::LuauNoOrderingTypeFunctions, true};
-
     CheckResult result = check(R"(
         local a: number | string = ""
         local b: number | string = 1

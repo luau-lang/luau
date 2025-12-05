@@ -31,7 +31,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAG(LuauDontReferenceScopePtrFromHashTable)
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
@@ -2656,7 +2655,6 @@ TEST_CASE_FIXTURE(Fixture, "nested_functions_can_depend_on_outer_generics")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unterminated_function_body_causes_constraint_generator_crash")
 {
-    ScopedFastFlag _{FFlag::LuauDontReferenceScopePtrFromHashTable, true};
     // This should not crash
     CheckResult result = check(R"(
 export type t = {

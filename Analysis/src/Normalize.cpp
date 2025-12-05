@@ -5,7 +5,6 @@
 
 #include <algorithm>
 
-#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Set.h"
@@ -23,9 +22,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIntersectionLimit, 200)
 LUAU_FASTINTVARIABLE(LuauNormalizeUnionLimit, 100)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAGVARIABLE(LuauImproveNormalizeExternTypeCheck)
-LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAGVARIABLE(LuauNormalizerUnionTyvarsTakeMaxSize)
 LUAU_FASTFLAGVARIABLE(LuauNormalizationPreservesAny)
 LUAU_FASTFLAGVARIABLE(LuauNormalizerStepwiseFuel)
@@ -3634,10 +3631,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         if (get<NeverType>(intersect->tops))
         {
             TypeId ty = typeFromNormal(*intersect);
-            if (FFlag::LuauReduceSetTypeStackPressure)
-                result.push_back(addIntersection(NotNull{arena}, builtinTypes, {tyvar, ty}));
-            else
-                result.push_back(arena->addType(IntersectionType{{tyvar, ty}}));
+            result.push_back(addIntersection(NotNull{arena}, builtinTypes, {tyvar, ty}));
         }
         else
             result.push_back(tyvar);
@@ -3684,7 +3678,6 @@ bool isSubtype(
     TypeId superTy,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     InternalErrorReporter& ice,
     SolverMode solverMode
 )
@@ -3701,7 +3694,7 @@ bool isSubtype(
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
         if (solverMode == SolverMode::New)
         {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
             return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
         }
@@ -3718,7 +3711,7 @@ bool isSubtype(
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
         if (FFlag::LuauSolverV2)
         {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
             return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
         }
@@ -3737,7 +3730,6 @@ bool isSubtype(
     TypePackId superPack,
     NotNull<Scope> scope,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     InternalErrorReporter& ice,
     SolverMode solverMode
 )
@@ -3754,10 +3746,9 @@ bool isSubtype(
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
         if (solverMode == SolverMode::New)
         {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-            return FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype
-                                                              : subtyping.isSubtype_DEPRECATED(subPack, superPack, scope).isSubtype;
+            return subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype;
         }
         else
         {
@@ -3772,10 +3763,9 @@ bool isSubtype(
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
         if (FFlag::LuauSolverV2)
         {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, simplifier, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-            return FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype
-                                                              : subtyping.isSubtype_DEPRECATED(subPack, superPack, scope).isSubtype;
+            return subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype;
         }
         else
         {

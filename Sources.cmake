@@ -60,6 +60,7 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/CostModel.h
     Compiler/src/TableShape.h
     Compiler/src/Types.h
+    Compiler/src/Utils.h
     Compiler/src/ValueTracking.h
 )
 
@@ -193,7 +194,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Def.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
-    Analysis/include/Luau/EqSatSimplification.h
     Analysis/include/Luau/ExpectedTypeVisitor.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/FragmentAutocomplete.h
@@ -275,7 +275,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Def.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
-    Analysis/src/EqSatSimplification.cpp
     Analysis/src/ExpectedTypeVisitor.cpp
     Analysis/src/FileResolver.cpp
     Analysis/src/FragmentAutocomplete.cpp
@@ -327,19 +326,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Unifier.cpp
     Analysis/src/Unifier2.cpp
     Analysis/src/UserDefinedTypeFunction.cpp
-)
-
-# Luau.EqSat Sources
-target_sources(Luau.EqSat PRIVATE
-    EqSat/include/Luau/EGraph.h
-    EqSat/include/Luau/Id.h
-    EqSat/include/Luau/Language.h
-    EqSat/include/Luau/LanguageHash.h
-    EqSat/include/Luau/Slice.h
-    EqSat/include/Luau/UnionFind.h
-
-    EqSat/src/Id.cpp
-    EqSat/src/UnionFind.cpp
 )
 
 # Luau.VM Sources
@@ -473,10 +459,6 @@ if(TARGET Luau.UnitTest)
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
         tests/DenseHash.test.cpp
-        tests/EqSat.language.test.cpp
-        tests/EqSat.propositional.test.cpp
-        tests/EqSat.slice.test.cpp
-        tests/EqSatSimplification.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h

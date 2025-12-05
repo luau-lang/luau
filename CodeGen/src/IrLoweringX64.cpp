@@ -17,6 +17,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
+LUAU_FASTFLAG(LuauCodegenIntegerAddSub)
 
 namespace Luau
 {
@@ -373,12 +374,45 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::SUB_INT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.regX64 == regOp(inst.a) && intOp(inst.b) == 1)
-            build.dec(inst.regX64);
-        else if (inst.regX64 == regOp(inst.a))
-            build.sub(inst.regX64, intOp(inst.b));
+        if (FFlag::LuauCodegenIntegerAddSub)
+        {
+            if (inst.a.kind == IrOpKind::Inst)
+            {
+                if (inst.b.kind == IrOpKind::Constant)
+                {
+                    if (inst.regX64 != regOp(inst.a))
+                        build.lea(inst.regX64, addr[regOp(inst.a) - intOp(inst.b)]);
+                    else
+                        build.sub(inst.regX64, intOp(inst.b));
+                }
+                else
+                {
+                    // If result reuses the source, we can subtract in place, otherwise we need to setup our initial value
+                    if (inst.regX64 != regOp(inst.a))
+                        build.mov(inst.regX64, regOp(inst.a));
+
+                    build.sub(inst.regX64, regOp(inst.b));
+                }
+            }
+            else if (inst.b.kind == IrOpKind::Inst)
+            {
+                build.mov(inst.regX64, intOp(inst.a));
+                build.sub(inst.regX64, regOp(inst.b));
+            }
+            else
+            {
+                CODEGEN_ASSERT(!"Unsupported instruction form");
+            }
+        }
         else
-            build.lea(inst.regX64, addr[regOp(inst.a) - intOp(inst.b)]);
+        {
+            if (inst.regX64 == regOp(inst.a) && intOp(inst.b) == 1)
+                build.dec(inst.regX64);
+            else if (inst.regX64 == regOp(inst.a))
+                build.sub(inst.regX64, intOp(inst.b));
+            else
+                build.lea(inst.regX64, addr[regOp(inst.a) - intOp(inst.b)]);
+        }
         break;
     case IrCmd::ADD_NUM:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
@@ -1226,6 +1260,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::NUM_TO_UINT:
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
+        // Note: we perform 'uint64_t = (long long)double' for consistency with C++ code
         build.vcvttsd2si(qwordReg(inst.regX64), memRegDoubleOp(inst.a));
         break;
     case IrCmd::NUM_TO_VEC:

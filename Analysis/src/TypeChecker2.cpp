@@ -40,14 +40,13 @@ LUAU_FASTFLAG(LuauTrackUniqueness)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
-LUAU_FASTFLAGVARIABLE(LuauNoOrderingTypeFunctions)
-LUAU_FASTFLAGVARIABLE(LuauNewOverloadResolver)
-LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
+LUAU_FASTFLAGVARIABLE(LuauNewOverloadResolver2)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-
+  
 namespace Luau
 {
 
@@ -287,7 +286,6 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
 void check(
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
@@ -298,7 +296,7 @@ void check(
 {
     LUAU_TIMETRACE_SCOPE("check", "Typechecking");
 
-    TypeChecker2 typeChecker{builtinTypes, simplifier, typeFunctionRuntime, unifierState, limits, logger, &sourceModule, module};
+    TypeChecker2 typeChecker{builtinTypes, typeFunctionRuntime, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
 
@@ -309,7 +307,6 @@ void check(
 
 TypeChecker2::TypeChecker2(
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<UnifierSharedState> unifierState,
     NotNull<TypeCheckLimits> limits,
@@ -318,7 +315,6 @@ TypeChecker2::TypeChecker2(
     Module* module
 )
     : builtinTypes(builtinTypes)
-    , simplifier(simplifier)
     , typeFunctionRuntime(typeFunctionRuntime)
     , logger(logger)
     , limits(limits)
@@ -326,7 +322,7 @@ TypeChecker2::TypeChecker2(
     , sourceModule(sourceModule)
     , module(module)
     , normalizer{&module->internalTypes, builtinTypes, unifierState, SolverMode::New, /* cacheInhabitance */ true}
-    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, simplifier, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
+    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
     , subtyping(&_subtyping)
 {
 }
@@ -504,9 +500,7 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         return instance;
     seenTypeFunctionInstances.insert(instance);
 
-    TypeFunctionContext context{
-        NotNull{&module->internalTypes}, builtinTypes, stack.back(), simplifier, NotNull{&normalizer}, typeFunctionRuntime, ice, limits
-    };
+    TypeFunctionContext context{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits};
 
     ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
     if (!isErrorSuppressing(location, instance))
@@ -1707,7 +1701,6 @@ void TypeChecker2::visitCall(AstExprCall* call)
     OverloadResolver resolver{
         builtinTypes,
         NotNull{&module->internalTypes},
-        simplifier,
         NotNull{&normalizer},
         typeFunctionRuntime,
         NotNull{stack.back()},
@@ -1719,14 +1712,13 @@ void TypeChecker2::visitCall(AstExprCall* call)
     if (FFlag::LuauTrackUniqueness)
         findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
-    if (FFlag::LuauNewOverloadResolver)
+    if (FFlag::LuauNewOverloadResolver2)
     {
         TypePackId argsPack = module->internalTypes.addTypePack(args);
         const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
 
-        // We should have a fully solved type graph at this point.
-        // Maybe we should report an InternalError here instead?
-        LUAU_ASSERT(result2.potentialOverloads.empty());
+        if (!result2.potentialOverloads.empty())
+            reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
 
         /*
          * If one overload matches, stop.  Nothing to report.
@@ -1741,9 +1733,12 @@ void TypeChecker2::visitCall(AstExprCall* call)
          *      If no overloads are arity matches, list all overloads.
          */
 
-        // TODO: Handle the case where multiple overloads are viable.
         if (!result2.ok.empty())
+        {
+            if (result2.ok.size() > 1)
+                reportError(AmbiguousFunctionCall{fnTy, argsPack}, call->location);
             return;
+        }
 
         std::vector<TypeId> overloadsToReport;
 
@@ -1826,14 +1821,19 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
         if (!result2.nonFunctions.empty())
         {
-            reportError(CannotCallNonFunction{fnTy}, call->func->location);
+            auto norm = normalizer.normalize(fnTy);
+            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
+                reportError(NormalizationTooComplex{}, call->func->location);
+            // At this point norm is non-null and inhabited.
+            if (!norm->shouldSuppressErrors())
+                reportError(CannotCallNonFunction{fnTy}, call->func->location);
             return;
         }
 
         return;
     }
 
-    resolver.resolve(fnTy, &args, call->func, &argExprs, NotNull{&uniqueTypes});
+    resolver.resolve_DEPRECATED(fnTy, &args, call->func, &argExprs, NotNull{&uniqueTypes});
 
     auto norm = normalizer.normalize(fnTy);
     if (!norm)
@@ -2091,7 +2091,10 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
                     reportError(NormalizationTooComplex{}, indexExpr->location);
                     [[fallthrough]];
                 case ErrorSuppression::DoNotSuppress:
-                    reportError(OptionalValueAccess{exprType}, indexExpr->location);
+                    if (FFlag::LuauFixIndexingUnionWithNonTable)
+                        reportError(NotATable{exprType}, indexExpr->location);
+                    else
+                        reportError(OptionalValueAccess{exprType}, indexExpr->location);
                 }
             }
             else
@@ -2616,23 +2619,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
             {
                 if (isComparison)
                 {
-                    if (FFlag::LuauNoOrderingTypeFunctions)
-                    {
-                        reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
-                    }
-                    else
-                    {
-                        reportError(
-                            GenericError{format(
-                                "Types '%s' and '%s' cannot be compared with %s because neither type's metatable has a '%s' metamethod",
-                                toString(leftType).c_str(),
-                                toString(rightType).c_str(),
-                                toString(expr->op).c_str(),
-                                it->second
-                            )},
-                            expr->location
-                        );
-                    }
+                    reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
                 }
                 else
                 {
@@ -2654,22 +2641,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
             {
                 if (isComparison)
                 {
-                    if (FFlag::LuauNoOrderingTypeFunctions)
-                    {
-                        reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
-                    }
-                    else
-                    {
-                        reportError(
-                            GenericError{format(
-                                "Types '%s' and '%s' cannot be compared with %s because neither type has a metatable",
-                                toString(leftType).c_str(),
-                                toString(rightType).c_str(),
-                                toString(expr->op).c_str()
-                            )},
-                            expr->location
-                        );
-                    }
+                    reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
                 }
                 else
                 {
@@ -2721,37 +2693,18 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         if (normLeft && normalizer.isInhabited(normLeft.get()) == NormalizationResult::False)
             return builtinTypes->booleanType;
 
-        if (FFlag::LuauNoOrderingTypeFunctions)
+        // This could be a little wasteful, as we already have normalized
+        // types, but correctly handles cases like `_: (T & number) <= _: (T & number)`.
+        if (subtyping->isSubtype(leftType, builtinTypes->numberType, scope).isSubtype)
         {
-            // This could be a little wasteful, as we already have normalized
-            // typeArguments, but correctly handles cases like `_: (T & number) <= _: (T & number)`.
-
-            if (subtyping->isSubtype(leftType, builtinTypes->numberType, scope).isSubtype)
-            {
-                testIsSubtype(rightType, builtinTypes->numberType, expr->right->location);
-                return builtinTypes->booleanType;
-            }
-
-            if (subtyping->isSubtype(leftType, builtinTypes->stringType, scope).isSubtype)
-            {
-                testIsSubtype(rightType, builtinTypes->stringType, expr->right->location);
-                return builtinTypes->booleanType;
-            }
+            testIsSubtype(rightType, builtinTypes->numberType, expr->right->location);
+            return builtinTypes->booleanType;
         }
-        else
+
+        if (subtyping->isSubtype(leftType, builtinTypes->stringType, scope).isSubtype)
         {
-
-            if (normLeft && normLeft->isExactlyNumber())
-            {
-                testIsSubtype(rightType, builtinTypes->numberType, expr->right->location);
-                return builtinTypes->booleanType;
-            }
-
-            if (normLeft && normLeft->isSubtypeOfString())
-            {
-                testIsSubtype(rightType, builtinTypes->stringType, expr->right->location);
-                return builtinTypes->booleanType;
-            }
+            testIsSubtype(rightType, builtinTypes->stringType, expr->right->location);
+            return builtinTypes->booleanType;
         }
 
         reportError(
@@ -3511,8 +3464,7 @@ bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location
 bool TypeChecker2::testIsSubtype(TypePackId subTy, TypePackId superTy, Location location)
 {
     NotNull<Scope> scope{findInnermostScope(location)};
-    SubtypingResult r = FFlag::LuauPassBindableGenericsByReference ? subtyping->isSubtype(subTy, superTy, scope, {})
-                                                                   : subtyping->isSubtype_DEPRECATED(subTy, superTy, scope);
+    SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope, {});
 
     if (!isErrorSuppressing(location, subTy))
     {
@@ -3814,7 +3766,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
-            if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, simplifier, *ice, SolverMode::New))
+            if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New))
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
         }
 
@@ -3942,8 +3894,7 @@ void TypeChecker2::checkTypeInstantiation(
     const FunctionType* ftv = get<FunctionType>(follow(fnType));
     if (!ftv)
     {
-        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase =
-        InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
+        InstantiateGenericsOnNonFunction::InterestingEdgeCase interestingEdgeCase = InstantiateGenericsOnNonFunction::InterestingEdgeCase::None;
 
         if (findMetatableEntry(builtinTypes, module->errors, fnType, "__call", location).has_value())
         {

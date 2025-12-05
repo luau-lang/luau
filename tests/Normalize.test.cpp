@@ -31,14 +31,11 @@ struct IsSubtypeFixture : Fixture
         if (!module->hasModuleScope())
             FAIL("isSubtype: module scope data is not available");
 
-        SimplifierPtr simplifier = newSimplifier(NotNull{&module->internalTypes}, getBuiltins());
-
         return ::Luau::isSubtype(
             a,
             b,
             NotNull{module->getModuleScope().get()},
             getBuiltins(),
-            NotNull{simplifier.get()},
             ice,
             FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old
         );

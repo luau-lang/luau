@@ -8,6 +8,8 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileUnusedUdataFix)
+LUAU_FASTFLAG(LuauCompileStringCharSubFold)
+LUAU_FASTFLAG(LuauCompileCallCostModel)
 
 namespace Luau
 {
@@ -486,6 +488,16 @@ void BytecodeBuilder::emitAux(uint32_t aux)
 {
     insns.push_back(aux);
     lines.push_back(debugLine);
+}
+
+void BytecodeBuilder::undoEmit(LuauOpcode op)
+{
+    LUAU_ASSERT(FFlag::LuauCompileCallCostModel);
+    LUAU_ASSERT(!insns.empty());
+    LUAU_ASSERT((insns.back() & 0xff) == op);
+
+    insns.pop_back();
+    lines.pop_back();
 }
 
 size_t BytecodeBuilder::emitLabel()
@@ -1820,6 +1832,23 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
                 formatAppend(result, "'%.*s'", int(str.length), str.data);
             else
                 formatAppend(result, "'%.*s'...", 32, str.data);
+        }
+        else if (FFlag::LuauCompileStringCharSubFold)
+        {
+            formatAppend(result, "'");
+
+            for (size_t i = 0; i < str.length && i < 32; ++i)
+            {
+                if (unsigned(str.data[i]) < ' ')
+                    formatAppend(result, "\\x%02X", uint8_t(str.data[i]));
+                else
+                    formatAppend(result, "%c", str.data[i]);
+            }
+
+            if (str.length >= 32)
+                formatAppend(result, "'...");
+            else
+                formatAppend(result, "'");
         }
         break;
     }

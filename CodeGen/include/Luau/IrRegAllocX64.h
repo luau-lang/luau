@@ -54,9 +54,12 @@ struct IrRegAllocX64
 
     unsigned findSpillStackSlot(IrValueKind valueKind);
 
-    IrOp getRestoreOp(const IrInst& inst) const;
-    bool hasRestoreOp(const IrInst& inst) const;
-    OperandX64 getRestoreAddress(const IrInst& inst, IrOp restoreOp);
+    // TODO: Remove with FFlagLuauCodegenChainedSpills
+    IrOp getRestoreOp_DEPRECATED(const IrInst& inst) const;
+    bool hasRestoreOp_DEPRECATED(const IrInst& inst) const;
+    OperandX64 getRestoreAddress_DEPRECATED(const IrInst& inst, IrOp restoreOp);
+
+    OperandX64 getRestoreAddress(const IrInst& inst, ValueRestoreLocation restoreLocation);
 
     // Register used by instruction is about to be freed, have to find a way to restore value later
     void preserve(IrInst& inst);

@@ -29,6 +29,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAG(LuauAutocompleteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -166,7 +167,6 @@ static bool checkTypeMatch(
 {
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
-    SimplifierPtr simplifier = newSimplifier(NotNull{typeArena}, builtinTypes);
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}, module.checkedInNewSolver ? SolverMode::New : SolverMode::Old};
     if (module.checkedInNewSolver)
     {
@@ -178,9 +178,7 @@ static bool checkTypeMatch(
         unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
         unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
 
-        Subtyping subtyping{
-            builtinTypes, NotNull{typeArena}, NotNull{simplifier.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}
-        };
+        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceReporter}};
 
         return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
     }
@@ -324,6 +322,38 @@ static void autocompleteProps(
         return calledWithSelf;
     };
 
+    auto maybeFillSingletonProp = [&](TypeId type)
+    {
+        if (auto singletonTy = get<SingletonType>(type))
+        {
+            if (auto stringSingleton = get<StringSingleton>(singletonTy))
+            {
+
+                TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
+                                                  ? TypeCorrectKind::Correct
+                                                  : checkTypeCorrectKind(module, typeArena, builtinTypes, nodes.back(), {{}, {}}, type);
+
+                ParenthesesRecommendation parens =
+                    indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(ty, nodes, typeCorrect);
+
+                result[stringSingleton->value] = AutocompleteEntry{
+                    AutocompleteEntryKind::String,
+                    type,
+                    /* deprecated */ false,
+                    isWrongIndexer(type),
+                    typeCorrect,
+                    containingExternType,
+                    std::nullopt,
+                    std::nullopt,
+                    {},
+                    parens,
+                    {},
+                    indexType == PropIndexType::Colon
+                };
+            }
+        }
+    };
+
     auto fillProps = [&](const ExternType::Props& props)
     {
         for (const auto& [name, prop] : props)
@@ -400,7 +430,20 @@ static void autocompleteProps(
             autocompleteProps(module, typeArena, builtinTypes, rootTy, *cls->parent, indexType, nodes, result, seen, containingExternType);
     }
     else if (auto tbl = get<TableType>(ty))
+    {
         fillProps(tbl->props);
+        if (FFlag::LuauAutocompleteSingletonsInIndexer && tbl->indexer && indexType == PropIndexType::Point)
+        {
+            auto indexerTy = follow(tbl->indexer->indexType);
+            if (auto utv = get<UnionType>(indexerTy))
+            {
+                for (auto option : utv)
+                    maybeFillSingletonProp(option);
+            }
+            else
+                maybeFillSingletonProp(indexerTy);
+        }
+    }
     else if (auto mt = get<MetatableType>(ty))
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);

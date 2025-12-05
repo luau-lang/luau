@@ -16,7 +16,6 @@ using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAG(LuauExternTableIndexersIntersect)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -1077,10 +1076,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExternTableIndexersIntersect, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(obj: { [any]: any }, functionName: string)
@@ -1095,10 +1091,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauExternTableIndexersIntersect, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type Foobar with

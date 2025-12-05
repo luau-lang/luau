@@ -11,6 +11,7 @@
 #include "CostModel.h"
 #include "TableShape.h"
 #include "Types.h"
+#include "Utils.h"
 #include "ValueTracking.h"
 
 #include <algorithm>
@@ -28,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAG(LuauInterpStringConstFolding)
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
 
 namespace Luau
 {
@@ -163,20 +165,25 @@ struct Compiler
         return uint8_t(upvals.size() - 1);
     }
 
-    // true iff all execution paths through node subtree result in return/break/continue
-    // note: because this function doesn't visit loop nodes, it (correctly) only detects break/continue that refer to the outer control flow
     bool alwaysTerminates(AstStat* node)
     {
-        if (AstStatBlock* stat = node->as<AstStatBlock>())
-            return stat->body.size > 0 && alwaysTerminates(stat->body.data[stat->body.size - 1]);
-        else if (node->is<AstStatReturn>())
-            return true;
-        else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
-            return true;
-        else if (AstStatIf* stat = node->as<AstStatIf>())
-            return stat->elsebody && alwaysTerminates(stat->thenbody) && alwaysTerminates(stat->elsebody);
+        if (FFlag::LuauCompileCallCostModel)
+        {
+            return Compile::alwaysTerminates(constants, node);
+        }
         else
-            return false;
+        {
+            if (AstStatBlock* stat = node->as<AstStatBlock>())
+                return stat->body.size > 0 && alwaysTerminates(stat->body.data[stat->body.size - 1]);
+            else if (node->is<AstStatReturn>())
+                return true;
+            else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
+                return true;
+            else if (AstStatIf* stat = node->as<AstStatIf>())
+                return stat->elsebody && alwaysTerminates(stat->thenbody) && alwaysTerminates(stat->elsebody);
+            else
+                return false;
+        }
     }
 
     void emitLoadK(uint8_t target, int32_t cid)
@@ -245,17 +252,46 @@ struct Compiler
 
         AstStatBlock* stat = func->body;
 
-        for (size_t i = 0; i < stat->body.size; ++i)
-            compileStat(stat->body.data[i]);
-
-        // valid function bytecode must always end with RETURN
-        // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
-        if (!alwaysTerminates(stat))
+        if (FFlag::LuauCompileCallCostModel)
         {
-            setDebugLineEnd(stat);
-            closeLocals(0);
+            bool terminatesEarly = false;
 
-            bytecode.emitABC(LOP_RETURN, 0, 1, 0);
+            for (size_t i = 0; i < stat->body.size; ++i)
+            {
+                AstStat* bodyStat = stat->body.data[i];
+                compileStat(bodyStat);
+
+                if (alwaysTerminates(bodyStat))
+                {
+                    terminatesEarly = true;
+                    break;
+                }
+            }
+
+            // valid function bytecode must always end with RETURN
+            // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
+            if (!terminatesEarly)
+            {
+                setDebugLineEnd(stat);
+                closeLocals(0);
+
+                bytecode.emitABC(LOP_RETURN, 0, 1, 0);
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < stat->body.size; ++i)
+                compileStat(stat->body.data[i]);
+
+            // valid function bytecode must always end with RETURN
+            // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
+            if (!alwaysTerminates(stat))
+            {
+                setDebugLineEnd(stat);
+                closeLocals(0);
+
+                bytecode.emitABC(LOP_RETURN, 0, 1, 0);
+            }
         }
 
         // constant folding may remove some upvalue refs from bytecode, so this puts them back
@@ -616,16 +652,34 @@ struct Compiler
 
         // compute constant bitvector for all arguments to feed the cost model
         bool varc[8] = {};
+        bool hasConstant = false;
         for (size_t i = 0; i < func->args.size && i < expr->args.size && i < 8; ++i)
-            varc[i] = isConstant(expr->args.data[i]);
+        {
+            if (isConstant(expr->args.data[i]))
+            {
+                varc[i] = true;
+                hasConstant = true;
+            }
+        }
 
         // if the last argument only returns a single value, all following arguments are nil
         if (expr->args.size != 0 && !isExprMultRet(expr->args.data[expr->args.size - 1]))
+        {
             for (size_t i = expr->args.size; i < func->args.size && i < 8; ++i)
+            {
                 varc[i] = true;
+                hasConstant = true;
+            }
+        }
+
+        // If we had constant arguments that can affect the cost model of this specific call in non-trivial ways
+        uint64_t callCostModel = fi->costModel;
+
+        if (FFlag::LuauCompileCallCostModel && hasConstant)
+            callCostModel = costModelInlinedCall(expr, func);
 
         // we use a dynamic cost threshold that's based on the fixed limit boosted by the cost advantage we gain due to inlining
-        int inlinedCost = computeCost(fi->costModel, varc, std::min(int(func->args.size), 8));
+        int inlinedCost = computeCost(FFlag::LuauCompileCallCostModel ? callCostModel : fi->costModel, varc, std::min(int(func->args.size), 8));
         int baselineCost = computeCost(fi->costModel, nullptr, 0) + 3;
         int inlineProfit = (inlinedCost == 0) ? thresholdMaxBoost : std::min(thresholdMaxBoost, 100 * baselineCost / inlinedCost);
 
@@ -643,6 +697,47 @@ struct Compiler
 
         compileInlinedCall(expr, func, target, targetCount);
         return true;
+    }
+
+    uint64_t costModelInlinedCall(AstExprCall* expr, AstExprFunction* func)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileCallCostModel);
+
+        for (size_t i = 0; i < func->args.size; ++i)
+        {
+            AstLocal* var = func->args.data[i];
+            AstExpr* arg = i < expr->args.size ? expr->args.data[i] : nullptr;
+
+            // last expression is a multret, there are no constant for it and it will fill all values
+            if (i + 1 == expr->args.size && func->args.size > expr->args.size && isExprMultRet(arg))
+                break;
+
+            // variable gets mutated at some point, so we do not have a constant for it
+            if (Variable* vv = variables.find(var); vv && vv->written)
+                continue;
+
+            if (arg == nullptr)
+                locstants[var] = {Constant::Type_Nil};
+            else if (const Constant* cv = constants.find(arg); cv && cv->type != Constant::Type_Unknown)
+                locstants[var] = *cv;
+        }
+
+        // fold constant values updated above into expressions in the function body
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
+
+        // model the cost of the function evaluated with current constants
+        uint64_t cost = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
+
+        // clean up constant state for future inlining attempts
+        for (size_t i = 0; i < func->args.size; ++i)
+        {
+            if (Constant* var = locstants.find(func->args.data[i]))
+                var->type = Constant::Type_Unknown;
+        }
+
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
+
+        return cost;
     }
 
     void compileInlinedCall(AstExprCall* expr, AstExprFunction* func, uint8_t target, uint8_t targetCount)
@@ -756,31 +851,67 @@ struct Compiler
         // fold constant values updated above into expressions in the function body
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
 
-        bool usedFallthrough = false;
-
-        for (size_t i = 0; i < func->body->body.size; ++i)
+        if (FFlag::LuauCompileCallCostModel)
         {
-            AstStat* stat = func->body->body.data[i];
+            bool terminatesEarly = false;
 
-            if (AstStatReturn* ret = stat->as<AstStatReturn>())
+            for (size_t i = 0; i < func->body->body.size; ++i)
             {
-                // Optimization: use fallthrough when compiling return at the end of the function to avoid an extra JUMP
-                compileInlineReturn(ret, /* fallthrough= */ true);
-                // TODO: This doesn't work when return is part of control flow; ideally we would track the state somehow and generalize this
-                usedFallthrough = true;
-                break;
-            }
-            else
+                AstStat* stat = func->body->body.data[i];
                 compileStat(stat);
+
+                if (alwaysTerminates(stat))
+                {
+                    terminatesEarly = true;
+
+                    // Remove the last jump which jumps directly to the next instruction
+                    InlineFrame& currFrame = inlineFrames.back();
+                    if (!currFrame.returnJumps.empty() && currFrame.returnJumps.back() == bytecode.emitLabel() - 1)
+                    {
+                        bytecode.undoEmit(LOP_JUMP);
+                        currFrame.returnJumps.pop_back();
+                    }
+                    break;
+                }
+            }
+
+            // for the fallthrough path we need to ensure we clear out target registers
+            if (!terminatesEarly)
+            {
+                for (size_t i = 0; i < targetCount; ++i)
+                    bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
+
+                closeLocals(oldLocals);
+            }
         }
-
-        // for the fallthrough path we need to ensure we clear out target registers
-        if (!usedFallthrough && !alwaysTerminates(func->body))
+        else
         {
-            for (size_t i = 0; i < targetCount; ++i)
-                bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
+            bool usedFallthrough = false;
 
-            closeLocals(oldLocals);
+            for (size_t i = 0; i < func->body->body.size; ++i)
+            {
+                AstStat* stat = func->body->body.data[i];
+
+                if (AstStatReturn* ret = stat->as<AstStatReturn>())
+                {
+                    // Optimization: use fallthrough when compiling return at the end of the function to avoid an extra JUMP
+                    compileInlineReturn(ret, /* fallthrough= */ true);
+                    // TODO: This doesn't work when return is part of control flow; ideally we would track the state somehow and generalize this
+                    usedFallthrough = true;
+                    break;
+                }
+                else
+                    compileStat(stat);
+            }
+
+            // for the fallthrough path we need to ensure we clear out target registers
+            if (!usedFallthrough && !alwaysTerminates(func->body))
+            {
+                for (size_t i = 0; i < targetCount; ++i)
+                    bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
+
+                closeLocals(oldLocals);
+            }
         }
 
         popLocals(oldLocals);
@@ -1204,16 +1335,30 @@ struct Compiler
 
     bool isConstantTrue(AstExpr* node)
     {
-        const Constant* cv = constants.find(node);
+        if (FFlag::LuauCompileCallCostModel)
+        {
+            return Compile::isConstantTrue(constants, node);
+        }
+        else
+        {
+            const Constant* cv = constants.find(node);
 
-        return cv && cv->type != Constant::Type_Unknown && cv->isTruthful();
+            return cv && cv->type != Constant::Type_Unknown && cv->isTruthful();
+        }
     }
 
     bool isConstantFalse(AstExpr* node)
     {
-        const Constant* cv = constants.find(node);
+        if (FFlag::LuauCompileCallCostModel)
+        {
+            return Compile::isConstantFalse(constants, node);
+        }
+        else
+        {
+            const Constant* cv = constants.find(node);
 
-        return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
+            return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
+        }
     }
 
     bool isConstantVector(AstExpr* node)
@@ -2972,12 +3117,22 @@ struct Compiler
 
         closeLocals(frame.localOffset);
 
-        if (!fallthrough)
+        if (FFlag::LuauCompileCallCostModel)
         {
             size_t jumpLabel = bytecode.emitLabel();
             bytecode.emitAD(LOP_JUMP, 0, 0);
 
             inlineFrames.back().returnJumps.push_back(jumpLabel);
+        }
+        else
+        {
+            if (!fallthrough)
+            {
+                size_t jumpLabel = bytecode.emitLabel();
+                bytecode.emitAD(LOP_JUMP, 0, 0);
+
+                inlineFrames.back().returnJumps.push_back(jumpLabel);
+            }
         }
     }
 
@@ -3626,8 +3781,22 @@ struct Compiler
 
             size_t oldLocals = localStack.size();
 
-            for (size_t i = 0; i < stat->body.size; ++i)
-                compileStat(stat->body.data[i]);
+            if (FFlag::LuauCompileCallCostModel)
+            {
+                for (size_t i = 0; i < stat->body.size; ++i)
+                {
+                    AstStat* bodyStat = stat->body.data[i];
+                    compileStat(bodyStat);
+
+                    if (alwaysTerminates(bodyStat))
+                        break;
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < stat->body.size; ++i)
+                    compileStat(stat->body.data[i]);
+            }
 
             closeLocals(oldLocals);
 

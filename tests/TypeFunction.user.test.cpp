@@ -8,9 +8,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(DebugLuauEqSatSimplification)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
+LUAU_FASTFLAG(LuauUserTypeFunctionsNoUninhabitedError)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -527,7 +527,10 @@ local function ok(idx: pass<number>): number return idx end
 local function notok(idx: fail<number>): never return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(
         toString(result.errors[0]) ==
         R"('fail' type function errored at runtime: [string "fail"]:7: type.inner: cannot call inner method on non-negation type: `number` type)"
@@ -861,7 +864,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
         local function bad(arg: badmetatable<>) end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
     UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
     REQUIRE(e);
     CHECK(
@@ -914,7 +920,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported")
         local function ok(idx: errors_if_string<string>): nil return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
     UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
     REQUIRE(e);
     CHECK(e->message == "'errors_if_string' type function errored at runtime: [string \"errors_if_string\"]:5: We are in a math class! not english");
@@ -932,7 +941,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_call_metamethod")
         local function ok(idx: hello<string>): nil return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
+
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
     UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
     REQUIRE(e);
     CHECK(e->message == "'hello' type function errored at runtime: [string \"hello\"]:3: userdata");
@@ -974,7 +987,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_type_cant_call_get_props")
         local function ok(idx: hello<() -> ()>): nil return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result); // There are 2 type function uninhabited error, 2 user defined type function error
     UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
     REQUIRE(e);
     CHECK(
@@ -1051,7 +1067,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(5, result);
     CHECK(toString(result.errors[0]) == R"(Unknown global 'fourth'; consider assigning to it first)");
     CHECK(toString(result.errors[1]) == R"('third' type function errored at runtime: [string "first"]:4: attempt to call a nil value)");
 }
@@ -1099,10 +1118,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
     )");
 
     // We are only checking first errors, others are mostly duplicates
-    LUAU_REQUIRE_ERROR_COUNT(9, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(5, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(9, result);
     CHECK(toString(result.errors[0]) == R"(Unknown global 'glob'; consider assigning to it first)");
     CHECK(toString(result.errors[1]) == R"('bar' type function errored at runtime: [string "foo"]:4: attempt to modify a readonly table)");
-    CHECK(toString(result.errors[2]) == R"(Type function instance bar<"x"> is uninhabited)");
+
+    if (!FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        CHECK(toString(result.errors[2]) == R"(Type function instance bar<"x"> is uninhabited)");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_math_reset")
@@ -1165,7 +1189,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
     )");
 
     // We are only checking first errors, others are mostly duplicates
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(5, result);
     CHECK(toString(result.errors[0]) == R"(Unknown global 'gcinfo'; consider assigning to it first)");
     CHECK(
         toString(result.errors[1]) ==
@@ -1273,7 +1300,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_type_methods_on_types")
         local function ok(tbl: test<number>): never return tbl end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"('test' type function errored at runtime: [string "test"]:3: attempt to call a nil value)");
 }
 
@@ -1288,7 +1318,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_types_functions_on_type")
         local function ok(tbl: test<number>): never return tbl end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"('test' type function errored at runtime: [string "test"]:3: attempt to call a nil value)");
 }
 
@@ -1305,7 +1338,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_metatable_writes")
         local function ok(tbl: test<number>): never return tbl end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"('test' type function errored at runtime: [string "test"]:4: attempt to index nil with 'is')");
 }
 
@@ -1320,7 +1356,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_eq_field")
         local function ok(tbl: test<number>): never return tbl end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"('test' type function errored at runtime: [string "test"]:3: attempt to call a nil value)");
 }
 
@@ -1502,11 +1541,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_error")
         local a: t0<string>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Where does this go)");
     CHECK(toString(result.errors[1]) == R"(string)");
     CHECK(toString(result.errors[2]) == R"('t0' type function errored at runtime: [string "t0"]:5: test)");
-    CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
+
+    if (!FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
@@ -1521,11 +1566,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error_plus_no_result")
         local a: t0<string>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Where does this go)");
     CHECK(toString(result.errors[1]) == R"(string)");
     CHECK(toString(result.errors[2]) == R"('t0' type function: returned a non-type value)");
-    CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
+
+    if (!FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        CHECK(toString(result.errors[3]) == R"(Type function instance t0<string> is uninhabited)");
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_serialization_1")
@@ -1851,7 +1901,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(
         toString(result.errors[0]) ==
         R"('get' type function errored at runtime: [string "get"]:4: types.newfunction: generic type cannot follow a generic pack)"
@@ -1870,7 +1923,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Generic type 'T' is not in a scope of the active generic function)");
 }
 
@@ -1891,7 +1947,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Generic type 'U' is not in a scope of the active generic function)");
 }
 
@@ -1907,7 +1966,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Duplicate type parameter 'T')");
 }
 
@@ -1923,7 +1985,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Duplicate type parameter 'T')");
 }
 
@@ -1939,7 +2004,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Generic type pack 'U...' cannot be placed in a type position)");
 }
 
@@ -1955,7 +2023,10 @@ end
 local function ok(idx: get<>): false return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"(Generic type pack 'U...' is not in a scope of the active generic function)");
 }
 
@@ -1978,27 +2049,6 @@ local function ok(idx: pass<test>): (number, ...string) -> (string, ...number) r
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_eqsat_opaque")
-{
-    if (!FFlag::LuauSolverV2)
-        return;
-
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauEqSatSimplification, true}};
-
-    CheckResult _ = check(R"(
-        type function t0(a)
-            error("test")
-        end
-        local v: t0<string & number>
-    )");
-    TypeArena arena;
-    auto ty = requireType("v");
-    auto simplifier = EqSatSimplification::newSimplifier(NotNull{&arena}, getBuiltins());
-    auto simplified = eqSatSimplify(NotNull{simplifier.get()}, ty);
-    REQUIRE(simplified);
-    CHECK_EQ("t0<number & string>", toString(simplified->result)); // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_singleton_equality_bool")
@@ -2348,7 +2398,10 @@ end
 local function ok(idx: get<>): number return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(5, result);
     CHECK(toString(result.errors[0]) == R"(Unknown global 'number'; consider assigning to it first)");
 }
 
@@ -2366,7 +2419,10 @@ end
 local function ok(idx: get<>): number return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK(toString(result.errors[0]) == R"('get' type function errored at runtime: [string "get"]:5: not enough arguments to call)");
 }
 
@@ -2404,8 +2460,14 @@ end
 local function ok(idx: get<>): number return idx end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
-    CHECK(toString(result.errors[1]) == R"(Type function instance get<> is uninhabited)");
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(
+        toString(result.errors[0]) ==
+        R"('get' type function errored at runtime: [string "get"]:5: failed to reduce type function with: Type function instance setmetatable<number, string> is uninhabited)"
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unreferenced_do_not_block")

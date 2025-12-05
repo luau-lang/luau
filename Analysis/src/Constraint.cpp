@@ -4,8 +4,6 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauNoOrderingTypeFunctions)
-
 namespace Luau
 {
 
@@ -87,8 +85,7 @@ TypeIds Constraint::getMaybeMutatedFreeTypes() const
     if (auto ec = get<EqualityConstraint>(*this))
     {
         rci.traverse(ec->resultType);
-        if (FFlag::LuauNoOrderingTypeFunctions)
-            rci.traverse(ec->assignmentType);
+        rci.traverse(ec->assignmentType);
     }
     else if (auto sc = get<SubtypeConstraint>(*this))
     {

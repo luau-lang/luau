@@ -26,9 +26,9 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauLimitUnification)
-LUAU_FASTFLAG(LuauReduceSetTypeStackPressure)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
-LUAU_FASTINT(LuauGenericCounterMaxDepth)
+LUAU_FASTINT(LuauGenericCounterMaxSteps)
+LUAU_FASTFLAG(LuauGenericCounterStepsInsteadOfCount)
 LUAU_FASTFLAG(LuauNormalizerStepwiseFuel)
 
 struct LimitFixture : BuiltinsFixture
@@ -546,10 +546,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReduceSetTypeStackPressure, true},
+        {FFlag::LuauGenericCounterStepsInsteadOfCount, true},
     };
 
-    ScopedFastInt sfi{FInt::LuauGenericCounterMaxDepth, 1};
+    ScopedFastInt sfi{FInt::LuauGenericCounterMaxSteps, 1};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function get(scale)

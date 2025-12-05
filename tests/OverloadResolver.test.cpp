@@ -8,8 +8,7 @@
 #include "Luau/UnifierSharedState.h"
 
 LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
-LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
-LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 using namespace Luau;
 
@@ -17,7 +16,6 @@ struct OverloadResolverFixture : Fixture
 {
     TypeArena arena_;
     NotNull<TypeArena> arena{&arena_};
-    SimplifierPtr simplifier = newSimplifier(arena, getBuiltins());
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
     InternalErrorReporter iceReporter;
@@ -33,7 +31,6 @@ struct OverloadResolverFixture : Fixture
         return OverloadResolver{
             getBuiltins(),
             arena,
-            NotNull{simplifier.get()},
             NotNull{&normalizer},
             NotNull{&typeFunctionRuntime},
             NotNull{&rootScope},
@@ -48,8 +45,6 @@ struct OverloadResolverFixture : Fixture
     Location kDummyLocation;
     AstExprConstantNil kDummyExpr{kDummyLocation};
     std::vector<AstExpr*> kEmptyExprs;
-
-    ScopedFastFlag sff3{FFlag::LuauPassBindableGenericsByReference, true};
 
     TypePackId pack(std::vector<TypeId> tys) const
     {
@@ -122,7 +117,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "basic_overload_selection")
     // ty: (number) -> number & (string) -> string
     // args: (number)
     auto [analysis, overload] =
-        resolver.selectOverload(numberToNumberAndStringToString, pack({getBuiltins()->numberType}), emptySet, false);
+        resolver.selectOverload_DEPRECATED(numberToNumberAndStringToString, pack({getBuiltins()->numberType}), emptySet, false);
 
     REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
     REQUIRE_EQ(numberToNumber, overload);
@@ -133,7 +128,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "basic_overload_selection1")
     // ty: (number) -> number & (string) -> string
     // args: (string)
     auto [analysis, overload] =
-        resolver.selectOverload(numberToNumberAndStringToString, pack({getBuiltins()->stringType}), emptySet, false);
+        resolver.selectOverload_DEPRECATED(numberToNumberAndStringToString, pack({getBuiltins()->stringType}), emptySet, false);
 
     REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
     REQUIRE_EQ(stringToString, overload);
@@ -144,7 +139,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities")
     // ty: (number) -> number & (number, number) -> number
     // args: (number)
     auto [analysis, overload] =
-        resolver.selectOverload(numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType}), emptySet, false);
+        resolver.selectOverload_DEPRECATED(numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType}), emptySet, false);
 
     REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
     REQUIRE_EQ(numberToNumber, overload);
@@ -154,7 +149,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities1")
 {
     // ty: (number) -> number & (number, number) -> number
     // args: (number, number)
-    auto [analysis, overload] = resolver.selectOverload(
+    auto [analysis, overload] = resolver.selectOverload_DEPRECATED(
         numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType, getBuiltins()->numberType}), emptySet, false
     );
 
@@ -169,7 +164,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "separate_non_viable_overloads_by_ari
     OverloadResolver r = mkResolver();
 
     const TypePack args = TypePack{{builtinTypes->stringType}, std::nullopt};
-    r.resolve(meet({numberToNumber, numberToString, numberNumberToNumber}), &args, &kDummyExpr, &kEmptyExprs, emptySet);
+    r.resolve_DEPRECATED(meet({numberToNumber, numberToString, numberNumberToNumber}), &args, &kDummyExpr, &kEmptyExprs, emptySet);
 
     CHECK(r.ok.empty());
     CHECK(r.nonFunctions.empty());
@@ -194,7 +189,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "separate_non_viable_overloads_by_ari
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
     // ty: (number) -> number & (string) -> string
     // args: (number)
     OverloadResolution result =
@@ -206,8 +200,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection1")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
-
     // ty: (number) -> number & (string) -> string
     // args: (string)
     OverloadResolution result =
@@ -222,8 +214,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection1")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_match_call_metamethod")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
-
     // (unknown, number) -> number
     TypeId callMm = fn({builtinTypes->unknownType, builtinTypes->numberType}, {builtinTypes->numberType});
     TypeId tbl = tableWithCall(callMm);
@@ -243,8 +233,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_match_call_metamethod")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_metamethod_could_be_overloaded")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
-
     // (unknown, number) -> number
     TypeId overload1 = fn({builtinTypes->unknownType, builtinTypes->numberType}, {builtinTypes->numberType});
     // (unknown, string) -> string
@@ -269,8 +257,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_metamethod_could_be_overloaded")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overload_group_could_include_metamethod")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
-
     // (unknown, number) -> number
     TypeId overload1 = fn({builtinTypes->unknownType, builtinTypes->numberType}, {builtinTypes->numberType});
     // (unknown, string) -> string
@@ -288,8 +274,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overload_group_could_include_met
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overloads_with_different_arities")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
-
     // ty: (number) -> number & (number, number) -> number
     // args: (number)
     OverloadResolution result =
@@ -304,7 +288,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overloads_with_different_arities
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overloads_with_different_arities1")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}, {FFlag::LuauNewOverloadResolver, true}};
+    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
 
     // ty: (number) -> number & (number, number) -> number
     // args: (number, number)
@@ -321,8 +305,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overloads_with_different_arities
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_separate_non_viable_overloads_by_arity_mismatch")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauPassBindableGenericsByReference, true}};
-
     // ty: ((number)->number) & ((number)->string) & ((number, number)->number)
     // args: (string)
     const TypePack args = TypePack{{builtinTypes->stringType}, std::nullopt};
@@ -405,7 +387,7 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_pass_table_with_indexer")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "generic_higher_order_function_called_improperly")
 {
-    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver, true};
+    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
 
     // apply: <A, B..., C...>((A, B...) -> C..., A) -> C...
     const TypeId genericA = arena->addType(GenericType{"A"});

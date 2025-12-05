@@ -13,18 +13,91 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauLimitUnification)
-LUAU_FASTFLAG(LuauSubtypingReportGenericBoundMismatches2)
-LUAU_FASTFLAG(LuauPassBindableGenericsByReference)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
-LUAU_FASTFLAG(LuauNewOverloadResolver)
+LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 namespace Luau
 {
 
+SelectedOverload OverloadResolution::getUnambiguousOverload() const
+{
+    if (ok.size() == 1 && potentialOverloads.size() == 0)
+    {
+        // Unambiguously: there is exactly one overload that matches
+        // without dispatching any more constraints.
+        return {
+            ok.front(),
+            {},
+            false,
+        };
+    }
+
+    if (ok.size() == 0 && potentialOverloads.size() == 1)
+    {
+        // Unambiguously: there are _no_ overloads that match without
+        // dispatching constraints, but there's exactly one that does
+        // match without dispatching constraints.
+        return {potentialOverloads.front().first, potentialOverloads.front().second, false};
+    }
+
+    if (ok.size() > 1)
+    {
+        // FIXME CLI-180645: We should try to infer a union of return
+        // types here so that we get better autocomplete / type
+        // inference for the rest of the function.
+        return { std::nullopt, {}, false };
+    }
+
+    if (potentialOverloads.size() + ok.size() > 1)
+    {
+        // This is a first case of "ambiguous" overloads: we have at least
+        // one overload that matches without constraints, and one that matches
+        // with extra constraints.
+        //
+        // This is the one spot where we return `true`, which callers may use
+        // to determine whether they should emit an error or try again later.
+        if (ok.empty())
+            return { potentialOverloads.front().first, potentialOverloads.front().second, true};
+        else
+        {
+            LUAU_ASSERT(ok.size() == 1);
+            return { ok.front(), {}, true };
+        }
+    }
+
+    LUAU_ASSERT(potentialOverloads.size() + ok.size() == 0);
+
+    // In this case, no overloads are valid. Let's try to pick the one that
+    // will cause us to report the most legible errors.
+    if (incompatibleOverloads.size() == 1)
+    {
+        // There's exactly one incompatible overload, but it has
+        // the right arity, so just use that. We'll fail type checking
+        // but that's ok.
+        return { incompatibleOverloads.front().first, {}, false };
+    }
+
+    // FIXME: CLI-180645: if `incompatiableOverloads` is non-empty, return a
+    // union of all its type packs to the user to use as the inferred return
+    // type.
+    //
+    // FIXME CLI-180638: If we have exactly one function, but there is an
+    // arity mismatch, then use that and move on.
+    //
+    // This is the final case:
+    // - There are _no_ overloads whose arguments are clean supertypes, nor
+    //   could be supertypes if constraints are dispatched.
+    // - There are no overloads that have the right arity but known
+    //   incompatible arguments.
+    // - There are either no, or more than one, overloads that just have an
+    //   arity mismatch.
+    // The best we can do here is unify against the error type and move on.
+    return { std::nullopt, {}, false };
+}
+
 OverloadResolver::OverloadResolver(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena,
-    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<Scope> scope,
@@ -34,13 +107,12 @@ OverloadResolver::OverloadResolver(
 )
     : builtinTypes(builtinTypes)
     , arena(arena)
-    , simplifier(simplifier)
     , normalizer(normalizer)
     , typeFunctionRuntime(typeFunctionRuntime)
     , scope(scope)
     , ice(reporter)
     , limits(limits)
-    , subtyping({builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, ice})
+    , subtyping({builtinTypes, arena, normalizer, typeFunctionRuntime, ice})
     , callLoc(callLocation)
 {
 }
@@ -119,10 +191,10 @@ OverloadResolution OverloadResolver::resolveOverload(
     if (auto it = get<IntersectionType>(ty))
     {
         for (TypeId component : it)
-            testFunctionOrCallMetamethod(result, component, argsPack, fnLocation, uniqueTypes);
+            testFunctionOrUnion(result, component, argsPack, fnLocation, uniqueTypes);
     }
     else
-        testFunctionOrCallMetamethod(result, ty, argsPack, fnLocation, uniqueTypes);
+        testFunctionOrUnion(result, ty, argsPack, fnLocation, uniqueTypes);
 
     return result;
 }
@@ -394,9 +466,22 @@ void OverloadResolver::testFunction(
     NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
-    LUAU_ASSERT(FFlag::LuauPassBindableGenericsByReference);
-
     fnTy = follow(fnTy);
+
+    // TODO: This seems like the wrong spot to do this check.
+    if (is<FreeType, BlockedType, PendingExpansionType>(fnTy))
+    {
+        std::vector<ConstraintV> constraints; // TODO.  Luckily, these constraints are not yet used.
+        result.potentialOverloads.emplace_back(fnTy, std::move(constraints));
+        return;
+    }
+
+    if (auto tfit = get<TypeFunctionInstanceType>(fnTy); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
+    {
+        std::vector<ConstraintV> constraints; // TODO.  Luckily, these constraints are not yet used.
+        result.potentialOverloads.emplace_back(fnTy, std::move(constraints));
+        return;
+    }
 
     const FunctionType* ftv = get<FunctionType>(fnTy);
     if (!ftv)
@@ -411,7 +496,7 @@ void OverloadResolver::testFunction(
         return;
     }
 
-    TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, ice, limits};
+    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits};
     FunctionGraphReductionResult reduceResult = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!reduceResult.errors.empty())
     {
@@ -466,6 +551,51 @@ void OverloadResolver::testFunction(
     }
 }
 
+void OverloadResolver::testFunctionOrUnion(
+    OverloadResolution& result,
+    TypeId fnTy,
+    TypePackId argsPack,
+    Location fnLocation,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
+)
+{
+    LUAU_ASSERT(fnTy == follow(fnTy));
+
+    if (auto ut = get<UnionType>(fnTy))
+    {
+        // A union of functions is a valid overload iff every type within it is a valid overload.
+
+        OverloadResolution innerResult;
+        size_t count = 0;
+        for (TypeId t : ut)
+        {
+            ++count;
+            testFunctionOrCallMetamethod(innerResult, t, argsPack, fnLocation, uniqueTypes);
+        }
+
+        if (count == innerResult.ok.size())
+        {
+            result.ok.emplace_back(fnTy);
+        }
+        else if (count == innerResult.ok.size() + innerResult.potentialOverloads.size())
+        {
+            std::vector<ConstraintV> allConstraints;
+            for (const auto& [_t, constraints] : innerResult.potentialOverloads)
+                allConstraints.insert(allConstraints.end(), constraints.begin(), constraints.end());
+
+            result.potentialOverloads.emplace_back(fnTy, std::move(allConstraints));
+        }
+        else
+        {
+            // FIXME: We should probably report something better here, but it's
+            // important for type checking that we include this.
+            result.incompatibleOverloads.emplace_back(fnTy, ErrorVec{{fnLocation, CannotCallNonFunction{fnTy}}});
+        }
+    }
+    else
+        testFunctionOrCallMetamethod(result, fnTy, argsPack, fnLocation, uniqueTypes);
+}
+
 /*
  * A utility function for ::resolveOverload. If a particular overload is a table
  * with a __call metamethod, unwrap that and test it.
@@ -498,6 +628,7 @@ void OverloadResolver::testFunctionOrCallMetamethod(
             for (TypeId component : it)
             {
                 component = follow(component);
+                result.metamethods.insert(component);
                 const FunctionType* fn = get<FunctionType>(component);
 
                 if (fn && !isArityCompatible(argsPack, fn->argTypes, builtinTypes))
@@ -507,13 +638,15 @@ void OverloadResolver::testFunctionOrCallMetamethod(
             }
             return;
         }
+
+        result.metamethods.insert(fnTy);
     }
 
     // Handle non-metamethods and metamethods which aren't overloaded.
     testFunction(result, fnTy, argsPack, fnLocation, uniqueTypes);
 }
 
-std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(
+std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload_DEPRECATED(
     TypeId ty,
     TypePackId argsPack,
     NotNull<DenseHashSet<TypeId>> uniqueTypes,
@@ -546,7 +679,7 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(
     return {Analysis::OverloadIsNonviable, ty};
 }
 
-void OverloadResolver::resolve(
+void OverloadResolver::resolve_DEPRECATED(
     TypeId fnTy,
     const TypePack* args,
     AstExpr* selfExpr,
@@ -583,67 +716,6 @@ void OverloadResolver::resolve(
         auto [analysis, errors] = checkOverload(ty, args, selfExpr, argExprs, uniqueTypes);
         add(analysis, ty, std::move(errors));
     }
-}
-
-std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location, TypeId subTy, TypeId superTy)
-{
-    auto r = subtyping.isSubtype(subTy, superTy, scope);
-    ErrorVec errors;
-
-    if (r.normalizationTooComplex)
-        errors.emplace_back(location, NormalizationTooComplex{});
-
-    if (!r.isSubtype)
-    {
-        switch (shouldSuppressErrors(normalizer, subTy).orElse(shouldSuppressErrors(normalizer, superTy)))
-        {
-        case ErrorSuppression::Suppress:
-            break;
-        case ErrorSuppression::NormalizationFailed:
-            errors.emplace_back(location, NormalizationTooComplex{});
-            // intentionally fallthrough here since we couldn't prove this was error-suppressing
-            [[fallthrough]];
-        case ErrorSuppression::DoNotSuppress:
-            errors.emplace_back(location, TypeMismatch{superTy, subTy});
-            break;
-        }
-    }
-
-    if (errors.empty())
-        return std::nullopt;
-
-    return errors;
-}
-
-std::optional<ErrorVec> OverloadResolver::testIsSubtype(const Location& location, TypePackId subTy, TypePackId superTy)
-{
-    auto r = FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(subTy, superTy, scope, {})
-                                                        : subtyping.isSubtype_DEPRECATED(subTy, superTy, scope);
-    ErrorVec errors;
-
-    if (r.normalizationTooComplex)
-        errors.emplace_back(location, NormalizationTooComplex{});
-
-    if (!r.isSubtype)
-    {
-        switch (shouldSuppressErrors(normalizer, subTy).orElse(shouldSuppressErrors(normalizer, superTy)))
-        {
-        case ErrorSuppression::Suppress:
-            break;
-        case ErrorSuppression::NormalizationFailed:
-            errors.emplace_back(location, NormalizationTooComplex{});
-            // intentionally fallthrough here since we couldn't prove this was error-suppressing
-            [[fallthrough]];
-        case ErrorSuppression::DoNotSuppress:
-            errors.emplace_back(location, TypePackMismatch{superTy, subTy});
-            break;
-        }
-    }
-
-    if (errors.empty())
-        return std::nullopt;
-
-    return errors;
 }
 
 std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload(
@@ -809,7 +881,7 @@ bool OverloadResolver::isArityCompatible(const TypePackId candidate, const TypeP
     }
 
     // Too many parameters were passed
-    if (FFlag::LuauNewOverloadResolver)
+    if (FFlag::LuauNewOverloadResolver2)
     {
         if (candidateHead.size() > desiredHead.size())
         {
@@ -856,8 +928,7 @@ bool OverloadResolver::testFunctionTypeForOverloadSelection(
         if (get<GenericType>(g))
             generics.emplace_back(g);
     }
-    SubtypingResult r = FFlag::LuauPassBindableGenericsByReference ? subtyping.isSubtype(argsPack, ftv->argTypes, scope, generics)
-                                                                   : subtyping.isSubtype_DEPRECATED(argsPack, ftv->argTypes, scope, generics);
+    SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes, scope, generics);
 
     if (!useFreeTypeBounds && !r.assumedConstraints.empty())
         return false;
@@ -877,7 +948,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
     NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
-    TypeFunctionContext context{arena, builtinTypes, scope, simplifier, normalizer, typeFunctionRuntime, ice, limits};
+    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits};
     FunctionGraphReductionResult result = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!result.errors.empty())
         return {OverloadIsNonviable, result.errors};
@@ -1073,11 +1144,8 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
         }
     }
 
-    if (FFlag::LuauSubtypingReportGenericBoundMismatches2)
-    {
-        for (GenericBoundsMismatch& mismatch : sr.genericBoundsMismatches)
-            errors.emplace_back(fnExpr->location, std::move(mismatch));
-    }
+    for (GenericBoundsMismatch& mismatch : sr.genericBoundsMismatches)
+        errors.emplace_back(fnExpr->location, std::move(mismatch));
 
     return {Analysis::OverloadIsNonviable, std::move(errors)};
 }
@@ -1127,7 +1195,6 @@ void OverloadResolver::add(Analysis analysis, TypeId ty, ErrorVec&& errors)
 static std::optional<TypeId> selectOverload(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena,
-    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<Scope> scope,
@@ -1138,11 +1205,10 @@ static std::optional<TypeId> selectOverload(
     TypePackId argsPack
 )
 {
-    auto resolver =
-        std::make_unique<OverloadResolver>(builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
+    auto resolver = std::make_unique<OverloadResolver>(builtinTypes, arena, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location);
 
     DenseHashSet<TypeId> uniqueTypes{nullptr};
-    auto [status, overload] = resolver->selectOverload(fn, argsPack, NotNull{&uniqueTypes}, /*useFreeTypeBounds*/ false);
+    auto [status, overload] = resolver->selectOverload_DEPRECATED(fn, argsPack, NotNull{&uniqueTypes}, /*useFreeTypeBounds*/ false);
 
     if (status == OverloadResolver::Analysis::Ok)
         return overload;
@@ -1156,7 +1222,6 @@ static std::optional<TypeId> selectOverload(
 SolveResult solveFunctionCall(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Simplifier> simplifier,
     NotNull<Normalizer> normalizer,
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<InternalErrorReporter> iceReporter,
@@ -1168,7 +1233,7 @@ SolveResult solveFunctionCall(
 )
 {
     std::optional<TypeId> overloadToUse =
-        selectOverload(builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location, fn, argsPack);
+        selectOverload(builtinTypes, arena, normalizer, typeFunctionRuntime, scope, iceReporter, limits, location, fn, argsPack);
     if (!overloadToUse)
         return {SolveResult::NoMatchingOverload};
 
@@ -1183,14 +1248,9 @@ SolveResult solveFunctionCall(
     {
         if (FFlag::LuauInstantiationUsesGenericPolarity)
         {
-            Subtyping subtyping{builtinTypes, arena, simplifier, normalizer, typeFunctionRuntime, iceReporter};
+            Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, iceReporter};
             std::optional<TypePackId> subst = instantiate2(
-                arena, 
-                std::move(u2.genericSubstitutions),
-                std::move(u2.genericPackSubstitutions),
-                NotNull{&subtyping},
-                scope,
-                resultPack
+                arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, scope, resultPack
             );
             if (!subst)
                 return {SolveResult::CodeTooComplex};
