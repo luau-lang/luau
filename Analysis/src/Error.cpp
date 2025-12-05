@@ -189,7 +189,12 @@ struct ErrorConverter
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
         else if (get<ExternType>(t))
-            return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
+        {
+            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+                return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
+            else
+                return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
+        }
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
     }
