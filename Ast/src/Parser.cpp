@@ -1296,8 +1296,10 @@ AstStat* Parser::parseData(const Location& start)
 
     Location end = lexer.current().location;
 
+    AstLocal* nameLocal = pushLocal(Binding(name));
+
     Location location{start, end};
-    return allocator.alloc<AstStatDataDeclaration>(location, name.name, name.location, copy(props));
+    return allocator.alloc<AstStatDataDeclaration>(location, nameLocal, copy(props));
 }
 
 // type function Name `(' arglist `)' `=' funcbody `end'

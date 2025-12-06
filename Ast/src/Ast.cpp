@@ -971,13 +971,11 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 
 AstStatDataDeclaration::AstStatDataDeclaration(
     const Location& location,
-    AstName name,
-    Location nameLocation,
+    AstLocal* name,
     AstArray<AstDataProp> props
 )
     : AstStat(ClassIndex(), location)
     , name(name)
-    , nameLocation(nameLocation)
     , props(props)
 {}
 

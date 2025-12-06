@@ -1063,14 +1063,12 @@ class AstStatDataDeclaration : public AstStat
 public:
     LUAU_RTTI(AstStatDataDeclaration)
 
-    AstName name;
-    Location nameLocation;
+    AstLocal* name;
     AstArray<AstDataProp> props;
 
     AstStatDataDeclaration(
         const Location& location,
-        AstName name,
-        Location nameLocation,
+        AstLocal* name,
         AstArray<AstDataProp> props
     );
 

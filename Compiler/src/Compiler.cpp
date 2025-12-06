@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Compiler.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Parser.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
@@ -1250,6 +1251,30 @@ struct Compiler
         {
             bytecode.emitABC(LOP_CAPTURE, uint8_t(c.type), c.data, 0);
         }
+    }
+
+    void compileDataDeclaration(AstStatDataDeclaration* decl)
+    {
+        const uint8_t registers = allocReg(decl, 3);
+        const uint8_t setmetatable = registers + 0;
+        const uint8_t table = registers + 1;
+        const uint8_t metatable = registers + 2;
+        bytecode.emitABC(LOP_NEWTABLE, table, /*size TODO?*/ 0, 0);
+        bytecode.emitAux(0);
+
+        bytecode.emitABC(LOP_NEWTABLE, metatable, /*size TODO?*/ 0, 0);
+        bytecode.emitAux(0);
+
+        AstName smName = names.getOrAdd("setmetatable");
+        int32_t id0 = bytecode.addConstantString(sref(smName));
+        uint32_t iid = BytecodeBuilder::getImportId(id0);
+        int32_t cid = bytecode.addImport(iid);
+
+        bytecode.emitAD(LOP_GETIMPORT, setmetatable, int16_t(cid));
+        bytecode.emitAux(iid);
+
+        bytecode.emitABC(LOP_CALL, setmetatable, 3, 2);
+        pushLocal(decl->name, setmetatable, kDefaultAllocPc);
     }
 
     LuauOpcode getUnaryOp(AstExprUnary::Op op)
@@ -3913,6 +3938,10 @@ struct Compiler
         else if (node->is<AstStatTypeFunction>())
         {
             // do nothing
+        }
+        else if (AstStatDataDeclaration* decl = node->as<AstStatDataDeclaration>())
+        {
+            compileDataDeclaration(decl);
         }
         else
         {

@@ -10055,4 +10055,15 @@ RETURN R0 11
     );
 }
 
+TEST_CASE("DataDecl")
+{
+    std::string source = R"(
+        data Point { x: number, y: number, }
+        -- local Point = {}
+        print(Point)
+    )";
+    auto res = compileFunction(source.c_str(), 0, 0, 0);
+    CHECK("" == res);
+}
+
 TEST_SUITE_END();
