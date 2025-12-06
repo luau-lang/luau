@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
 LUAU_FASTFLAG(LuauUserTypeFunctionsNoUninhabitedError)
+LUAU_FASTFLAG(LuauTypeFunctionTypeIsSubtypeOf)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2648,6 +2649,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_match")
 
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     LUAU_REQUIRE_ERROR(results, UnappliedTypeFunction);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
+{
+    ScopedFastFlag _[] = {
+        { FFlag::LuauSolverV2, true },
+        { FFlag::LuauTypeFunctionTypeIsSubtypeOf, true }
+    };
+
+    CheckResult results = check(R"(
+        type function checksubtype(a, b)
+            if not a:issubtypeof(b) then
+                print("Not a subtype!")
+            end
+            return a
+        end
+
+        local x: checksubtype<nil, nil>
+        local y: checksubtype<nil, string?>
+        local z: checksubtype<"Hello", string>
+        local w: checksubtype<number, string | vector | number>
+        local a: checksubtype<boolean, number>
+        local b: checksubtype<false, nil>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, results);
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
 }
 
 TEST_SUITE_END();

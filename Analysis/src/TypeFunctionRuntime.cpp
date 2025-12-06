@@ -12,6 +12,7 @@
 #include "Luau/StringUtils.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
+#include "Luau/Simplify.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -21,6 +22,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTypeIsSubtypeOf)
 
 namespace Luau
 {
@@ -1609,6 +1611,24 @@ static int checkTag(lua_State* L)
     return 1;
 }
 
+// Luau `self:issubtypeof(arg: type) -> boolean`
+// Returns true if the self is a subtype of the given type
+static int checkIsSubtypeOf(lua_State* L)
+{
+    int argumentCount = lua_gettop(L);
+    if (argumentCount != 2)
+        luaL_error(L, "type.issubtypeof: expected 2 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    TypeFunctionTypeId arg = getTypeUserData(L, 2);
+
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
+    Relation r = Luau::relate(Luau::deserialize(self, runtimeBuilder), Luau::deserialize(arg, runtimeBuilder));
+
+    lua_pushboolean(L, r == Relation::Coincident || r == Relation::Subset);
+    return 1;
+}
+
 TypeFunctionTypeId deepClone(NotNull<TypeFunctionRuntime> runtime, TypeFunctionTypeId ty); // Forward declaration
 
 // Luau: `types.copy(arg: type) -> type`
@@ -1766,6 +1786,13 @@ void registerTypeUserData(lua_State* L)
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
     luaL_register(L, nullptr, typeUserdataMethods);
+
+    if (FFlag::LuauTypeFunctionTypeIsSubtypeOf)
+    {
+        lua_pushcfunction(L, checkIsSubtypeOf, "issubtypeof");
+        lua_setfield(L, -2, "issubtypeof");
+    }
+
     lua_setreadonly(L, -1, true);
     lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
     lua_setfield(L, -2, "__index");
