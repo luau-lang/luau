@@ -4602,4 +4602,22 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
 }
 
+TEST_CASE_FIXTURE(Fixture, "data")
+{
+    ParseResult res = tryParse(R"(
+        data Point2 { x: number, y: number, }
+        data Point3 { x: number, y: number, z: number }
+        data UntypedPoint2 { x, y, }
+    )");
+
+    REQUIRE(res.errors.empty());
+
+    REQUIRE(3 == res.root->body.size);
+    AstStatDataDeclaration* first = res.root->body.data[0]->as<AstStatDataDeclaration>();
+
+    REQUIRE(first);
+    CHECK(first->name == "Point2");
+    REQUIRE(first->props.size == 2);
+}
+
 TEST_SUITE_END();

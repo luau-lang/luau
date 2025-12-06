@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/TimeTrace.h"
 
@@ -478,6 +479,9 @@ AstStat* Parser::parseStat()
 
     if (ident == "type")
         return parseTypeAlias(expr->location, /* exported= */ false, expr->location.begin);
+
+    if (ident == "data")
+        return parseData(start);
 
     if (ident == "export" && lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "type")
     {
@@ -1243,6 +1247,57 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported, Position t
             typeKeywordPosition, genericsOpenPosition, genericsCommaPositions, genericsClosePosition, equalsPosition
         );
     return node;
+}
+
+// dataStatement ::= `data` Name `{` dataProps `}`
+// dataProps ::= dataProp [`,` dataProps]
+//             | dataProp `,`
+// dataProp ::= name [: dataQualifier* type]
+AstStat* Parser::parseData(const Location& start)
+{
+    Name name = parseName("data name");
+
+    if (!expectAndConsume('{', "data declaration"))
+        LUAU_ASSERT(0); // TODO
+
+    TempVector<AstDataProp> props(scratchDataProps);
+
+    while (true)
+    {
+        if (lexer.current().type == '}')
+        {
+            nextLexeme();
+            break;
+        }
+
+        std::optional<Name> propName = parseNameOpt("data property name");
+        LUAU_ASSERT(propName.has_value()); // TODO
+
+        AstType* propType = nullptr;
+
+        if (lexer.current().type == ':')
+        {
+            nextLexeme();
+            propType = parseType();
+        }
+
+        AstDataProp prop;
+        prop.name = propName->name;
+        prop.nameLocation = name.location;
+        prop.ty = propType;
+        props.push_back(prop);
+
+        if (lexer.current().type == ',')
+        {
+            nextLexeme();
+            continue;
+        }
+    }
+
+    Location end = lexer.current().location;
+
+    Location location{start, end};
+    return allocator.alloc<AstStatDataDeclaration>(location, name.name, name.location, copy(props));
 }
 
 // type function Name `(' arglist `)' `=' funcbody `end'

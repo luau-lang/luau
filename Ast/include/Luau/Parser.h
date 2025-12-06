@@ -177,6 +177,8 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
+    AstStat* parseData(const Location& start);
+
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
 
@@ -529,6 +531,7 @@ private:
     std::vector<AstType*> scratchType;
     std::vector<AstTypeOrPack> scratchTypeOrPack;
     std::vector<AstDeclaredExternTypeProperty> scratchDeclaredClassProps;
+    std::vector<AstDataProp> scratchDataProps;
     std::vector<AstExprTable::Item> scratchItem;
     std::vector<CstExprTable::Item> scratchCstItem;
     std::vector<AstArgumentName> scratchArgName;

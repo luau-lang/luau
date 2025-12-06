@@ -1041,6 +1041,14 @@ public:
     AstTypePack* retTypes;
 };
 
+struct AstDataProp
+{
+    // qualifiers
+    AstName name;
+    Location nameLocation;
+    AstType* ty = nullptr;
+};
+
 struct AstDeclaredExternTypeProperty
 {
     AstName name;
@@ -1048,6 +1056,25 @@ struct AstDeclaredExternTypeProperty
     AstType* ty = nullptr;
     bool isMethod = false;
     Location location;
+};
+
+class AstStatDataDeclaration : public AstStat
+{
+public:
+    LUAU_RTTI(AstStatDataDeclaration)
+
+    AstName name;
+    Location nameLocation;
+    AstArray<AstDataProp> props;
+
+    AstStatDataDeclaration(
+        const Location& location,
+        AstName name,
+        Location nameLocation,
+        AstArray<AstDataProp> props
+    );
+
+    void visit(AstVisitor* visitor) override;
 };
 
 enum class AstTableAccess

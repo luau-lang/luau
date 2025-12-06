@@ -969,6 +969,23 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 {
 }
 
+AstStatDataDeclaration::AstStatDataDeclaration(
+    const Location& location,
+    AstName name,
+    Location nameLocation,
+    AstArray<AstDataProp> props
+)
+    : AstStat(ClassIndex(), location)
+    , name(name)
+    , nameLocation(nameLocation)
+    , props(props)
+{}
+
+void AstStatDataDeclaration::visit(AstVisitor* visitor)
+{
+    
+}
+
 AstStatDeclareFunction::AstStatDeclareFunction(
     const Location& location,
     const AstArray<AstAttr*>& attributes,
