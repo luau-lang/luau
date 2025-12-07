@@ -35,6 +35,12 @@ LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
 namespace Luau
 {
 
+struct DesugarResult
+{
+    Allocator allocator;
+    DenseHashMap<AstStatDataDeclaration*, std::vector<AstStat*>> stats{nullptr};
+};
+
 using namespace Luau::Compile;
 
 static const uint32_t kMaxRegisterCount = 255;
@@ -114,7 +120,7 @@ struct Compiler
 {
     struct RegScope;
 
-    Compiler(BytecodeBuilder& bytecode, const CompileOptions& options, AstNameTable& names)
+    Compiler(BytecodeBuilder& bytecode, const CompileOptions& options, AstNameTable& names, DesugarResult desugared)
         : bytecode(bytecode)
         , options(options)
         , functions(nullptr)
@@ -131,6 +137,7 @@ struct Compiler
         , exprTypes(nullptr)
         , builtinTypes(options.vectorType)
         , names(names)
+        , desugared(std::move(desugared))
     {
         // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
         localStack.reserve(16);
@@ -1255,26 +1262,32 @@ struct Compiler
 
     void compileDataDeclaration(AstStatDataDeclaration* decl)
     {
-        const uint8_t registers = allocReg(decl, 3);
-        const uint8_t setmetatable = registers + 0;
-        const uint8_t table = registers + 1;
-        const uint8_t metatable = registers + 2;
-        bytecode.emitABC(LOP_NEWTABLE, table, /*size TODO?*/ 0, 0);
-        bytecode.emitAux(0);
+        auto blah = desugared.stats.find(decl);
+        LUAU_ASSERT(blah);
 
-        bytecode.emitABC(LOP_NEWTABLE, metatable, /*size TODO?*/ 0, 0);
-        bytecode.emitAux(0);
+        for (AstStat* stat : *blah)
+            compileStat(stat);
 
-        AstName smName = names.getOrAdd("setmetatable");
-        int32_t id0 = bytecode.addConstantString(sref(smName));
-        uint32_t iid = BytecodeBuilder::getImportId(id0);
-        int32_t cid = bytecode.addImport(iid);
+        // const uint8_t registers = allocReg(decl, 3);
+        // const uint8_t setmetatable = registers + 0;
+        // const uint8_t table = registers + 1;
+        // const uint8_t metatable = registers + 2;
+        // bytecode.emitABC(LOP_NEWTABLE, table, /*size TODO?*/ 0, 0);
+        // bytecode.emitAux(0);
 
-        bytecode.emitAD(LOP_GETIMPORT, setmetatable, int16_t(cid));
-        bytecode.emitAux(iid);
+        // bytecode.emitABC(LOP_NEWTABLE, metatable, /*size TODO?*/ 0, 0);
+        // bytecode.emitAux(0);
 
-        bytecode.emitABC(LOP_CALL, setmetatable, 3, 2);
-        pushLocal(decl->name, setmetatable, kDefaultAllocPc);
+        // AstName smName = names.getOrAdd("setmetatable");
+        // int32_t id0 = bytecode.addConstantString(sref(smName));
+        // uint32_t iid = BytecodeBuilder::getImportId(id0);
+        // int32_t cid = bytecode.addImport(iid);
+
+        // bytecode.emitAD(LOP_GETIMPORT, setmetatable, int16_t(cid));
+        // bytecode.emitAux(iid);
+
+        // bytecode.emitABC(LOP_CALL, setmetatable, 3, 2);
+        // pushLocal(decl->name, setmetatable, kDefaultAllocPc);
     }
 
     LuauOpcode getUnaryOp(AstExprUnary::Op op)
@@ -4434,6 +4447,7 @@ struct Compiler
 
     BuiltinAstTypes builtinTypes;
     AstNameTable& names;
+    DesugarResult desugared;
 
     const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
     bool builtinsFoldLibraryK = false;
@@ -4464,12 +4478,6 @@ static void setCompileOptionsForNativeCompilation(CompileOptions& options)
 
 // TODO Move to Desugar.cpp or something
 
-struct DesugarResult
-{
-    Allocator allocator;
-    DenseHashMap<AstStatDataDeclaration*, std::vector<AstStat*>> stats{nullptr};
-};
-
 template <typename T>
 static AstArray<T> singleton(Allocator& allocator, T value)
 {
@@ -4477,6 +4485,15 @@ static AstArray<T> singleton(Allocator& allocator, T value)
     res.size = 1;
     res.data = static_cast<T*>(allocator.allocate(sizeof(T)));
     new (res.data) T(value);
+    return res;
+}
+
+static AstArray<char> astArray(Allocator& allocator, std::string_view s)
+{
+    AstArray<char> res;
+    res.size = s.size();
+    res.data = static_cast<char*>(allocator.allocate(sizeof(char) * s.size()));
+    std::copy(s.begin(), s.end(), res.data);
     return res;
 }
 
@@ -4506,12 +4523,11 @@ static AstArray<T> astArray(Allocator& allocator, std::initializer_list<T> eleme
     return res;
 }
 
-static AstStatLocal* localTable(Allocator& allocator, AstName name, const Location& location)
+static AstStatLocal* localTable(Allocator& allocator, AstLocal* local, const Location& location)
 {
-    AstLocal* loc = allocator.alloc<AstLocal>(name, location, nullptr, 0, 0, nullptr);
     return allocator.alloc<AstStatLocal>(
         location,
-        singleton<AstLocal*>(allocator, loc),
+        singleton<AstLocal*>(allocator, local),
         singleton<AstExpr*>(allocator,
             allocator.alloc<AstExprTable>(location, AstArray<AstExprTable::Item>{})
         ),
@@ -4543,27 +4559,21 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         auto astLocal = [&](AstName name)
         {
-            return a.alloc<AstLocal>(name, Location{}, nullptr, 0, 0, nullptr);
+            return a.alloc<AstLocal>(name, Location{}, nullptr, decl->name->functionDepth, decl->name->loopDepth, nullptr);
         };
 
-        auto loc = [&](AstLocal* local)
+        auto loc = [&](AstLocal* local, bool upvalue=false)
         {
-            return a.alloc<AstExprLocal>(decl->name->location, local, false);
-        };
-
-        auto locFromName = [&](AstName name)
-        {
-            AstLocal* l = astLocal(name);
-            return loc(l);
+            return a.alloc<AstExprLocal>(decl->name->location, local, upvalue);
         };
 
         /*
          * local DataType = {}
          * do
-         *     local _anon_metatable = {}
-         *     setmetatable(DataType, _anon_metatable)
+         *     local __metatable__DataType = {}
+         *     setmetatable(DataType, __metatable__DataType)
          *
-         *     function _anon_metatable.__call(self, t)
+         *     function __metatable__DataType.__call(self, t)
          *         return setmetatable(
          *             {
          *                 tag=DataType,
@@ -4578,7 +4588,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         AstLocal* declNameLocal = decl->name;
 
-        AstStatLocal* local = localTable(a, decl->name->name, decl->name->location);
+        AstStatLocal* local = localTable(a, declNameLocal, decl->name->location);
         stats.emplace_back(local);
 
         std::string mtNameStr = "__metatable__";
@@ -4586,16 +4596,16 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         const AstName metatableName = names.getOrAdd(mtNameStr.data(), mtNameStr.length());
         AstLocal* metatableLocal = astLocal(metatableName);
 
-        AstStatLocal* metatable = localTable(a, metatableName, decl->name->location);
+        AstStatLocal* metatable = localTable(a, metatableLocal, decl->name->location);
 
-        const AstName setmetatable = names.get("setmetatable");
+        AstName setmetatable = names.getOrAdd("setmetatable");
         LUAU_ASSERT(setmetatable.value);
 
         AstExprCall* callSetMetatable = a.alloc<AstExprCall>(
             decl->location,
             global(setmetatable),
             astArray<AstExpr*>(a, {
-                loc(decl->name),
+                loc(decl->name, true),
                 loc(metatableLocal)
             }),
             false,
@@ -4605,16 +4615,18 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         std::string_view propsParamName = "props";
         AstName propsParam = names.getOrAdd(propsParamName.data(), propsParamName.size());
-        AstLocal* propsLocal = a.alloc<AstLocal>(propsParam, Location{}, nullptr, 0, 0, nullptr);
+        AstLocal* propsLocal = a.alloc<AstLocal>(propsParam, Location{}, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
 
         tableItems.clear();
         for (const AstDataProp& prop : decl->props)
         {
+            std::string_view nameView = prop.name.value;
+            AstArray<char> label = astArray(a, nameView);
             tableItems.push_back(AstExprTable::Item{AstExprTable::Item::Record,
-                locFromName(prop.name),
+                a.alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
                 a.alloc<AstExprIndexName>(
                     decl->name->location,
-                    loc(propsLocal),
+                    loc(propsLocal, true),
                     prop.name,
                     prop.nameLocation,
                     Position{0, 0}
@@ -4630,7 +4642,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
                     decl->location,
                     astArray<AstExprTable::Item>(a, tableItems)
                 ),
-                loc(decl->name)
+                loc(decl->name, true)
             }),
             false,
             AstArray<AstTypeOrPack>{},
@@ -4671,7 +4683,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
                     decl->location,
                     singleton<AstStat*>(a, returnSetMetatable)
                 ),
-                0,
+                decl->name->functionDepth + 1,
                 debugName,
                 nullptr
             )
@@ -4720,16 +4732,24 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
 
     AstStatBlock* root = parseResult.root;
 
+    auto desugared = desugar(root, names);
+
     // gathers all functions with the invariant that all function references are to functions earlier in the list
     // for example, function foo() return function() end end will result in two vector entries, [0] = anonymous and [1] = foo
     std::vector<AstExprFunction*> functions;
     Compiler::FunctionVisitor functionVisitor(functions);
     root->visit(&functionVisitor);
 
+    for (const auto& [_decl, statements] : desugared.stats)
+    {
+        for (AstStat* stat : statements)
+            stat->visit(&functionVisitor);
+    }
+
     if (functionVisitor.hasNativeFunction)
         setCompileOptionsForNativeCompilation(options);
 
-    Compiler compiler(bytecode, options, names);
+    Compiler compiler(bytecode, options, names, std::move(desugared));
 
     // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
     assignMutable(compiler.globals, names, options.mutableGlobals);
