@@ -4478,7 +4478,7 @@ static void setCompileOptionsForNativeCompilation(CompileOptions& options)
 
 // TODO Move to Desugar.cpp or something
 
-template <typename T>
+template<typename T>
 static AstArray<T> singleton(Allocator& allocator, T value)
 {
     AstArray<T> res;
@@ -4497,7 +4497,7 @@ static AstArray<char> astArray(Allocator& allocator, std::string_view s)
     return res;
 }
 
-template <typename T>
+template<typename T>
 static AstArray<T> astArray(Allocator& allocator, const std::vector<T>& elements)
 {
     AstArray<T> res;
@@ -4510,7 +4510,7 @@ static AstArray<T> astArray(Allocator& allocator, const std::vector<T>& elements
     return res;
 }
 
-template <typename T>
+template<typename T>
 static AstArray<T> astArray(Allocator& allocator, std::initializer_list<T> elements)
 {
     AstArray<T> res;
@@ -4528,9 +4528,7 @@ static AstStatLocal* localTable(Allocator& allocator, AstLocal* local, const Loc
     return allocator.alloc<AstStatLocal>(
         location,
         singleton<AstLocal*>(allocator, local),
-        singleton<AstExpr*>(allocator,
-            allocator.alloc<AstExprTable>(location, AstArray<AstExprTable::Item>{})
-        ),
+        singleton<AstExpr*>(allocator, allocator.alloc<AstExprTable>(location, AstArray<AstExprTable::Item>{})),
         std::nullopt
     );
 }
@@ -4562,7 +4560,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
             return a.alloc<AstLocal>(name, Location{}, nullptr, decl->name->functionDepth, decl->name->loopDepth, nullptr);
         };
 
-        auto loc = [&](AstLocal* local, bool upvalue=false)
+        auto loc = [&](AstLocal* local, bool upvalue = false)
         {
             return a.alloc<AstExprLocal>(decl->name->location, local, upvalue);
         };
@@ -4594,18 +4592,10 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         AstStatAssign* assignIndexMetaproperty = a.alloc<AstStatAssign>(
             decl->location,
-            singleton<AstExpr*>(a,
-                a.alloc<AstExprIndexName>(
-                    decl->name->location,
-                    loc(declNameLocal),
-                    names.getOrAdd("__index"),
-                    Location{},
-                    Position{0, 0}
-                )
+            singleton<AstExpr*>(
+                a, a.alloc<AstExprIndexName>(decl->name->location, loc(declNameLocal), names.getOrAdd("__index"), Location{}, Position{0, 0})
             ),
-            singleton<AstExpr*>(a,
-                loc(declNameLocal)
-            )
+            singleton<AstExpr*>(a, loc(declNameLocal))
         );
         stats.emplace_back(assignIndexMetaproperty);
 
@@ -4622,10 +4612,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         AstExprCall* callSetMetatable = a.alloc<AstExprCall>(
             decl->location,
             global(setmetatable),
-            astArray<AstExpr*>(a, {
-                loc(decl->name, true),
-                loc(metatableLocal)
-            }),
+            astArray<AstExpr*>(a, {loc(decl->name, true), loc(metatableLocal)}),
             false,
             AstArray<AstTypeOrPack>{},
             decl->location
@@ -4640,37 +4627,25 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         {
             std::string_view nameView = prop.name.value;
             AstArray<char> label = astArray(a, nameView);
-            tableItems.push_back(AstExprTable::Item{AstExprTable::Item::Record,
-                a.alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
-                a.alloc<AstExprIndexName>(
-                    decl->name->location,
-                    loc(propsLocal, true),
-                    prop.name,
-                    prop.nameLocation,
-                    Position{0, 0}
-                )
-            });
+            tableItems.push_back(
+                AstExprTable::Item{
+                    AstExprTable::Item::Record,
+                    a.alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
+                    a.alloc<AstExprIndexName>(decl->name->location, loc(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0})
+                }
+            );
         }
 
         AstExprCall* innerSetMetatableCall = a.alloc<AstExprCall>(
             decl->location,
             global(setmetatable),
-            astArray<AstExpr*>(a, {
-                a.alloc<AstExprTable>(
-                    decl->location,
-                    astArray<AstExprTable::Item>(a, tableItems)
-                ),
-                loc(decl->name, true)
-            }),
+            astArray<AstExpr*>(a, {a.alloc<AstExprTable>(decl->location, astArray<AstExprTable::Item>(a, tableItems)), loc(decl->name, true)}),
             false,
             AstArray<AstTypeOrPack>{},
             decl->location
         );
 
-        AstStatReturn* returnSetMetatable = a.alloc<AstStatReturn>(
-            decl->location,
-            singleton<AstExpr*>(a, innerSetMetatableCall)
-        );
+        AstStatReturn* returnSetMetatable = a.alloc<AstStatReturn>(decl->location, singleton<AstExpr*>(a, innerSetMetatableCall));
 
         std::string debugNameStr = decl->name->name.value;
         debugNameStr += ".__call";
@@ -4678,29 +4653,17 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         AstStatFunction* constructorFunction = a.alloc<AstStatFunction>(
             decl->location,
-            a.alloc<AstExprIndexName>(
-                decl->name->location,
-                loc(metatableLocal),
-                names.getOrAdd("__call"),
-                decl->name->location,
-                Position{0, 0}
-            ),
+            a.alloc<AstExprIndexName>(decl->name->location, loc(metatableLocal), names.getOrAdd("__call"), decl->name->location, Position{0, 0}),
             a.alloc<AstExprFunction>(
                 decl->location,
                 AstArray<AstAttr*>{},
                 AstArray<AstGenericType*>{},
                 AstArray<AstGenericTypePack*>{},
                 nullptr,
-                astArray<AstLocal*>(a, {
-                    astLocal(names.getOrAdd("self")),
-                    propsLocal
-                }),
+                astArray<AstLocal*>(a, {astLocal(names.getOrAdd("self")), propsLocal}),
                 false,
                 Location{},
-                a.alloc<AstStatBlock>(
-                    decl->location,
-                    singleton<AstStat*>(a, returnSetMetatable)
-                ),
+                a.alloc<AstStatBlock>(decl->location, singleton<AstStat*>(a, returnSetMetatable)),
                 decl->name->functionDepth + 1,
                 debugName,
                 nullptr
@@ -4708,13 +4671,8 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         );
 
         AstStatBlock* doBlock = a.alloc<AstStatBlock>(
-            decl->location,
-            astArray<AstStat*>(a, {
-                metatable, 
-                a.alloc<AstStatExpr>(decl->location, callSetMetatable),
-                constructorFunction
-            }
-        ));
+            decl->location, astArray<AstStat*>(a, {metatable, a.alloc<AstStatExpr>(decl->location, callSetMetatable), constructorFunction})
+        );
 
         stats.emplace_back(doBlock);
 

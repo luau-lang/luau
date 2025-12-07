@@ -969,20 +969,14 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 {
 }
 
-AstStatDataDeclaration::AstStatDataDeclaration(
-    const Location& location,
-    AstLocal* name,
-    AstArray<AstDataProp> props
-)
+AstStatDataDeclaration::AstStatDataDeclaration(const Location& location, AstLocal* name, AstArray<AstDataProp> props)
     : AstStat(ClassIndex(), location)
     , name(name)
     , props(props)
-{}
-
-void AstStatDataDeclaration::visit(AstVisitor* visitor)
 {
-    
 }
+
+void AstStatDataDeclaration::visit(AstVisitor* visitor) {}
 
 AstStatDeclareFunction::AstStatDeclareFunction(
     const Location& location,
