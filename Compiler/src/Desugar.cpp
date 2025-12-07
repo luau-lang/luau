@@ -133,6 +133,67 @@ struct Desugarer
     {
         return allocator->alloc<AstStatReturn>(location, singleton(expr));
     }
+
+    std::vector<AstExprTable::Item> tableItems;
+
+    AstExprFunction* generateDataConstructor(AstStatDataDeclaration* decl)
+    {
+        std::string_view propsParamName = "props";
+        AstName propsParam = names->getOrAdd(propsParamName.data(), propsParamName.size());
+        AstLocal* propsLocal = allocator->alloc<AstLocal>(propsParam, Location{}, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
+
+        tableItems.clear();
+        for (const AstDataProp& prop : decl->props)
+        {
+            std::string_view nameView = prop.name.value;
+            AstArray<char> label = astArray(nameView);
+            tableItems.push_back(
+                AstExprTable::Item{
+                    AstExprTable::Item::Record,
+                    allocator->alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
+                    allocator->alloc<AstExprIndexName>(decl->name->location, exprLocal(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0})
+                }
+            );
+        }
+
+        AstName setmetatable = names->getOrAdd("setmetatable");
+        LUAU_ASSERT(setmetatable.value);
+
+        AstExprCall* innerSetMetatableCall = exprCall(
+            global(setmetatable), {allocator->alloc<AstExprTable>(decl->location, astArray<AstExprTable::Item>(tableItems)), exprLocal(decl->name, true)}
+        );
+
+        AstStatReturn* returnSetMetatable = statReturn(innerSetMetatableCall);
+
+        std::string debugNameStr = decl->name->name.value;
+        debugNameStr += ".__call";
+        AstName debugName = names->getOrAdd(debugNameStr.data(), debugNameStr.size());
+
+        return allocator->alloc<AstExprFunction>(
+            decl->location,
+            AstArray<AstAttr*>{},
+            AstArray<AstGenericType*>{},
+            AstArray<AstGenericTypePack*>{},
+            nullptr,
+            astArray<AstLocal*>({astLocal(names->getOrAdd("self")), propsLocal}),
+            false,
+            Location{},
+            allocator->alloc<AstStatBlock>(decl->location, singleton<AstStat*>(returnSetMetatable)),
+            decl->name->functionDepth + 1,
+            debugName,
+            nullptr
+        );
+    }
+
+    AstStatFunction* statFunction(AstExpr* nameExpr, AstExprFunction* function)
+    {
+        return allocator->alloc<AstStatFunction>(
+            location,
+            nameExpr,
+            function
+        );
+
+    }
 };
 
 DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
@@ -140,7 +201,6 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
     DesugarResult result;
 
     std::vector<AstStat*> stats;
-    std::vector<AstExprTable::Item> tableItems;
 
     Allocator& a = result.allocator;
 
@@ -194,51 +254,9 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         AstExprCall* callSetMetatable = d.exprCall(d.global(setmetatable), {d.exprLocal(decl->name, true), d.exprLocal(metatableLocal)});
 
-        std::string_view propsParamName = "props";
-        AstName propsParam = names.getOrAdd(propsParamName.data(), propsParamName.size());
-        AstLocal* propsLocal = a.alloc<AstLocal>(propsParam, Location{}, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
-
-        tableItems.clear();
-        for (const AstDataProp& prop : decl->props)
-        {
-            std::string_view nameView = prop.name.value;
-            AstArray<char> label = d.astArray(nameView);
-            tableItems.push_back(
-                AstExprTable::Item{
-                    AstExprTable::Item::Record,
-                    a.alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
-                    a.alloc<AstExprIndexName>(decl->name->location, d.exprLocal(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0})
-                }
-            );
-        }
-
-        AstExprCall* innerSetMetatableCall = d.exprCall(
-            d.global(setmetatable), {a.alloc<AstExprTable>(decl->location, d.astArray<AstExprTable::Item>(tableItems)), d.exprLocal(decl->name, true)}
-        );
-
-        AstStatReturn* returnSetMetatable = d.statReturn(innerSetMetatableCall);
-
-        std::string debugNameStr = decl->name->name.value;
-        debugNameStr += ".__call";
-        AstName debugName = names.getOrAdd(debugNameStr.data(), debugNameStr.size());
-
-        AstStatFunction* constructorFunction = a.alloc<AstStatFunction>(
-            decl->location,
+        AstStatFunction* constructorFunction = d.statFunction(
             a.alloc<AstExprIndexName>(decl->name->location, d.exprLocal(metatableLocal), names.getOrAdd("__call"), decl->name->location, Position{0, 0}),
-            a.alloc<AstExprFunction>(
-                decl->location,
-                AstArray<AstAttr*>{},
-                AstArray<AstGenericType*>{},
-                AstArray<AstGenericTypePack*>{},
-                nullptr,
-                d.astArray<AstLocal*>({d.astLocal(names.getOrAdd("self")), propsLocal}),
-                false,
-                Location{},
-                a.alloc<AstStatBlock>(decl->location, d.singleton<AstStat*>(returnSetMetatable)),
-                decl->name->functionDepth + 1,
-                debugName,
-                nullptr
-            )
+            d.generateDataConstructor(decl)
         );
 
         AstStatBlock* doBlock = a.alloc<AstStatBlock>(
