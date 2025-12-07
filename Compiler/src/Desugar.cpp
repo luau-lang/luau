@@ -100,33 +100,17 @@ struct Desugarer
 
     AstStatLocal* statLocal(AstLocal* local, AstExpr* initializer)
     {
-        return allocator->alloc<AstStatLocal>(
-            location,
-            singleton<AstLocal*>(local),
-            singleton<AstExpr*>(emptyTable()),
-            std::nullopt
-        );
+        return allocator->alloc<AstStatLocal>(location, singleton<AstLocal*>(local), singleton<AstExpr*>(emptyTable()), std::nullopt);
     }
 
     AstStatAssign* statAssign(AstExpr* lhs, AstExpr* rhs)
     {
-        return allocator->alloc<AstStatAssign>(
-            location,
-            singleton(lhs),
-            singleton(rhs)
-        );
+        return allocator->alloc<AstStatAssign>(location, singleton(lhs), singleton(rhs));
     }
 
     AstExprCall* exprCall(AstExpr* fn, std::initializer_list<AstExpr*> args)
     {
-        return allocator->alloc<AstExprCall>(
-            location,
-            fn,
-            astArray<AstExpr*>(args),
-            false,
-            AstArray<AstTypeOrPack>{},
-            location
-        );
+        return allocator->alloc<AstExprCall>(location, fn, astArray<AstExpr*>(args), false, AstArray<AstTypeOrPack>{}, location);
     }
 
     AstStatReturn* statReturn(AstExpr* expr)
@@ -140,7 +124,8 @@ struct Desugarer
     {
         std::string_view propsParamName = "props";
         AstName propsParam = names->getOrAdd(propsParamName.data(), propsParamName.size());
-        AstLocal* propsLocal = allocator->alloc<AstLocal>(propsParam, Location{}, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
+        AstLocal* propsLocal =
+            allocator->alloc<AstLocal>(propsParam, Location{}, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
 
         tableItems.clear();
         for (const AstDataProp& prop : decl->props)
@@ -151,7 +136,9 @@ struct Desugarer
                 AstExprTable::Item{
                     AstExprTable::Item::Record,
                     allocator->alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
-                    allocator->alloc<AstExprIndexName>(decl->name->location, exprLocal(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0})
+                    allocator->alloc<AstExprIndexName>(
+                        decl->name->location, exprLocal(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0}
+                    )
                 }
             );
         }
@@ -160,7 +147,8 @@ struct Desugarer
         LUAU_ASSERT(setmetatable.value);
 
         AstExprCall* innerSetMetatableCall = exprCall(
-            global(setmetatable), {allocator->alloc<AstExprTable>(decl->location, astArray<AstExprTable::Item>(tableItems)), exprLocal(decl->name, true)}
+            global(setmetatable),
+            {allocator->alloc<AstExprTable>(decl->location, astArray<AstExprTable::Item>(tableItems)), exprLocal(decl->name, true)}
         );
 
         AstStatReturn* returnSetMetatable = statReturn(innerSetMetatableCall);
@@ -187,12 +175,7 @@ struct Desugarer
 
     AstStatFunction* statFunction(AstExpr* nameExpr, AstExprFunction* function)
     {
-        return allocator->alloc<AstStatFunction>(
-            location,
-            nameExpr,
-            function
-        );
-
+        return allocator->alloc<AstStatFunction>(location, nameExpr, function);
     }
 };
 
@@ -255,7 +238,9 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         AstExprCall* callSetMetatable = d.exprCall(d.global(setmetatable), {d.exprLocal(decl->name, true), d.exprLocal(metatableLocal)});
 
         AstStatFunction* constructorFunction = d.statFunction(
-            a.alloc<AstExprIndexName>(decl->name->location, d.exprLocal(metatableLocal), names.getOrAdd("__call"), decl->name->location, Position{0, 0}),
+            a.alloc<AstExprIndexName>(
+                decl->name->location, d.exprLocal(metatableLocal), names.getOrAdd("__call"), decl->name->location, Position{0, 0}
+            ),
             d.generateDataConstructor(decl)
         );
 
@@ -271,4 +256,4 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
     return result;
 }
 
-}
+} // namespace Luau
