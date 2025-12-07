@@ -42,6 +42,7 @@ target_sources(Luau.Ast PRIVATE
 target_sources(Luau.Compiler PRIVATE
     Compiler/include/Luau/BytecodeBuilder.h
     Compiler/include/Luau/Compiler.h
+    Compiler/include/Luau/Desugar.h
     Compiler/include/luacode.h
 
     Compiler/src/BytecodeBuilder.cpp
@@ -50,6 +51,7 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/BuiltinFolding.cpp
     Compiler/src/ConstantFolding.cpp
     Compiler/src/CostModel.cpp
+    Compiler/src/Desugar.cpp
     Compiler/src/TableShape.cpp
     Compiler/src/Types.cpp
     Compiler/src/ValueTracking.cpp
