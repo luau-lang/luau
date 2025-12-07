@@ -4569,6 +4569,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         /*
          * local DataType = {}
+         * DataType.__index = DataType
          * do
          *     local __metatable__DataType = {}
          *     setmetatable(DataType, __metatable__DataType)
@@ -4590,6 +4591,23 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         AstStatLocal* local = localTable(a, declNameLocal, decl->name->location);
         stats.emplace_back(local);
+
+        AstStatAssign* assignIndexMetaproperty = a.alloc<AstStatAssign>(
+            decl->location,
+            singleton<AstExpr*>(a,
+                a.alloc<AstExprIndexName>(
+                    decl->name->location,
+                    loc(declNameLocal),
+                    names.getOrAdd("__index"),
+                    Location{},
+                    Position{0, 0}
+                )
+            ),
+            singleton<AstExpr*>(a,
+                loc(declNameLocal)
+            )
+        );
+        stats.emplace_back(assignIndexMetaproperty);
 
         std::string mtNameStr = "__metatable__";
         mtNameStr += decl->name->name.value;
