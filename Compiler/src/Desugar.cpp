@@ -154,6 +154,11 @@ struct Desugarer
         return allocator->alloc<AstStatExpr>(location, expr);
     }
 
+    AstStatBlock* statBlock(std::initializer_list<AstStat*> stats)
+    {
+        return allocator->alloc<AstStatBlock>(location, astArray<AstStat*>(stats));
+    }
+
     AstStatReturn* statReturn(AstExpr* expr)
     {
         return allocator->alloc<AstStatReturn>(location, singleton(expr));
@@ -232,6 +237,15 @@ struct Desugarer
     {
         std::vector<AstStat*> block;
 
+        const bool hasEmbed = std::any_of(
+            decl->props.begin(),
+            decl->props.end(),
+            [](const AstDataProp& prop)
+            {
+                return prop.name.value == std::string_view{"embed"};
+            }
+        );
+
         AstLocal* selfLocal =
             allocator->alloc<AstLocal>(names->getOrAdd("self"), location, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
         AstExpr* selfParam = exprLocal(selfLocal);
@@ -247,13 +261,41 @@ struct Desugarer
         for (const auto& prop : decl->props)
             block.emplace_back(generateReadPropTest(exprGlobal(rawgetName), selfParam, propParam, prop.name));
 
-        // If the property is on the metatable, return that.
-        AstLocal* pLocal = allocator->alloc<AstLocal>(names->getOrAdd("p"), location, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
-        AstStatLocal* initializeP = statLocal(pLocal, exprCall(exprGlobal(rawgetName), {exprLocal(declLocal, true), propParam}));
-        block.push_back(initializeP);
+        AstLocal* pLocal =
+            allocator->alloc<AstLocal>(names->getOrAdd("p"), location, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
+        AstExprLocal* pExprLocal = exprLocal(pLocal);
+        block.push_back(statLocal(pLocal, allocator->alloc<AstExprConstantNil>(location)));
 
-        // AstExpr* print = exprGlobal(names->getOrAdd("print"));
-        // block.push_back(statExpr(exprCall(print, {exprLocal(declLocal, true), propParam, exprLocal(pLocal)})));
+        // If the record has an embed, delegate to that. There are subtleties
+        // here!  Different kinds of data types signal nonexistent properties
+        // differently. :( For this prototype, we'll just assume that the embed
+        // type behaves like a typical Lua type: We assume that reads to
+        // nonexistent properties result in nil.
+        if (hasEmbed)
+        {
+            // p = self.embed[prop]
+            // if p then return p end
+
+            block.push_back(
+                statAssign(pExprLocal, allocator->alloc<AstExprIndexExpr>(location, exprIndexName(selfParam, "embed"), propParam))
+            );
+
+            AstStatBlock* thenBlock = statBlock({statReturn(pExprLocal)});
+            block.push_back(
+                allocator->alloc<AstStatIf>(
+                    location,
+                    pExprLocal,
+                    thenBlock,
+                    nullptr,
+                    std::nullopt,
+                    std::nullopt
+                )
+            );
+        }
+
+        // If the property is on the metatable, return that.
+        AstStatAssign* initializeP = statAssign(exprLocal(pLocal), exprCall(exprGlobal(rawgetName), {exprLocal(declLocal, true), propParam}));
+        block.push_back(initializeP);
 
         AstStatBlock* thenBlock = allocator->alloc<AstStatBlock>(location, singleton<AstStat*>(statReturn(exprLocal(pLocal))));
         AstStatIf* testP = allocator->alloc<AstStatIf>(location, exprLocal(pLocal), thenBlock, nullptr, std::nullopt, std::nullopt);
@@ -265,7 +307,8 @@ struct Desugarer
         errorMessage += " has no property ";
 
         AstExpr* error = exprGlobal(names->getOrAdd("error"));
-        AstExprConstantString* errorPrefixStr = allocator->alloc<AstExprConstantString>(location, astArray(errorMessage), AstExprConstantString::QuotedSimple);
+        AstExprConstantString* errorPrefixStr =
+            allocator->alloc<AstExprConstantString>(location, astArray(errorMessage), AstExprConstantString::QuotedSimple);
 
         AstExprBinary* errorStr = allocator->alloc<AstExprBinary>(location, AstExprBinary::Concat, errorPrefixStr, propParam);
 
@@ -346,7 +389,8 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         );
 
         AstStatBlock* doBlock = a.alloc<AstStatBlock>(
-            decl->location, d.astArray<AstStat*>({metatable, a.alloc<AstStatExpr>(decl->location, callSetMetatable), constructorFunction, indexMetamethod})
+            decl->location,
+            d.astArray<AstStat*>({metatable, a.alloc<AstStatExpr>(decl->location, callSetMetatable), constructorFunction, indexMetamethod})
         );
 
         stats.emplace_back(doBlock);

@@ -42,6 +42,18 @@
                 "CMAKE_CXX_COMPILER": "/usr/bin/clang++-12",
                 "CMAKE_BUILD_TYPE": "Debug"
             }
+        },
+        {
+            "name": "clang21",
+            "displayName": "Clang 21.1.7 x86_64-unknown-linux-gnu",
+            "description": "Using compilers: C = /home/andy/.linuxbrew/opt/llvm/bin/clang, CXX = /home/andy/.linuxbrew/opt/llvm/bin/clang++",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "/home/andy/.linuxbrew/opt/llvm/bin/clang",
+                "CMAKE_CXX_COMPILER": "/home/andy/.linuxbrew/opt/llvm/bin/clang++",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
         }
     ],
     "buildPresets": [
