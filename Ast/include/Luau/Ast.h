@@ -454,7 +454,7 @@ public:
         const AstName& index,
         const Location& indexLocation,
         const Position& opPosition,
-        char op
+        char op='.'
     );
 
     void visit(AstVisitor* visitor) override;
