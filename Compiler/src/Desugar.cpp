@@ -28,11 +28,14 @@
            if prop == "prop2" then
                return rawget(self, "prop2")
            end
+
            -- etc
+
            local p = rawget(DataType, "prop")
            if p then
                return p
            end
+
            error("Cannot read property " .. tostring(prop))
         end
     end
@@ -133,7 +136,7 @@ struct Desugarer
 
     AstStatLocal* statLocal(AstLocal* local, AstExpr* initializer)
     {
-        return allocator->alloc<AstStatLocal>(location, singleton<AstLocal*>(local), singleton<AstExpr*>(emptyTable()), std::nullopt);
+        return allocator->alloc<AstStatLocal>(location, singleton<AstLocal*>(local), singleton<AstExpr*>(initializer), std::nullopt);
     }
 
     AstStatAssign* statAssign(AstExpr* lhs, AstExpr* rhs)
@@ -144,6 +147,11 @@ struct Desugarer
     AstExprCall* exprCall(AstExpr* fn, std::initializer_list<AstExpr*> args)
     {
         return allocator->alloc<AstExprCall>(location, fn, astArray<AstExpr*>(args), false, AstArray<AstTypeOrPack>{}, location);
+    }
+
+    AstStatExpr* statExpr(AstExpr* expr)
+    {
+        return allocator->alloc<AstStatExpr>(location, expr);
     }
 
     AstStatReturn* statReturn(AstExpr* expr)
@@ -170,15 +178,10 @@ struct Desugarer
         {
             std::string_view nameView = prop.name.value;
             AstArray<char> label = astArray(nameView);
-            tableItems.push_back(
-                AstExprTable::Item{
-                    AstExprTable::Item::Record,
-                    allocator->alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
-                    allocator->alloc<AstExprIndexName>(
-                        decl->name->location, exprLocal(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0}
-                    )
-                }
-            );
+            tableItems.push_back(AstExprTable::Item{
+                AstExprTable::Item::Record,
+                allocator->alloc<AstExprConstantString>(prop.nameLocation, label, AstExprConstantString::QuotedSimple),
+                allocator->alloc<AstExprIndexName>(decl->name->location, exprLocal(propsLocal, true), prop.name, prop.nameLocation, Position{0, 0})});
         }
 
         AstName setmetatable = names->getOrAdd("setmetatable");
@@ -205,6 +208,84 @@ struct Desugarer
             false,
             Location{},
             allocator->alloc<AstStatBlock>(decl->location, singleton<AstStat*>(returnSetMetatable)),
+            decl->name->functionDepth + 1,
+            debugName,
+            nullptr
+        );
+    }
+
+    AstStatIf* generateReadPropTest(AstExpr* rawgetFunction, AstExpr* selfExpr, AstExpr* propVar, AstName propName)
+    {
+        AstExprConstantString* propStr =
+            allocator->alloc<AstExprConstantString>(location, astArray(std::string_view(propName.value)), AstExprConstantString::QuotedSimple);
+
+        AstExprBinary* compareToPropStr = allocator->alloc<AstExprBinary>(location, AstExprBinary::CompareEq, propVar, propStr);
+
+        AstStatReturn* ret = statReturn(exprCall(rawgetFunction, {selfExpr, propStr}));
+
+        AstStatBlock* thenBlock = allocator->alloc<AstStatBlock>(location, singleton<AstStat*>(ret));
+
+        return allocator->alloc<AstStatIf>(location, compareToPropStr, thenBlock, nullptr, std::nullopt, std::nullopt);
+    }
+
+    AstExprFunction* generateIndexMetamethod(AstStatDataDeclaration* decl, AstLocal* declLocal)
+    {
+        std::vector<AstStat*> block;
+
+        AstLocal* selfLocal =
+            allocator->alloc<AstLocal>(names->getOrAdd("self"), location, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
+        AstExpr* selfParam = exprLocal(selfLocal);
+
+        AstLocal* propLocal =
+            allocator->alloc<AstLocal>(names->getOrAdd("prop"), location, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
+        AstExpr* propParam = exprLocal(propLocal);
+
+        AstName rawgetName = names->getOrAdd("rawget");
+        AstExpr* rawget = exprGlobal(rawgetName);
+
+        // For each property, test for a match
+        for (const auto& prop : decl->props)
+            block.emplace_back(generateReadPropTest(exprGlobal(rawgetName), selfParam, propParam, prop.name));
+
+        // If the property is on the metatable, return that.
+        AstLocal* pLocal = allocator->alloc<AstLocal>(names->getOrAdd("p"), location, nullptr, decl->name->functionDepth + 1, decl->name->loopDepth, nullptr);
+        AstStatLocal* initializeP = statLocal(pLocal, exprCall(exprGlobal(rawgetName), {exprLocal(declLocal, true), propParam}));
+        block.push_back(initializeP);
+
+        // AstExpr* print = exprGlobal(names->getOrAdd("print"));
+        // block.push_back(statExpr(exprCall(print, {exprLocal(declLocal, true), propParam, exprLocal(pLocal)})));
+
+        AstStatBlock* thenBlock = allocator->alloc<AstStatBlock>(location, singleton<AstStat*>(statReturn(exprLocal(pLocal))));
+        AstStatIf* testP = allocator->alloc<AstStatIf>(location, exprLocal(pLocal), thenBlock, nullptr, std::nullopt, std::nullopt);
+        block.push_back(testP);
+
+        // Error if no property was found
+        std::string errorMessage = "Record ";
+        errorMessage += decl->name->name.value;
+        errorMessage += " has no property ";
+
+        AstExpr* error = exprGlobal(names->getOrAdd("error"));
+        AstExprConstantString* errorPrefixStr = allocator->alloc<AstExprConstantString>(location, astArray(errorMessage), AstExprConstantString::QuotedSimple);
+
+        AstExprBinary* errorStr = allocator->alloc<AstExprBinary>(location, AstExprBinary::Concat, errorPrefixStr, propParam);
+
+        block.emplace_back(statExpr(exprCall(error, {errorStr})));
+        //
+
+        std::string debugNameStr = decl->name->name.value;
+        debugNameStr += ".__index";
+        AstName debugName = names->getOrAdd(debugNameStr.data(), debugNameStr.size());
+
+        return allocator->alloc<AstExprFunction>(
+            decl->location,
+            AstArray<AstAttr*>{},
+            AstArray<AstGenericType*>{},
+            AstArray<AstGenericTypePack*>{},
+            nullptr,
+            astArray<AstLocal*>({selfLocal, propLocal}),
+            false,
+            Location{},
+            allocator->alloc<AstStatBlock>(decl->location, astArray(block)),
             decl->name->functionDepth + 1,
             debugName,
             nullptr
@@ -257,8 +338,15 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
             d.generateDataConstructor(decl)
         );
 
+        AstStatFunction* indexMetamethod = d.statFunction(
+            a.alloc<AstExprIndexName>(
+                decl->name->location, d.exprLocal(declNameLocal), names.getOrAdd("__index"), decl->name->location, Position{0, 0}
+            ),
+            d.generateIndexMetamethod(decl, declNameLocal)
+        );
+
         AstStatBlock* doBlock = a.alloc<AstStatBlock>(
-            decl->location, d.astArray<AstStat*>({metatable, a.alloc<AstStatExpr>(decl->location, callSetMetatable), constructorFunction})
+            decl->location, d.astArray<AstStat*>({metatable, a.alloc<AstStatExpr>(decl->location, callSetMetatable), constructorFunction, indexMetamethod})
         );
 
         stats.emplace_back(doBlock);

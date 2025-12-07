@@ -10062,8 +10062,17 @@ TEST_CASE("DataDecl")
         -- local Point = {}
         print(Point)
     )";
-    auto res = compileFunction(source.c_str(), 0, 0, 0);
-    CHECK("" == res);
+    auto res0 = compileFunction(source.c_str(), 0, 0, 0);
+    CHECK("" == res0);
+
+    auto res1 = compileFunction(source.c_str(), 1, 0, 0);
+    CHECK("" == res1);
+
+    auto res2 = compileFunction(source.c_str(), 2, 0, 0);
+    CHECK("" == res2);
+
+    auto res3 = compileFunction(source.c_str(), 3, 0, 0);
+    CHECK("" == res3);
 }
 
 TEST_SUITE_END();
