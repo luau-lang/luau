@@ -128,6 +128,11 @@ struct Desugarer
             location
         );
     }
+
+    AstStatReturn* statReturn(AstExpr* expr)
+    {
+        return allocator->alloc<AstStatReturn>(location, singleton(expr));
+    }
 };
 
 DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
@@ -207,16 +212,11 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
             );
         }
 
-        AstExprCall* innerSetMetatableCall = a.alloc<AstExprCall>(
-            decl->location,
-            d.global(setmetatable),
-            d.astArray<AstExpr*>({a.alloc<AstExprTable>(decl->location, d.astArray<AstExprTable::Item>(tableItems)), d.exprLocal(decl->name, true)}),
-            false,
-            AstArray<AstTypeOrPack>{},
-            decl->location
+        AstExprCall* innerSetMetatableCall = d.exprCall(
+            d.global(setmetatable), {a.alloc<AstExprTable>(decl->location, d.astArray<AstExprTable::Item>(tableItems)), d.exprLocal(decl->name, true)}
         );
 
-        AstStatReturn* returnSetMetatable = a.alloc<AstStatReturn>(decl->location, d.singleton<AstExpr*>(innerSetMetatableCall));
+        AstStatReturn* returnSetMetatable = d.statReturn(innerSetMetatableCall);
 
         std::string debugNameStr = decl->name->name.value;
         debugNameStr += ".__call";
