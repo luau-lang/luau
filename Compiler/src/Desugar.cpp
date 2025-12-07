@@ -5,6 +5,39 @@
 #include "Luau/Ast.h"
 #include "Luau/Lexer.h"
 
+/*
+    local DataType = {}
+    DataType.__index = DataType
+    do
+        local __metatable__DataType = {}
+        setmetatable(DataType, __metatable__DataType)
+        function __metatable__DataType.__call(self, t)
+            return setmetatable(
+                {
+                    tag=DataType,
+                    prop=t.prop, etc
+                },
+                DataType
+            )
+        end
+
+        function DataType.__index(self, prop)
+           if prop == "prop1" then
+               return rawget(self, "prop1")
+           end
+           if prop == "prop2" then
+               return rawget(self, "prop2")
+           end
+           -- etc
+           local p = rawget(DataType, "prop")
+           if p then
+               return p
+           end
+           error("Cannot read property " .. tostring(prop))
+        end
+    end
+ */
+
 namespace Luau
 {
 
@@ -72,7 +105,7 @@ struct Desugarer
         return res;
     }
 
-    AstExprGlobal* global(AstName name)
+    AstExprGlobal* exprGlobal(AstName name)
     {
         return allocator->alloc<AstExprGlobal>(location, name);
     }
@@ -118,6 +151,11 @@ struct Desugarer
         return allocator->alloc<AstStatReturn>(location, singleton(expr));
     }
 
+    AstStatFunction* statFunction(AstExpr* nameExpr, AstExprFunction* function)
+    {
+        return allocator->alloc<AstStatFunction>(location, nameExpr, function);
+    }
+
     std::vector<AstExprTable::Item> tableItems;
 
     AstExprFunction* generateDataConstructor(AstStatDataDeclaration* decl)
@@ -147,7 +185,7 @@ struct Desugarer
         LUAU_ASSERT(setmetatable.value);
 
         AstExprCall* innerSetMetatableCall = exprCall(
-            global(setmetatable),
+            exprGlobal(setmetatable),
             {allocator->alloc<AstExprTable>(decl->location, astArray<AstExprTable::Item>(tableItems)), exprLocal(decl->name, true)}
         );
 
@@ -172,11 +210,6 @@ struct Desugarer
             nullptr
         );
     }
-
-    AstStatFunction* statFunction(AstExpr* nameExpr, AstExprFunction* function)
-    {
-        return allocator->alloc<AstStatFunction>(location, nameExpr, function);
-    }
 };
 
 DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
@@ -197,26 +230,6 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
 
         Desugarer d{&result, &names, decl->name->location, decl->name->functionDepth, decl->name->loopDepth};
 
-        /*
-         * local DataType = {}
-         * DataType.__index = DataType
-         * do
-         *     local __metatable__DataType = {}
-         *     setmetatable(DataType, __metatable__DataType)
-         *
-         *     function __metatable__DataType.__call(self, t)
-         *         return setmetatable(
-         *             {
-         *                 tag=DataType,
-         *                 prop=t.prop, etc
-         *             },
-         *             DataType
-         *         )
-         *     end
-         *     -- also __index and __newindex if we want to do static property access
-         * end
-         */
-
         AstLocal* declNameLocal = decl->name;
 
         AstStatLocal* local = d.statLocal(declNameLocal, d.emptyTable());
@@ -235,7 +248,7 @@ DesugarResult desugar(AstStatBlock* program, AstNameTable& names)
         AstName setmetatable = names.getOrAdd("setmetatable");
         LUAU_ASSERT(setmetatable.value);
 
-        AstExprCall* callSetMetatable = d.exprCall(d.global(setmetatable), {d.exprLocal(decl->name, true), d.exprLocal(metatableLocal)});
+        AstExprCall* callSetMetatable = d.exprCall(d.exprGlobal(setmetatable), {d.exprLocal(decl->name, true), d.exprLocal(metatableLocal)});
 
         AstStatFunction* constructorFunction = d.statFunction(
             a.alloc<AstExprIndexName>(
