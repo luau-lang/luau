@@ -51,6 +51,7 @@ LUAU_FASTFLAGVARIABLE(LuauMetatableAvoidSingletonUnion)
 LUAU_FASTFLAGVARIABLE(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExplicitGenericPacks)
+LUAU_FASTFLAGVARIABLE(LuauReadWriteOnlyIndexers)
 
 namespace Luau
 {
@@ -4061,19 +4062,30 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
 
     if (AstTableIndexer* astIndexer = tab->indexer)
     {
-        if (astIndexer->access == AstTableAccess::Read)
-            reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-        else if (astIndexer->access == AstTableAccess::Write)
-            reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-        else if (astIndexer->access == AstTableAccess::ReadWrite)
+        if (FFlag::LuauReadWriteOnlyIndexers)
         {
             indexer = TableIndexer{
                 resolveType(scope, astIndexer->indexType, inTypeArguments),
                 resolveType(scope, astIndexer->resultType, inTypeArguments),
             };
+            indexer->access = astIndexer->access;
         }
         else
-            ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+        {
+            if (astIndexer->access == AstTableAccess::Read)
+                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else if (astIndexer->access == AstTableAccess::Write)
+                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+            else if (astIndexer->access == AstTableAccess::ReadWrite)
+            {
+                indexer = TableIndexer{
+                    resolveType(scope, astIndexer->indexType, inTypeArguments),
+                    resolveType(scope, astIndexer->resultType, inTypeArguments),
+                };
+            }
+            else
+                ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+        }
     }
 
     TypeId tableTy = arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
