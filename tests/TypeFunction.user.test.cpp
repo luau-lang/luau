@@ -2661,22 +2661,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
     CheckResult results = check(R"(
         type function checksubtype(a, b)
             if not a:issubtypeof(b) then
-                print("Not a subtype!")
+                error("Not a subtype!")
             end
             return a
         end
 
-        local x: checksubtype<nil, nil>
-        local y: checksubtype<nil, string?>
-        local z: checksubtype<"Hello", string>
-        local w: checksubtype<number, string | vector | number>
-        local a: checksubtype<boolean, number>
-        local b: checksubtype<false, nil>
+        local x: checksubtype<nil, nil>                          -- S
+        local y: checksubtype<nil, string?>                      -- S
+        local z: checksubtype<"Hello", string>                   -- S
+        local w: checksubtype<string | vector | number, number>  -- F
+        local a: checksubtype<boolean, number>                   -- F
+        local b: checksubtype<false, nil>                        -- F
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, results);
-    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
-    CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError) // manually overriding this with the flag list did not appear to work
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, results);
+
+        CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+        CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
+        CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
+
+        CHECK(results.errors[0].location.begin.line == 11);
+        CHECK(results.errors[1].location.begin.line == 12);
+        CHECK(results.errors[2].location.begin.line == 13);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(6, results);
+
+        CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+        CHECK(get<UninhabitedTypeFunction>(results.errors[1]));
+        CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
+        CHECK(get<UninhabitedTypeFunction>(results.errors[3]));
+        CHECK(get<UserDefinedTypeFunctionError>(results.errors[4]));
+        CHECK(get<UninhabitedTypeFunction>(results.errors[5]));
+
+        CHECK(results.errors[0].location.begin.line == 11);
+        CHECK(results.errors[1].location.begin.line == 11);
+        CHECK(results.errors[2].location.begin.line == 12);
+        CHECK(results.errors[3].location.begin.line == 12);
+        CHECK(results.errors[4].location.begin.line == 13);
+        CHECK(results.errors[5].location.begin.line == 13);
+    }
 }
 
 TEST_SUITE_END();
