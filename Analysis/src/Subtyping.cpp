@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
 LUAU_FASTFLAGVARIABLE(LuauTryFindSubstitutionReturnOptional)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAGVARIABLE(LuauFixSubtypingOfNegations)
+LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
 namespace Luau
 {
@@ -1939,6 +1940,12 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (superTable->indexer)
     {
+        if (FFlag::LuauReadWriteOnlyIndexers)
+        {
+            if (((int)superTable->indexer->access & (int)subTable->indexer->access) == 0 || (int)superTable->indexer->access > (int)subTable->indexer->access)
+                return SubtypingResult{false};
+        }
+
         if (subTable->indexer)
             result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
         else if (subTable->state != TableState::Sealed)

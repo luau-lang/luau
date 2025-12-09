@@ -21,6 +21,7 @@
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -767,6 +768,21 @@ struct TypeStringifier
         if (ttv.indexer && ttv.props.empty() && isNumber(ttv.indexer->indexType))
         {
             state.emit("{");
+
+            if (FFlag::LuauReadWriteOnlyIndexers)
+            {
+                if (ttv.indexer->access == AstTableAccess::Read)
+                {
+                    state.emit("read");
+                    state.emit(" ");
+                }
+                else if (ttv.indexer->access == AstTableAccess::Write)
+                {
+                    state.emit("write");
+                    state.emit(" ");
+                }
+            }
+
             stringify(ttv.indexer->indexResultType);
             state.emit("}");
 

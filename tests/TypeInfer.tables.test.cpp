@@ -6645,4 +6645,40 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_readonly")
     CHECK_EQ(3, result.errors[1].location.begin.line);
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_bad_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { read [boolean]: string })
+            local y: { [boolean]: string } = x
+            y[false] = "Hello, world!"
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(2, result.errors[0].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { read [boolean]: string })
+            local y = x
+            y[true] = "Hello, world!"
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(3, result.errors[0].location.begin.line);
+}
+
 TEST_SUITE_END();
