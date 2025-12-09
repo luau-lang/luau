@@ -772,15 +772,9 @@ struct TypeStringifier
             if (FFlag::LuauReadWriteOnlyIndexers)
             {
                 if (ttv.indexer->access == AstTableAccess::Read)
-                {
-                    state.emit("read");
-                    state.emit(" ");
-                }
+                    state.emit("read ");
                 else if (ttv.indexer->access == AstTableAccess::Write)
-                {
-                    state.emit("write");
-                    state.emit(" ");
-                }
+                    state.emit("write ");
             }
 
             stringify(ttv.indexer->indexResultType);
@@ -797,6 +791,15 @@ struct TypeStringifier
         if (ttv.indexer)
         {
             state.newline();
+
+            if (FFlag::LuauReadWriteOnlyIndexers)
+            {
+                if (ttv.indexer->access == AstTableAccess::Read)
+                    state.emit("read ");
+                else if (ttv.indexer->access == AstTableAccess::Write)
+                    state.emit("write ");
+            }
+
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");

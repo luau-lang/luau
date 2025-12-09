@@ -1940,10 +1940,10 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (superTable->indexer)
     {
-        if (FFlag::LuauReadWriteOnlyIndexers)
+        if (FFlag::LuauReadWriteOnlyIndexers && superTable->indexer.has_value() && subTable->indexer.has_value())
         {
             if (((int)superTable->indexer->access & (int)subTable->indexer->access) == 0 || (int)superTable->indexer->access > (int)subTable->indexer->access)
-                return SubtypingResult{false};
+                return SubtypingResult{false}; /* .withBothComponent(TypePath::TypeField::IndexLookup); */ // Error is more confusing with this
         }
 
         if (subTable->indexer)
