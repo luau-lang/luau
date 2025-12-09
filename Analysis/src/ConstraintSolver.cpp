@@ -1832,7 +1832,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
 
                 for (auto genericPack : ftv->genericPacks)
                 {
-                    freshReplacementPacks[genericPack] = arena->freshTypePack(constraint->scope);
+                    freshReplacementPacks[genericPack] = arena->freshTypePack(constraint->scope, Polarity::Mixed);
                     trackInteriorFreeTypePack(constraint->scope, freshReplacementPacks[genericPack]);
                 }
 
