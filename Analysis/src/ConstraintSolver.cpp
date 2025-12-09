@@ -1815,8 +1815,12 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
             // If the expected type is a function type whose signature contains generics from the calling function,
-            // instantiate those generics with fresh types to avoid conflicts with the actual type's generics.
-            if (get<FunctionType>(expectedArgTy) && ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+            // and the actual argument is a lambda with its own generics, instantiate the calling function's generics
+            // with fresh types to avoid conflicts with the actual type's generics.
+            const auto lambdaExpr = expr->as<AstExprFunction>();
+            bool argHasGenerics = lambdaExpr && (lambdaExpr->generics.size > 0 || lambdaExpr->genericPacks.size > 0);
+            
+            if (get<FunctionType>(expectedArgTy) && ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}) && argHasGenerics)
             {
                 DenseHashMap<TypeId, TypeId> freshReplacements{nullptr};
                 DenseHashMap<TypePackId, TypePackId> freshReplacementPacks{nullptr};
