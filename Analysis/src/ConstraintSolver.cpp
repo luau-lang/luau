@@ -1814,6 +1814,35 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
             AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
+            // If the expected type is a function type whose signature contains generics from the calling function,
+            // instantiate those generics with fresh types to avoid conflicts with the actual type's generics.
+            if (get<FunctionType>(expectedArgTy) && ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+            {
+                DenseHashMap<TypeId, TypeId> freshReplacements{nullptr};
+                DenseHashMap<TypePackId, TypePackId> freshReplacementPacks{nullptr};
+
+                for (auto generic : ftv->generics)
+                {
+                    if (auto gty = get<GenericType>(follow(generic)))
+                    {
+                        freshReplacements[generic] = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+                        trackInteriorFreeType(constraint->scope, freshReplacements[generic]);
+                    }
+                }
+
+                for (auto genericPack : ftv->genericPacks)
+                {
+                    freshReplacementPacks[genericPack] = arena->freshTypePack(constraint->scope);
+                    trackInteriorFreeTypePack(constraint->scope, freshReplacementPacks[genericPack]);
+                }
+
+                Replacer freshReplacer{arena, std::move(freshReplacements), std::move(freshReplacementPacks)};
+                if (auto instantiated = freshReplacer.substitute(expectedArgTy))
+                {
+                    expectedArgTy = *instantiated;
+                }
+            }
+
             PushTypeResult result =
                 pushTypeInto(c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr);
 
