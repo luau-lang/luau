@@ -2697,12 +2697,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
         CHECK(get<UserDefinedTypeFunctionError>(results.errors[4]));
         CHECK(get<UninhabitedTypeFunction>(results.errors[5]));
 
-        CHECK(results.errors[0].location.begin.line == 11);
-        CHECK(results.errors[1].location.begin.line == 11);
-        CHECK(results.errors[2].location.begin.line == 12);
-        CHECK(results.errors[3].location.begin.line == 12);
-        CHECK(results.errors[4].location.begin.line == 13);
-        CHECK(results.errors[5].location.begin.line == 13);
+        CHECK_EQ(11, results.errors[0].location.begin.line);
+        CHECK_EQ(11, results.errors[1].location.begin.line);
+        CHECK_EQ(12, results.errors[2].location.begin.line);
+        CHECK_EQ(12, results.errors[3].location.begin.line);
+        CHECK_EQ(13, results.errors[4].location.begin.line);
+        CHECK_EQ(13, results.errors[5].location.begin.line);
     }
 }
 
