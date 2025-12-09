@@ -37,6 +37,7 @@ LUAU_FASTFLAG(LuauPushTypeConstriantAlwaysCompletes)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 LUAU_FASTFLAG(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAG(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
 TEST_SUITE_BEGIN("TableTests");
@@ -6561,6 +6562,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_readonly")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
         {FFlag::LuauReadWriteOnlyIndexers, true}
     };
 
@@ -6583,6 +6585,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_readonly")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
         {FFlag::LuauReadWriteOnlyIndexers, true}
     };
 
@@ -6605,6 +6608,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_writeonly")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
         {FFlag::LuauReadWriteOnlyIndexers, true}
     };
 
@@ -6627,6 +6631,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_readonly")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
         {FFlag::LuauReadWriteOnlyIndexers, true}
     };
 
