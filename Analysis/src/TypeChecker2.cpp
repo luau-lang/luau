@@ -3183,9 +3183,75 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         std::stringstream reason;
 
+        bool hasPropertyAttributeMismatch = false;
+        std::string propertyName;
+        bool subIsReadOnly = false;
+        bool superIsReadWrite = false;
+
+        if (subLeafTy && superLeafTy && subLeafAsString == superLeafAsString && reasoning.subPath == reasoning.superPath)
+        {
+            auto lastComponent = reasoning.subPath.last();
+            if (lastComponent)
+            {
+                if (auto prop = get_if<TypePath::Property>(&*lastComponent))
+                {
+                    propertyName = prop->name;
+                    
+                    Path subParentPath = reasoning.subPath.pop();
+                    Path superParentPath = reasoning.superPath.pop();
+                    
+                    auto optSubParent = traverse(subTy, subParentPath, builtinTypes, subtyping->arena);
+                    auto optSuperParent = traverse(superTy, superParentPath, builtinTypes, subtyping->arena);
+                    
+                    if (optSubParent && optSuperParent)
+                    {
+                        if (auto subParentTy = get<TypeId>(*optSubParent))
+                        {
+                            if (auto superParentTy = get<TypeId>(*optSuperParent))
+                            {
+                                if (auto subTable = getTableType(*subParentTy))
+                                {
+                                    if (auto superTable = getTableType(*superParentTy))
+                                    {
+                                        auto subPropIt = subTable->props.find(propertyName);
+                                        auto superPropIt = superTable->props.find(propertyName);
+                                        
+                                        if (subPropIt != subTable->props.end() && superPropIt != superTable->props.end())
+                                        {
+                                            const Property& subProp = subPropIt->second;
+                                            const Property& superProp = superPropIt->second;
+                                            
+                                            subIsReadOnly = subProp.isReadOnly();
+                                            superIsReadWrite = superProp.isReadWrite();
+                                            
+                                            if (subIsReadOnly && superIsReadWrite)
+                                                hasPropertyAttributeMismatch = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (reasoning.subPath == reasoning.superPath)
-            reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
-                   << "` in the latter type, and " << baseReason;
+        {
+            if (hasPropertyAttributeMismatch)
+            {
+                std::string subAttr = subIsReadOnly ? "read-only" : "read-write";
+                std::string superAttr = superIsReadWrite ? "read-write" : "read-only";
+                reason << "accessing `" << propertyName << "` results in `" << subLeafAsString << "` in the former type (where `" << propertyName
+                       << "` is " << subAttr << ") and `" << superLeafAsString << "` in the latter type (where `" << propertyName << "` is "
+                       << superAttr << "), and " << baseReason;
+            }
+            else
+            {
+                reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
+                       << "` in the latter type, and " << baseReason;
+            }
+        }
         else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())
             reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` and " << toStringHuman(reasoning.superPath) << "`"
                    << superLeafAsString << "`, and " << baseReason;
