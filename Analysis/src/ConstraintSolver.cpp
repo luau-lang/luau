@@ -1531,7 +1531,38 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     {
         if (!c.typeArguments.empty() || !c.typePackArguments.empty())
         {
-            fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
+            const FunctionType* ftv = get<FunctionType>(follow(c.fn));
+            if (ftv)
+            {
+                std::vector<TypeId> saturatedTypeArguments;
+                std::vector<TypeId> extraTypes;
+                std::vector<TypePackId> saturatedPackArguments;
+
+                for (size_t i = 0; i < c.typeArguments.size(); ++i)
+                {
+                    TypeId ty = c.typeArguments[i];
+                    if (i < ftv->generics.size())
+                        saturatedTypeArguments.push_back(ty);
+                    else
+                        extraTypes.push_back(ty);
+                }
+
+                if (!extraTypes.empty() && !ftv->genericPacks.empty())
+                {
+                    saturatedPackArguments.push_back(arena->addTypePack(extraTypes));
+                }
+
+                for (const TypePackId tp : c.typePackArguments)
+                {
+                    saturatedPackArguments.push_back(tp);
+                }
+
+                fn = instantiateFunctionType(c.fn, saturatedTypeArguments, saturatedPackArguments, constraint->scope, constraint->location);
+            }
+            else
+            {
+                fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
+            }
         }
     }
 
