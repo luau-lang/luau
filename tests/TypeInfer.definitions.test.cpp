@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 TEST_SUITE_BEGIN("DefinitionTests");
@@ -634,7 +635,8 @@ TEST_CASE_FIXTURE(Fixture, "vector_readonly")
 {
     ScopedFastFlag _[] = {
         { FFlag::LuauSolverV2, true },
-        { FFlag::LuauExternReadWriteAttributes, true }
+        { FFlag::LuauExternReadWriteAttributes, true },
+        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
     };
 
     loadDefinition(R"(
@@ -665,7 +667,8 @@ TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
 {
     ScopedFastFlag _[] = {
         { FFlag::LuauSolverV2, true },
-        { FFlag::LuauExternReadWriteAttributes, true }
+        { FFlag::LuauExternReadWriteAttributes, true },
+        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
     };
 
     loadDefinition(R"(
