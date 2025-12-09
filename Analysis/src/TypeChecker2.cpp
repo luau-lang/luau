@@ -45,8 +45,9 @@ LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-  
+
 namespace Luau
 {
 
@@ -2394,8 +2395,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
-    // This is a more general bug that I had to fix to get the tests passing
-    if (FFlag::LuauExternReadWriteAttributes)
+    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
     {
         if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
             visit(expr->left, ValueContext::LValue); // In compound assignments, the LHS is both read-from and written-to
