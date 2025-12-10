@@ -794,6 +794,7 @@ TEST_CASE_FIXTURE(Fixture, "data_decl_method")
 {
     CheckResult result = check(R"(
         data Point { x: number, y: number }
+
         function Point:length()
             return 100
         end
@@ -804,6 +805,10 @@ TEST_CASE_FIXTURE(Fixture, "data_decl_method")
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId p = requireType("p");
+    const ExternType* et = get<ExternType>(p);
+    REQUIRE(et);
 
     CHECK("number" == toString(requireType("len")));
 }

@@ -3380,6 +3380,14 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     {
         if (auto p = lookupExternTypeProp(ct, propName))
             return {{}, context == ValueContext::RValue ? p->readTy : p->writeTy};
+        if (ct->metatable)
+        {
+            if (const TableType* tt = get<TableType>(*ct->metatable))
+            {
+                if (auto prop = tt->props.find("__index"); prop != tt->props.end() && prop->second.readTy.has_value())
+                    return lookupTableProp(constraint, *prop->second.readTy, propName, context);
+            }
+        }
         if (ct->indexer)
         {
             return {{}, ct->indexer->indexResultType, /* isIndex = */ true};

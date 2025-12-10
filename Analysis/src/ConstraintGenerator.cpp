@@ -1061,7 +1061,7 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
 
             // First, the type of an actual record instance.
 
-            TypeId ty = arena->addType(ExternType{
+            TypeId recordInstanceTy = arena->addType(ExternType{
                 declName,
                 std::move(props),
                 std::nullopt,
@@ -1094,7 +1094,7 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
 
             TypeId ctorTy = arena->addType(FunctionType{
                 arena->addTypePack({builtinTypes->unknownType, ctorArgTy}),
-                arena->addTypePack({ty})
+                arena->addTypePack({recordInstanceTy})
             });
 
             TypeId metatableTy = arena->addType(TableType{
@@ -1110,19 +1110,19 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
             // Next, the table itself.
             // FIXME: Note that this must be the metatable of the record instance type.
             TypeId tableTy = arena->addType(TableType{
-                TableType::Props{
-                    {"__index", Property::readonly(metatableTy)}
-                },
+                TableType::Props{},
                 std::nullopt,
                 TypeLevel{},
                 scope.get(),
                 TableState::Unsealed
             });
 
-            TypeId theTy = arena->addType(MetatableType{tableTy, metatableTy});
-            TypeId recordInstanceTy = arena->addType(MetatableType{ty, tableTy});
+            getMutable<TableType>(tableTy)->props["__index"] = Property::readonly(tableTy);
 
-            scope->exportedTypeBindings[dataDecl->name->name.value] = TypeFun{{}, {}, ty, dataDecl->location};
+            TypeId theTy = arena->addType(MetatableType{tableTy, metatableTy});
+            getMutable<ExternType>(recordInstanceTy)->metatable = tableTy;
+
+            scope->exportedTypeBindings[dataDecl->name->name.value] = TypeFun{{}, {}, recordInstanceTy, dataDecl->location};
 
             dataDeclRecords[dataDecl->name] = DataDeclRecord{dataDecl, recordInstanceTy};
 
