@@ -1051,16 +1051,15 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
             // type RecordTable = { @metatable MetaConstructor, __index: RecordTable }
             // type RecordInstance = { @metatable RecordTable }
 
-            TypeId recordTable = arena->addType(ExternType{
-                declName, ExternType::Props{}, std::nullopt, std::nullopt, Tags{}, nullptr, module->name, dataDecl->location});
+            // TypeId recordTable = arena->addType(ExternType{
+            //     declName, props, std::nullopt, std::nullopt, Tags{}, nullptr, module->name, dataDecl->location});
 
-            getMutable<ExternType>(recordTable)->props["__index"] = Property::readonly(recordTable);
+            // getMutable<ExternType>(recordTable)->props["__index"] = Property::readonly(recordTable);
 
-            scope->exportedTypeBindings[declName] = TypeFun{arena->addType(ExternType{
-                declName, std::move(props), std::nullopt, std::nullopt, Tags{}, nullptr, module->name, dataDecl->location})};
+            // scope->exportedTypeBindings[declName] = TypeFun{arena->addType(ExternType{
+            //     declName, props, std::nullopt, std::nullopt, Tags{}, nullptr, module->name, dataDecl->location})};
 
-            // Now the type surface for the corresponding value.
-            // It is something like { @metatable { __call: (table) -> DataType } }
+            // First, the type of an actual record instance.
 
             TypeId ty = arena->addType(ExternType{
                 declName,
@@ -1072,10 +1071,6 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
                 module->name,
                 dataDecl->location
             });
-
-            scope->exportedTypeBindings[dataDecl->name->name.value] = TypeFun{{}, {}, ty, dataDecl->location};
-
-            dataDeclRecords[dataDecl->name] = DataDeclRecord{dataDecl, ty};
 
             // Now the actual static object.
             // An unsealed table with a call metamethod.
@@ -1113,9 +1108,10 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
             });
 
             // Next, the table itself.
+            // FIXME: Note that this must be the metatable of the record instance type.
             TypeId tableTy = arena->addType(TableType{
                 TableType::Props{
-
+                    {"__index", Property::readonly(metatableTy)}
                 },
                 std::nullopt,
                 TypeLevel{},
@@ -1124,6 +1120,11 @@ void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock
             });
 
             TypeId theTy = arena->addType(MetatableType{tableTy, metatableTy});
+            TypeId recordInstanceTy = arena->addType(MetatableType{ty, tableTy});
+
+            scope->exportedTypeBindings[dataDecl->name->name.value] = TypeFun{{}, {}, ty, dataDecl->location};
+
+            dataDeclRecords[dataDecl->name] = DataDeclRecord{dataDecl, recordInstanceTy};
 
             DefId theDef = dfg->getDef(dataDecl->name);
             scope->bindings[dataDecl->name] = Binding{theTy, dataDecl->location};

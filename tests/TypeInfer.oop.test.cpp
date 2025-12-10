@@ -777,14 +777,35 @@ TEST_CASE_FIXTURE(Fixture, "data_decl")
         local y = p.y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_CHECK_NO_ERRORS(result);
 
     TypeId t = requireExportedType("Point");
     CHECK("Point" == toString(t));
 
+    const ExternType* point = get<ExternType>(t);
+    REQUIRE(point);
+
     CHECK("Point" == toString(requireType("p")));
     CHECK("number" == toString(requireType("x")));
     CHECK("number" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "data_decl_method")
+{
+    CheckResult result = check(R"(
+        data Point { x: number, y: number }
+        function Point:length()
+            return 100
+        end
+
+        local p = Point { x = 2, y = 3 }
+
+        local len = p:length()
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("len")));
 }
 
 TEST_SUITE_END();
