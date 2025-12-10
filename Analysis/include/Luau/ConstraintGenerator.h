@@ -58,6 +58,12 @@ struct InferencePack
     }
 };
 
+struct DataDeclRecord
+{
+    AstStatDataDeclaration* dataDecl;
+    TypeId ty;
+};
+
 struct ConstraintGenerator
 {
     // A list of all the scopes in the module. This vector holds ownership of the
@@ -130,6 +136,8 @@ struct ConstraintGenerator
     DenseHashMap<TypeId, TypeIds> localTypes{nullptr};
 
     DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
+
+    DenseHashMap<AstLocal*, DataDeclRecord> dataDeclRecords{nullptr};
 
     DcrLogger* logger;
 
@@ -258,6 +266,7 @@ private:
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     LUAU_NOINLINE void checkAliases(const ScopePtr& scope, AstStatBlock* block);
+    void prototypeDataDecls(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 

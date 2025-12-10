@@ -672,6 +672,8 @@ void TypeChecker2::visit(AstStat* stat)
         return visit(s);
     else if (auto s = stat->as<AstStatDeclareExternType>())
         return visit(s);
+    else if (stat->is<AstStatDataDeclaration>())
+        return;
     else if (auto s = stat->as<AstStatError>())
         return visit(s);
     else

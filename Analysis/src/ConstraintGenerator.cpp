@@ -273,6 +273,8 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 
     Checkpoint start = checkpoint(this);
 
+    prototypeDataDecls(scope, block);
+
     ControlFlow cf = visitBlockWithoutChildScope(scope, block);
     if (cf == ControlFlow::None)
         addConstraint(scope, block->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, rootScope->returnType});
@@ -1010,6 +1012,126 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
     }
 }
 
+void ConstraintGenerator::prototypeDataDecls(const ScopePtr& scope, AstStatBlock* block)
+{
+    DenseHashMap<Name, Location> dataDefinitionLocations{{}};
+    DenseHashMap<Name, AstStatDataDeclaration*> decls{{}};
+
+    for (AstStat* stat : block->body)
+    {
+        if (AstStatDataDeclaration* dataDecl = stat->as<AstStatDataDeclaration>())
+        {
+            decls[dataDecl->name->name.value] = dataDecl;
+
+            Name declName = dataDecl->name->name.value;
+            if (scope->exportedTypeBindings.count(declName))
+            {
+                auto it = dataDefinitionLocations.find(declName);
+                LUAU_ASSERT(it);
+                reportError(dataDecl->location, DuplicateTypeDefinition{dataDecl->name->name.value, *it});
+                continue;
+            }
+
+            // We'll use ExternType for now
+            ExternType::Props props;
+
+            for (const AstDataProp& dataProp : dataDecl->props)
+            {
+                // TODO read-only props. (write-only?  Certainly mixed read-write)
+                TypeId propTy =
+                    dataProp.ty ? resolveType(scope, dataProp.ty, false) : builtinTypes->anyType; // Maybe record type annotations should be required?
+                props[dataProp.name.value] = Property::rw(propTy);
+            }
+
+            // There are a few types here.
+            // There's the type of a record instance, the type of the record constructor (which is also a record instance's metatable)
+            // And there is the metatable of the constructor.
+
+            // type MetaConstructor = { __call: ({table containing record fields}) -> RecordInstance }
+            // type RecordTable = { @metatable MetaConstructor, __index: RecordTable }
+            // type RecordInstance = { @metatable RecordTable }
+
+            TypeId recordTable = arena->addType(ExternType{
+                declName, ExternType::Props{}, std::nullopt, std::nullopt, Tags{}, nullptr, module->name, dataDecl->location});
+
+            getMutable<ExternType>(recordTable)->props["__index"] = Property::readonly(recordTable);
+
+            scope->exportedTypeBindings[declName] = TypeFun{arena->addType(ExternType{
+                declName, std::move(props), std::nullopt, std::nullopt, Tags{}, nullptr, module->name, dataDecl->location})};
+
+            // Now the type surface for the corresponding value.
+            // It is something like { @metatable { __call: (table) -> DataType } }
+
+            TypeId ty = arena->addType(ExternType{
+                declName,
+                std::move(props),
+                std::nullopt,
+                std::nullopt,
+                Tags{},
+                nullptr,
+                module->name,
+                dataDecl->location
+            });
+
+            scope->exportedTypeBindings[dataDecl->name->name.value] = TypeFun{{}, {}, ty, dataDecl->location};
+
+            dataDeclRecords[dataDecl->name] = DataDeclRecord{dataDecl, ty};
+
+            // Now the actual static object.
+            // An unsealed table with a call metamethod.
+            // We start with the type of the metatable.
+
+            // Ok just kidding.  First, the type of the constructor.
+            TypeId ctorArgTy = arena->addType(TableType{
+                TableType::Props {},
+                std::nullopt,
+                TypeLevel{},
+                scope.get(),
+                TableState::Sealed
+            });
+            TableType* ctorArgTable = getMutable<TableType>(ctorArgTy);
+            LUAU_ASSERT(ctorArgTable);
+            for (const auto prop : dataDecl->props)
+            {
+                TypeId propTy = prop.ty ? resolveType(scope, prop.ty, false) : builtinTypes->anyType; // FIXME?
+                ctorArgTable->props[prop.name.value] = Property::rw(propTy);
+            }
+
+            TypeId ctorTy = arena->addType(FunctionType{
+                arena->addTypePack({builtinTypes->unknownType, ctorArgTy}),
+                arena->addTypePack({ty})
+            });
+
+            TypeId metatableTy = arena->addType(TableType{
+                TableType::Props{
+                    {"__call", Property::readonly(ctorTy)}
+                },
+                std::nullopt,
+                TypeLevel{},
+                scope.get(),
+                TableState::Sealed
+            });
+
+            // Next, the table itself.
+            TypeId tableTy = arena->addType(TableType{
+                TableType::Props{
+
+                },
+                std::nullopt,
+                TypeLevel{},
+                scope.get(),
+                TableState::Unsealed
+            });
+
+            TypeId theTy = arena->addType(MetatableType{tableTy, metatableTy});
+
+            DefId theDef = dfg->getDef(dataDecl->name);
+            scope->bindings[dataDecl->name] = Binding{theTy, dataDecl->location};
+            scope->lvalueTypes[theDef] = theTy;
+        }
+    }
+}
+
 ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
 {
     RecursionCounter counter{&recursionCount};
@@ -1113,6 +1235,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStat* stat)
         return visit(scope, s);
     else if (auto s = stat->as<AstStatDeclareExternType>())
         return visit(scope, s);
+    else if (stat->as<AstStatDataDeclaration>())
+        return ControlFlow::None;
     else if (auto s = stat->as<AstStatError>())
         return visit(scope, s);
     else

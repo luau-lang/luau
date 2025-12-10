@@ -548,6 +548,11 @@ TypeId Fixture::requireTypeAlias(const std::string& name)
     return follow(*ty);
 }
 
+TypeId Fixture::requireExportedType(const std::string& name)
+{
+    return requireExportedType(mainModuleName, name);
+}
+
 TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::string& name)
 {
     ModulePtr module = getFrontend().moduleResolver.getModule(moduleName);

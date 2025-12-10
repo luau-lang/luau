@@ -143,6 +143,7 @@ struct Fixture
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
     TypeId requireTypeAlias(const std::string& name);
+    TypeId requireExportedType(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
     // While most flags can be flipped inside the unit test, some code changes affect the state that is part of Fixture initialization
