@@ -255,7 +255,6 @@ struct Desugarer
         AstExpr* propParam = exprLocal(propLocal);
 
         AstName rawgetName = names->getOrAdd("rawget");
-        AstExpr* rawget = exprGlobal(rawgetName);
 
         // For each property, test for a match
         for (const auto& prop : decl->props)
