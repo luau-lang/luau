@@ -1578,7 +1578,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     functionType = arena->addType(BlockedType{});
     scope->bindings[function->name] = Binding{functionType, function->name->location};
 
-    FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
+    FunctionSignature sig = checkFunctionSignature(scope, nullptr, function->func, /* expectedType */ std::nullopt, function->name->location);
     sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->name->location};
 
     DefId def = dfg->getDef(function->name);
@@ -1629,7 +1629,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     // With or without self
 
     Checkpoint start = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
+    FunctionSignature sig = checkFunctionSignature(scope, function, function->func, /* expectedType */ std::nullopt, function->name->location);
 
     DefId def = dfg->getDef(function->name);
 
@@ -2011,7 +2011,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     ScopePtr environmentScope = *scopeIt;
 
     Checkpoint startCheckpoint = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(environmentScope, function->body, /* expectedType */ std::nullopt);
+    FunctionSignature sig = checkFunctionSignature(environmentScope, nullptr, function->body, /* expectedType */ std::nullopt);
 
     // Place this function as a child of the non-type function scope
     scope->children.emplace_back(sig.signatureScope.get());
@@ -3010,7 +3010,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
     InConditionalContext inContext(&typeContext, TypeContext::Default);
 
     Checkpoint startCheckpoint = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(scope, func, expectedType);
+    FunctionSignature sig = checkFunctionSignature(scope, nullptr, func, expectedType);
 
     interiorFreeTypes.emplace_back();
     checkFunctionBody(sig.bodyScope, func);
@@ -3797,6 +3797,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
 ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignature(
     const ScopePtr& parent,
+    AstStatFunction* subject,
     AstExprFunction* fn,
     std::optional<TypeId> expectedType,
     std::optional<Location> originalName
@@ -3876,7 +3877,19 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 
     if (fn->self)
     {
-        TypeId selfType = freshType(signatureScope, Polarity::Negative);
+        TypeId selfType = nullptr;
+        if (auto indexName = subject->name->as<AstExprIndexName>())
+        {
+            if (AstExprLocal* indexLocal = indexName->expr->as<AstExprLocal>())
+            {
+                DataDeclRecord* dataDeclRecord = dataDeclRecords.find(indexLocal->local);
+                selfType = dataDeclRecord->ty;
+            }
+        }
+
+        if (!selfType)
+            selfType = freshType(signatureScope, Polarity::Negative);
+
         argTypes.push_back(selfType);
         argNames.emplace_back(FunctionArgument{fn->self->name.value, fn->self->location});
         signatureScope->bindings[fn->self] = Binding{selfType, fn->self->location};

@@ -5032,4 +5032,20 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
     CHECK_EQ(ac.entryMap.count("Val3"), 1);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "we_know_the_fields_of_a_data_record")
+{
+    check(R"(
+        data Point2d { x: number, y: number }
+
+        local p = Point2d { x=3, y=4 }
+
+        local q = p.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(1 == ac.entryMap.count("x"));
+    CHECK(1 == ac.entryMap.count("y"));
+    CHECK(0 == ac.entryMap.count("z"));
+}
+
 TEST_SUITE_END();
