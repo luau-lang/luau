@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -4600,6 +4601,39 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
     ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
 
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExternReadWriteAttributes, true}
+    };
+
+    ParseResult result = tryParse(R"(
+        declare extern type Foo with
+            read ReadOnlyMember: string
+            write WriteOnlyMember: number
+            ReadWriteMember: vector
+            wRITE BadAttributeMember: buffer
+        end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_EQ(result.errors[0].getLocation().begin.line, 5);
+    CHECK_EQ(result.errors[0].getMessage(), "Expected blank or 'read' or 'write' attribute, got 'wRITE'");
+
+    AstStatBlock* stat = result.root;
+
+    REQUIRE_EQ(stat->body.size, 1);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    CHECK_EQ(declaredExternType->props.size, 4);
+
+    CHECK_EQ(declaredExternType->props.data[0].access, AstTableAccess::Read);
+    CHECK_EQ(declaredExternType->props.data[1].access, AstTableAccess::Write);
+    CHECK_EQ(declaredExternType->props.data[2].access, AstTableAccess::ReadWrite);
+    CHECK_EQ(declaredExternType->props.data[3].access, AstTableAccess::ReadWrite);
 }
 
 TEST_SUITE_END();

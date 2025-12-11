@@ -1543,6 +1543,11 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                             access = AstTableAccess::Write;
                             lexer.next();
                         }
+                        else
+                        {
+                            report(lexer.current().location, "Expected blank or 'read' or 'write' attribute, got '%s'", lexer.current().name);
+                            lexer.next();
+                        }
                     }
                 }
 
