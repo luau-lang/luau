@@ -3595,6 +3595,15 @@ PropertyTypes TypeChecker2::lookupProp(
         fetch(norm->tops);
     if (normValid)
         fetch(norm->booleans);
+    if (normValid)
+    {
+        for (const auto& partTy: norm->externTypes.ordering)
+        {
+            fetch(partTy);
+            if (!normValid)
+                break;
+        }
+    }
 
     if (normValid)
     {
@@ -3773,6 +3782,21 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId inhabitatedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
             return {normalizer.isInhabited(inhabitatedTestType), {cls->indexer->indexResultType}};
+        }
+        if (cls->metatable)
+        {
+            std::optional<TypeId> mtIndex = Luau::findMetatableEntry(builtinTypes, errors, ty, "__index", location);
+            if (mtIndex)
+            {
+                if (auto mtIndexFunction = get<FunctionType>(follow(*mtIndex)))
+                {
+                    std::optional<TypeId> firstRet = first(mtIndexFunction->retTypes);
+                    if (firstRet)
+                        return hasIndexTypeFromType(*firstRet, prop, context, location, seen, astIndexExprType, errors);
+                }
+                else
+                    return hasIndexTypeFromType(*mtIndex, prop, context, location, seen, astIndexExprType, errors);
+            }
         }
         return {NormalizationResult::False, {}};
     }

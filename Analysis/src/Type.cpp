@@ -1223,8 +1223,6 @@ const Property* lookupExternTypeProp(const ExternType* cls, const Name& name)
         if (it != cls->props.end())
             return &it->second;
 
-        // If cls has a metatable, and that metatable has an __index property, go!
-
         if (cls->parent)
             cls = get<ExternType>(*cls->parent);
         else
