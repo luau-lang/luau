@@ -10,6 +10,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAG(LuauCodegenSetBlockEntryState)
+
 namespace Luau
 {
 namespace CodeGen
@@ -106,6 +108,10 @@ void loadBytecodeTypeInfo(IrFunction& function)
             info.endpc = info.startpc + readVarInt(data, offset);
         }
     }
+
+    // Preserve original information
+    if (FFlag::LuauCodegenSetBlockEntryState)
+        function.bcOriginalTypeInfo = function.bcTypeInfo;
 
     CODEGEN_ASSERT(offset == size_t(proto->sizetypeinfo));
 }

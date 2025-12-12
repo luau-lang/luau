@@ -49,7 +49,10 @@ enum class ConditionA64
     // AL: always
     Always,
 
-    Count
+    Count,
+
+    UnsignedLess = CarryClear,
+    UnsignedGreaterEqual = CarrySet,
 };
 
 // Returns a condition that for 'a op b' will result in 'b op a'
@@ -63,9 +66,9 @@ inline ConditionA64 getInverseCondition(ConditionA64 cond)
     case ConditionA64::NotEqual:
         return ConditionA64::NotEqual;
     case ConditionA64::UnsignedGreater:
-        return ConditionA64::CarryClear;
+        return ConditionA64::UnsignedLess;
     case ConditionA64::UnsignedLessEqual:
-        return ConditionA64::CarrySet;
+        return ConditionA64::UnsignedGreaterEqual;
     case ConditionA64::GreaterEqual:
         return ConditionA64::LessEqual;
     case ConditionA64::Less:

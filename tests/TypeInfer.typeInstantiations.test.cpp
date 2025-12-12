@@ -7,6 +7,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -58,6 +59,10 @@ TEST_CASE_FIXTURE(Fixture, "as_expression_incorrect")
                 "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add"
             );
         }
+        else if (FFlag::LuauBetterTypeMismatchErrors)
+        {
+            REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'number', but got 'string'");
+        }
         else
         {
             REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
@@ -102,13 +107,21 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         if (FFlag::LuauSolverV2)
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'");
+            if (FFlag::LuauBetterTypeMismatchErrors)
+                REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'");
+            else
+                REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'");
         }
         else
         {
-            REQUIRE_EQ(
-                toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
-            );
+            if (FFlag::LuauBetterTypeMismatchErrors)
+                REQUIRE_EQ(
+                    toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'; none of the union options are compatible"
+                );
+            else
+                REQUIRE_EQ(
+                    toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
+                );
         }
     }
 }

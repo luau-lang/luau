@@ -8,8 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauAutocompleteAttributes)
-
 namespace Luau
 {
 
@@ -1167,10 +1165,7 @@ struct AstJsonEncoder : public AstVisitor
             "AstAttr",
             [&]()
             {
-                if (FFlag::LuauAutocompleteAttributes)
-                    write("name", node->name);
-                else
-                    write("name", node->type);
+                write("name", node->name);
             }
         );
     }

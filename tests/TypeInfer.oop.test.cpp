@@ -15,9 +15,11 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauHandleFunctionOversaturation)
+LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
-LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -166,6 +168,40 @@ TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocat
         CHECK_GE(80, module->internalTypes.types.size());
     else
         CHECK_GE(50, module->internalTypes.types.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "pass_too_many_arguments")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::LuauHandleFunctionOversaturation, true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {
+            method: (T, number) -> number
+        }
+
+        function makeT(): T
+            return {
+                method=function(self, number)
+                    return number * 2
+                end
+            }
+        end
+
+        local a = makeT()
+        a:method(5, 7)
+    )");
+
+    LUAU_CHECK_ERROR_COUNT(1, result);
+
+    const CountMismatch* countMismatch = get<CountMismatch>(result.errors.at(0));
+    REQUIRE_MESSAGE(countMismatch, "Expected CountMismatch but got " << result.errors.at(0));
+
+    CHECK(countMismatch->expected == 2);
+    CHECK(countMismatch->actual == 3);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_self")

@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAG(LuauCodegenChainedSpills)
+LUAU_FASTFLAGVARIABLE(LuauCodegenSpillRestoreFreeTemp)
 
 namespace Luau
 {
@@ -56,6 +57,8 @@ static int getReloadOffset_DEPRECATED(IrCmd cmd)
     {
     case IrValueKind::Unknown:
     case IrValueKind::None:
+    case IrValueKind::Float:
+    case IrValueKind::Count:
         CODEGEN_ASSERT(!"Invalid operand restore value kind");
         break;
     case IrValueKind::Tag:
@@ -98,6 +101,8 @@ static int getReloadOffset(IrValueKind kind)
     {
     case IrValueKind::Unknown:
     case IrValueKind::None:
+    case IrValueKind::Float:
+    case IrValueKind::Count:
         CODEGEN_ASSERT(!"Invalid operand restore value kind");
         break;
     case IrValueKind::Tag:
@@ -339,6 +344,18 @@ void IrRegAllocA64::freeLastUseRegs(const IrInst& inst, uint32_t index)
     checkOp(inst.g);
 }
 
+void IrRegAllocA64::freeTemp(RegisterA64 reg)
+{
+    Set& set = getSet(reg.kind);
+
+    CODEGEN_ASSERT((set.base & (1u << reg.index)) != 0);
+    CODEGEN_ASSERT((set.free & (1u << reg.index)) == 0);
+    CODEGEN_ASSERT((set.temp & (1u << reg.index)) != 0);
+
+    set.free |= 1u << reg.index;
+    set.temp &= ~(1u << reg.index);
+}
+
 void IrRegAllocA64::freeTempRegs()
 {
     CODEGEN_ASSERT((gpr.free & gpr.temp) == 0);
@@ -502,6 +519,12 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
                 build.fcvtzs(castReg(KindA64::x, reg), temp); // note: we don't use fcvtzu for consistency with C++ code
             else
                 CODEGEN_ASSERT(!"re-materialization not supported for this conversion command");
+
+            if (FFlag::LuauCodegenSpillRestoreFreeTemp)
+            {
+                // Temporary might have taken a spot needed for other registers in spill restore process
+                freeTemp(temp);
+            }
         }
         else
         {

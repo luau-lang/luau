@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -845,13 +846,34 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
     )");
 
     std::string expected;
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauBetterTypeMismatchErrors)
+        expected = "Expected this to be\n\t"
+                   "'{ a: number, b: string, c: { d: number } }'\n"
+                   "but got\n\t"
+                   "'{ a: number, b: string, c: { d: string } }'; \n"
+                   "accessing `c.d` results in `string` in the latter type and `number` in the former "
+                   "type, and `string` is not exactly `number`";
+    else if (FFlag::LuauSolverV2)
         expected = "Type\n\t"
                    "'{ a: number, b: string, c: { d: string } }'\n"
                    "could not be converted into\n\t"
                    "'{ a: number, b: string, c: { d: number } }'; \n"
                    "this is because accessing `c.d` results in `string` in the former type and `number` in the latter "
                    "type, and `string` is not exactly `number`";
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+        expected = "Expected this to be exactly\n\t"
+                   "'{ a: number, b: string, c: { d: number } }'\n"
+                   "but got\n\t"
+                   "'{ a: number, b: string, c: { d: string } }'\n"
+                   "caused by:\n  "
+                   "Property 'c' is not compatible.\n"
+                   "Expected this to be exactly\n\t"
+                   "'{ d: number }'\n"
+                   "but got\n\t"
+                   "'{ d: string }'\n"
+                   "caused by:\n  "
+                   "Property 'd' is not compatible.\n"
+                   "Expected this to be exactly 'number', but got 'string'";
     else
         expected = "Type\n\t"
                    "'{ a: number, b: string, c: { d: string } }'\n"
