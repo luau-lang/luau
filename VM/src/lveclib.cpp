@@ -6,8 +6,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauVectorLerp)
-
 static int vector_create(lua_State* L)
 {
     // checking argument count to avoid accepting 'nil' as a valid value
@@ -314,6 +312,7 @@ static const luaL_Reg vectorlib[] = {
     {"clamp", vector_clamp},
     {"max", vector_max},
     {"min", vector_min},
+    {"lerp", vector_lerp},
     {NULL, NULL},
 };
 
@@ -342,13 +341,6 @@ static void createmetatable(lua_State* L)
 int luaopen_vector(lua_State* L)
 {
     luaL_register(L, LUA_VECLIBNAME, vectorlib);
-
-    if (FFlag::LuauVectorLerp)
-    {
-        // To unflag put {"lerp", vector_lerp} in the `vectorlib` table
-        lua_pushcfunction(L, vector_lerp, "lerp");
-        lua_setfield(L, -2, "lerp");
-    }
 
 #if LUA_VECTOR_SIZE == 4
     lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);

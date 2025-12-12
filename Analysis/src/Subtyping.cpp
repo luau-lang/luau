@@ -23,7 +23,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauTrackUniqueness)
 LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
 LUAU_FASTFLAGVARIABLE(LuauTryFindSubstitutionReturnOptional)
@@ -983,13 +982,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        if (FFlag::LuauTrackUniqueness)
-        {
-            const bool forceCovariantTest = uniqueTypes != nullptr && uniqueTypes->contains(subTy);
-            result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
-        }
-        else
-            result = isCovariantWith(env, p, scope);
+        const bool forceCovariantTest = uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
     }
     else if (auto p = get2<MetatableType, MetatableType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
@@ -1874,13 +1868,6 @@ SubtypingResult Subtyping::isCovariantWith(
     return {*subSingleton == *superSingleton};
 }
 
-// Compatibility shim for the unflagged codepath of FFlag::LuauTrackUniqueness
-// TODO: Delete this when clipping that flag.
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope)
-{
-    return isCovariantWith(env, subTable, superTable, /*forceCovariantTest*/ false, scope);
-}
-
 SubtypingResult Subtyping::isCovariantWith(
     SubtypingEnvironment& env,
     const TableType* subTable,
@@ -2305,7 +2292,7 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (superProp.isShared() && subProp.isShared())
     {
-        if (FFlag::LuauTrackUniqueness && forceCovariantTest)
+        if (forceCovariantTest)
             res.andAlso(isCovariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
         else
             res.andAlso(isInvariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
@@ -2314,16 +2301,8 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         if (superProp.readTy.has_value() && subProp.readTy.has_value())
             res.andAlso(isCovariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
-        if (FFlag::LuauTrackUniqueness)
-        {
-            if (superProp.writeTy.has_value() && subProp.writeTy.has_value() && !forceCovariantTest)
-                res.andAlso(isContravariantWith(env, *subProp.writeTy, *superProp.writeTy, scope).withBothComponent(TypePath::Property::write(name)));
-        }
-        else
-        {
-            if (superProp.writeTy.has_value() && subProp.writeTy.has_value())
-                res.andAlso(isContravariantWith(env, *subProp.writeTy, *superProp.writeTy, scope).withBothComponent(TypePath::Property::write(name)));
-        }
+        if (superProp.writeTy.has_value() && subProp.writeTy.has_value() && !forceCovariantTest)
+            res.andAlso(isContravariantWith(env, *subProp.writeTy, *superProp.writeTy, scope).withBothComponent(TypePath::Property::write(name)));
 
         if (superProp.isReadWrite())
         {

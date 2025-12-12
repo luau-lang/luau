@@ -6,7 +6,6 @@
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
-#include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
@@ -21,8 +20,8 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
-LUAU_FASTFLAG(LuauNormalizerStepwiseFuel)
 
 namespace Luau
 {
@@ -1190,26 +1189,13 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
                     {
                         innerState->log.clear();
                         innerState->tryUnify_(*result, ftv->retTypes);
-                        if (FFlag::LuauNormalizerStepwiseFuel)
-                        {
-                            if (innerState->errors.empty())
-                                log.concat(std::move(innerState->log));
-                            // Annoyingly, since we don't support intersection of generic type packs,
-                            // the intersection may fail. We rather arbitrarily use the first matching overload
-                            // in that case.
-                            else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks(*result, ftv->retTypes))
-                                result = intersect;
-                        }
-                        else
-                        {
-                            if (innerState->errors.empty())
-                                log.concat(std::move(innerState->log));
-                            // Annoyingly, since we don't support intersection of generic type packs,
-                            // the intersection may fail. We rather arbitrarily use the first matching overload
-                            // in that case.
-                            else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks_INTERNAL(*result, ftv->retTypes))
-                                result = intersect;
-                        }
+                        if (innerState->errors.empty())
+                            log.concat(std::move(innerState->log));
+                        // Annoyingly, since we don't support intersection of generic type packs,
+                        // the intersection may fail. We rather arbitrarily use the first matching overload
+                        // in that case.
+                        else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks(*result, ftv->retTypes))
+                            result = intersect;
                     }
                     else
                         result = ftv->retTypes;
@@ -2209,7 +2195,8 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
 
     auto fail = [&](std::optional<TypeError> e)
     {
-        std::string reason = "The former's metatable does not satisfy the requirements.";
+        std::string reason = FFlag::LuauBetterTypeMismatchErrors ? "The given type's metatable does not satisfy the requirements."
+                                                                 : "The former's metatable does not satisfy the requirements.";
         if (e)
             reportError(location, TypeMismatch{osuperTy, osubTy, std::move(reason), std::move(e), mismatchContext()});
         else

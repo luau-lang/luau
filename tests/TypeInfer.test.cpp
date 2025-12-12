@@ -29,11 +29,12 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
-LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauAvoidMintingMultipleBlockedTypesForGlobals)
 
 using namespace Luau;
 
@@ -1158,22 +1159,39 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const std::string expected =
-            "Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'"
-            "\ncaused by:\n"
-            "  Property 'getStoreFieldName' is not compatible.\n"
-            "Type\n\t"
-            "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
-            "\ncould not be converted into\n\t"
-            "'(Policies, FieldSpecifier) -> string'"
-            "\ncaused by:\n"
-            "  Argument #2 type is not compatible.\n"
-            "Type\n\t"
-            "'FieldSpecifier'"
-            "\ncould not be converted into\n\t"
-            "'FieldSpecifier & { from: number? }'"
-            "\ncaused by:\n"
-            "  Not all intersection parts are compatible.\n"
-            "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'";
+            FFlag::LuauBetterTypeMismatchErrors
+                ? "Expected this to be exactly 'Policies' from 'MainModule', but got 'Policies' from 'MainModule'"
+                  "\ncaused by:\n"
+                  "  Property 'getStoreFieldName' is not compatible.\n"
+                  "Expected this to be exactly\n\t"
+                  "'(Policies, FieldSpecifier) -> string'"
+                  "\nbut got\n\t"
+                  "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
+                  "\ncaused by:\n"
+                  "  Argument #2 type is not compatible.\n"
+                  "Expected this to be exactly\n\t"
+                  "'FieldSpecifier & { from: number? }'"
+                  "\nbut got\n\t"
+                  "'FieldSpecifier'"
+                  "\ncaused by:\n"
+                  "  Not all intersection parts are compatible.\n"
+                  "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'"
+                : "Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'"
+                  "\ncaused by:\n"
+                  "  Property 'getStoreFieldName' is not compatible.\n"
+                  "Type\n\t"
+                  "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
+                  "\ncould not be converted into\n\t"
+                  "'(Policies, FieldSpecifier) -> string'"
+                  "\ncaused by:\n"
+                  "  Argument #2 type is not compatible.\n"
+                  "Type\n\t"
+                  "'FieldSpecifier'"
+                  "\ncould not be converted into\n\t"
+                  "'FieldSpecifier & { from: number? }'"
+                  "\ncaused by:\n"
+                  "  Not all intersection parts are compatible.\n"
+                  "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -2632,8 +2650,6 @@ TEST_CASE_FIXTURE(Fixture, "constraint_generation_recursion_limit")
 // https://github.com/luau-lang/luau/issues/1971
 TEST_CASE_FIXTURE(Fixture, "nested_functions_can_depend_on_outer_generics")
 {
-    ScopedFastFlag sff{FFlag::LuauEGFixGenericsList, true};
-
     CheckResult result = check(R"(
         function name<P>(arg1: P)
             return function(what: P) return what end
@@ -2697,7 +2713,6 @@ export type t12 = {
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_error")
 {
-    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
     CheckResult result = check(R"(
         --!strict
         local function f(u: string) end
@@ -2720,6 +2735,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
         _ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
         for l0,l2 in setmetatable(_,_),l0,_ do
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "captured_globals_are_not_blocked")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForbidInternalTypes, true},
+        {FFlag::LuauAvoidMintingMultipleBlockedTypesForGlobals, true},
+    };
+
+    // We do not care about the errors here, only that there are no internal
+    // types in the final typed AST.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        --!strict
+        local Cancelled: boolean = false
+
+        function Start()
+            if Cancelled then
+                return
+            end
+            Selection = 42
+            local _ = function ()
+                if Selection then
+                end
+            end
+        end
+
+        function Cancel()
+            Selection = nil
+        end
+
+        return {}
     )"));
 }
 

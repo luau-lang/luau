@@ -7,7 +7,6 @@
 #include "Luau/Normalize.h"
 #include "Luau/UnifierSharedState.h"
 
-LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 using namespace Luau;

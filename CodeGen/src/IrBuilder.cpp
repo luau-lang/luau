@@ -13,7 +13,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-
+LUAU_FASTFLAG(LuauCodegenSetBlockEntryState)
 LUAU_FASTFLAG(LuauCodegenChainLink)
 
 namespace Luau
@@ -42,7 +42,7 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 
 static void buildArgumentTypeChecks(IrBuilder& build)
 {
-    const BytecodeTypeInfo& typeInfo = build.function.bcTypeInfo;
+    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)

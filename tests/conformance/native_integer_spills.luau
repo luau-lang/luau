@@ -372,6 +372,74 @@ FUNC_LIST[1] = function(loc_0, loc_1)
 	end
 end
 
+FUNC_LIST[2] = function(hashtable: buffer, entries: buffer, px: buffer, py: buffer, N: number, mult: number, size: number)
+    local function hash(x: number, y: number, mult: number, size: number)
+        local cx, cy = math.floor(x * mult), math.floor(y * mult)
+        local h = bit32.bxor((cx * 92837111), (cy * 689287499))
+        return math.abs(h) % size;
+    end
+
+    for i = 0, N-1, 8 do
+        local x0, x1, x2, x3, x4, x5, x6, x7 = 
+            buffer.readf32(px, (i) * 4), 
+            buffer.readf32(px, (i+1) * 4), 
+            buffer.readf32(px, (i+2) * 4), 
+            buffer.readf32(px, (i+3) * 4),
+            buffer.readf32(px, (i+4) * 4), 
+            buffer.readf32(px, (i+5) * 4), 
+            buffer.readf32(px, (i+6) * 4), 
+            buffer.readf32(px, (i+7) * 4)
+
+        local y0, y1, y2, y3, y4, y5, y6, y7 = 
+            buffer.readf32(py, (i)) * 4, 
+            buffer.readf32(py, (i+1) * 4),
+            buffer.readf32(py, (i+2) * 4), 
+            buffer.readf32(py, (i+3) * 4),
+            buffer.readf32(py, (i+4) * 4), 
+            buffer.readf32(py, (i+5) * 4), 
+            buffer.readf32(py, (i+6) * 4), 
+            buffer.readf32(py, (i+7) * 4)
+        
+        local h0, h1, h2, h3, h4, h5, h6, h7 = 
+            hash(x0, y0, mult, size),
+            hash(x1, y1, mult, size),
+            hash(x2, y2, mult, size),
+            hash(x3, y3, mult, size),
+            hash(x4, y4, mult, size),
+            hash(x5, y5, mult, size),
+            hash(x6, y6, mult, size),
+            hash(x7, y7, mult, size)
+        
+        local vdecr0, vdecr1, vdecr2, vdecr3, vdecr4, vdecr5, vdecr6, vdecr7 =
+            buffer.readu32(hashtable, h0 * 4) - 1,
+            buffer.readu32(hashtable, h1 * 4) - 1,
+            buffer.readu32(hashtable, h2 * 4) - 1,
+            buffer.readu32(hashtable, h3 * 4) - 1,
+            buffer.readu32(hashtable, h4 * 4) - 1,
+            buffer.readu32(hashtable, h5 * 4) - 1,
+            buffer.readu32(hashtable, h6 * 4) - 1,
+            buffer.readu32(hashtable, h7 * 4) - 1
+        
+        buffer.writeu32(entries, vdecr0 * 4, i)
+        buffer.writeu32(entries, vdecr1 * 4, i + 1)
+        buffer.writeu32(entries, vdecr2 * 4, i + 2)
+        buffer.writeu32(entries, vdecr3 * 4, i + 3)
+        buffer.writeu32(entries, vdecr4 * 4, i + 4)
+        buffer.writeu32(entries, vdecr5 * 4, i + 5)
+        buffer.writeu32(entries, vdecr6 * 4, i + 6)
+        buffer.writeu32(entries, vdecr7 * 4, i + 7)
+        
+        buffer.writeu32(hashtable, h0 * 4, vdecr0)
+        buffer.writeu32(hashtable, h1 * 4, vdecr1)
+        buffer.writeu32(hashtable, h2 * 4, vdecr2)
+        buffer.writeu32(hashtable, h3 * 4, vdecr3)
+        buffer.writeu32(hashtable, h4 * 4, vdecr4)
+        buffer.writeu32(hashtable, h5 * 4, vdecr5)
+        buffer.writeu32(hashtable, h6 * 4, vdecr6)
+        buffer.writeu32(hashtable, h7 * 4, vdecr7)
+    end
+end
+
 mem = buffer.create(1024 * 1024)
 
 return('OK')

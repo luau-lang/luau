@@ -18,7 +18,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauCheckForInWithSubtyping3)
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauPropagateTypeAnnotationsInForInLoops)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -273,6 +275,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
 {
+    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
+
     CheckResult result = check(R"(
         local function range(l, h): () -> number
             return function()
@@ -285,10 +289,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    if (FFlag::LuauSolverV2)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
+    if (FFlag::LuauPropagateTypeAnnotationsInForInLoops)
         LUAU_REQUIRE_ERROR_COUNT(1, result);
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -953,7 +957,10 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_2")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'number' could not be converted into 'never'", toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ("Expected this to be unreachable, but got 'number'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'number' could not be converted into 'never'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")
@@ -1536,6 +1543,122 @@ local example: { [union]: number } = {}
 for key in example do
 end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function my_iter(): any
+            return {}
+        end
+
+        for index: number, value: string in my_iter() do
+            print(index, value)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireTypeAtPosition(Position{7, 18})));
+    CHECK("string" == toString(requireTypeAtPosition(Position{7, 25})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function my_iter(): {[number]: string}
+            return {}
+        end
+
+        for index: number, value: string in my_iter() do
+            print(index, value)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireTypeAtPosition(Position{7, 18})));
+    CHECK("string" == toString(requireTypeAtPosition(Position{7, 25})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_should_propagate_with_errors")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function my_iter(): any
+            return {}
+        end
+        for index: number, value: string in my_iter() do
+            index = ""
+            print(index)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_expressions")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function my_iter(): any
+            return {}
+        end
+
+        local function takesString(s: string) end
+
+        for index: number in my_iter() do
+            takesString(index)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("string", toString(err->wantedType));
+    CHECK_EQ("number", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function my_iter(): any
+            return {}
+        end
+
+        for index: number in my_iter() do
+            local fn = function()
+                index = ""
+            end
+            fn()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
 }
 
 TEST_SUITE_END();

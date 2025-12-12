@@ -17,7 +17,6 @@
 #include <sstream>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
@@ -406,7 +405,7 @@ struct TraversalState
         {
             bool updatedCurrent = false;
 
-            if (FFlag::LuauConsiderErrorSuppressionInTypes && get<ErrorType>(*currentType))
+            if (get<ErrorType>(*currentType))
             {
                 encounteredErrorSuppression = true;
                 return false;
@@ -415,66 +414,39 @@ struct TraversalState
             if (auto u = get<UnionType>(*currentType))
             {
                 auto it = begin(u);
-                if (FFlag::LuauConsiderErrorSuppressionInTypes)
+                // We want to track the index that updates the current type with `idx` while still iterating through the entire union to check for error types with `it`.
+                size_t idx = 0;
+                for (auto it = begin(u); it != end(u); ++it)
                 {
-                    // We want to track the index that updates the current type with `idx` while still iterating through the entire union to check for error types with `it`.
-                    size_t idx = 0;
-                    for (auto it = begin(u); it != end(u); ++it)
-                    {
-                        if (get<ErrorType>(*it))
-                            encounteredErrorSuppression = true;
-                        if (idx == index.index)
-                        {
-                            updateCurrent(*it);
-                            updatedCurrent = true;
-                        }
-                        ++idx;
-                    }
-                }
-                else
-                {
-                    std::advance(it, index.index);
-
-                    if (it != end(u))
+                    if (get<ErrorType>(*it))
+                        encounteredErrorSuppression = true;
+                    if (idx == index.index)
                     {
                         updateCurrent(*it);
-                        return true;
+                        updatedCurrent = true;
                     }
+                    ++idx;
                 }
             }
             else if (auto i = get<IntersectionType>(*currentType))
             {
                 auto it = begin(i);
-                if (FFlag::LuauConsiderErrorSuppressionInTypes)
+                // We want to track the index that updates the current type with `idx` while still iterating through the entire intersection to check for error types with `it`.
+                size_t idx = 0;
+                for (auto it = begin(i); it != end(i); ++it)
                 {
-                    // We want to track the index that updates the current type with `idx` while still iterating through the entire intersection to check for error types with `it`.
-                    size_t idx = 0;
-                    for (auto it = begin(i); it != end(i); ++it)
-                    {
-                        if (get<ErrorType>(*it))
-                            encounteredErrorSuppression = true;
-                        if (idx == index.index)
-                        {
-                            updateCurrent(*it);
-                            updatedCurrent = true;
-                        }
-                        ++idx;
-                    }
-                }
-                else
-                {
-                    std::advance(it, index.index);
-
-                    if (it != end(i))
+                    if (get<ErrorType>(*it))
+                        encounteredErrorSuppression = true;
+                    if (idx == index.index)
                     {
                         updateCurrent(*it);
-                        return true;
+                        updatedCurrent = true;
                     }
+                    ++idx;
                 }
             }
 
-            if (FFlag::LuauConsiderErrorSuppressionInTypes)
-                return updatedCurrent;
+            return updatedCurrent;
         }
         else
         {
@@ -1075,7 +1047,7 @@ std::optional<TypeId> traverseForType(const TypeId root, const Path& path, const
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
     {
-        if (FFlag::LuauConsiderErrorSuppressionInTypes && state.encounteredErrorSuppression)
+        if (state.encounteredErrorSuppression)
             return builtinTypes->errorType;
 
         const TypeId* ty = get<TypeId>(state.current);
@@ -1095,7 +1067,7 @@ std::optional<TypeId> traverseForType(
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
     {
-        if (FFlag::LuauConsiderErrorSuppressionInTypes && state.encounteredErrorSuppression)
+        if (state.encounteredErrorSuppression)
             return builtinTypes->errorType;
         const TypeId* ty = get<TypeId>(state.current);
         return ty ? std::make_optional(*ty) : std::nullopt;
@@ -1114,7 +1086,7 @@ std::optional<TypePackId> traverseForPack(
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
     {
-        if (FFlag::LuauConsiderErrorSuppressionInTypes && state.encounteredErrorSuppression)
+        if (state.encounteredErrorSuppression)
             return builtinTypes->errorTypePack;
         const TypePackId* ty = get<TypePackId>(state.current);
         return ty ? std::make_optional(*ty) : std::nullopt;
@@ -1133,7 +1105,7 @@ std::optional<TypePackId> traverseForPack(
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
     {
-        if (FFlag::LuauConsiderErrorSuppressionInTypes && state.encounteredErrorSuppression)
+        if (state.encounteredErrorSuppression)
             return builtinTypes->errorTypePack;
         const TypePackId* ty = get<TypePackId>(state.current);
         return ty ? std::make_optional(*ty) : std::nullopt;

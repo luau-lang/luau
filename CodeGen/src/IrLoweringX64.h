@@ -43,6 +43,7 @@ struct IrLoweringX64
     void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next);
     void jumpOrAbortOnUndef(IrOp target, const IrBlock& next);
 
+    void storeFloat(OperandX64 dst, IrOp src);
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
     void checkSafeEnv(IrOp target, const IrBlock& next);
 

@@ -78,29 +78,40 @@ end
 local haystack = string.rep("x", 100)
 local pattern = string.rep("x?", 100) .. string.rep("x", 100)
 
-function strhang1()
+function hang1()
 	string.find(haystack, pattern)
 end
 
-function strhang2()
+function hang2()
 	string.match(haystack, pattern)
 end
 
-function strhang3()
+function hang3()
 	string.gsub(haystack, pattern, "%0")
 end
 
-function strhang4()
+function hang4()
 	for k, v in string.gmatch(haystack, pattern) do
 	end
 end
 
-function strhang5()
+function hang5()
 	local x = string.rep('x', 1000)
 	string.match(x, string.rep('x.*', 100) .. 'y')
 end
 
-function strhangpcall()
+function hang6()
+	-- the reason an interrupt in RETURN is needed, CALL alone is not enough
+	local obj = setmetatable({}, {
+		__index = function(obj, n)
+			return if n < 2 then 1 else obj[n - 1] + obj[n - 2]
+		end
+	})
+
+	print(obj[100])
+end
+
+function hangpcall()
 	for i = 1,100 do
 		local status, msg = pcall(string.find, haystack, pattern)
 		assert(status == false)

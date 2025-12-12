@@ -40,6 +40,7 @@ struct IrRegAllocA64
     void freeLastUseReg(IrInst& target, uint32_t index);
     void freeLastUseRegs(const IrInst& inst, uint32_t index);
 
+    void freeTemp(RegisterA64 reg);
     void freeTempRegs();
 
     // Spills all live registers that outlive current instruction; all allocated registers are assumed to be undefined
