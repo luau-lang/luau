@@ -197,9 +197,12 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
 
         std::string result = Luau::CodeGen::getAssembly(L, -1, options, nullptr);
 
-        // Checking that other target lower correctly as well
-        options.target = Luau::CodeGen::AssemblyOptions::Target::A64;
-        Luau::CodeGen::getAssembly(L, -1, options, nullptr);
+        if (Luau::CodeGen::isSupported())
+        {
+            // Checking that other target lower correctly as well
+            options.target = Luau::CodeGen::AssemblyOptions::Target::A64;
+            Luau::CodeGen::getAssembly(L, -1, options, nullptr);
+        }
 
         return result;
     }
