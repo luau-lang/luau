@@ -58,6 +58,11 @@ struct InferencePack
     }
 };
 
+struct Checkpoint
+{
+    size_t offset = 0;
+};
+
 struct ConstraintGenerator
 {
     // A list of all the scopes in the module. This vector holds ownership of the
@@ -290,6 +295,13 @@ private:
     );
 
     InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
+    InferencePack checkExprCall(
+        const ScopePtr& scope,
+        AstExprCall* call,
+        TypeId fnType,
+        Checkpoint funcBeginCheckpoint,
+        Checkpoint funcEndCheckpoint
+    );
 
     /**
      * Checks an expression that is expected to evaluate to one type.

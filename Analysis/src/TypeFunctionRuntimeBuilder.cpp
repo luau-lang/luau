@@ -20,6 +20,8 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
+
 namespace Luau
 {
 
@@ -931,7 +933,13 @@ private:
         for (auto ty : f2->generics)
         {
             auto gty = get<TypeFunctionGenericType>(ty);
-            LUAU_ASSERT(gty && !gty->isPack);
+            if (FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks && (!gty || gty->isPack))
+            {
+                state->errors.emplace_back("Encountered unexpected generic");
+                return;
+            }
+            else
+                LUAU_ASSERT(gty && !gty->isPack);
 
             std::pair<bool, std::string> nameKey = std::make_pair(gty->isNamed, gty->name);
 
@@ -951,7 +959,13 @@ private:
         for (auto tp : f2->genericPacks)
         {
             auto gtp = get<TypeFunctionGenericTypePack>(tp);
-            LUAU_ASSERT(gtp);
+            if (FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks && !gtp)
+            {
+                state->errors.emplace_back("Encountered unexpected generic type pack");
+                return;
+            }
+            else
+                LUAU_ASSERT(gtp);
 
             std::pair<bool, std::string> nameKey = std::make_pair(gtp->isNamed, gtp->name);
 

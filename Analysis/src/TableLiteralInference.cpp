@@ -10,14 +10,13 @@
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/ToString.h"
-#include "Luau/TypeArena.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIntersection)
-LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintSingleton)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIndexer)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintLambdas2)
+LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintStripNilFromFunction)
 
 namespace Luau
 {
@@ -138,7 +137,7 @@ struct BidirectionalTypePusher
             if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->stringType, ft->upperBound) &&
                 fastIsSubtype(ft->lowerBound, solver->builtinTypes->stringType))
             {
-                if (FFlag::LuauPushTypeConstraintSingleton && maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
+                if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
                 {
                     // If we see a pattern like:
                     //
@@ -261,7 +260,9 @@ struct BidirectionalTypePusher
             if (auto exprLambda = expr->as<AstExprFunction>())
             {
                 const auto lambdaTy = get<FunctionType>(exprType);
-                const auto expectedLambdaTy = get<FunctionType>(expectedType);
+                const auto expectedLambdaTy = FFlag::LuauPushTypeConstraintStripNilFromFunction
+                                                  ? get<FunctionType>(stripNil(solver->builtinTypes, *solver->arena, expectedType))
+                                                  : get<FunctionType>(expectedType);
                 if (lambdaTy && expectedLambdaTy)
                 {
                     const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);

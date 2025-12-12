@@ -7,7 +7,6 @@
 
 #include <array>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileVectorLerp)
 LUAU_FASTFLAGVARIABLE(LuauCompileMathIsNanInfFinite)
 
 namespace Luau
@@ -264,7 +263,7 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_VECTOR_MIN;
         if (builtin.method == "max")
             return LBF_VECTOR_MAX;
-        if (FFlag::LuauCompileVectorLerp && builtin.method == "lerp")
+        if (builtin.method == "lerp")
             return LBF_VECTOR_LERP;
     }
 

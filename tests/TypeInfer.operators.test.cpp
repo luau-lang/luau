@@ -19,10 +19,9 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauTrackUniqueness)
-LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -541,7 +540,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_mismatch_metatable")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK("Type 'number' could not be converted into 'V2'" == toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK("Expected this to be 'V2', but got 'number'" == toString(result.errors[0]));
+    else
+        CHECK("Type 'number' could not be converted into 'V2'" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "CallOrOfFunctions")
@@ -1321,7 +1323,6 @@ TEST_CASE_FIXTURE(Fixture, "unrelated_primitives_cannot_be_compared")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNoMoreComparisonTypeFunctions, true},
     };
 
     CheckResult result = check(R"(
@@ -1444,12 +1445,8 @@ end
     )");
 
     // FIXME(CLI-165431): fixing subtyping revealed an overload selection problems
-    if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll && FFlag::LuauTrackUniqueness)
+    if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll)
         LUAU_REQUIRE_NO_ERRORS(result);
-    else if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-    }
     else
         LUAU_REQUIRE_NO_ERRORS(result);
 }

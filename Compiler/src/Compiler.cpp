@@ -26,7 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
-LUAU_FASTFLAG(LuauInterpStringConstFolding)
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
@@ -1947,65 +1946,33 @@ struct Compiler
         }
 
         size_t skippedSubExpr = 0;
-        if (FFlag::LuauInterpStringConstFolding)
+        for (size_t index = 0; index < expr->expressions.size; ++index)
         {
-            for (size_t index = 0; index < expr->expressions.size; ++index)
+            const Constant* c = constants.find(expr->expressions.data[index]);
+            if (c && c->type == Constant::Type::Type_String)
             {
-                const Constant* c = constants.find(expr->expressions.data[index]);
-                if (c && c->type == Constant::Type::Type_String)
-                {
-                    formatCapacity += c->stringLength + std::count(c->valueString, c->valueString + c->stringLength, '%');
-                    skippedSubExpr++;
-                }
-                else
-                    formatCapacity += 2; // "%*"
+                formatCapacity += c->stringLength + std::count(c->valueString, c->valueString + c->stringLength, '%');
+                skippedSubExpr++;
             }
+            else
+                formatCapacity += 2; // "%*"
         }
 
         std::string formatString;
         formatString.reserve(formatCapacity);
 
-        if (FFlag::LuauInterpStringConstFolding)
+        LUAU_ASSERT(expr->strings.size == expr->expressions.size + 1);
+        for (size_t idx = 0; idx < expr->strings.size; idx++)
         {
-            LUAU_ASSERT(expr->strings.size == expr->expressions.size + 1);
-            for (size_t idx = 0; idx < expr->strings.size; idx++)
+            AstArray<char> string = expr->strings.data[idx];
+            escapeAndAppend(formatString, string.data, string.size);
+
+            if (idx < expr->expressions.size)
             {
-                AstArray<char> string = expr->strings.data[idx];
-                escapeAndAppend(formatString, string.data, string.size);
-
-                if (idx < expr->expressions.size)
-                {
-                    const Constant* c = constants.find(expr->expressions.data[idx]);
-                    if (c && c->type == Constant::Type::Type_String)
-                        escapeAndAppend(formatString, c->valueString, c->stringLength);
-                    else
-                        formatString += "%*";
-                }
-            }
-        }
-        else
-        {
-            size_t stringsLeft = expr->strings.size;
-
-            for (AstArray<char> string : expr->strings)
-            {
-                if (memchr(string.data, '%', string.size))
-                {
-                    for (size_t characterIndex = 0; characterIndex < string.size; ++characterIndex)
-                    {
-                        char character = string.data[characterIndex];
-                        formatString.push_back(character);
-
-                        if (character == '%')
-                            formatString.push_back('%');
-                    }
-                }
+                const Constant* c = constants.find(expr->expressions.data[idx]);
+                if (c && c->type == Constant::Type::Type_String)
+                    escapeAndAppend(formatString, c->valueString, c->stringLength);
                 else
-                    formatString.append(string.data, string.size);
-
-                stringsLeft--;
-
-                if (stringsLeft > 0)
                     formatString += "%*";
             }
         }
@@ -2030,22 +1997,16 @@ struct Compiler
 
         emitLoadK(baseReg, formatStringIndex);
 
-        if (FFlag::LuauInterpStringConstFolding)
+        size_t skipped = 0;
+        for (size_t index = 0; index < expr->expressions.size; ++index)
         {
-            size_t skipped = 0;
-            for (size_t index = 0; index < expr->expressions.size; ++index)
-            {
-                AstExpr* subExpr = expr->expressions.data[index];
-                const Constant* c = constants.find(subExpr);
-                if (!c || c->type != Constant::Type::Type_String)
-                    compileExprTempTop(subExpr, uint8_t(baseReg + 2 + index - skipped));
-                else
-                    skipped++;
-            }
+            AstExpr* subExpr = expr->expressions.data[index];
+            const Constant* c = constants.find(subExpr);
+            if (!c || c->type != Constant::Type::Type_String)
+                compileExprTempTop(subExpr, uint8_t(baseReg + 2 + index - skipped));
+            else
+                skipped++;
         }
-        else
-            for (size_t index = 0; index < expr->expressions.size; ++index)
-                compileExprTempTop(expr->expressions.data[index], uint8_t(baseReg + 2 + index));
 
         BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
 

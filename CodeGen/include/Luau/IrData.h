@@ -56,7 +56,7 @@ enum class IrCmd : uint8_t
     // A: Rn
     LOAD_INT,
 
-    // Load a float field from vector as a double number
+    // Load a float field from vector (use FLOAT_TO_NUM to convert to double)
     // A: Rn or Kn
     // B: int (offset from the start of TValue)
     LOAD_FLOAT,
@@ -120,9 +120,9 @@ enum class IrCmd : uint8_t
     // Store a vector into TValue
     // When optional 'E' tag is present, it is written out to the TValue as well
     // A: Rn
-    // B: double (x)
-    // C: double (y)
-    // D: double (z)
+    // B: float (x)
+    // C: float (y)
+    // D: float (z)
     // E: tag (optional)
     STORE_VECTOR,
 
@@ -143,6 +143,14 @@ enum class IrCmd : uint8_t
     // A, B: int
     ADD_INT,
     SUB_INT,
+
+    // Sign extend an 8-bit value
+    // A: int
+    SEXTI8_INT,
+
+    // Sign extend a 16-bit value
+    // A: int
+    SEXTI16_INT,
 
     // Add/Sub/Mul/Div/Idiv/Mod two double numbers
     // A, B: double
@@ -202,6 +210,12 @@ enum class IrCmd : uint8_t
     // C, D: TValue (condition arguments)
     SELECT_VEC,
 
+    // Select one of the TValues based on the truthyness of A
+    // A: TValue
+    // B: TValue (if true)
+    // C: TValue (if false)
+    SELECT_IF_TRUTHY,
+
     // Add/Sub/Mul/Div/Idiv two vectors
     // A, B: TValue
     ADD_VEC,
@@ -216,9 +230,14 @@ enum class IrCmd : uint8_t
     // A: TValue
     UNM_VEC,
 
-    // Compute dot product between two vectors
+    // Compute dot product between two vectors as a float number (use FLOAT_TO_NUM to convert to double)
     // A, B: TValue
     DOT_VEC,
+
+    // Extract a component of a vector (use FLOAT_TO_NUM to convert to double)
+    // A: TValue (vector)
+    // B: int (0-3 index)
+    EXTRACT_VEC,
 
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
@@ -355,6 +374,14 @@ enum class IrCmd : uint8_t
     // A: double
     NUM_TO_UINT,
 
+    // Converts a float number to a double
+    // A: float
+    FLOAT_TO_NUM,
+
+    // Converts a double number to a float
+    // A: double
+    NUM_TO_FLOAT,
+
     // Converts a double number to a vector with the value in X/Y/Z
     // A: double
     NUM_TO_VEC,
@@ -362,6 +389,10 @@ enum class IrCmd : uint8_t
     // Adds VECTOR type tag to a vector, preserving X/Y/Z components
     // A: TValue
     TAG_VECTOR,
+
+    // Clear high register bits of an unsigned integer register. Used to sanitize value of 'producesDirtyHighRegisterBits' instructions.
+    // A: uint
+    TRUNCATE_UINT,
 
     // Adjust stack top (L->top) to point at 'B' TValues *after* the specified register
     // This is used to return multiple values
@@ -436,14 +467,13 @@ enum class IrCmd : uint8_t
     // Note: all referenced registers might be modified in the operation
     CONCAT,
 
-    // Load function upvalue into stack slot
-    // A: Rn
-    // B: UPn
+    // Load function upvalue
+    // A: UPn
     GET_UPVALUE,
 
-    // Store TValue from stack slot into a function upvalue
+    // Store TValue into a function upvalue
     // A: UPn
-    // B: Rn
+    // B: TValue
     // C: tag/undef (tag of the value that was written)
     SET_UPVALUE,
 
@@ -766,15 +796,15 @@ enum class IrCmd : uint8_t
     // C: int (value)
     BUFFER_WRITEI32,
 
-    // Read float value (converted to double) from buffer storage at specified offset
+    // Read float value (use FLOAT_TO_NUM to convert to double) from buffer storage at specified offset
     // A: pointer (buffer)
     // B: int (offset)
     BUFFER_READF32,
 
-    // Write float value (converted from double) to buffer storage at specified offset
+    // Write float value (use NUM_TO_FLOAT to convert from double) to buffer storage at specified offset
     // A: pointer (buffer)
     // B: int (offset)
-    // C: double (value)
+    // C: float (value)
     BUFFER_WRITEF32,
 
     // Read double value from buffer storage at specified offset
@@ -904,8 +934,11 @@ enum class IrValueKind : uint8_t
     Tag,
     Int,
     Pointer,
+    Float,
     Double,
     Tvalue,
+
+    Count
 };
 
 struct IrInst
@@ -1093,7 +1126,8 @@ struct IrFunction
     std::vector<ValueRestoreLocation> valueRestoreOps_NEW;
     std::vector<uint32_t> validRestoreOpBlocks;
 
-    BytecodeTypeInfo bcTypeInfo;
+    BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
+    BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences
 
     Proto* proto = nullptr;
     bool variadic = false;

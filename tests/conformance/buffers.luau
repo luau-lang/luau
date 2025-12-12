@@ -599,6 +599,78 @@ end
 
 misc(table.create(16, 0))
 
+local function storeloadpreserve(n, m, f, ...)
+  local b = buffer.create(1000)
+
+  buffer.writei8(b, 0, n)
+  buffer.writei8(b, 1, m)
+  buffer.writef64(b, 100, buffer.readi8(b, 0))
+  buffer.writef64(b, 108, buffer.readi8(b, 1))
+
+  buffer.writeu8(b, 2, n)
+  buffer.writeu8(b, 3, m)
+  buffer.writef64(b, 116, buffer.readu8(b, 2))
+  buffer.writef64(b, 124, buffer.readu8(b, 3))
+
+  buffer.writei16(b, 4, n)
+  buffer.writei16(b, 6, m)
+  buffer.writef64(b, 132, buffer.readi16(b, 4))
+  buffer.writef64(b, 140, buffer.readi16(b, 6))
+
+  buffer.writeu16(b, 8, n)
+  buffer.writeu16(b, 10, m)
+  buffer.writef64(b, 148, buffer.readu16(b, 8))
+  buffer.writef64(b, 156, buffer.readu16(b, 10))
+
+  buffer.writei32(b, 12, n)
+  buffer.writei32(b, 16, m)
+  buffer.writef64(b, 164, buffer.readi32(b, 12))
+  buffer.writef64(b, 172, buffer.readi32(b, 16))
+
+  buffer.writeu32(b, 20, n)
+  buffer.writeu32(b, 24, m)
+  buffer.writef64(b, 180, buffer.readu32(b, 20))
+  buffer.writef64(b, 188, buffer.readu32(b, 24))
+
+  buffer.writef32(b, 28, f)
+  buffer.writef64(b, 196, buffer.readf32(b, 28))
+
+  buffer.writef64(b, 32, f)
+  buffer.writef64(b, 204, buffer.readf64(b, 32))
+
+  assert(buffer.readi8(b, 0) == 0x12)
+  assert(buffer.readi8(b, 1) == -0x68)
+  assert(buffer.readu8(b, 2) == 0x12)
+  assert(buffer.readu8(b, 3) == 0x98)
+  assert(buffer.readi16(b, 4) == 0x7812)
+  assert(buffer.readi16(b, 6) == -0x4568)
+  assert(buffer.readu16(b, 8) == 0x7812)
+  assert(buffer.readu16(b, 10) == 0xba98)
+  assert(buffer.readi32(b, 12) == 0x34567812)
+  assert(buffer.readi32(b, 16) == -0x01234568)
+  assert(buffer.readu32(b, 20) == 0x34567812)
+  assert(buffer.readu32(b, 24) == 0xfedcba98)
+  assert(buffer.readf32(b, 28) == math.huge)
+  assert(buffer.readf64(b, 32) == 1e100)
+
+  assert(buffer.readf64(b, 100) == 0x12)
+  assert(buffer.readf64(b, 108) == -0x68)
+  assert(buffer.readf64(b, 116) == 0x12)
+  assert(buffer.readf64(b, 124) == 0x98)
+  assert(buffer.readf64(b, 132) == 0x7812)
+  assert(buffer.readf64(b, 140) == -0x4568)
+  assert(buffer.readf64(b, 148) == 0x7812)
+  assert(buffer.readf64(b, 156) == 0xba98)
+  assert(buffer.readf64(b, 164) == 0x34567812)
+  assert(buffer.readf64(b, 172) == -0x01234568)
+  assert(buffer.readf64(b, 180) == 0x34567812)
+  assert(buffer.readf64(b, 188) == 0xfedcba98)
+  assert(buffer.readf64(b, 196) == math.huge)
+  assert(buffer.readf64(b, 204) == 1e100)
+end
+
+storeloadpreserve(0x1234567812, 0x12fedcba98, 1e100)
+
 local function bitops(size, base)
   local b = buffer.create(size)
 

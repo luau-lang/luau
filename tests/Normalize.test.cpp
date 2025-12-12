@@ -15,7 +15,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauNormalizerUnionTyvarsTakeMaxSize)
 
 using namespace Luau;
 
@@ -1131,8 +1130,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "tyvar_limit_one_sided_intersection" * doctest::timeout(0.5))
 {
-    ScopedFastFlag _{FFlag::LuauNormalizerUnionTyvarsTakeMaxSize, true}; // Affects stringification of free types.
-
     std::vector<TypeId> options;
     for (auto i = 0; i < 120; i++)
         options.push_back(arena.freshType(getBuiltins(), getGlobalScope()));

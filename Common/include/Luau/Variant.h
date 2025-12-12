@@ -73,7 +73,7 @@ public:
         table[typeId](&storage, &other.storage);
     }
 
-    Variant(Variant&& other)
+    Variant(Variant&& other) noexcept
     {
         typeId = other.typeId;
         tableMove[typeId](&storage, &other.storage);
@@ -91,7 +91,7 @@ public:
         return *this = static_cast<Variant&&>(copy);
     }
 
-    Variant& operator=(Variant&& other)
+    Variant& operator=(Variant&& other) noexcept
     {
         if (this != &other)
         {
@@ -169,7 +169,7 @@ private:
     static constexpr size_t storageAlign = cmax({alignof(Ts)...});
 
     using FnCopy = void (*)(void*, const void*);
-    using FnMove = void (*)(void*, void*);
+    using FnMove = void (*)(void*, void*) noexcept;
     using FnDtor = void (*)(void*);
     using FnPred = bool (*)(const void*, const void*);
 
@@ -180,7 +180,7 @@ private:
     }
 
     template<typename T>
-    static void fnMove(void* dst, void* src)
+    static void fnMove(void* dst, void* src) noexcept
     {
         // static_cast<T&&> is equivalent to std::move() but faster in Debug
         new (dst) T(static_cast<T&&>(*static_cast<T*>(src)));
