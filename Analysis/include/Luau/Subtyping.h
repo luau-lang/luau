@@ -298,7 +298,6 @@ private:
         const SingletonType* superSingleton,
         NotNull<Scope> scope
     );
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const TableType* subTable,

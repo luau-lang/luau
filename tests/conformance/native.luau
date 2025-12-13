@@ -248,6 +248,44 @@ end
 
 assert(pcall(fuzzfail24) == false)
 
+local function fuzzfail25(...)
+  local _ = fill
+  while {[_ + _]={[bit32.bxor(65535,65535,_)]=bit32.bxor(-1610607103,65535,65535,_),},_=bit32.bxor(-1610607103,65535,65535,_),[538973697]=_,[_]=_,} do
+  end
+end
+
+assert(pcall(fuzzfail25) == false)
+
+local function fuzzfail26(...)
+  local loops = 10
+  for l0 in pcall,function<A...>(...):any
+      for _ in xpcall,_,_,_ do
+      end
+      function _():any
+      end
+      l0,l0._G,l0 = _,_
+    end do
+    function _<Q...>():any
+      l0,l0 = 0,{}
+      _()
+    end
+
+    loops -= 1
+    if loops == 0 then break end
+  end
+  return true
+end
+
+assert(pcall(fuzzfail26))
+
+local function fuzzfail27(...)
+  for _ = 1,67 do
+    assert(_, _ .. _ or _, {x=_ .. _ // _ .. _ or _ .. _,})
+  end
+end
+
+assert(pcall(fuzzfail27))
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 

@@ -1,5 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Error.h"
+
 #include "ClassFixture.h"
 #include "Fixture.h"
 
@@ -10,7 +12,10 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauUserTypeFunctionsNoUninhabitedError)
+LUAU_FASTFLAG(LuauUnionofIntersectionofFlattens)
+LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -405,8 +410,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optional_works_on_unions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
 {
-    if (!FFlag::LuauSolverV2)
-        return;
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         type function getunion()
@@ -430,6 +434,124 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "boolean | number | string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            local tys = { types.string, types.number, types.never, types.boolean, types.singleton(nil) }
+            local result = types.never
+            for _, ty in tys do
+                result = types.unionof(result, ty)
+            end
+            return result
+        end
+        -- forcing an error here to check the exact type of the union
+        local function ok(idx: foobar<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(toString(tm->givenType) == "(boolean | number | string)?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof_empty")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            return types.unionof()
+        end
+
+        local f: foobar<>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("f")) == "never");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof_two_things")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            return types.unionof(types.string, types.never)
+        end
+        -- forcing an error here to check the exact type of the union
+        local function ok(idx: foobar<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(toString(tm->givenType) == "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            local tys = { types.string, types.number, types.unknown, types.boolean }
+            local result = types.unknown
+            for _, ty in tys do
+                result = types.intersectionof(result, ty)
+            end
+            return result
+        end
+
+        local f: foobar<>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("f")) == "boolean & number & string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_empty")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            return types.intersectionof()
+        end
+
+        local f: foobar<>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("f")) == "unknown");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_two_things")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
+
+    CheckResult result = check(R"(
+        type function foobar()
+            return types.intersectionof(types.unknown, types.string)
+        end
+        -- forcing an error here to check the exact type of the union
+        local function ok(idx: foobar<>): never return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(toString(tm->givenType) == "string");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_serialization_works")
@@ -1379,9 +1501,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    CHECK(toString(result.errors[0]) == "Type '\"number\"' could not be converted into 'never'");
-    CHECK(toString(result.errors[1]) == "Type '\"string\"' could not be converted into 'never'");
-    CHECK(toString(result.errors[2]) == "Type '\"table\"' could not be converted into 'never'");
+
+    if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        CHECK("Expected this to be unreachable, but got '\"number\"'" == toString(result.errors[0]));
+        CHECK("Expected this to be unreachable, but got '\"string\"'" == toString(result.errors[1]));
+        CHECK("Expected this to be unreachable, but got '\"table\"'" == toString(result.errors[2]));
+    }
+    else
+    {
+        CHECK(toString(result.errors[0]) == "Type '\"number\"' could not be converted into 'never'");
+        CHECK(toString(result.errors[1]) == "Type '\"string\"' could not be converted into 'never'");
+        CHECK(toString(result.errors[2]) == "Type '\"table\"' could not be converted into 'never'");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
@@ -1409,7 +1541,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == R"(Type '{ @metatable { ma: boolean }, { a: number } }' could not be converted into 'number')");
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK(toString(result.errors[0]) == R"(Expected this to be 'number', but got '{ @metatable { ma: boolean }, { a: number } }')");
+    else
+        CHECK(toString(result.errors[0]) == R"(Type '{ @metatable { ma: boolean }, { a: number } }' could not be converted into 'number')");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonstrict_mode")
@@ -2649,5 +2784,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_match")
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     LUAU_REQUIRE_ERROR(results, UnappliedTypeFunction);
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag noCrash{FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks, true};
+
+    CheckResult results = check(R"(
+        type function identity(t: type)
+            return t
+        end
+
+        type func<parameters...> = typeof(function(...: parameters...) end)
+        local whomp: <T>(arg1: T) -> identity<T>
+        whomp(function(...) end :: func<any>)
+    )");
+
+    // FIXME: this should not error at all, but type alias expansion is broken because we don't have proper instantiation
+    // LUAU_REQUIRE_NO_ERRORS(results);
+
+    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+        LUAU_REQUIRE_ERROR_COUNT(1, results);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(2, results);
+    auto err = get<UserDefinedTypeFunctionError>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Encountered unexpected generic type pack", err->message);
+}
+
 
 TEST_SUITE_END();

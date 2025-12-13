@@ -86,8 +86,10 @@ struct IrRegAllocX64
     std::array<uint32_t, 16> xmmInstUsers;
     uint8_t usableXmmRegCount = 0;
 
-    std::bitset<256> usedSpillSlots;
-    unsigned maxUsedSlot = 0;
+    std::bitset<256> usedSpillSlots_DEPRECATED;
+    std::bitset<512> usedSpillSlotHalfs; // A bit for every stack slot split in 4 byte halfs
+    unsigned maxUsedSlot = 0;            // Maximum number of 8 byte stack slots used
+
     unsigned nextSpillId = 1;
     std::vector<IrSpillX64> spills;
 };

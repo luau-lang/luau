@@ -21,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
+LUAU_FASTFLAGVARIABLE(LuauBetterTypeMismatchErrors)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -117,9 +118,32 @@ struct ErrorConverter
             std::string given = givenModule ? quote(givenType) + " from " + quote(*givenModule) : quote(givenType);
             std::string wanted = wantedModule ? quote(wantedType) + " from " + quote(*wantedModule) : quote(wantedType);
             size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
-            if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
-                return "Type " + given + " could not be converted into " + wanted;
-            return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
+            if (FFlag::LuauBetterTypeMismatchErrors)
+            {
+                if (get<NeverType>(follow(tm.wantedType)))
+                {
+                    if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                        return "Expected this to be unreachable, but got " + given;
+                    return "Expected this to be unreachable, but got\n\t" + given;
+                }
+
+                if (tm.context == TypeMismatch::InvariantContext)
+                {
+                    if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                        return "Expected this to be exactly " + wanted + ", but got " + given;
+                    return "Expected this to be exactly\n\t" + wanted + "\nbut got\n\t" + given;
+                }
+
+                if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                    return "Expected this to be " + wanted + ", but got " + given;
+                return "Expected this to be\n\t" + wanted + "\nbut got\n\t" + given;
+            }
+            else
+            {
+                if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                    return "Type " + given + " could not be converted into " + wanted;
+                return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
+            }
         };
 
         if (givenTypeName == wantedTypeName)
@@ -159,7 +183,7 @@ struct ErrorConverter
         {
             result += "; " + tm.reason;
         }
-        else if (tm.context == TypeMismatch::InvariantContext)
+        else if (!FFlag::LuauBetterTypeMismatchErrors && tm.context == TypeMismatch::InvariantContext)
         {
             result += " in an invariant context";
         }
@@ -235,7 +259,6 @@ struct ErrorConverter
     std::string operator()(const Luau::CountMismatch& e) const
     {
         const std::string expectedS = e.expected == 1 ? "" : "s";
-        const std::string actualS = e.actual == 1 ? "" : "s";
         const std::string actualVerb = e.actual == 1 ? "is" : "are";
 
         switch (e.context)
@@ -597,7 +620,9 @@ struct ErrorConverter
 
     std::string operator()(const TypePackMismatch& e) const
     {
-        std::string ss = "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+        std::string ss = FFlag::LuauBetterTypeMismatchErrors
+                             ? "Expected this to be '" + toString(e.wantedTp) + "', but got '" + toString(e.givenTp) + "'"
+                             : "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
 
         if (!e.reason.empty())
             ss += "; " + e.reason;

@@ -13,9 +13,9 @@ LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
-LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 
 using namespace Luau;
 
@@ -65,7 +65,7 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function2")
 
 TEST_CASE_FIXTURE(Fixture, "unions_and_generics")
 {
-    ScopedFastFlag _{FFlag::LuauInstantiationUsesGenericPolarity, true};
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesGenericPolarity2, true};
 
     CheckResult result = check(R"(
         type foo = <T>(T | {T}) -> T
@@ -926,6 +926,18 @@ y.a.c = y
         CHECK_EQ(toString(mismatch2->givenType), "number");
         CHECK_EQ(toString(mismatch2->wantedType), "string");
     }
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        const std::string expected = R"(Expected this to be exactly 'T<string>', but got 'y'
+caused by:
+  Property 'a' is not compatible.
+Expected this to be exactly 'U<string>', but got '{| c: T<string>?, d: number |}'
+caused by:
+  Property 'd' is not compatible.
+Expected this to be exactly 'string', but got 'number')";
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
@@ -1084,6 +1096,10 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_pack_type_inferred_from_return")
         CHECK_EQ(toString(tm->wantedType), "string");
         CHECK_EQ(toString(tm->givenType), "number");
     }
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        CHECK_EQ(toString(result.errors[0]), R"(Expected this to be 'string', but got 'number')");
+    }
     else
     {
         CHECK_EQ(toString(result.errors[0]), R"(Type 'number' could not be converted into 'string')");
@@ -1158,7 +1174,10 @@ wrapper(foo, test2, "3") -- not ok (type mismatch, string instead of number)
     {
         CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function 'wrapper' expects 3 arguments, but 4 are specified)");
         CHECK_EQ(toString(result.errors[1]), R"(Argument count mismatch. Function 'wrapper' expects 3 arguments, but only 2 are specified)");
-        CHECK_EQ(toString(result.errors[2]), R"(Type 'string' could not be converted into 'number')");
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK_EQ(toString(result.errors[2]), R"(Expected this to be 'number', but got 'string')");
+        else
+            CHECK_EQ(toString(result.errors[2]), R"(Type 'string' could not be converted into 'number')");
     }
 }
 
@@ -2094,7 +2113,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_isfrozen_and_clear_work_on_any_table")
 TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
 {
     ScopedFastFlag _[] = {
-        {FFlag::LuauEGFixGenericsList, true},
         {FFlag::LuauIncludeExplicitGenericPacks, true},
     };
 
@@ -2118,7 +2136,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped")
 {
     ScopedFastFlag _[] = {
-        {FFlag::LuauEGFixGenericsList, true},
         {FFlag::LuauIncludeExplicitGenericPacks, true},
     };
 

@@ -25,11 +25,9 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
-LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTFLAG(LuauGenericCounterStepsInsteadOfCount)
-LUAU_FASTFLAG(LuauNormalizerStepwiseFuel)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -562,11 +560,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping" * doctest::timeout(4.0))
 {
     ScopedFastFlag sff[] = {
-        // These are necessary to trigger the bug
         {FFlag::LuauSolverV2, true},
-
-        // This is the fix
-        {FFlag::LuauLimitUnification, true}
     };
 
     ScopedFastInt sfi{FInt::LuauTypeInferIterationLimit, 100};
@@ -592,7 +586,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows"
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauLimitUnification, true},
         {FFlag::LuauUseNativeStackGuard, true},
     };
 
@@ -661,10 +654,8 @@ end
     )"));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_" * doctest::timeout(4.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_stepwise_normalization_works" * doctest::timeout(4.0))
 {
-    ScopedFastFlag _{FFlag::LuauNormalizerStepwiseFuel, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if _ then {n0=# _,[_]=_,``,[function(l0,l0,l0)
         do end
@@ -676,8 +667,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_" * doctest::timeout(4.0))
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_oom_unions" * doctest::timeout(4.0))
 {
-    ScopedFastFlag _{FFlag::LuauNormalizerStepwiseFuel, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         local _ = true,l0
         _ = if _ then _ else _._,if _[_] then nil elseif _ then `` else _._,...

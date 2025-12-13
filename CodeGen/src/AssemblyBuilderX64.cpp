@@ -6,6 +6,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
+
 namespace Luau
 {
 namespace CodeGen
@@ -264,13 +266,27 @@ void AssemblyBuilderX64::movsx(RegisterX64 lhs, OperandX64 rhs)
     if (logText)
         log("movsx", lhs, rhs);
 
-    CODEGEN_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
+    if (FFlag::LuauCodegenBufferLoadProp2)
+    {
+        SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
+        CODEGEN_ASSERT(size == SizeX64::byte || size == SizeX64::word);
 
-    placeRex(lhs, rhs);
-    place(0x0f);
-    place(rhs.memSize == SizeX64::byte ? 0xbe : 0xbf);
-    placeRegAndModRegMem(lhs, rhs);
-    commit();
+        placeRex(lhs, rhs);
+        place(0x0f);
+        place(size == SizeX64::byte ? 0xbe : 0xbf);
+        placeRegAndModRegMem(lhs, rhs);
+        commit();
+    }
+    else
+    {
+        CODEGEN_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
+
+        placeRex(lhs, rhs);
+        place(0x0f);
+        place(rhs.memSize == SizeX64::byte ? 0xbe : 0xbf);
+        placeRegAndModRegMem(lhs, rhs);
+        commit();
+    }
 }
 
 void AssemblyBuilderX64::movzx(RegisterX64 lhs, OperandX64 rhs)
@@ -278,13 +294,27 @@ void AssemblyBuilderX64::movzx(RegisterX64 lhs, OperandX64 rhs)
     if (logText)
         log("movzx", lhs, rhs);
 
-    CODEGEN_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
+    if (FFlag::LuauCodegenBufferLoadProp2)
+    {
+        SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
+        CODEGEN_ASSERT(size == SizeX64::byte || size == SizeX64::word);
 
-    placeRex(lhs, rhs);
-    place(0x0f);
-    place(rhs.memSize == SizeX64::byte ? 0xb6 : 0xb7);
-    placeRegAndModRegMem(lhs, rhs);
-    commit();
+        placeRex(lhs, rhs);
+        place(0x0f);
+        place(size == SizeX64::byte ? 0xb6 : 0xb7);
+        placeRegAndModRegMem(lhs, rhs);
+        commit();
+    }
+    else
+    {
+        CODEGEN_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
+
+        placeRex(lhs, rhs);
+        place(0x0f);
+        place(rhs.memSize == SizeX64::byte ? 0xb6 : 0xb7);
+        placeRegAndModRegMem(lhs, rhs);
+        commit();
+    }
 }
 
 void AssemblyBuilderX64::div(OperandX64 op)
@@ -964,11 +994,24 @@ void AssemblyBuilderX64::vpinsrd(RegisterX64 dst, RegisterX64 src1, OperandX64 s
     placeAvx("vpinsrd", dst, src1, src2, offset, 0x22, false, AVX_0F3A, AVX_66);
 }
 
+void AssemblyBuilderX64::vpextrd(RegisterX64 dst, RegisterX64 src, uint8_t offset)
+{
+    // 'placeAvx' wrapper doesn't have an overload for this archetype (opcode r/m, reg, imm8)
+    if (logText)
+        log("vpextrd", dst, src, offset);
+
+    placeVex(src, noreg, dst, false, AVX_0F3A, AVX_66);
+    place(0x16);
+    placeRegAndModRegMem(src, dst, /*extraCodeBytes=*/1);
+    placeImm8(offset);
+
+    commit();
+}
+
 void AssemblyBuilderX64::vdpps(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mask)
 {
     placeAvx("vdpps", dst, src1, src2, mask, 0x40, false, AVX_0F3A, AVX_66);
 }
-
 
 void AssemblyBuilderX64::vfmadd213ps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
@@ -1348,7 +1391,10 @@ void AssemblyBuilderX64::placeAvx(
     uint8_t prefix
 )
 {
-    CODEGEN_ASSERT((dst.cat == CategoryX64::mem && src.cat == CategoryX64::reg) || (dst.cat == CategoryX64::reg && src.cat == CategoryX64::mem));
+    CODEGEN_ASSERT(
+        (dst.cat == CategoryX64::mem && src.cat == CategoryX64::reg) || (dst.cat == CategoryX64::reg && src.cat == CategoryX64::mem) ||
+        (dst.cat == CategoryX64::reg && src.cat == CategoryX64::reg)
+    );
 
     if (logText)
         log(name, dst, src);
@@ -1402,7 +1448,12 @@ void AssemblyBuilderX64::
     CODEGEN_ASSERT(src2.cat == CategoryX64::reg || src2.cat == CategoryX64::mem);
 
     if (logText)
-        log(name, dst, src1, src2, imm8);
+    {
+        if (src1.base == noreg)
+            log(name, src2, dst, imm8);
+        else
+            log(name, dst, src1, src2, imm8);
+    }
 
     placeVex(dst, src1, src2, setW, mode, prefix);
     place(code);

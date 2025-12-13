@@ -85,7 +85,14 @@ struct CfgInfo
     // VM registers captured by nested closures
     // This set can never have an active variadic sequence
     RegisterSet captured;
+
+    // VM registers defined in any block
+    // Lowest variadic sequence start is stored to mark variadic writes
+    RegisterSet written;
 };
+
+// Calculate lists of block predecessors and successors
+void computeCfgBlockEdges(IrFunction& function);
 
 // A quick refresher on dominance and dominator trees:
 // * If A is a dominator of B (A dom B), you can never execute B without executing A first
