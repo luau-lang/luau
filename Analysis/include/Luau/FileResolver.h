@@ -36,6 +36,11 @@ struct ModuleInfo
 
 struct RequireAlias
 {
+    explicit RequireAlias(std::string alias)
+        : alias(std::move(alias))
+    {
+    }
+
     std::string alias; // Unprefixed alias name (no leading `@`).
     std::vector<std::string> tags = {};
 };

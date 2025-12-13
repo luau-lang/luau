@@ -133,7 +133,7 @@ std::vector<std::unique_ptr<RequireNode>> TestRequireNode::getChildren() const
 
 std::vector<RequireAlias> TestRequireNode::getAvailableAliases() const
 {
-    return {{"defaultalias"}};
+    return {RequireAlias("defaultalias")};
 }
 
 std::unique_ptr<RequireNode> TestRequireSuggester::getNode(const ModuleName& name) const
@@ -557,6 +557,18 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
     REQUIRE(it != module->exportedTypeBindings.end());
 
     return it->second.type;
+}
+
+TypeId Fixture::parseType(std::string_view src)
+{
+    return getFrontend().parseType(
+        NotNull{&allocator},
+        NotNull{&nameTable},
+        NotNull{&getFrontend().iceHandler},
+        TypeCheckLimits{},
+        NotNull{&arena},
+        src
+    );
 }
 
 std::string Fixture::decorateWithTypes(const std::string& code)

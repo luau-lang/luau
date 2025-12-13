@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
+
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
 
@@ -220,14 +222,24 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMovExtended")
 {
+    ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
+
     SINGLE_COMPARE(movsx(eax, byte[rcx]), 0x0f, 0xbe, 0x01);
     SINGLE_COMPARE(movsx(r12, byte[r10]), 0x4d, 0x0f, 0xbe, 0x22);
     SINGLE_COMPARE(movsx(ebx, word[r11]), 0x41, 0x0f, 0xbf, 0x1b);
     SINGLE_COMPARE(movsx(rdx, word[rcx]), 0x48, 0x0f, 0xbf, 0x11);
+    SINGLE_COMPARE(movsx(edx, cl), 0x0f, 0xbe, 0xd1);
+    SINGLE_COMPARE(movsx(edx, r12b), 0x41, 0x0f, 0xbe, 0xd4);
+    SINGLE_COMPARE(movsx(edx, wordReg(ecx)), 0x0f, 0xbf, 0xd1);
+    SINGLE_COMPARE(movsx(edx, wordReg(r12d)), 0x41, 0x0f, 0xbf, 0xd4);
     SINGLE_COMPARE(movzx(eax, byte[rcx]), 0x0f, 0xb6, 0x01);
     SINGLE_COMPARE(movzx(r12, byte[r10]), 0x4d, 0x0f, 0xb6, 0x22);
     SINGLE_COMPARE(movzx(ebx, word[r11]), 0x41, 0x0f, 0xb7, 0x1b);
     SINGLE_COMPARE(movzx(rdx, word[rcx]), 0x48, 0x0f, 0xb7, 0x11);
+    SINGLE_COMPARE(movzx(edx, cl), 0x0f, 0xb6, 0xd1);
+    SINGLE_COMPARE(movzx(edx, r12b), 0x41, 0x0f, 0xb6, 0xd4);
+    SINGLE_COMPARE(movzx(edx, wordReg(ecx)), 0x0f, 0xb7, 0xd1);
+    SINGLE_COMPARE(movzx(edx, wordReg(r12d)), 0x41, 0x0f, 0xb7, 0xd4);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfTest")
@@ -583,6 +595,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
     SINGLE_COMPARE(vpshufps(xmm7, xmm12, xmmword[rcx + r10], 0b11010100), 0xc4, 0xa1, 0x18, 0xc6, 0x3c, 0x11, 0xd4);
     SINGLE_COMPARE(vpinsrd(xmm7, xmm12, xmmword[rcx + r10], 2), 0xc4, 0xa3, 0x19, 0x22, 0x3c, 0x11, 0x02);
 
+    SINGLE_COMPARE(vpextrd(ecx, xmm5, 2), 0xc4, 0xe3, 0x79, 0x16, 0xe9, 0x02);
+    SINGLE_COMPARE(vpextrd(r10d, xmm9, 1), 0xc4, 0x43, 0x79, 0x16, 0xca, 0x01);
+
     SINGLE_COMPARE(vdpps(xmm7, xmm12, xmmword[rcx + r10], 2), 0xc4, 0xa3, 0x19, 0x40, 0x3c, 0x11, 0x02);
 }
 
@@ -650,6 +665,7 @@ TEST_CASE("LogTest")
     build.add(rdx, qword[rcx - 12]);
     build.pop(r12);
     build.cmov(ConditionX64::AboveEqual, rax, rbx);
+    build.vpextrd(ecx, xmm5, 2);
     build.ret();
     build.int3();
 
@@ -696,6 +712,7 @@ TEST_CASE("LogTest")
  add         rdx,qword ptr [rcx-0Ch]
  pop         r12
  cmovae      rax,rbx
+ vpextrd     ecx,xmm5,2
  ret
  int3
  nop

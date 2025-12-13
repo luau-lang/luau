@@ -39,4 +39,17 @@ end
 
 mu(vec2(0, 2))
 
+local v1: vertex = vertex(vector.create(1, 2, 3), vector.create(0.5, 0, 0.5), vec2(0.25, 0.5))
+
+assert(v1.pos.X == 1 and v1.pos.Y == 2 and v1.pos.Z == 3)
+assert(v1.normal.x == 0.5 and v1.normal.Y == 0 and v1.normal.Z == 0.5)
+assert(v1.uv.X == 0.25)
+assert(v1.uv.Y == 0.5)
+
+local function vertextest1(v: vertex)
+	return v.uv.X * v1.pos:Dot(v1.normal)
+end
+
+assert(vertextest1(v1) == 0.5)
+
 return 'OK'

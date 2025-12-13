@@ -12,8 +12,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauLimitUnification)
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 namespace Luau
@@ -1219,7 +1218,7 @@ static std::optional<TypeId> selectOverload(
     return {};
 }
 
-SolveResult solveFunctionCall(
+SolveResult solveFunctionCall_DEPRECATED(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Normalizer> normalizer,
@@ -1246,7 +1245,7 @@ SolveResult solveFunctionCall(
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
-        if (FFlag::LuauInstantiationUsesGenericPolarity)
+        if (FFlag::LuauInstantiationUsesGenericPolarity2)
         {
             Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, iceReporter};
             std::optional<TypePackId> subst = instantiate2(
@@ -1271,22 +1270,14 @@ SolveResult solveFunctionCall(
         }
     }
 
-    if (FFlag::LuauLimitUnification)
+    switch (unifyResult)
     {
-        switch (unifyResult)
-        {
-        case Luau::UnifyResult::Ok:
-            break;
-        case Luau::UnifyResult::OccursCheckFailed:
-            return {SolveResult::CodeTooComplex};
-        case Luau::UnifyResult::TooComplex:
-            return {SolveResult::OccursCheckFailed};
-        }
-    }
-    else
-    {
-        if (unifyResult != UnifyResult::Ok)
-            return {SolveResult::OccursCheckFailed};
+    case Luau::UnifyResult::Ok:
+        break;
+    case Luau::UnifyResult::OccursCheckFailed:
+        return {SolveResult::CodeTooComplex};
+    case Luau::UnifyResult::TooComplex:
+        return {SolveResult::OccursCheckFailed};
     }
 
     SolveResult result;

@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::A64;
 
@@ -381,8 +383,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOfLabel")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 {
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
+
     SINGLE_COMPARE(fmov(d0, d1), 0x1E604020);
     SINGLE_COMPARE(fmov(d0, x1), 0x9E670020);
+    SINGLE_COMPARE(fmov(x3, d2), 0x9E660043);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
@@ -466,6 +471,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPInsertExtract")
     SINGLE_COMPARE(ins_4s(q31, 0, q29, 0), 0x6E0407BF);
     SINGLE_COMPARE(dup_4s(s29, q31, 2), 0x5E1407FD);
     SINGLE_COMPARE(dup_4s(q29, q30, 0), 0x4E0407DD);
+    SINGLE_COMPARE(umov_4s(w1, q30, 3), 0x0E1C3FC1);
+    SINGLE_COMPARE(umov_4s(w13, q1, 1), 0x0E0C3C2D);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPCompare")
@@ -476,18 +483,18 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPCompare")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPImm")
 {
-    SINGLE_COMPARE(fmov(d0, 0), 0x2F00E400);
+    SINGLE_COMPARE(fmov(d0, 0.0), 0x2F00E400);
     SINGLE_COMPARE(fmov(d0, 0.125), 0x1E681000);
     SINGLE_COMPARE(fmov(d0, -0.125), 0x1E781000);
     SINGLE_COMPARE(fmov(d0, 1.9375), 0x1E6FF000);
 
-    SINGLE_COMPARE(fmov(q0, 0), 0x4F000400);
+    SINGLE_COMPARE(fmov(q0, 0.0), 0x4F000400);
     SINGLE_COMPARE(fmov(q0, 0.125), 0x4F02F400);
     SINGLE_COMPARE(fmov(q0, -0.125), 0x4F06F400);
     SINGLE_COMPARE(fmov(q0, 1.9375), 0x4F03F7E0);
 
-    CHECK(!AssemblyBuilderA64::isFmovSupported(-0.0));
-    CHECK(!AssemblyBuilderA64::isFmovSupported(0.12389));
+    CHECK(!AssemblyBuilderA64::isFmovSupportedFp64(-0.0));
+    CHECK(!AssemblyBuilderA64::isFmovSupportedFp64(0.12389));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOffsetSize")
@@ -596,6 +603,7 @@ TEST_CASE("LogTest")
     build.ins_4s(q31, 1, q29, 2);
     build.dup_4s(s29, q31, 2);
     build.dup_4s(q29, q30, 0);
+    build.umov_4s(w1, q30, 3);
     build.fmul(q0, q1, q2);
 
     build.fcmeq_4s(q2, q0, q1);
@@ -642,6 +650,7 @@ TEST_CASE("LogTest")
  ins         v31.s[1],v29.s[2]
  dup         s29,v31.s[2]
  dup         v29.4s,v30.s[0]
+ umov        w1,v30.s[3]
  fmul        v0.4s,v1.4s,v2.4s
  fcmeq       v2.4s,v0.4s,v1.4s
  bit         v1.16b,v0.16b,v2.16b

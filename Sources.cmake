@@ -205,6 +205,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/Instantiation2.h
     Analysis/include/Luau/IostreamHelpers.h
+    Analysis/include/Luau/IterativeTypeVisitor.h
     Analysis/include/Luau/JsonEmitter.h
     Analysis/include/Luau/Linter.h
     Analysis/include/Luau/LValue.h
@@ -256,6 +257,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/UnifierSharedState.h
     Analysis/include/Luau/UserDefinedTypeFunction.h
     Analysis/include/Luau/VisitType.h
+    Analysis/include/Luau/IterativeTypeVisitor.h
 
     Analysis/src/Anyification.cpp
     Analysis/src/ApplyTypeFunction.cpp
@@ -286,6 +288,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Instantiation.cpp
     Analysis/src/Instantiation2.cpp
     Analysis/src/IostreamHelpers.cpp
+    Analysis/src/IterativeTypeVisitor.cpp
     Analysis/src/JsonEmitter.cpp
     Analysis/src/Linter.cpp
     Analysis/src/LValue.cpp

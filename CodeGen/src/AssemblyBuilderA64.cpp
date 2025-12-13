@@ -7,6 +7,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenSplitFloat)
+
 namespace Luau
 {
 namespace CodeGen
@@ -23,7 +26,7 @@ static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(C
 
 const unsigned kMaxAlign = 32;
 
-static int getFmovImm(double value)
+static int getFmovImmFp64(double value)
 {
     uint64_t u;
     static_assert(sizeof(u) == sizeof(value), "expected double to be 64-bit");
@@ -42,6 +45,27 @@ static int getFmovImm(double value)
     int dec = ((imm & 0x80) << 8) | ((imm & 0x40) ? 0b00111111'11000000 : 0b01000000'00000000) | (imm & 0x3f);
 
     return dec == int(u >> 48) ? imm : -1;
+}
+
+static int getFmovImmFp32(float value)
+{
+    uint32_t u;
+    static_assert(sizeof(u) == sizeof(value), "expected float to be 32-bit");
+    memcpy(&u, &value, sizeof(value));
+
+    // positive 0 is encodable via movi
+    if (u == 0)
+        return 256;
+
+    // early out: fmov can only encode float with 19 least significant zeros
+    if ((u & ((1ull << 19) - 1)) != 0)
+        return -1;
+
+    // f32 expansion is abcdfegh => aBbbbbbc defgh000 00000000 00000000
+    int imm = (int(u >> 24) & 0x80) | (int(u >> 19) & 0x7f);
+    int dec = ((imm & 0x80) << 5) | ((imm & 0x40) ? 0b00000111'11000000 : 0b00001000'00000000) | (imm & 0x3f);
+
+    return dec == int(u >> 19) ? imm : -1;
 }
 
 AssemblyBuilderA64::AssemblyBuilderA64(bool logText, unsigned int features)
@@ -529,6 +553,17 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, uint64_t value)
     patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
 }
 
+void AssemblyBuilderA64::adr(RegisterA64 dst, float value)
+{
+    size_t pos = allocateData(4, 4);
+    uint32_t location = getCodeSize();
+
+    writef32(&data[pos], value);
+    placeADR("adr", dst, 0b10000);
+
+    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+}
+
 void AssemblyBuilderA64::adr(RegisterA64 dst, double value)
 {
     size_t pos = allocateData(8, 8);
@@ -547,19 +582,37 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && (src.kind == KindA64::d || src.kind == KindA64::x));
-
-    if (src.kind == KindA64::d)
-        placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
+    if (FFlag::LuauCodegenUpvalueLoadProp || FFlag::LuauCodegenSplitFloat)
+    {
+        if (dst.kind == KindA64::d && src.kind == KindA64::d)
+            placeR1("fmov", dst, src, 0b00'11110'01'1'0000'00'10000);
+        else if (dst.kind == KindA64::d && src.kind == KindA64::x)
+            placeR1("fmov", dst, src, 0b00'11110'01'1'00'111'000000);
+        else if (dst.kind == KindA64::x && src.kind == KindA64::d)
+            placeR1("fmov", dst, src, 0b00'11110'01'1'00'110'000000);
+        else if (FFlag::LuauCodegenSplitFloat && dst.kind == KindA64::s && src.kind == KindA64::s)
+            placeR1("fmov", dst, src, 0b00'11110'00'1'0000'00'10000);
+        else if (FFlag::LuauCodegenSplitFloat && dst.kind == KindA64::s && src.kind == KindA64::w)
+            placeR1("fmov", dst, src, 0b00'11110'00'1'00'111'000000);
+        else
+            CODEGEN_ASSERT(!"Unsupported fmov kind");
+    }
     else
-        placeR1("fmov", dst, src, 0b000'11110'01'1'00'111'000000);
+    {
+        CODEGEN_ASSERT(dst.kind == KindA64::d && (src.kind == KindA64::d || src.kind == KindA64::x));
+
+        if (src.kind == KindA64::d)
+            placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
+        else
+            placeR1("fmov", dst, src, 0b000'11110'01'1'00'111'000000);
+    }
 }
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)
 {
     CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::q);
 
-    int imm = getFmovImm(src);
+    int imm = getFmovImmFp64(src);
     CODEGEN_ASSERT(imm >= 0 && imm <= 256);
 
     // fmov can't encode 0, but movi can; movi is otherwise not useful for fp immediates because it encodes repeating patterns
@@ -569,6 +622,30 @@ void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)
             placeFMOV("movi", dst, src, 0b001'0111100000'000'1110'01'00000);
         else
             placeFMOV("fmov", dst, src, 0b000'11110'01'1'00000000'100'00000 | (imm << 8));
+    }
+    else
+    {
+        if (imm == 256)
+            placeFMOV("movi.4s", dst, src, 0b010'0111100000'000'0000'01'00000);
+        else
+            placeFMOV("fmov.4s", dst, src, 0b010'0111100000'000'1111'0'1'00000 | ((imm >> 5) << 11) | (imm & 31));
+    }
+}
+
+void AssemblyBuilderA64::fmov(RegisterA64 dst, float src)
+{
+    CODEGEN_ASSERT(dst.kind == KindA64::s || dst.kind == KindA64::q);
+
+    int imm = getFmovImmFp32(src);
+    CODEGEN_ASSERT(imm >= 0 && imm <= 256);
+
+    // fmov can't encode 0, but movi can; movi is otherwise not useful for fp immediates because it encodes repeating patterns
+    if (dst.kind == KindA64::s)
+    {
+        if (imm == 256)
+            placeFMOV("movi", dst, src, 0b001'0111100000'000'1110'01'00000);
+        else
+            placeFMOV("fmov", dst, src, 0b000'11110'00'1'00000000'100'00000 | (imm << 8));
     }
     else
     {
@@ -811,6 +888,22 @@ void AssemblyBuilderA64::dup_4s(RegisterA64 dst, RegisterA64 src, uint8_t index)
     commit();
 }
 
+void AssemblyBuilderA64::umov_4s(RegisterA64 dst, RegisterA64 src, uint8_t index)
+{
+    CODEGEN_ASSERT(dst.kind == KindA64::w);
+    CODEGEN_ASSERT(src.kind == KindA64::q);
+    CODEGEN_ASSERT(index < 4);
+
+    if (logText)
+        logAppend(" %-12sw%d,v%d.s[%d]\n", "umov", dst.index, src.index, index);
+
+    //                Q     A-SIMD SzIdx Opcode Rn    Rd
+    uint32_t op = 0b0'0'0'01110000'00100'001111'00000'00000;
+
+    place(dst.index | (src.index << 5) | op | (index << 19));
+
+    commit();
+}
 void AssemblyBuilderA64::fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
     if (logText)
@@ -1018,9 +1111,14 @@ bool AssemblyBuilderA64::isMaskSupported(uint32_t mask)
            (mask >> rz) == (1u << (32 - lz - rz)) - 1; // sequence of 1s must be contiguous
 }
 
-bool AssemblyBuilderA64::isFmovSupported(double value)
+bool AssemblyBuilderA64::isFmovSupportedFp64(double value)
 {
-    return getFmovImm(value) >= 0;
+    return getFmovImmFp64(value) >= 0;
+}
+
+bool AssemblyBuilderA64::isFmovSupportedFp32(float value)
+{
+    return getFmovImmFp32(value) >= 0;
 }
 
 void AssemblyBuilderA64::place0(const char* name, uint32_t op)

@@ -12,6 +12,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/Instantiation2.h"
 #include "Luau/Unifier2.h"
 #include "Luau/UserDefinedTypeFunction.h"
 #include "Luau/VisitType.h"
@@ -21,10 +22,12 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAGVARIABLE(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAGVARIABLE(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauEGFixGenericsList)
 LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
+LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAGVARIABLE(LuauGetmetatableError)
+LUAU_FASTFLAGVARIABLE(LuauSetmetatableWaitForPendingTypes)
 
 namespace Luau
 {
@@ -318,13 +321,6 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
         return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
 
-    if (!FFlag::LuauEGFixGenericsList)
-    {
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-
     if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
         return {ret, Reduction::MaybeOk, {}, {}};
     else
@@ -355,6 +351,62 @@ NotNull<Constraint> TypeFunctionContext::pushConstraint(ConstraintV&& c) const
         solver->inheritBlocks(NotNull{constraint}, newConstraint);
 
     return newConstraint;
+}
+
+static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> ctx, const Location& location, TypeId fnTy, TypePackId argsPack)
+{
+    auto resolver = std::make_unique<OverloadResolver>(
+        ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->scope, ctx->ice, ctx->limits, location
+    );
+
+    DenseHashSet<TypeId> uniqueTypes{nullptr};
+    OverloadResolution resolution = resolver->resolveOverload(fnTy, argsPack, location, NotNull{&uniqueTypes}, /* useFreeTypeBounds */ false);
+    if (resolution.ok.empty() && resolution.potentialOverloads.empty())
+        return std::nullopt;
+
+    SelectedOverload selected = resolution.getUnambiguousOverload();
+
+    if (!selected.overload.has_value())
+        return std::nullopt;
+
+    TypePackId retPack = ctx->arena->freshTypePack(ctx->scope);
+    TypeId prospectiveFunction = ctx->arena->addType(FunctionType{argsPack, retPack});
+
+    // FIXME: It's too bad that we have to bust out the Unifier here.  We should
+    // be able to know the set of implied constraints and generic substitutions
+    // that are implied by that overload.
+    //
+    // Given that, we should be able to compute the return pack directly.
+
+    Unifier2 unifier{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+
+    const UnifyResult unifyResult = unifier.unify(*selected.overload, prospectiveFunction);
+
+    switch (unifyResult)
+    {
+    case Luau::UnifyResult::Ok:
+        break;
+    case Luau::UnifyResult::OccursCheckFailed:
+        return std::nullopt;
+    case Luau::UnifyResult::TooComplex:
+        return std::nullopt;
+    }
+
+    LUAU_ASSERT(FFlag::LuauInstantiationUsesGenericPolarity2);
+
+    if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+    {
+        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+        std::optional<TypePackId> subst = instantiate2(
+            ctx->arena, std::move(unifier.genericSubstitutions), std::move(unifier.genericPackSubstitutions), NotNull{&subtyping}, ctx->scope, retPack
+        );
+        if (!subst)
+            return std::nullopt;
+        else
+            retPack = *subst;
+    }
+
+    return retPack;
 }
 
 TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
@@ -429,47 +481,69 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
         return {std::nullopt, Reduction::MaybeOk, {*mmType}, {}};
 
     TypePackId argPack = ctx->arena->addTypePack({lhsTy, rhsTy});
-    SolveResult solveResult;
 
-    if (!reversed)
-        solveResult = solveFunctionCall(
-            ctx->arena,
-            ctx->builtins,
-            ctx->normalizer,
-            ctx->typeFunctionRuntime,
-            ctx->ice,
-            ctx->limits,
-            ctx->scope,
-            location,
-            *mmType,
-            argPack
-        );
+    if (FFlag::LuauBuiltinTypeFunctionsUseNewOverloadResolution)
+    {
+        if (reversed)
+        {
+            TypePack* p = getMutable<TypePack>(argPack);
+            std::swap(p->head.front(), p->head.back());
+        }
+
+        std::optional<TypePackId> retPack = solveFunctionCall(ctx, location, *mmType, argPack);
+        if (!retPack.has_value())
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
+        if (extracted.head.empty())
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
+    }
     else
     {
-        TypePack* p = getMutable<TypePack>(argPack);
-        std::swap(p->head.front(), p->head.back());
-        solveResult = solveFunctionCall(
-            ctx->arena,
-            ctx->builtins,
-            ctx->normalizer,
-            ctx->typeFunctionRuntime,
-            ctx->ice,
-            ctx->limits,
-            ctx->scope,
-            location,
-            *mmType,
-            argPack
-        );
+        SolveResult solveResult;
+
+        if (!reversed)
+            solveResult = solveFunctionCall_DEPRECATED(
+                ctx->arena,
+                ctx->builtins,
+                ctx->normalizer,
+                ctx->typeFunctionRuntime,
+                ctx->ice,
+                ctx->limits,
+                ctx->scope,
+                location,
+                *mmType,
+                argPack
+            );
+        else
+        {
+            TypePack* p = getMutable<TypePack>(argPack);
+            std::swap(p->head.front(), p->head.back());
+            solveResult = solveFunctionCall_DEPRECATED(
+                ctx->arena,
+                ctx->builtins,
+                ctx->normalizer,
+                ctx->typeFunctionRuntime,
+                ctx->ice,
+                ctx->limits,
+                ctx->scope,
+                location,
+                *mmType,
+                argPack
+            );
+        }
+
+        if (!solveResult.typePackId.has_value())
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
+        if (extracted.head.empty())
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
     }
-
-    if (!solveResult.typePackId.has_value())
-        return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-    TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
-    if (extracted.head.empty())
-        return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-    return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
 }
 
 TypeFunctionReductionResult<TypeId> addTypeFunction(
@@ -2093,28 +2167,46 @@ bool tblIndexInto(
     if (get<FunctionType>(indexee))
     {
         TypePackId argPack = ctx->arena->addTypePack({indexer});
-        SolveResult solveResult = solveFunctionCall(
-            ctx->arena,
-            ctx->builtins,
-            ctx->normalizer,
-            ctx->typeFunctionRuntime,
-            ctx->ice,
-            ctx->limits,
-            ctx->scope,
-            ctx->scope->location,
-            indexee,
-            argPack
-        );
 
-        if (!solveResult.typePackId.has_value())
-            return false;
+        if (FFlag::LuauBuiltinTypeFunctionsUseNewOverloadResolution)
+        {
+            std::optional<TypePackId> retPack = solveFunctionCall(ctx, ctx->scope->location, indexee, argPack);
 
-        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
-        if (extracted.head.empty())
-            return false;
+            if (!retPack.has_value())
+                return false;
 
-        result.insert(follow(extracted.head.front()));
-        return true;
+            TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
+            if (extracted.head.empty())
+                return false;
+
+            result.insert(follow(extracted.head.front()));
+            return true;
+        }
+        else
+        {
+            SolveResult solveResult = solveFunctionCall_DEPRECATED(
+                ctx->arena,
+                ctx->builtins,
+                ctx->normalizer,
+                ctx->typeFunctionRuntime,
+                ctx->ice,
+                ctx->limits,
+                ctx->scope,
+                ctx->scope->location,
+                indexee,
+                argPack
+            );
+
+            if (!solveResult.typePackId.has_value())
+                return false;
+
+            TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
+            if (extracted.head.empty())
+                return false;
+
+            result.insert(follow(extracted.head.front()));
+            return true;
+        }
     }
 
     // we have a table type to try indexing
@@ -2342,6 +2434,12 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     TypeId targetTy = follow(typeParams.at(0));
     TypeId metatableTy = follow(typeParams.at(1));
 
+    if (FFlag::LuauSetmetatableWaitForPendingTypes)
+    {
+        if (isPending(targetTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+    }
+
     std::shared_ptr<const NormalizedType> targetNorm = ctx->normalizer->normalize(targetTy);
 
     // if the operand failed to normalize, we can't reduce, but know nothing about inhabitance.
@@ -2357,6 +2455,12 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         targetNorm->hasStrings() || targetNorm->hasThreads() || targetNorm->hasBuffers() || targetNorm->hasFunctions() || targetNorm->hasTyvars() ||
         targetNorm->hasExternTypes())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+    if (FFlag::LuauSetmetatableWaitForPendingTypes)
+    {
+        if (isPending(metatableTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
+    }
 
     // if the supposed metatable is not a table, we will fail to reduce.
     if (!get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))
@@ -2619,7 +2723,6 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , orFunc{"or", orTypeFunction, /*canReduceGenerics*/ true}
     , ltFunc{"lt", ltTypeFunction}
     , leFunc{"le", leTypeFunction}
-    , eqFunc{"eq", eqTypeFunction}
     , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ true}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
@@ -2681,9 +2784,6 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
 
     scope->exportedTypeBindings[ltFunc.name] = mkBinaryTypeFunctionWithDefault(&ltFunc);
     scope->exportedTypeBindings[leFunc.name] = mkBinaryTypeFunctionWithDefault(&leFunc);
-    if (!FFlag::LuauNoMoreComparisonTypeFunctions)
-        scope->exportedTypeBindings[eqFunc.name] = mkBinaryTypeFunctionWithDefault(&eqFunc);
-
     scope->exportedTypeBindings[keyofFunc.name] = mkUnaryTypeFunction(&keyofFunc);
     scope->exportedTypeBindings[rawkeyofFunc.name] = mkUnaryTypeFunction(&rawkeyofFunc);
 
