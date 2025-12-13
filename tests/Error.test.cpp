@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("ErrorTests");
 
@@ -33,7 +34,10 @@ local x: Account = 5
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("Type 'number' could not be converted into 'Account'", toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ("Expected this to be 'Account', but got 'number'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'number' could not be converted into 'Account'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_function_errors")
@@ -52,6 +56,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_function_errors")
             "Operator '+' could not be applied to operands of types number and string; there is no corresponding overload for __add",
             toString(result.errors[0])
         );
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
     else
         CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
@@ -72,12 +78,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unary_op_type_function_errors")
         CHECK_EQ(
             "Operator '-' could not be applied to operand of type string; there is no corresponding overload for __unm", toString(result.errors[0])
         );
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[1]));
+
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[1]));
+        else
+            CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[1]));
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
+        else
+            CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
     }
 }
 

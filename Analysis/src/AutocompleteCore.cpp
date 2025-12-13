@@ -28,7 +28,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauDoNotSuggestGenericsInAnonFuncs)
-LUAU_FASTFLAG(LuauAutocompleteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
@@ -2216,17 +2215,14 @@ AutocompleteResult autocomplete_(
     }
     else if (AstExprFunction* func = node->as<AstExprFunction>())
     {
-        if (FFlag::LuauAutocompleteAttributes)
+        for (AstAttr* attr : func->attributes)
         {
-            for (AstAttr* attr : func->attributes)
+            if (attr->location.begin <= position && position <= attr->location.end && attr->type == AstAttr::Type::Unknown)
             {
-                if (attr->location.begin <= position && position <= attr->location.end && attr->type == AstAttr::Type::Unknown)
-                {
-                    AutocompleteEntryMap ret;
-                    for (const auto& attr : kKnownAttributes)
-                        ret[attr.c_str()] = {AutocompleteEntryKind::Keyword};
-                    return {std::move(ret), std::move(ancestry), AutocompleteContext::Keyword};
-                }
+                AutocompleteEntryMap ret;
+                for (const auto& attr : kKnownAttributes)
+                    ret[attr.c_str()] = {AutocompleteEntryKind::Keyword};
+                return {std::move(ret), std::move(ancestry), AutocompleteContext::Keyword};
             }
         }
     }

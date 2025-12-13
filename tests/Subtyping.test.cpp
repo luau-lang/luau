@@ -17,7 +17,6 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 
 using namespace Luau;
 
@@ -1440,7 +1439,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number, number...) <!: (number, string...)")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_union_type_path")
 {
-    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
     TypeId subTy = arena.addType(UnionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
     TypeId superTy = getBuiltins()->booleanType;
     SubtypingResult result = isSubtype(subTy, superTy);
@@ -1464,8 +1462,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppress
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_intersect_type_path")
 {
-    ScopedFastFlag sff{FFlag::LuauConsiderErrorSuppressionInTypes, true};
-
     TypeId subTy = getBuiltins()->booleanType;
     TypeId superTy = arena.addType(IntersectionType{{getBuiltins()->numberType, getBuiltins()->errorType}});
     SubtypingResult result = isSubtype(subTy, superTy);

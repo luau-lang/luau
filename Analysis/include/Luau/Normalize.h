@@ -355,10 +355,9 @@ public:
 
     std::optional<TypePackId> intersectionOfTypePacks(TypePackId here, TypePackId there);
 
-    // Move to private with LuauNormalizerStepwiseFuel
+private:
     std::optional<TypePackId> intersectionOfTypePacks_INTERNAL(TypePackId here, TypePackId there);
 
-private:
     // ------- Cached TypeIds
     TypeId unionType(TypeId here, TypeId there);
     TypeId intersectionType(TypeId here, TypeId there);

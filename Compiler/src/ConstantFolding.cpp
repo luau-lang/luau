@@ -8,8 +8,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
-LUAU_FASTFLAGVARIABLE(LuauStringConstFolding2)
-LUAU_FASTFLAGVARIABLE(LuauInterpStringConstFolding)
 
 namespace Luau
 {
@@ -288,25 +286,24 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::Concat:
-        if (FFlag::LuauStringConstFolding2)
-            if (la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        if (la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_String;
+            result.stringLength = la.stringLength + ra.stringLength;
+            if (la.stringLength == 0)
+                result.valueString = ra.valueString;
+            else if (ra.stringLength == 0)
+                result.valueString = la.valueString;
+            else
             {
-                result.type = Constant::Type_String;
-                result.stringLength = la.stringLength + ra.stringLength;
-                if (la.stringLength == 0)
-                    result.valueString = ra.valueString;
-                else if (ra.stringLength == 0)
-                    result.valueString = la.valueString;
-                else
-                {
-                    std::string tmp;
-                    tmp.reserve(result.stringLength + 1);
-                    tmp.append(la.valueString, la.stringLength);
-                    tmp.append(ra.valueString, ra.stringLength);
-                    AstName name = stringTable.getOrAdd(tmp.c_str(), result.stringLength);
-                    result.valueString = name.value;
-                }
+                std::string tmp;
+                tmp.reserve(result.stringLength + 1);
+                tmp.append(la.valueString, la.stringLength);
+                tmp.append(ra.valueString, ra.stringLength);
+                AstName name = stringTable.getOrAdd(tmp.c_str(), result.stringLength);
+                result.valueString = name.value;
             }
+        }
         break;
 
     case AstExprBinary::CompareNe:
@@ -606,21 +603,13 @@ struct ConstantVisitor : AstVisitor
         }
         else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
         {
-            if (FFlag::LuauInterpStringConstFolding)
-            {
-                bool onlyConstantSubExpr = true;
-                for (AstExpr* expression : expr->expressions)
-                    if (analyze(expression).type != Constant::Type_String)
-                        onlyConstantSubExpr = false;
+            bool onlyConstantSubExpr = true;
+            for (AstExpr* expression : expr->expressions)
+                if (analyze(expression).type != Constant::Type_String)
+                    onlyConstantSubExpr = false;
 
-                if (onlyConstantSubExpr)
-                    foldInterpString(result, expr, constants, stringTable);
-            }
-            else
-            {
-                for (AstExpr* expression : expr->expressions)
-                    analyze(expression);
-            }
+            if (onlyConstantSubExpr)
+                foldInterpString(result, expr, constants, stringTable);
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {

@@ -4,6 +4,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+
 namespace Luau
 {
 namespace CodeGen
@@ -80,10 +82,12 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.defRange(vmRegOp(inst.a), function.uintOp(inst.b));
         break;
     case IrCmd::GET_UPVALUE:
-        visitor.def(inst.a);
+        if (!FFlag::LuauCodegenUpvalueLoadProp)
+            visitor.def(inst.a);
         break;
     case IrCmd::SET_UPVALUE:
-        visitor.use(inst.b);
+        if (!FFlag::LuauCodegenUpvalueLoadProp)
+            visitor.use(inst.b);
         break;
     case IrCmd::INTERRUPT:
         break;
