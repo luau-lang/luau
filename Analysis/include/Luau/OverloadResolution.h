@@ -42,7 +42,7 @@ using IncompatibilityReason = Variant<SubtypingReasonings, ErrorVec>;
  */
 struct SelectedOverload
 {
-    /**
+   /**
      * An unambiguous overload, if one can be selected. This is _not_ necessarily
      * an overload that is valid for the argument pack provided. For example:
      *
@@ -302,7 +302,8 @@ struct SolveResult
 // Helper utility, presently used for binary operator type functions.
 //
 // Given a function and a set of arguments, select a suitable overload.
-SolveResult solveFunctionCall(
+// Clip with FFlag::LuauBuiltinTypeFunctionsUseNewOverloadResolution
+SolveResult solveFunctionCall_DEPRECATED(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Normalizer> normalizer,

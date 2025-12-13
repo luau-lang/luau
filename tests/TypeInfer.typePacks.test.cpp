@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TypePackTests");
@@ -928,14 +929,33 @@ a = b
     if (FFlag::LuauSolverV2)
     {
 
-        const std::string expected = "Type\n\t"
-                                     "'() -> (number, ...boolean)'"
-                                     "\ncould not be converted into\n\t"
-                                     "'() -> (number, ...string)'; \n"
-                                     "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
-                                     "type, and `boolean` is not a subtype of `string`";
+        const std::string expected =
+            FFlag::LuauBetterTypeMismatchErrors
+                ? "Expected this to be\n\t"
+                  "'() -> (number, ...string)'"
+                  "\nbut got\n\t"
+                  "'() -> (number, ...boolean)'"
+                  "; \n"
+                  "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
+                  "type, and `boolean` is not a subtype of `string`"
+                : "Type\n\t"
+                  "'() -> (number, ...boolean)'"
+                  "\ncould not be converted into\n\t"
+                  "'() -> (number, ...string)'; \n"
+                  "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
+                  "type, and `boolean` is not a subtype of `string`";
 
         CHECK(expected == toString(result.errors[0]));
+    }
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        const std::string expected = R"(Expected this to be
+	'() -> (number, ...string)'
+but got
+	'() -> (number, ...boolean)'
+caused by:
+  Expected this to be 'string', but got 'boolean')";
+        CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
     {
@@ -1054,7 +1074,10 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'string'");
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'string', but got 'number'");
+    else
+        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'string'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
@@ -1071,10 +1094,20 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
-        CHECK(
-            toString(result.errors.at(0)) == "Type pack '...number' could not be converted into 'boolean'; \nthis is because it has a tail of "
-                                             "`...number`, which is not a subtype of `boolean`"
-        );
+    {
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK(
+                toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
+                                                 "it has a tail of `...number`, which is not a subtype of `boolean`"
+            );
+        else
+            CHECK(
+                toString(result.errors.at(0)) == "Type pack '...number' could not be converted into 'boolean'; \nthis is because it has a tail of "
+                                                 "`...number`, which is not a subtype of `boolean`"
+            );
+    }
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'boolean', but got 'number'");
     else
         CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
 }

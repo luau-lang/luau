@@ -23,10 +23,8 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauStringConstFolding2)
 LUAU_FASTFLAG(LuauCompileStringCharSubFold)
 LUAU_FASTFLAG(LuauCompileTypeofFold)
-LUAU_FASTFLAG(LuauInterpStringConstFolding)
 LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauCompileCallCostModel)
 
@@ -1513,8 +1511,6 @@ TEST_CASE("InterpStringRegisterLimit")
 
 TEST_CASE("InterpStringConstFold")
 {
-    ScopedFastFlag sff{FFlag::LuauInterpStringConstFolding, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(local empty = ""; return `{empty}`)"),
         R"(
@@ -7950,7 +7946,6 @@ TEST_CASE("InlineConstConditionals")
 {
     ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
     ScopedFastFlag luauCompileStringCharSubFold{FFlag::LuauCompileStringCharSubFold, true};
-    ScopedFastFlag luauInterpStringConstFolding{FFlag::LuauInterpStringConstFolding, true};
 
     // the most expensive part does not participate in cost model if branches are const
     CHECK_EQ(
@@ -9952,8 +9947,6 @@ RETURN R1 7
 
 TEST_CASE("ConstStringFolding")
 {
-    ScopedFastFlag sff{FFlag::LuauStringConstFolding2, true};
-
     CHECK_EQ(
         "\n" + compileFunction(R"(return "" .. "")", 0, 2),
         R"(

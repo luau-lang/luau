@@ -12,9 +12,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
-LUAU_FASTFLAG(LuauCompileVectorLerp)
 LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauCloneForIntersectionsUnions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -149,19 +149,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = "Type\n\t"
-                                 "'(number, number) -> boolean'"
-                                 "\ncould not be converted into\n\t"
-                                 "'((string, string) -> boolean)?'"
-                                 "\ncaused by:\n"
-                                 "  None of the union options are compatible. For example:\n"
-                                 "Type\n\t"
-                                 "'(number, number) -> boolean'"
-                                 "\ncould not be converted into\n\t"
-                                 "'(string, string) -> boolean'"
-                                 "\ncaused by:\n"
-                                 "  Argument #1 type is not compatible.\n"
-                                 "Type 'string' could not be converted into 'number'";
+    const std::string expected = FFlag::LuauBetterTypeMismatchErrors ? "Expected this to be\n\t"
+                                                                       "'((string, string) -> boolean)?'"
+                                                                       "\nbut got\n\t"
+                                                                       "'(number, number) -> boolean'"
+                                                                       "\ncaused by:\n"
+                                                                       "  None of the union options are compatible. For example:\n"
+                                                                       "Expected this to be\n\t"
+                                                                       "'(string, string) -> boolean'"
+                                                                       "\nbut got\n\t"
+                                                                       "'(number, number) -> boolean'"
+                                                                       "\ncaused by:\n"
+                                                                       "  Argument #1 type is not compatible.\n"
+                                                                       "Expected this to be 'number', but got 'string'"
+                                                                     : "Type\n\t"
+                                                                       "'(number, number) -> boolean'"
+                                                                       "\ncould not be converted into\n\t"
+                                                                       "'((string, string) -> boolean)?'"
+                                                                       "\ncaused by:\n"
+                                                                       "  None of the union options are compatible. For example:\n"
+                                                                       "Type\n\t"
+                                                                       "'(number, number) -> boolean'"
+                                                                       "\ncould not be converted into\n\t"
+                                                                       "'(string, string) -> boolean'"
+                                                                       "\ncaused by:\n"
+                                                                       "  Argument #1 type is not compatible.\n"
+                                                                       "Type 'string' could not be converted into 'number'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -192,7 +205,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_checks_for_numbers")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
@@ -843,8 +859,17 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
-    CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
+
+    if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
+        CHECK_EQ("Expected this to be 'string', but got 'number'", toString(result.errors[1]));
+    }
+    else
+    {
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+        CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_use_correct_argument3")
@@ -901,7 +926,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "aliased_string_format")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_lib_self_noself")
@@ -994,13 +1022,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (FFlag::LuauSolverV2)
-        CHECK_EQ(
-            "Type 'number?' could not be converted into 'number'; \n"
-            "this is because the 2nd component of the union is `nil`, which is not a subtype of `number`",
-            toString(result.errors[0])
-        );
+    {
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "the 2nd component of the union is `nil`, which is not a subtype of `number`",
+                toString(result.errors[0])
+            );
+        else
+            CHECK_EQ(
+                "Type 'number?' could not be converted into 'number'; \n"
+                "this is because the 2nd component of the union is `nil`, which is not a subtype of `number`",
+                toString(result.errors[0])
+            );
+    }
     else
-        CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
+    {
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK_EQ("Expected this to be 'number', but got 'number?'", toString(result.errors[0]));
+        else
+            CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type2")
@@ -1880,10 +1922,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_with_refined_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
 {
-    ScopedFastFlag _[]{
-        {FFlag::LuauCompileVectorLerp, true}
-    };
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function half(x: number, y: number, z: number): vector
             return vector.lerp(vector.zero, vector.create(x, y, z), 0.5)

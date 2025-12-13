@@ -26,7 +26,7 @@ public:
     class const_iterator;
     using iterator = const_iterator;
 
-    Set(const T& empty_key)
+    explicit Set(const T& empty_key)
         : mapping{empty_key}
     {
     }

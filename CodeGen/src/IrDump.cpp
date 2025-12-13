@@ -137,6 +137,10 @@ const char* getCmdName(IrCmd cmd)
         return "ADD_INT";
     case IrCmd::SUB_INT:
         return "SUB_INT";
+    case IrCmd::SEXTI8_INT:
+        return "SEXTI8_INT";
+    case IrCmd::SEXTI16_INT:
+        return "SEXTI16_INT";
     case IrCmd::ADD_NUM:
         return "ADD_NUM";
     case IrCmd::SUB_NUM:
@@ -173,6 +177,8 @@ const char* getCmdName(IrCmd cmd)
         return "MULADD_NUM";
     case IrCmd::SELECT_VEC:
         return "SELECT_VEC";
+    case IrCmd::SELECT_IF_TRUTHY:
+        return "SELECT_IF_TRUTHY";
     case IrCmd::ADD_VEC:
         return "ADD_VEC";
     case IrCmd::SUB_VEC:
@@ -181,12 +187,14 @@ const char* getCmdName(IrCmd cmd)
         return "MUL_VEC";
     case IrCmd::DIV_VEC:
         return "DIV_VEC";
+    case IrCmd::MULADD_VEC:
+        return "MULADD_VEC";
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
     case IrCmd::DOT_VEC:
         return "DOT_VEC";
-    case IrCmd::MULADD_VEC:
-        return "MULADD_VEC";
+    case IrCmd::EXTRACT_VEC:
+        return "EXTRACT_VEC";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::CMP_ANY:
@@ -239,10 +247,16 @@ const char* getCmdName(IrCmd cmd)
         return "NUM_TO_INT";
     case IrCmd::NUM_TO_UINT:
         return "NUM_TO_UINT";
+    case IrCmd::FLOAT_TO_NUM:
+        return "FLOAT_TO_NUM";
+    case IrCmd::NUM_TO_FLOAT:
+        return "NUM_TO_FLOAT";
     case IrCmd::NUM_TO_VEC:
         return "NUM_TO_VEC";
     case IrCmd::TAG_VECTOR:
         return "TAG_VECTOR";
+    case IrCmd::TRUNCATE_UINT:
+        return "TRUNCATE_UINT";
     case IrCmd::ADJUST_STACK_TO_REG:
         return "ADJUST_STACK_TO_REG";
     case IrCmd::ADJUST_STACK_TO_TOP:
@@ -799,7 +813,7 @@ void toStringDetailed(
 )
 {
     // Report captured registers for entry block
-    if (includeRegFlowInfo == IncludeRegFlowInfo::Yes && block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
+    if (includeRegFlowInfo == IncludeRegFlowInfo::Yes && isEntryBlock(block) && ctx.cfg.captured.regs.any())
     {
         append(ctx.result, "; captured regs: ");
         appendRegisterSet(ctx, ctx.cfg.captured, ", ");

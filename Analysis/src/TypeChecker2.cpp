@@ -35,16 +35,17 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
-LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
-LUAU_FASTFLAG(LuauTrackUniqueness)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauNewOverloadResolver2)
+LUAU_FASTFLAGVARIABLE(LuauHandleFunctionOversaturation)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
@@ -1294,6 +1295,24 @@ void TypeChecker2::visit(AstStatFunction* stat)
 {
     visit(stat->name, ValueContext::LValue);
     visit(stat->func);
+
+    if (FFlag::LuauCheckFunctionStatementTypes)
+    {
+        // Consider a block of code like:
+        //
+        //  type X = { x: (number) -> number }
+        //  function f(t: X)
+        //      function t.x(a: string): string
+        //          return "Hello, " .. a
+        //      end
+        //  end
+        //
+        // We need to check that the function we're assigning to `t.x` has the
+        // correct type, like when we're assigning an expression to a local
+        auto lhsType = lookupType(stat->name);
+        auto rhsType = lookupType(stat->func);
+        testIsSubtype(rhsType, lhsType, stat->func->location);
+    }
 }
 
 void TypeChecker2::visit(AstStatLocalFunction* stat)
@@ -1621,47 +1640,79 @@ void TypeChecker2::visitCall(AstExprCall* call)
     {
         size_t selfOffset = call->self ? 1 : 0;
 
-        auto [paramsHead, _] = extendTypePack(module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset);
+        std::vector<TypeId> paramsHead = extendTypePack(module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset).head;
 
-        for (size_t idx = 0; idx < call->args.size - 1; ++idx)
+        if (FFlag::LuauHandleFunctionOversaturation)
         {
-            auto argExpr = call->args.data[idx];
-            auto argExprType = lookupType(argExpr);
-            argExprs.push_back(argExpr);
-            if (idx + selfOffset >= paramsHead.size() || isErrorSuppressing(argExpr->location, argExprType))
+            for (size_t idx = 0; idx < call->args.size; ++idx)
             {
-                args.head.push_back(argExprType);
-                continue;
-            }
-            testLiteralOrAstTypeIsSubtype(argExpr, paramsHead[idx + selfOffset]);
-            args.head.push_back(paramsHead[idx + selfOffset]);
-        }
+                AstExpr* argExpr = call->args.data[idx];
 
-        auto lastExpr = call->args.data[call->args.size - 1];
-        argExprs.push_back(lastExpr);
+                // The last argument might be an ordinary value, but it can also be an entire pack.
+                if (idx == call->args.size - 1)
+                {
+                    if (TypePackId* lastArgPack = module->astTypePacks.find(argExpr))
+                    {
+                        auto [lastArgHead, lastArgTail] = flatten(*lastArgPack);
+                        args.head.insert(args.head.end(), lastArgHead.begin(), lastArgHead.end());
+                        args.tail = lastArgTail;
+                        continue;
+                    }
+                }
 
-        if (auto argTail = module->astTypePacks.find(lastExpr))
-        {
-            auto [lastExprHead, lastExprTail] = flatten(*argTail);
-            args.head.insert(args.head.end(), lastExprHead.begin(), lastExprHead.end());
-            args.tail = lastExprTail;
-        }
-        else if (paramsHead.size() >= call->args.size + selfOffset)
-        {
-            auto lastType = paramsHead[call->args.size - 1 + selfOffset];
-            auto lastExprType = lookupType(lastExpr);
-            if (isErrorSuppressing(lastExpr->location, lastExprType))
-            {
-                args.head.push_back(lastExprType);
-            }
-            else
-            {
-                testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
-                args.head.push_back(lastType);
+                TypeId argExprType = lookupType(argExpr);
+                argExprs.push_back(argExpr);
+                if (idx + selfOffset >= paramsHead.size() || isErrorSuppressing(argExpr->location, argExprType))
+                    args.head.push_back(argExprType);
+                else
+                {
+                    testLiteralOrAstTypeIsSubtype(argExpr, paramsHead[idx + selfOffset]);
+                    args.head.push_back(paramsHead[idx + selfOffset]);
+                }
             }
         }
         else
-            args.tail = builtinTypes->anyTypePack;
+        {
+            for (size_t idx = 0; idx < call->args.size - 1; ++idx)
+            {
+                auto argExpr = call->args.data[idx];
+                auto argExprType = lookupType(argExpr);
+                argExprs.push_back(argExpr);
+                if (idx + selfOffset >= paramsHead.size() || isErrorSuppressing(argExpr->location, argExprType))
+                {
+                    args.head.push_back(argExprType);
+                    continue;
+                }
+                testLiteralOrAstTypeIsSubtype(argExpr, paramsHead[idx + selfOffset]);
+                args.head.push_back(paramsHead[idx + selfOffset]);
+            }
+
+            auto lastExpr = call->args.data[call->args.size - 1];
+            argExprs.push_back(lastExpr);
+
+            if (auto argTail = module->astTypePacks.find(lastExpr))
+            {
+                auto [lastExprHead, lastExprTail] = flatten(*argTail);
+                args.head.insert(args.head.end(), lastExprHead.begin(), lastExprHead.end());
+                args.tail = lastExprTail;
+            }
+            else if (paramsHead.size() >= call->args.size + selfOffset)
+            {
+                auto lastType = paramsHead[call->args.size - 1 + selfOffset];
+                auto lastExprType = lookupType(lastExpr);
+                if (isErrorSuppressing(lastExpr->location, lastExprType))
+                {
+                    args.head.push_back(lastExprType);
+                }
+                else
+                {
+                    testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+                    args.head.push_back(lastType);
+                }
+            }
+            else
+                args.tail = builtinTypes->anyTypePack;
+        }
     }
     else
     {
@@ -1710,8 +1761,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         call->location,
     };
     DenseHashSet<TypeId> uniqueTypes{nullptr};
-    if (FFlag::LuauTrackUniqueness)
-        findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
+    findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
     if (FFlag::LuauNewOverloadResolver2)
     {
@@ -2453,16 +2503,13 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     }
 
     NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
-    if (FFlag::LuauNoMoreComparisonTypeFunctions)
+    if (isEquality || isComparison)
     {
-        if (isEquality || isComparison)
+        // As a special exception, we allow anything to be compared to nil.
+        if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
         {
-            // As a special exception, we allow anything to be compared to nil.
-            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
-            {
-                reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
-                return builtinTypes->errorType;
-            }
+            reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
+            return builtinTypes->errorType;
         }
     }
 
@@ -3191,7 +3238,10 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         std::stringstream reason;
 
-        if (reasoning.subPath == reasoning.superPath)
+        if (FFlag::LuauBetterTypeMismatchErrors && reasoning.subPath == reasoning.superPath)
+            reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the latter type and `" << superLeafAsString
+                   << "` in the former type, and " << baseReason;
+        else if (reasoning.subPath == reasoning.superPath)
             reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
                    << "` in the latter type, and " << baseReason;
         else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())

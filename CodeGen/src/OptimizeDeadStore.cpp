@@ -9,6 +9,8 @@
 
 #include "lobject.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse)
+
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
 namespace Luau
@@ -40,8 +42,9 @@ struct StoreRegInfo
 
 struct RemoveDeadStoreState
 {
-    RemoveDeadStoreState(IrFunction& function)
+    RemoveDeadStoreState(IrFunction& function, std::vector<uint32_t>& remainingUses)
         : function(function)
+        , remainingUses(remainingUses)
     {
         maxReg = function.proto ? function.proto->maxstacksize : 255;
     }
@@ -270,6 +273,19 @@ struct RemoveDeadStoreState
         hasGcoToClear = false;
     }
 
+    bool hasRemainingUses(uint32_t instIdx)
+    {
+        IrInst& inst = function.instructions[instIdx];
+
+        return anyArgumentMatch(
+            inst,
+            [&](IrOp op)
+            {
+                return op.kind == IrOpKind::Inst && remainingUses[op.index] != 0;
+            }
+        );
+    }
+
     // Partial clear of information about registers that might contain a GC object
     // This is used by instructions that might perform a GC assist and GC needs all pointers to be pinned to stack
     void flushGcoRegs()
@@ -283,11 +299,32 @@ struct RemoveDeadStoreState
                 // If we happen to know the exact tag, it has to be a GCO, otherwise 'maybeGCO' should be false
                 CODEGEN_ASSERT(regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag));
 
-                // Indirect register read by GC doesn't clear the known tag
-                regInfo.tagInstIdx = ~0u;
-                regInfo.valueInstIdx = ~0u;
-                regInfo.tvalueInstIdx = ~0u;
-                regInfo.maybeGco = false;
+                if (FFlag::LuauCodegenGcoDse)
+                {
+                    // If the values stored are still used and might be a GCO object, we have to pin in to the stack
+                    // And we have to pin all components of the register containing GCO
+                    bool tagUsedAfter = regInfo.tagInstIdx != ~0u && hasRemainingUses(regInfo.tagInstIdx);
+                    bool valueUsedAfter = regInfo.valueInstIdx != ~0u && hasRemainingUses(regInfo.valueInstIdx);
+                    bool tvalueUsedAfter = regInfo.tvalueInstIdx != ~0u && hasRemainingUses(regInfo.tvalueInstIdx);
+
+                    if (tagUsedAfter || valueUsedAfter || tvalueUsedAfter)
+                    {
+                        regInfo.tagInstIdx = ~0u;
+                        regInfo.valueInstIdx = ~0u;
+                        regInfo.tvalueInstIdx = ~0u;
+                    }
+
+                    // Indirect register read by GC doesn't clear the known tag
+                    regInfo.maybeGco = false;
+                }
+                else
+                {
+                    // Indirect register read by GC doesn't clear the known tag
+                    regInfo.tagInstIdx = ~0u;
+                    regInfo.valueInstIdx = ~0u;
+                    regInfo.tvalueInstIdx = ~0u;
+                    regInfo.maybeGco = false;
+                }
             }
         }
 
@@ -295,12 +332,16 @@ struct RemoveDeadStoreState
     }
 
     IrFunction& function;
+    std::vector<uint32_t>& remainingUses;
 
     std::array<StoreRegInfo, 256> info;
     int maxReg = 255;
 
     // Some of the registers contain values which might be a GC object
     bool hasGcoToClear = false;
+
+    // Have there been any object allocations which might remain unused
+    bool hasAllocations = false;
 };
 
 static bool tryReplaceTagWithFullStore(
@@ -536,8 +577,28 @@ static bool tryReplaceVectorValueWithFullStore(
     return false;
 }
 
+static void updateRemainingUses(RemoveDeadStoreState& state, IrInst& inst, uint32_t index)
+{
+    state.remainingUses[index] = inst.useCount;
+
+    visitArguments(
+        inst,
+        [&](IrOp op)
+        {
+            if (op.kind == IrOpKind::Inst)
+            {
+                CODEGEN_ASSERT(state.remainingUses[op.index] != 0);
+                state.remainingUses[op.index]--;
+            }
+        }
+    );
+}
+
 static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, IrFunction& function, IrBlock& block, IrInst& inst, uint32_t index)
 {
+    if (FFlag::LuauCodegenGcoDse)
+        updateRemainingUses(state, inst, index);
+
     switch (inst.cmd)
     {
     case IrCmd::STORE_TAG:
@@ -785,6 +846,11 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         visitVmRegDefsUses(state, function, inst);
         break;
 
+    case IrCmd::NEW_USERDATA:
+        if (FFlag::LuauCodegenGcoDse)
+            state.hasAllocations = true;
+        break;
+
     default:
         // Guards have to be covered explicitly
         CODEGEN_ASSERT(!isNonTerminatingJump(inst.cmd));
@@ -807,17 +873,33 @@ static void markDeadStoresInBlock(IrBuilder& build, IrBlock& block, RemoveDeadSt
     }
 }
 
-static void markDeadStoresInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block)
+static void markDeadStoresInBlockChain(
+    IrBuilder& build,
+    std::vector<uint8_t>& visited,
+    std::vector<uint32_t>& remainingUses,
+    std::vector<uint32_t>& blockIdxChain,
+    IrBlock* block
+)
 {
     IrFunction& function = build.function;
 
-    RemoveDeadStoreState state{function};
+    RemoveDeadStoreState state{function, remainingUses};
+
+    if (FFlag::LuauCodegenGcoDse)
+    {
+        // We will be visiting this chain a few times to clean unreferenced temporaries
+        // Clear the storage we reuse
+        blockIdxChain.clear();
+    }
 
     while (block)
     {
         uint32_t blockIdx = function.getBlockIndex(*block);
         CODEGEN_ASSERT(!visited[blockIdx]);
         visited[blockIdx] = true;
+
+        if (FFlag::LuauCodegenGcoDse)
+            blockIdxChain.push_back(blockIdx);
 
         markDeadStoresInBlock(build, *block, state);
 
@@ -838,6 +920,74 @@ static void markDeadStoresInBlockChain(IrBuilder& build, std::vector<uint8_t>& v
 
         block = nextBlock;
     }
+
+    // If there are allocating instructions, check if they have 'read' uses after DSE
+    if (FFlag::LuauCodegenGcoDse && state.hasAllocations)
+    {
+        bool foundUnused = false;
+
+        // Remove uses in instructions writing to the allocations
+        for (uint32_t blockIdx : blockIdxChain)
+        {
+            IrBlock& block = function.blocks[blockIdx];
+
+            for (uint32_t index = block.start; index <= block.finish; index++)
+            {
+                IrInst& inst = function.instructions[index];
+
+                state.remainingUses[index] = inst.useCount;
+
+                switch (inst.cmd)
+                {
+                case IrCmd::BUFFER_WRITEI8:
+                case IrCmd::BUFFER_WRITEI16:
+                case IrCmd::BUFFER_WRITEI32:
+                case IrCmd::BUFFER_WRITEF32:
+                case IrCmd::BUFFER_WRITEF64:
+                    state.remainingUses[inst.a.index]--;
+
+                    if (state.remainingUses[inst.a.index] == 0)
+                        foundUnused = true;
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+
+        // Remove those write instructions if they were the only users of the allocation
+        if (foundUnused)
+        {
+            for (uint32_t blockIdx : blockIdxChain)
+            {
+                IrBlock& block = function.blocks[blockIdx];
+
+                for (uint32_t index = block.start; index <= block.finish; index++)
+                {
+                    IrInst& inst = function.instructions[index];
+
+                    switch (inst.cmd)
+                    {
+                    case IrCmd::BUFFER_WRITEI8:
+                    case IrCmd::BUFFER_WRITEI16:
+                    case IrCmd::BUFFER_WRITEI32:
+                    case IrCmd::BUFFER_WRITEF32:
+                    case IrCmd::BUFFER_WRITEF64:
+                        if (state.remainingUses[inst.a.index] == 0)
+                        {
+                            IrInst& pointer = function.instOp(inst.a);
+
+                            if (pointer.cmd == IrCmd::NEW_USERDATA)
+                                kill(function, inst);
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void markDeadStoresInBlockChains(IrBuilder& build)
@@ -845,6 +995,8 @@ void markDeadStoresInBlockChains(IrBuilder& build)
     IrFunction& function = build.function;
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
+    std::vector<uint32_t> remainingUses(function.instructions.size(), 0u);
+    std::vector<uint32_t> blockIdxChain;
 
     for (IrBlock& block : function.blocks)
     {
@@ -854,7 +1006,7 @@ void markDeadStoresInBlockChains(IrBuilder& build)
         if (visited[function.getBlockIndex(block)])
             continue;
 
-        markDeadStoresInBlockChain(build, visited, &block);
+        markDeadStoresInBlockChain(build, visited, remainingUses, blockIdxChain, &block);
     }
 }
 

@@ -33,7 +33,6 @@ struct BuiltinTypeFunctions
 
     TypeFunction ltFunc;
     TypeFunction leFunc;
-    TypeFunction eqFunc;
 
     TypeFunction refineFunc;
     TypeFunction singletonFunc;

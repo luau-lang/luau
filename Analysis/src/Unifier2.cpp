@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIndividualRecursionLimits)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
-LUAU_FASTFLAGVARIABLE(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 
 namespace Luau
@@ -147,13 +146,10 @@ UnifyResult Unifier2::unify(TypePackId subTp, TypePackId superTp)
 
 UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 {
-    if (FFlag::LuauLimitUnification)
-    {
-        if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
-            return UnifyResult::TooComplex;
+    if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
+        return UnifyResult::TooComplex;
 
-        ++iterationCount;
-    }
+    ++iterationCount;
 
     // NOTE: It's a little odd that we are doing something non-exceptional for
     // the core of unification but not for occurs check, which may throw an
@@ -624,13 +620,10 @@ UnifyResult Unifier2::unify_(const AnyType*, const MetatableType* superMetatable
 // rather than a boolean to signal an occurs check failure.
 UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
 {
-    if (FFlag::LuauLimitUnification)
-    {
-        if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
-            return UnifyResult::TooComplex;
+    if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
+        return UnifyResult::TooComplex;
 
-        ++iterationCount;
-    }
+    ++iterationCount;
 
     // NOTE: It's a little odd that we are doing something non-exceptional for
     // the core of unification but not for occurs check, which may throw an

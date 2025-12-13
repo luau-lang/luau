@@ -63,7 +63,7 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
 {
     std::vector<IrInst>& instructions = function.instructions;
 
-#if defined(CODEGEN_ASSERTENABLED)
+#if defined(LUAU_ASSERTENABLED)
     // Last use assignements should be called only once
     for (IrInst& inst : instructions)
         CODEGEN_ASSERT(inst.lastUse == 0);
@@ -508,6 +508,29 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
         }
     }
 
+    // Collect data on all registers that are written
+    function.cfg.written.regs.reset();
+
+    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); blockIdx++)
+    {
+        const IrBlock& block = function.blocks[blockIdx];
+
+        if (block.kind == IrBlockKind::Dead)
+            continue;
+
+        RegisterSet& defRs = info.def[blockIdx];
+
+        function.cfg.written.regs |= defRs.regs;
+
+        if (defRs.varargSeq)
+        {
+            if (!function.cfg.written.varargSeq || defRs.varargStart < function.cfg.written.varargStart)
+                function.cfg.written.varargStart = defRs.varargStart;
+
+            function.cfg.written.varargSeq = true;
+        }
+    }
+
     // If Proto data is available, validate that entry block arguments match required registers
     if (function.proto)
     {
@@ -520,7 +543,7 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
     }
 }
 
-static void computeCfgBlockEdges(IrFunction& function)
+void computeCfgBlockEdges(IrFunction& function)
 {
     CfgInfo& info = function.cfg;
 
