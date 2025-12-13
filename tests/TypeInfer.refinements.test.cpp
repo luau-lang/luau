@@ -12,13 +12,12 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
-LUAU_FASTFLAG(LuauConsiderErrorSuppressionInTypes)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauNormalizationPreservesAny)
 LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauFixSubtypingOfNegations)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
@@ -520,21 +519,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
         end
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauConsiderErrorSuppressionInTypes)
+    if (FFlag::LuauSolverV2)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
+        else
+            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
         CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
+        else
+            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
         CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
 
-        CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[1]));
+        else
+            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
         CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
     }
 }
@@ -2239,7 +2247,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNoMoreComparisonTypeFunctions, true},
     };
 
     CheckResult result = check(R"(
@@ -2258,7 +2265,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "check_refinement_to_primitive_and_compare")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNoMoreComparisonTypeFunctions, true},
     };
 
     CheckResult result = check(R"(

@@ -13,8 +13,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauTidyTypeUtils)
-LUAU_FASTFLAG(LuauPushTypeConstraint2)
 
 namespace Luau
 {
@@ -136,15 +134,10 @@ std::optional<TypeId> findMetatableEntry(
     auto it = mtt->props.find(entry);
     if (it != mtt->props.end())
     {
-        if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
-        {
-            if (it->second.readTy)
-                return it->second.readTy;
-            else
-                return it->second.writeTy;
-        }
+        if (it->second.readTy)
+            return it->second.readTy;
         else
-            return it->second.type_DEPRECATED();
+            return it->second.writeTy;
     }
     else
         return std::nullopt;
@@ -178,18 +171,13 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         const auto& it = tableType->props.find(name);
         if (it != tableType->props.end())
         {
-            if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
+            switch (context)
             {
-                switch (context)
-                {
-                case ValueContext::RValue:
-                    return it->second.readTy;
-                case ValueContext::LValue:
-                    return it->second.writeTy;
-                }
+            case ValueContext::RValue:
+                return it->second.readTy;
+            case ValueContext::LValue:
+                return it->second.writeTy;
             }
-            else
-                return it->second.type_DEPRECATED();
         }
     }
 
@@ -340,11 +328,9 @@ TypePack extendTypePack(
             TypePack newPack;
             newPack.tail = arena.freshTypePack(ftp->scope, ftp->polarity);
 
-            if (FFlag::LuauTidyTypeUtils)
-                trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
+            trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
 
-            if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
-                result.tail = newPack.tail;
+            result.tail = newPack.tail;
             size_t overridesIndex = 0;
             while (result.head.size() < length)
             {
@@ -355,14 +341,9 @@ TypePack extendTypePack(
                 }
                 else
                 {
-                    if (FFlag::LuauTidyTypeUtils || FFlag::LuauSolverV2)
-                    {
-                        FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType, ftp->polarity};
-                        t = arena.addType(ft);
-                        trackInteriorFreeType(ftp->scope, t);
-                    }
-                    else
-                        t = arena.freshType(builtinTypes, ftp->scope);
+                    FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType, ftp->polarity};
+                    t = arena.addType(ft);
+                    trackInteriorFreeType(ftp->scope, t);
                 }
 
                 newPack.head.push_back(t);
@@ -702,7 +683,7 @@ std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, Type
                     }
                 }
 
-                if (FFlag::LuauPushTypeConstraint2 && fastIsSubtype(propType, expectedType))
+                if (fastIsSubtype(propType, expectedType))
                     return ty;
             }
         }

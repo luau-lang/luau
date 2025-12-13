@@ -21,8 +21,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAGVARIABLE(LuauSimplifyRefinementOfReadOnlyProperty)
 LUAU_FASTFLAGVARIABLE(LuauSimplifyIntersectionNoTreeSet)
 LUAU_FASTFLAG(LuauGetmetatableError)
 
@@ -479,14 +477,11 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
 
     if (auto ut = get<UnionType>(left))
     {
-        if (FFlag::LuauPushTypeConstraint2)
+        for (TypeId part : ut)
         {
-            for (TypeId part : ut)
-            {
-                Relation r = relate(part, right, seen);
-                if (r == Relation::Superset || r == Relation::Coincident)
-                    return Relation::Superset;
-            }
+            Relation r = relate(part, right, seen);
+            if (r == Relation::Superset || r == Relation::Coincident)
+                return Relation::Superset;
         }
         return Relation::Intersects;
     }
@@ -872,7 +867,7 @@ Inhabited intersectOneWithIntersection(TypeSimplifier& simplifier, TypeIds& sour
             break;
         case Relation::Intersects:
         {
-            // If the candidate and a member of the intersection may 
+            // If the candidate and a member of the intersection may
             // intersect, then attempt to replace the member with
             // a simpler type, e.g.:
             //
@@ -1076,7 +1071,7 @@ TypeId TypeSimplifier::intersectNegatedUnion(TypeId left, TypeId right)
 
         if (!changed)
             return right;
-        
+
         return intersectFromParts(std::move(newParts));
     }
     else
@@ -1276,7 +1271,7 @@ TypeId TypeSimplifier::intersectTypeWithNegation(TypeId left, TypeId right)
 
             if (!changed)
                 return right;
-            
+
             return intersectFromParts(std::move(newParts));
         }
         else
@@ -1323,7 +1318,7 @@ TypeId TypeSimplifier::intersectTypeWithNegation(TypeId left, TypeId right)
 
             if (!changed)
                 return right;
-            
+
             return intersectFromParts_DEPRECATED(std::move(newParts));
         }
     }
@@ -1603,9 +1598,7 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
         if (1 == lt->props.size())
         {
             const auto [propName, leftProp] = *begin(lt->props);
-            const bool leftPropIsRefinable = FFlag::LuauSimplifyRefinementOfReadOnlyProperty
-                ? leftProp.isShared() || leftProp.isReadOnly()
-                : leftProp.isShared();
+            const bool leftPropIsRefinable = leftProp.isShared() || leftProp.isReadOnly();
 
             auto it = rt->props.find(propName);
             if (it != rt->props.end() && leftPropIsRefinable && it->second.isShared())

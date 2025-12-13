@@ -4,7 +4,7 @@
 #include "Luau/Scope.h"
 #include "Luau/Instantiation2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesGenericPolarity)
+LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesGenericPolarity2)
 namespace Luau
 {
 
@@ -44,7 +44,7 @@ bool Instantiation2::isDirty(TypePackId tp)
 
 TypeId Instantiation2::clean(TypeId ty)
 {
-    if (FFlag::LuauInstantiationUsesGenericPolarity)
+    if (FFlag::LuauInstantiationUsesGenericPolarity2)
     {
         LUAU_ASSERT(subtyping && scope);
         auto generic = get<GenericType>(ty);
@@ -56,54 +56,39 @@ TypeId Instantiation2::clean(TypeId ty)
         LUAU_ASSERT(ft);
 
         TypeId res;
-        switch (generic->polarity)
+        if (is<NeverType>(ft->lowerBound))
         {
-        case Polarity::Positive:
+            // If the lower bound is never, assume that we can pick the
+            // upper bound, and that this will provide a reasonable type.
+            //
+            // If we have a mixed generic who's free type is totally
+            // unbound (the upper bound is `unknown` and the lower
+            // bound is `never`), then we instantiate it to `unknown`.
+            // This seems ... fine.
             res = ft->upperBound;
-            break;
-        case Polarity::Negative:
-            res = ft->lowerBound;
-            break;
-        case Polarity::None:
-        case Polarity::Mixed:
-        case Polarity::Unknown:
-        default: {
-            if (is<NeverType>(ft->lowerBound))
-            {
-                // If the lower bound is never, assume that we can pick the
-                // upper bound, and that this will provide a reasonable type.
-                //
-                // If we have a mixed generic who's free type is totally
-                // unbound (the upper bound is `unknown` and the lower
-                // bound is `never`), then we instantiate it to `unknown`.
-                // This seems ... fine.
-                res = ft->upperBound;
-            }
-            else if (is<UnknownType>(ft->upperBound))
-            {
-                // If the upper bound is unknown, assume we can pick the
-                // lower bound, and that this will provide a reasonable
-                // type.
-                res = ft->lowerBound;
-            }
-            else
-            {
-                // Imagine that we have some set of bounds on a free type:
-                //
-                //  Q <: 'a <: Z
-                //
-                // If we have a mixed generic, then the upper and lower bounds
-                // should inform what type to instantiate. In fact, we should
-                // pick the intersection between the two. If our bounds are
-                // coherent, then Q <: Z, meaning that Q & Z == Q.
-                //
-                // If `Q </: Z`, then try the upper bound. We _might_ error
-                // later.
-                auto r = subtyping->isSubtype(ft->lowerBound, ft->upperBound, NotNull{scope});
-                res = r.isSubtype ? ft->lowerBound : ft->upperBound;
-            }
-            break;
         }
+        else if (is<UnknownType>(ft->upperBound))
+        {
+            // If the upper bound is unknown, assume we can pick the
+            // lower bound, and that this will provide a reasonable
+            // type.
+            res = ft->lowerBound;
+        }
+        else
+        {
+            // Imagine that we have some set of bounds on a free type:
+            //
+            //  Q <: 'a <: Z
+            //
+            // If we have a mixed generic, then the upper and lower bounds
+            // should inform what type to instantiate. In fact, we should
+            // pick the intersection between the two. If our bounds are
+            // coherent, then Q <: Z, meaning that Q & Z == Q.
+            //
+            // If `Q </: Z`, then try the upper bound. We _might_ error
+            // later.
+            auto r = subtyping->isSubtype(ft->lowerBound, ft->upperBound, NotNull{scope});
+            res = r.isSubtype ? ft->lowerBound : ft->upperBound;
         }
 
         // Instantiation should not traverse into the type that we are substituting for.

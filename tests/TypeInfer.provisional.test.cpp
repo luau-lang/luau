@@ -17,8 +17,8 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauAddRefinementToAssertions)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
@@ -214,7 +214,10 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("Type 'Node<T>?' could not be converted into 'Node<T>'", toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK_EQ("Expected this to be 'Node<T>', but got 'Node<T>?'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'Node<T>?' could not be converted into 'Node<T>'", toString(result.errors[0]));
 }
 
 // Originally from TypeInfer.test.cpp.
@@ -842,6 +845,19 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
 
     if (FFlag::LuauSolverV2)
         LUAU_REQUIRE_NO_ERRORS(result); // This is wrong.  We should be rejecting this assignment.
+    else if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        const std::string expected =
+            R"(Expected this to be exactly
+	'{ x: number }'
+but got
+	'{ x: number? }'
+caused by:
+  Property 'x' is not compatible.
+Expected this to be exactly 'number', but got 'number?')";
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -1295,8 +1311,6 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cache
 // CLI-111113
 TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently")
 {
-    ScopedFastFlag sff{FFlag::LuauNoMoreComparisonTypeFunctions, true};
-
     CheckResult result = check(R"(
         function find_first<T>(tbl: {T}, el)
             for i, e in tbl do

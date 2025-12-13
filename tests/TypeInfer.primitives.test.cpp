@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeInferPrimitives");
@@ -82,12 +84,18 @@ TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")
     if (FFlag::LuauSolverV2)
     {
         CHECK("Expected type table, got 'number' instead" == toString(result.errors[0]));
-        CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors[1]));
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK("Expected this to be 'string', but got 'number'" == toString(result.errors[1]));
+        else
+            CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors[1]));
     }
     else
     {
         CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
-        CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
+        if (FFlag::LuauBetterTypeMismatchErrors)
+            CHECK("Expected this to be 'string', but got 'number'" == toString(result.errors[1]));
+        else
+            CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
     }
 }
 

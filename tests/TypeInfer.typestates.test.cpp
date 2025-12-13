@@ -5,6 +5,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 using namespace Luau;
 
@@ -136,7 +137,10 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_a_local_and_then_refine_it")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK("Type 'string' could not be converted into 'never'" == toString(result.errors[0]));
+    if (FFlag::LuauBetterTypeMismatchErrors)
+        CHECK("Expected this to be unreachable, but got 'string'" == toString(result.errors[0]));
+    else
+        CHECK("Type 'string' could not be converted into 'never'" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")

@@ -77,6 +77,18 @@ Error Navigator::navigateImpl(std::string_view path)
             }
         );
 
+        if (auto [error, wasOverridden] = toAliasOverride(alias); error)
+        {
+            return error;
+        }
+        else if (wasOverridden)
+        {
+            if (Error error = navigateThroughPath(path))
+                return error;
+
+            return std::nullopt;
+        }
+
         Config config;
         if (Error error = navigateToAndPopulateConfig(alias, config))
             return error;
@@ -176,6 +188,19 @@ Error Navigator::navigateToAlias(const std::string& alias, const Config& config,
             return error;
 
         std::string nextAlias = extractAlias(value);
+
+        if (auto [error, wasOverridden] = toAliasOverride(nextAlias); error)
+        {
+            return error;
+        }
+        else if (wasOverridden)
+        {
+            if (Error error = navigateThroughPath(value))
+                return error;
+
+            return std::nullopt;
+        }
+
         if (config.aliases.contains(nextAlias))
         {
             if (Error error = navigateToAlias(nextAlias, config, std::move(cycleTracker)))
@@ -320,6 +345,24 @@ Error Navigator::navigateToChild(const std::string& component)
     if (result == NavigationContext::NavigateResult::Ambiguous)
         errorMessage += " (ambiguous)";
     return errorMessage;
+}
+
+std::pair<Error, bool> Navigator::toAliasOverride(const std::string& aliasUnprefixed)
+{
+    std::pair<Error, bool> result;
+    switch (navigationContext.toAliasOverride(aliasUnprefixed))
+    {
+    case NavigationContext::NavigateResult::Success:
+        result = {std::nullopt, true};
+        break;
+    case NavigationContext::NavigateResult::NotFound:
+        result = {std::nullopt, false};
+        break;
+    case NavigationContext::NavigateResult::Ambiguous:
+        result = {"@" + aliasUnprefixed + " is not a valid alias (ambiguous)", false};
+        break;
+    }
+    return result;
 }
 
 Error Navigator::toAliasFallback(const std::string& aliasUnprefixed)

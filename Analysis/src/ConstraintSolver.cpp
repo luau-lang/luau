@@ -4,12 +4,15 @@
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
 #include "Luau/AstUtils.h"
+#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Generalization.h"
 #include "Luau/HashUtil.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Instantiation2.h"
+#include "Luau/IterativeTypeVisitor.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/OverloadResolution.h"
@@ -37,22 +40,19 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
-LUAU_FASTFLAG(LuauTrackUniqueness)
-LUAU_FASTFLAG(LuauLimitUnification)
 LUAU_FASTFLAGVARIABLE(LuauCollapseShouldNotCrash)
 LUAU_FASTFLAGVARIABLE(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
-LUAU_FASTFLAGVARIABLE(LuauExtendSealedTableUpperBounds)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
-LUAU_FASTFLAG(LuauPushTypeConstraint2)
-LUAU_FASTFLAGVARIABLE(LuauAvoidOverloadSelectionForFunctionType)
 LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstriantAlwaysCompletes)
 LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 LUAU_FASTFLAGVARIABLE(LuauUseFastSubtypeForIndexerWithName)
+LUAU_FASTFLAG(LuauUseIterativeTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauDoNotUseApplyTypeFunctionToClone)
 
 namespace Luau
 {
@@ -334,7 +334,8 @@ struct InstantiationQueuer : TypeOnceVisitor
     }
 };
 
-struct InfiniteTypeFinder : TypeOnceVisitor
+template<typename BaseVisitor>
+struct InfiniteTypeFinder : BaseVisitor
 {
     NotNull<ConstraintSolver> solver;
     const InstantiationSignature& signature;
@@ -342,7 +343,7 @@ struct InfiniteTypeFinder : TypeOnceVisitor
     bool foundInfiniteType = false;
 
     explicit InfiniteTypeFinder(ConstraintSolver* solver, const InstantiationSignature& signature, NotNull<Scope> scope)
-        : TypeOnceVisitor("InfiniteTypeFinder", /* skipBoundTypes */ true)
+        : BaseVisitor("InfiniteTypeFinder", /* skipBoundTypes */ true)
         , solver(solver)
         , signature(signature)
         , scope(scope)
@@ -1142,15 +1143,31 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
             c.typePackParameters,
         };
 
-        InfiniteTypeFinder itf{this, signature, constraint->scope};
-        itf.traverse(target);
-
-        if (itf.foundInfiniteType)
+        if (FFlag::LuauUseIterativeTypeVisitor)
         {
-            constraint->scope->invalidTypeAliasNames.insert(c.name);
-            shiftReferences(target, builtinTypes->errorType);
-            emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
-            return true;
+            InfiniteTypeFinder<IterativeTypeVisitor> itf{this, signature, constraint->scope};
+            itf.run(target);
+
+            if (itf.foundInfiniteType)
+            {
+                constraint->scope->invalidTypeAliasNames.insert(c.name);
+                shiftReferences(target, builtinTypes->errorType);
+                emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
+                return true;
+            }
+        }
+        else
+        {
+            InfiniteTypeFinder<TypeOnceVisitor> itf{this, signature, constraint->scope};
+            itf.traverse(target);
+
+            if (itf.foundInfiniteType)
+            {
+                constraint->scope->invalidTypeAliasNames.insert(c.name);
+                shiftReferences(target, builtinTypes->errorType);
+                emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
+                return true;
+            }
         }
     }
 
@@ -1288,17 +1305,37 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // https://github.com/luau-lang/luau/pull/68 for the RFC responsible for
     // this. This is a little nicer than using a recursion limit because we can
     // catch the infinite expansion before actually trying to expand it.
-    InfiniteTypeFinder itf{this, signature, constraint->scope};
-    itf.traverse(tf->type);
-
-    if (itf.foundInfiniteType)
+    if (FFlag::LuauUseIterativeTypeVisitor)
     {
-        // TODO (CLI-56761): Report an error.
-        bindResult(builtinTypes->errorType);
-        reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
-        return true;
+        InfiniteTypeFinder<IterativeTypeVisitor> itf{this, signature, constraint->scope};
+        itf.run(tf->type);
+
+        if (itf.foundInfiniteType)
+        {
+            // TODO (CLI-56761): Report an error.
+            bindResult(builtinTypes->errorType);
+            reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
+            return true;
+        }
+    }
+    else
+    {
+        InfiniteTypeFinder<TypeOnceVisitor> itf{this, signature, constraint->scope};
+        itf.traverse(tf->type);
+
+        if (itf.foundInfiniteType)
+        {
+            // TODO (CLI-56761): Report an error.
+            bindResult(builtinTypes->errorType);
+            reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
+            return true;
+        }
     }
 
+    // FIXME: this does not actually implement instantiation properly, it puts
+    // the values into the _binders_ as well, which is a mess.
+    // e.g. `<T...>(T...) -> T...` instantiated with `any` for `T...` becomes
+    // `<any>(any) -> any`, where none of these things are _generics_.
     ApplyTypeFunction applyTypeFunction{arena};
     for (size_t i = 0; i < typeArguments.size(); ++i)
     {
@@ -1358,25 +1395,47 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     {
         if (needsClone)
         {
-            // Substitution::clone is a shallow clone. If this is a
-            // metatable type, we want to mutate its table, so we need to
-            // explicitly clone that table as well. If we don't, we will
-            // mutate another module's type surface and cause a
-            // use-after-free.
-            if (get<MetatableType>(target))
+            if (FFlag::LuauDoNotUseApplyTypeFunctionToClone)
             {
-                instantiated = applyTypeFunction.clone(target);
-                MetatableType* mtv = getMutable<MetatableType>(instantiated);
-                mtv->table = applyTypeFunction.clone(mtv->table);
-                ttv = getMutable<TableType>(mtv->table);
-            }
-            else if (get<TableType>(target))
-            {
-                instantiated = applyTypeFunction.clone(target);
-                ttv = getMutable<TableType>(instantiated);
-            }
+                if (get<MetatableType>(target))
+                {
+                    CloneState cloneState{builtinTypes};
+                    instantiated = shallowClone(target, *arena.get(), cloneState, true);
+                    MetatableType* mtv = getMutable<MetatableType>(instantiated);
+                    mtv->table = shallowClone(mtv->table, *arena.get(), cloneState, true);
+                    ttv = getMutable<TableType>(mtv->table);
+                }
+                else if (get<TableType>(target))
+                {
+                    CloneState cloneState{builtinTypes};
+                    instantiated = shallowClone(target, *arena.get(), cloneState, true);
+                    ttv = getMutable<TableType>(instantiated);
+                }
 
-            target = follow(instantiated);
+                target = follow(instantiated);
+            }
+            else
+            {
+                // Substitution::clone is a shallow clone. If this is a
+                // metatable type, we want to mutate its table, so we need to
+                // explicitly clone that table as well. If we don't, we will
+                // mutate another module's type surface and cause a
+                // use-after-free.
+                if (get<MetatableType>(target))
+                {
+                    instantiated = applyTypeFunction.clone(target);
+                    MetatableType* mtv = getMutable<MetatableType>(instantiated);
+                    mtv->table = applyTypeFunction.clone(mtv->table);
+                    ttv = getMutable<TableType>(mtv->table);
+                }
+                else if (get<TableType>(target))
+                {
+                    instantiated = applyTypeFunction.clone(target);
+                    ttv = getMutable<TableType>(instantiated);
+                }
+
+                target = follow(instantiated);
+            }
         }
 
         // This is a new type - redefine the location.
@@ -1549,13 +1608,14 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     };
 
     DenseHashSet<TypeId> uniqueTypes{nullptr};
-    if (FFlag::LuauTrackUniqueness && c.callSite)
+    if (c.callSite)
         findUniqueTypes(NotNull{&uniqueTypes}, c.callSite->args, NotNull{&module->astTypes});
 
     TypeId overloadToUse = fn;
-    // NOTE: This probably ends up capturing union types as well, but
-    // that should be fairly uncommon.
-    if (!FFlag::LuauAvoidOverloadSelectionForFunctionType || !is<FunctionType>(fn))
+
+    // If the function we have is already a function type, then there's no
+    // point in trying to do overload selection: we're just wasting CPU.
+    if (!is<FunctionType>(fn))
     {
         if (FFlag::LuauNewOverloadResolver2)
         {
@@ -1614,7 +1674,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
-        if (FFlag::LuauInstantiationUsesGenericPolarity)
+        if (FFlag::LuauInstantiationUsesGenericPolarity2)
         {
             Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
             std::optional<TypePackId> subst = instantiate2(
@@ -1656,22 +1716,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         (*c.astOverloadResolvedTypes)[c.callSite] = inferredTy;
     else if (UnifyResult::Ok != unifyResult)
     {
-        if (FFlag::LuauLimitUnification)
+        switch (unifyResult)
         {
-            switch (unifyResult)
-            {
-            case UnifyResult::Ok:
-                break;
-            case UnifyResult::TooComplex:
-                reportError(UnificationTooComplex{}, constraint->location);
-                break;
-            case UnifyResult::OccursCheckFailed:
-                reportError(OccursCheckFailed{}, constraint->location);
-                break;
-            }
-        }
-        else
+        case UnifyResult::Ok:
+            break;
+        case UnifyResult::TooComplex:
+            reportError(UnificationTooComplex{}, constraint->location);
+            break;
+        case UnifyResult::OccursCheckFailed:
             reportError(OccursCheckFailed{}, constraint->location);
+            break;
+        }
     }
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
@@ -1689,12 +1744,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
 namespace
 {
-struct ContainsGenerics : public TypeOnceVisitor
+template<typename BaseVisitor>
+struct ContainsGenerics : public BaseVisitor
 {
     NotNull<DenseHashSet<const void*>> generics;
 
     explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
-        : TypeOnceVisitor("ContainsGenerics", /* skipBoundTypes */ true)
+        : BaseVisitor("ContainsGenerics", /* skipBoundTypes */ true)
         , generics{generics}
     {
     }
@@ -1722,14 +1778,23 @@ struct ContainsGenerics : public TypeOnceVisitor
         found |= generics->contains(tp);
         return !found;
     }
+};
 
-    static bool hasGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics)
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics)
+{
+    if (FFlag::LuauUseIterativeTypeVisitor)
     {
-        ContainsGenerics cg{generics};
+        ContainsGenerics<IterativeTypeVisitor> cg{generics};
+        cg.run(ty);
+        return cg.found;
+    }
+    else
+    {
+        ContainsGenerics<TypeOnceVisitor> cg{generics};
         cg.traverse(ty);
         return cg.found;
     }
-};
+}
 
 } // namespace
 
@@ -1805,7 +1870,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // We don't attempt to perform bidirectional inference on the self type.
     const size_t typeOffset = c.callSite->self ? 1 : 0;
 
-    if (FFlag::LuauPushTypeConstraintLambdas2 && FFlag::LuauPushTypeConstraint2)
+    if (FFlag::LuauPushTypeConstraintLambdas2)
     {
         Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
 
@@ -1866,7 +1931,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
 
             if (expectedLambdaTy && lambdaTy && lambdaExpr)
             {
-                if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+                if (containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
                     continue;
 
                 const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
@@ -1884,7 +1949,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
                      expr->is<AstExprConstantNil>() || expr->is<AstExprTable>())
             {
-                if (ContainsGenerics::hasGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+                if (containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
                 {
                     replacer.resetState(TxnLog::empty(), arena);
                     if (auto res = replacer.substitute(expectedArgTy))
@@ -1894,46 +1959,38 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                         expectedArgTy = *res;
                     }
                 }
-                if (FFlag::LuauPushTypeConstraint2)
+                Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+                PushTypeResult result =
+                    pushTypeInto(c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr);
+                // Consider:
+                //
+                //  local Direction = { Left = 1, Right = 2 }
+                //  type Direction = keyof<Direction>
+                //
+                //  local function move(dirs: { Direction }) --[[...]] end
+                //
+                //  move({ "Left", "Right", "Left", "Right" })
+                //
+                // We need `keyof<Direction>` to reduce prior to inferring that the
+                // arguments to `move` must generalize to their lower bounds. This
+                // is how we ensure that ordering.
+                if (!force && !result.incompleteTypes.empty())
                 {
-                    Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
-                    PushTypeResult result = pushTypeInto(
-                        c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&u2}, NotNull{&subtyping}, expectedArgTy, expr
-                    );
-                    // Consider:
-                    //
-                    //  local Direction = { Left = 1, Right = 2 }
-                    //  type Direction = keyof<Direction>
-                    //
-                    //  local function move(dirs: { Direction }) --[[...]] end
-                    //
-                    //  move({ "Left", "Right", "Left", "Right" })
-                    //
-                    // We need `keyof<Direction>` to reduce prior to inferring that the
-                    // arguments to `move` must generalize to their lower bounds. This
-                    // is how we ensure that ordering.
-                    if (!force && !result.incompleteTypes.empty())
+                    for (const auto& [newExpectedTy, newTargetTy, newExpr] : result.incompleteTypes)
                     {
-                        for (const auto& [newExpectedTy, newTargetTy, newExpr] : result.incompleteTypes)
-                        {
-                            auto addition = pushConstraint(
-                                constraint->scope,
-                                constraint->location,
-                                PushTypeConstraint{
-                                    newExpectedTy,
-                                    newTargetTy,
-                                    /* astTypes */ c.astTypes,
-                                    /* astExpectedTypes */ c.astExpectedTypes,
-                                    /* expr */ NotNull{newExpr},
-                                }
-                            );
-                            inheritBlocks(constraint, addition);
-                        }
+                        auto addition = pushConstraint(
+                            constraint->scope,
+                            constraint->location,
+                            PushTypeConstraint{
+                                newExpectedTy,
+                                newTargetTy,
+                                /* astTypes */ c.astTypes,
+                                /* astExpectedTypes */ c.astExpectedTypes,
+                                /* expr */ NotNull{newExpr},
+                            }
+                        );
+                        inheritBlocks(constraint, addition);
                     }
-                }
-                else
-                {
-                    u2.unify(actualArgTy, expectedArgTy);
                 }
             }
         }
@@ -2978,13 +3035,13 @@ TypeId ConstraintSolver::instantiateFunctionType(
         replacementPacks[*typePackParametersIter++] = typePackArgument;
     }
 
+    // FIXME: replacer is _not_ actually instantiation, but we don't have a real instantiation implementation at this moment
     Replacer replacer{arena, std::move(replacements), std::move(replacementPacks)};
     return replacer.substitute(functionTypeId).value_or(builtinTypes->errorType);
 }
 
 bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    LUAU_ASSERT(FFlag::LuauPushTypeConstraint2);
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
     Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
 
@@ -3404,21 +3461,13 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     {
         const TypeId upperBound = follow(ft->upperBound);
 
-        if (FFlag::LuauExtendSealedTableUpperBounds)
+        if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
         {
-            if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
-            {
-                TablePropLookupResult res = lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
-                // Here, res.propType is empty if res is a sealed table or a primitive that lacks the property.
-                // When this happens, we still want to add to the upper bound of the type.
-                if (res.propType)
-                    return res;
-            }
-        }
-        else
-        {
-            if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
-                return lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
+            TablePropLookupResult res = lookupTableProp(constraint, upperBound, propName, context, inConditional, suppressSimplification, seen);
+            // Here, res.propType is empty if res is a sealed table or a primitive that lacks the property.
+            // When this happens, we still want to add to the upper bound of the type.
+            if (res.propType)
+                return res;
         }
 
         NotNull<Scope> scope{ft->scope};
@@ -3547,22 +3596,17 @@ bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TID subTy, TI
     }
     else
     {
-        if (FFlag::LuauLimitUnification)
+        switch (unifyResult)
         {
-            switch (unifyResult)
-            {
-            case Luau::UnifyResult::Ok:
-                break;
-            case Luau::UnifyResult::OccursCheckFailed:
-                reportError(OccursCheckFailed{}, constraint->location);
-                break;
-            case Luau::UnifyResult::TooComplex:
-                reportError(UnificationTooComplex{}, constraint->location);
-                break;
-            }
-        }
-        else
+        case Luau::UnifyResult::Ok:
+            break;
+        case Luau::UnifyResult::OccursCheckFailed:
             reportError(OccursCheckFailed{}, constraint->location);
+            break;
+        case Luau::UnifyResult::TooComplex:
+            reportError(UnificationTooComplex{}, constraint->location);
+            break;
+        }
         return false;
     }
 

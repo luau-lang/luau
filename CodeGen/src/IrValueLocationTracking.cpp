@@ -4,6 +4,7 @@
 #include "Luau/IrUtils.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenChainedSpills)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
 
 namespace Luau
 {
@@ -86,7 +87,8 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         invalidateRestoreVmRegs(vmRegOp(inst.a), function.uintOp(inst.b));
         break;
     case IrCmd::GET_UPVALUE:
-        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        if (!FFlag::LuauCodegenUpvalueLoadProp)
+            invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::CALL:
         // Even if result count is limited, all registers starting from function (ra) might be modified
