@@ -1527,6 +1527,8 @@ ModulePtr check(
 
     typeFunctionRuntime.allowEvaluation = true;
 
+    Subtyping subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -1555,7 +1557,8 @@ ModulePtr check(
         logger.get(),
         NotNull{&dfg},
         limits,
-        std::move(constraintSet)
+        std::move(constraintSet),
+        NotNull{&subtyping}
     };
 
     if (options.randomizeConstraintResolutionSeed)

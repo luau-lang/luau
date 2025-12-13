@@ -1689,9 +1689,14 @@ static int checkIsSubtypeOf(lua_State* L)
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
 
     TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
-    Relation r = Luau::relate(Luau::deserialize(self, runtimeBuilder), Luau::deserialize(arg, runtimeBuilder));
+    NotNull<TypeFunctionContext> ctx = runtimeBuilder->ctx;
 
-    lua_pushboolean(L, r == Relation::Coincident || r == Relation::Subset);
+    TypeId subTy = Luau::deserialize(self, runtimeBuilder);
+    TypeId superTy = Luau::deserialize(arg, runtimeBuilder);
+
+    SubtypingResult result = ctx->subtyping->isSubtype(subTy, superTy, ctx->scope);
+
+    lua_pushboolean(L, result.isSubtype);
     return 1;
 }
 

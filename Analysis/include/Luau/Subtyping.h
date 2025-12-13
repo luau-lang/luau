@@ -196,6 +196,8 @@ struct SubtypingEnvironment
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> seenSetCache{{}};
 };
 
+struct TypeFunctionRuntime;
+
 struct Subtyping
 {
     NotNull<BuiltinTypes> builtinTypes;

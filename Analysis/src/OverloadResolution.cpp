@@ -495,7 +495,7 @@ void OverloadResolver::testFunction(
         return;
     }
 
-    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits};
+    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
     FunctionGraphReductionResult reduceResult = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!reduceResult.errors.empty())
     {
@@ -947,7 +947,7 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
     NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
-    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits};
+    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
     FunctionGraphReductionResult result = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!result.errors.empty())
         return {OverloadIsNonviable, result.errors};
