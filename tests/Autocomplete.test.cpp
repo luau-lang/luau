@@ -23,7 +23,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
-LUAU_FASTFLAG(LuauPropagateDeprecatedAttributeOnBindings)
+LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 
 using namespace Luau;
 
@@ -5026,7 +5026,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_function")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         \@deprecated
         function foo()
@@ -5044,7 +5044,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_local_function")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         \@deprecated
         local function foo()
@@ -5060,9 +5060,26 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_anonymous_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+    check(R"(
+        local foo = \@deprecated function()
+        end
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_function_in_table")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
         local t = {}
 
@@ -5071,6 +5088,49 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
         end
 
         t.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_global_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        @deprecated
+        declare function foo(): ()
+    )");
+
+    check(R"(
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_extern_member_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        declare extern type MyClass with
+            @deprecated
+            function foo(self): ()
+        end
+    )");
+
+    check(R"(
+        local x: MyClass
+        x.@1
     )");
 
     auto ac = autocomplete('1');

@@ -29,6 +29,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -247,6 +248,19 @@ static TypeCorrectKind checkTypeCorrectKind(
     return checkTypeMatch(module, ty, expectedType, moduleScope, typeArena, builtinTypes) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
 
+static bool isTypeDeprecated(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (const auto ftv = get<FunctionType>(ty); ftv && ftv->isDeprecatedFunction)
+        return true;
+
+    if (const auto itv = get<IntersectionType>(ty))
+        return std::all_of(itv->parts.begin(), itv->parts.end(), isTypeDeprecated);
+
+    return false;
+}
+
 enum class PropIndexType
 {
     Point,
@@ -383,7 +397,7 @@ static void autocompleteProps(
                 result[name] = AutocompleteEntry{
                     AutocompleteEntryKind::Property,
                     type,
-                    prop.deprecated,
+                    prop.deprecated || isTypeDeprecated(type),
                     isWrongIndexer(type),
                     typeCorrect,
                     containingExternType,
@@ -1357,7 +1371,7 @@ static AutocompleteEntryMap autocompleteStatement(
                 result[n] = {
                     AutocompleteEntryKind::Binding,
                     binding.typeId,
-                    binding.deprecated,
+                    binding.deprecated || isTypeDeprecated(binding.typeId),
                     false,
                     TypeCorrectKind::None,
                     std::nullopt,
@@ -1537,7 +1551,7 @@ static AutocompleteContext autocompleteExpression(
                     result[n] = {
                         AutocompleteEntryKind::Binding,
                         binding.typeId,
-                        binding.deprecated,
+                        binding.deprecated || isTypeDeprecated(binding.typeId),
                         false,
                         typeCorrect,
                         std::nullopt,
