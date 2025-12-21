@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauPushTypeConstraintStripNilFromFunction)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAG(LuauPropagateDeprecatedAttributeOnBindings)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3840,6 +3841,91 @@ TEST_CASE_FIXTURE(Fixture, "function_statement_with_incorrect_function_type")
     REQUIRE(err);
     CHECK_EQ("(number) -> number", toString(err->wantedType));
     CHECK_EQ("(string) -> boolean", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "deprecated_attribute_on_local_function_binding")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    CheckResult result = check(R"(
+        @deprecated
+        local function foo()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto scope = getMainModule()->getModuleScope();
+    REQUIRE(scope);
+
+    auto binding = scope->linearSearchForBinding("foo");
+    REQUIRE(binding);
+
+    CHECK(binding->deprecated);
+}
+
+TEST_CASE_FIXTURE(Fixture, "deprecated_attribute_on_function_binding")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    CheckResult result = check(R"(
+        @deprecated
+        function foo()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto scope = getMainModule()->getModuleScope();
+    REQUIRE(scope);
+
+    auto binding = scope->linearSearchForBinding("foo");
+    REQUIRE(binding);
+
+    CHECK(binding->deprecated);
+}
+
+TEST_CASE_FIXTURE(Fixture, "deprecated_attribute_on_anonymous_function_binding")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    CheckResult result = check(R"(
+        local foo = @deprecated function()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto scope = getMainModule()->getModuleScope();
+    REQUIRE(scope);
+
+    auto binding = scope->linearSearchForBinding("foo");
+    REQUIRE(binding);
+
+    CHECK(binding->deprecated);
+}
+
+TEST_CASE_FIXTURE(Fixture, "deprecated_attribute_on_function_in_table_property")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    CheckResult result = check(R"(
+        local t = {}
+
+        @deprecated
+        function t:foo()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto scope = getMainModule()->getModuleScope();
+    REQUIRE(scope);
+
+    auto ty = requireType("t");
+    auto ttv = Luau::get<Luau::TableType>(ty);
+    REQUIRE(ttv);
+
+    auto property = ttv->props.find("foo");
+    REQUIRE(property != ttv->props.end());
+
+    CHECK(property->second.deprecated);
 }
 
 TEST_SUITE_END();

@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
 LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
+LUAU_FASTFLAG(LuauPropagateDeprecatedAttributeOnBindings)
 
 using namespace Luau;
 
@@ -5021,6 +5022,62 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
     CHECK_EQ(ac.entryMap.count("Val1"), 1);
     CHECK_EQ(ac.entryMap.count("Val2"), 1);
     CHECK_EQ(ac.entryMap.count("Val3"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_function")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    check(R"(
+        \@deprecated
+        function foo()
+        end
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_local_function")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    check(R"(
+        \@deprecated
+        local function foo()
+        end
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_function_in_table")
+{
+    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
+    check(R"(
+        local t = {}
+
+        \@deprecated
+        function t.foo()
+        end
+
+        t.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
 }
 
 TEST_SUITE_END();
