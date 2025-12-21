@@ -1478,11 +1478,13 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     auto ty = scope->lookup(function->name);
     LUAU_ASSERT(!ty.has_value()); // The parser ensures that every local function has a distinct Symbol for its name.
 
+
+    auto isDeprecated = function->func->hasAttribute(AstAttr::Type::Deprecated);
     functionType = arena->addType(BlockedType{});
-    scope->bindings[function->name] = Binding{functionType, function->name->location};
+    scope->bindings[function->name] = Binding{functionType, function->name->location, isDeprecated};
 
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
-    sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->name->location};
+    sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->name->location, isDeprecated};
 
     DefId def = dfg->getDef(function->name);
     scope->lvalueTypes[def] = functionType;
@@ -1536,15 +1538,16 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
 
     DefId def = dfg->getDef(function->name);
 
+    auto isDeprecated = function->func->hasAttribute(AstAttr::Type::Deprecated);
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
-        sig.bodyScope->bindings[localName->local] = Binding{sig.signature, localName->location};
+        sig.bodyScope->bindings[localName->local] = Binding{sig.signature, localName->location, isDeprecated};
         sig.bodyScope->lvalueTypes[def] = sig.signature;
         updateRValueRefinements(sig.bodyScope, def, sig.signature);
     }
     else if (AstExprGlobal* globalName = function->name->as<AstExprGlobal>())
     {
-        sig.bodyScope->bindings[globalName->name] = Binding{sig.signature, globalName->location};
+        sig.bodyScope->bindings[globalName->name] = Binding{sig.signature, globalName->location, isDeprecated};
         sig.bodyScope->lvalueTypes[def] = sig.signature;
         updateRValueRefinements(sig.bodyScope, def, sig.signature);
     }
@@ -2077,6 +2080,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         TypeId propTy = resolveType(scope, prop.ty, /* inTypeArguments */ false);
 
         bool assignToMetatable = isMetamethod(propName);
+        bool isDeprecated = false;
 
         // Function typeArguments always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
@@ -2097,6 +2101,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 defn.originalNameLocation = prop.nameLocation;
 
                 ftv->definition = defn;
+
+                if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
+                    isDeprecated = ftv->isDeprecatedFunction;
             }
         }
 
@@ -2104,7 +2111,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
         if (props.count(propName) == 0)
         {
-            props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            props[propName] = {propTy, /*deprecated*/ isDeprecated, /*deprecatedSuggestion*/ "", prop.location};
         }
         else
         {
@@ -2220,7 +2227,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
     Name fnName(global->name.value);
 
     module->declaredGlobals[fnName] = fnType;
-    scope->bindings[global->name] = Binding{fnType, global->location};
+    scope->bindings[global->name] = Binding{fnType, global->location, ftv->isDeprecatedFunction};
 
     DefId def = dfg->getDef(global);
     rootScope->lvalueTypes[def] = fnType;
