@@ -11,7 +11,6 @@ using namespace Luau;
 
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauPropagateDeprecatedAttributeOnBindings)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -626,41 +625,6 @@ end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "deprecated_attribute_global_function_binding")
-{
-    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
-    loadDefinition(R"(
-        @deprecated
-        declare function foo(): ()
-    )");
-
-    auto globalFooBinding = tryGetGlobalBinding(getFrontend().globals, "foo");
-    REQUIRE(globalFooBinding);
-    CHECK(globalFooBinding->deprecated);
-}
-
-TEST_CASE_FIXTURE(Fixture, "deprecated_attribute_extern_type_method_property")
-{
-    ScopedFastFlag _{FFlag::LuauPropagateDeprecatedAttributeOnBindings, true};
-    loadDefinition(R"(
-        declare extern type MyClass with
-            @deprecated
-            function foo(self): ()
-        end
-    )");
-
-    auto myClassTy = getFrontend().globals.globalScope->lookupType("MyClass");
-    REQUIRE(myClassTy);
-
-    auto etv = Luau::get<Luau::ExternType>(myClassTy->type);
-    REQUIRE(etv);
-
-    auto prop = etv->props.find("foo");
-    REQUIRE(prop != etv->props.end());
-
-    CHECK(prop->second.deprecated);
 }
 
 TEST_SUITE_END();
