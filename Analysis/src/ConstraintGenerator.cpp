@@ -53,7 +53,6 @@ LUAU_FASTFLAGVARIABLE(LuauIncludeExplicitGenericPacks)
 LUAU_FASTFLAGVARIABLE(LuauAvoidMintingMultipleBlockedTypesForGlobals)
 LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
-LUAU_FASTFLAGVARIABLE(LuauPropagateDeprecatedAttributeOnBindings)
 
 namespace Luau
 {

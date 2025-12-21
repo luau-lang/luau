@@ -250,6 +250,7 @@ static TypeCorrectKind checkTypeCorrectKind(
 
 static bool isTypeDeprecated(TypeId ty)
 {
+    LUAU_ASSERT(FFlag::LuauCheckTypeForDeprecated);
     ty = follow(ty);
 
     if (const auto ftv = get<FunctionType>(ty); ftv && ftv->isDeprecatedFunction)
@@ -394,20 +395,40 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(type, nodes, typeCorrect);
 
-                result[name] = AutocompleteEntry{
-                    AutocompleteEntryKind::Property,
-                    type,
-                    prop.deprecated || isTypeDeprecated(type),
-                    isWrongIndexer(type),
-                    typeCorrect,
-                    containingExternType,
-                    &prop,
-                    prop.documentationSymbol,
-                    {},
-                    parens,
-                    {},
-                    indexType == PropIndexType::Colon
-                };
+                if (FFlag::LuauCheckTypeForDeprecated)
+                {
+                    result[name] = AutocompleteEntry{
+                        AutocompleteEntryKind::Property,
+                        type,
+                        prop.deprecated || isTypeDeprecated(type),
+                        isWrongIndexer(type),
+                        typeCorrect,
+                        containingExternType,
+                        &prop,
+                        prop.documentationSymbol,
+                        {},
+                        parens,
+                        {},
+                        indexType == PropIndexType::Colon
+                    };
+                }
+                else
+                {
+                    result[name] = AutocompleteEntry{
+                        AutocompleteEntryKind::Property,
+                        type,
+                        prop.deprecated,
+                        isWrongIndexer(type),
+                        typeCorrect,
+                        containingExternType,
+                        &prop,
+                        prop.documentationSymbol,
+                        {},
+                        parens,
+                        {},
+                        indexType == PropIndexType::Colon
+                    };
+                }
             }
         }
     };
@@ -1368,18 +1389,38 @@ static AutocompleteEntryMap autocompleteStatement(
 
             std::string n = toString(name);
             if (!result.count(n))
-                result[n] = {
-                    AutocompleteEntryKind::Binding,
-                    binding.typeId,
-                    binding.deprecated || isTypeDeprecated(binding.typeId),
-                    false,
-                    TypeCorrectKind::None,
-                    std::nullopt,
-                    std::nullopt,
-                    binding.documentationSymbol,
-                    {},
-                    getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)
-                };
+            {
+                if (FFlag::LuauCheckTypeForDeprecated)
+                {
+                    result[n] = {
+                        AutocompleteEntryKind::Binding,
+                        binding.typeId,
+                        binding.deprecated || isTypeDeprecated(binding.typeId),
+                        false,
+                        TypeCorrectKind::None,
+                        std::nullopt,
+                        std::nullopt,
+                        binding.documentationSymbol,
+                        {},
+                        getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)
+                    };
+                }
+                else
+                {
+                    result[n] = {
+                        AutocompleteEntryKind::Binding,
+                        binding.typeId,
+                        binding.deprecated,
+                        false,
+                        TypeCorrectKind::None,
+                        std::nullopt,
+                        std::nullopt,
+                        binding.documentationSymbol,
+                        {},
+                        getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)
+                    };
+                }
+            }
         }
 
         scope = scope->parent;
@@ -1548,18 +1589,36 @@ static AutocompleteContext autocompleteExpression(
                 {
                     TypeCorrectKind typeCorrect = checkTypeCorrectKind(module, typeArena, builtinTypes, node, position, binding.typeId);
 
-                    result[n] = {
-                        AutocompleteEntryKind::Binding,
-                        binding.typeId,
-                        binding.deprecated || isTypeDeprecated(binding.typeId),
-                        false,
-                        typeCorrect,
-                        std::nullopt,
-                        std::nullopt,
-                        binding.documentationSymbol,
-                        {},
-                        getParenRecommendation(binding.typeId, ancestry, typeCorrect)
-                    };
+                    if (FFlag::LuauCheckTypeForDeprecated)
+                    {
+                        result[n] = {
+                            AutocompleteEntryKind::Binding,
+                            binding.typeId,
+                            binding.deprecated || isTypeDeprecated(binding.typeId),
+                            false,
+                            typeCorrect,
+                            std::nullopt,
+                            std::nullopt,
+                            binding.documentationSymbol,
+                            {},
+                            getParenRecommendation(binding.typeId, ancestry, typeCorrect)
+                        };
+                    }
+                    else
+                    {
+                        result[n] = {
+                            AutocompleteEntryKind::Binding,
+                            binding.typeId,
+                            binding.deprecated,
+                            false,
+                            typeCorrect,
+                            std::nullopt,
+                            std::nullopt,
+                            binding.documentationSymbol,
+                            {},
+                            getParenRecommendation(binding.typeId, ancestry, typeCorrect)
+                        };
+                    }
                 }
             }
 
