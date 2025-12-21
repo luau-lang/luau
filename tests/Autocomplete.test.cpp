@@ -5140,4 +5140,53 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_all_overloaded_extern_member_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        declare extern type MyClass with
+            @deprecated
+            function foo(self, val: string): ()
+            @deprecated
+            function foo(self, val: number): ()
+        end
+    )");
+
+    check(R"(
+        local x: MyClass
+        x.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_not_marked_as_deprecated_if_attribute_defined_on_only_some_overloads_of_extern_member_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        declare extern type MyClass with
+            function foo(self, val: string): ()
+            @deprecated
+            function foo(self, val: number): ()
+        end
+    )");
+
+    check(R"(
+        local x: MyClass
+        x.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK_FALSE(entry.deprecated);
+}
+
 TEST_SUITE_END();
