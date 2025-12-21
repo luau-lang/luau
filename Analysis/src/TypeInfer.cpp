@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAG(LuauPropagateDeprecatedAttributeOnBindings)
 
 namespace Luau
 {
@@ -1400,51 +1399,23 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr&
             oldBinding = globalBindings[name];
         }
 
-        if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
-        {
-            const auto isDeprecated = function.func->hasAttribute(AstAttr::Deprecated);
-            globalBindings[name] = {ty, exprName->location, isDeprecated};
-            checkFunctionBody(funScope, ty, *function.func);
+        globalBindings[name] = {ty, exprName->location};
+        checkFunctionBody(funScope, ty, *function.func);
 
-            // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
-            // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
-            if (previouslyDefined)
-                globalBindings[name] = oldBinding;
-            else
-                globalBindings[name] = {quantify(funScope, ty, exprName->location), exprName->location, isDeprecated};
-        }
+        // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
+        // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
+        if (previouslyDefined)
+            globalBindings[name] = oldBinding;
         else
-        {
-            globalBindings[name] = {ty, exprName->location};
-            checkFunctionBody(funScope, ty, *function.func);
-
-            // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
-            // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
-            if (previouslyDefined)
-                globalBindings[name] = oldBinding;
-            else
-                globalBindings[name] = {quantify(funScope, ty, exprName->location), exprName->location};
-        }
+            globalBindings[name] = {quantify(funScope, ty, exprName->location), exprName->location};
     }
     else if (auto name = function.name->as<AstExprLocal>())
     {
-        if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
-        {
-            const auto isDeprecated = function.func->hasAttribute(AstAttr::Deprecated);
-            scope->bindings[name->local] = {ty, name->local->location, isDeprecated};
+        scope->bindings[name->local] = {ty, name->local->location};
 
-            checkFunctionBody(funScope, ty, *function.func);
+        checkFunctionBody(funScope, ty, *function.func);
 
-            scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location, isDeprecated};
-        }
-        else
-        {
-            scope->bindings[name->local] = {ty, name->local->location};
-
-            checkFunctionBody(funScope, ty, *function.func);
-
-            scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
-        }
+        scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
     }
     else if (auto name = function.name->as<AstExprIndexName>())
     {
@@ -1461,55 +1432,27 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr&
 
         ty = follow(ty);
 
-        if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
+        if (ttv && ttv->state != TableState::Sealed)
+            ttv->props[name->index.value] = {ty, /* deprecated */ false, {}, name->indexLocation};
+
+        if (function.func->self)
         {
-            const auto isDeprecated = function.func->hasAttribute(AstAttr::Deprecated);
-            if (ttv && ttv->state != TableState::Sealed)
-                ttv->props[name->index.value] = {ty, /* deprecated */ isDeprecated, {}, name->indexLocation};
+            const FunctionType* funTy = get<FunctionType>(ty);
+            if (!funTy)
+                ice("Methods should be functions");
 
-            if (function.func->self)
-            {
-                const FunctionType* funTy = get<FunctionType>(ty);
-                if (!funTy)
-                    ice("Methods should be functions");
-
-                std::optional<TypeId> arg0 = first(funTy->argTypes);
-                if (!arg0)
-                    ice("Methods should always have at least 1 argument (self)");
-            }
-
-            checkFunctionBody(funScope, ty, *function.func);
-
-            InplaceDemoter demoter{funScope->level, &currentModule->internalTypes};
-            demoter.traverse(ty);
-
-            if (ttv && ttv->state != TableState::Sealed)
-                ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ isDeprecated, {}, name->indexLocation};
+            std::optional<TypeId> arg0 = first(funTy->argTypes);
+            if (!arg0)
+                ice("Methods should always have at least 1 argument (self)");
         }
-        else
-        {
-            if (ttv && ttv->state != TableState::Sealed)
-                ttv->props[name->index.value] = {ty, /* deprecated */ false, {}, name->indexLocation};
 
-            if (function.func->self)
-            {
-                const FunctionType* funTy = get<FunctionType>(ty);
-                if (!funTy)
-                    ice("Methods should be functions");
+        checkFunctionBody(funScope, ty, *function.func);
 
-                std::optional<TypeId> arg0 = first(funTy->argTypes);
-                if (!arg0)
-                    ice("Methods should always have at least 1 argument (self)");
-            }
+        InplaceDemoter demoter{funScope->level, &currentModule->internalTypes};
+        demoter.traverse(ty);
 
-            checkFunctionBody(funScope, ty, *function.func);
-
-            InplaceDemoter demoter{funScope->level, &currentModule->internalTypes};
-            demoter.traverse(ty);
-
-            if (ttv && ttv->state != TableState::Sealed)
-                ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ false, {}, name->indexLocation};
-        }
+        if (ttv && ttv->state != TableState::Sealed)
+            ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ false, {}, name->indexLocation};
     }
     else
     {
@@ -1527,23 +1470,12 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr&
 {
     Name name = function.name->name.value;
 
-    if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
-    {
-        const auto isDeprecated = function.func->hasAttribute(AstAttr::Deprecated);
-        scope->bindings[function.name] = {ty, function.location, isDeprecated};
+    scope->bindings[function.name] = {ty, function.location};
 
-        checkFunctionBody(funScope, ty, *function.func);
+    checkFunctionBody(funScope, ty, *function.func);
 
-        scope->bindings[function.name] = {quantify(funScope, ty, function.name->location), function.name->location, isDeprecated};
-    }
-    else
-    {
-        scope->bindings[function.name] = {ty, function.location};
+    scope->bindings[function.name] = {quantify(funScope, ty, function.name->location), function.name->location};
 
-        checkFunctionBody(funScope, ty, *function.func);
-
-        scope->bindings[function.name] = {quantify(funScope, ty, function.name->location), function.name->location};
-    }
     return ControlFlow::None;
 }
 
@@ -1815,8 +1747,6 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareExtern
         bool assignToMetatable = isMetamethod(propName);
         Luau::ExternType::Props& assignTo = assignToMetatable ? metatable->props : etv->props;
 
-        bool isDeprecated = false;
-
         // Function typeArguments always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
         if (prop.isMethod)
@@ -1835,17 +1765,12 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareExtern
                 defn.originalNameLocation = prop.nameLocation;
 
                 ftv->definition = defn;
-                if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
-                    isDeprecated = ftv->isDeprecatedFunction;
             }
         }
 
         if (assignTo.count(propName) == 0)
         {
-            if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
-                assignTo[propName] = {propTy, /*deprecated*/ isDeprecated, /*deprecatedSuggestion*/ "", prop.location};
-            else
-                assignTo[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            assignTo[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
         }
         else
         {
@@ -1937,10 +1862,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
     Name fnName(global.name.value);
 
     currentModule->declaredGlobals[fnName] = fnType;
-    if (FFlag::LuauPropagateDeprecatedAttributeOnBindings)
-        currentModule->getModuleScope()->bindings[global.name] = Binding{fnType, global.location, ftv->isDeprecatedFunction};
-    else
-        currentModule->getModuleScope()->bindings[global.name] = Binding{fnType, global.location};
+    currentModule->getModuleScope()->bindings[global.name] = Binding{fnType, global.location};
 
     return ControlFlow::None;
 }
