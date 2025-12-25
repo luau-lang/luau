@@ -19,6 +19,7 @@
 #include <string>
 
 LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
+LUAU_FASTFLAGVARIABLE(LuauToStringDecomposition)
 
 LUAU_FASTFLAG(LuauSolverV2)
 
@@ -153,6 +154,12 @@ static std::pair<bool, std::optional<Luau::Name>> canUseTypeNameInScope(ScopePtr
 
     return {false, std::nullopt};
 }
+
+struct ElementResult
+{
+    std::string str;
+    std::vector<std::tuple<size_t, size_t, TypeId>> spans;
+};
 
 struct StringifierState
 {
@@ -292,6 +299,18 @@ struct StringifierState
     void emit(size_t i)
     {
         emit(std::to_string(i).c_str());
+    }
+
+    void emitAndRecordSpan(const std::string& s, TypeId ty)
+    {
+        LUAU_ASSERT(FFlag::LuauToStringDecomposition);
+
+        size_t startPos = result.name.length();
+        emit(s);
+        size_t endPos = result.name.length();
+
+        if (endPos > startPos)
+            result.typeSpans.emplace_back(startPos, result.name.length(), ty);
     }
 
     void emit(Polarity p)
@@ -684,7 +703,7 @@ struct TypeStringifier
         state.unsee(&ftv);
     }
 
-    void operator()(TypeId, const TableType& ttv)
+    void operator()(TypeId ty, const TableType& ttv)
     {
         if (ttv.boundTo)
             return stringify(*ttv.boundTo);
@@ -714,7 +733,10 @@ struct TypeStringifier
                     }
                 }
 
-                state.emit(*ttv.name);
+                if (FFlag::LuauToStringDecomposition)
+                    state.emitAndRecordSpan(*ttv.name, ty);
+                else
+                    state.emit(*ttv.name);
                 stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
@@ -725,7 +747,10 @@ struct TypeStringifier
             if (ttv.syntheticName)
             {
                 state.result.invalid = true;
-                state.emit(*ttv.syntheticName);
+                if (FFlag::LuauToStringDecomposition)
+                    state.emitAndRecordSpan(*ttv.syntheticName, ty);
+                else
+                    state.emit(*ttv.syntheticName);
                 stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
@@ -826,12 +851,15 @@ struct TypeStringifier
         state.unsee(&ttv);
     }
 
-    void operator()(TypeId, const MetatableType& mtv)
+    void operator()(TypeId ty, const MetatableType& mtv)
     {
         state.result.invalid = true;
         if (!state.exhaustive && mtv.syntheticName)
         {
-            state.emit(*mtv.syntheticName);
+            if (FFlag::LuauToStringDecomposition)
+                state.emitAndRecordSpan(*mtv.syntheticName, ty);
+            else
+                state.emit(*mtv.syntheticName);
             return;
         }
 
@@ -843,9 +871,12 @@ struct TypeStringifier
         state.emit(" }");
     }
 
-    void operator()(TypeId, const ExternType& etv)
+    void operator()(TypeId ty, const ExternType& etv)
     {
-        state.emit(etv.name);
+        if (FFlag::LuauToStringDecomposition)
+            state.emitAndRecordSpan(etv.name, ty);
+        else
+            state.emit(etv.name);
     }
 
     void operator()(TypeId, const AnyType&)
@@ -872,81 +903,183 @@ struct TypeStringifier
         bool optional = false;
         bool hasNonNilDisjunct = false;
 
-        std::vector<std::string> results = {};
-        size_t resultsLength = 0;
-        bool lengthLimitHit = false;
-
-        for (auto el : &uv)
+        if (FFlag::LuauToStringDecomposition)
         {
-            el = follow(el);
+            std::vector<ElementResult> results = {};
+            size_t resultsLength = 0;
+            bool lengthLimitHit = false;
 
-            if (state.opts.useQuestionMarks && isNil(el))
+            for (auto el : &uv)
             {
-                optional = true;
-                continue;
+                el = follow(el);
+
+                if (state.opts.useQuestionMarks && isNil(el))
+                {
+                    optional = true;
+                    continue;
+                }
+                else
+                {
+                    hasNonNilDisjunct = true;
+                }
+
+                std::string saved = std::move(state.result.name);
+                size_t savedSpansSize = state.result.typeSpans.size();
+
+                bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+
+                if (needParens)
+                    state.emit("(");
+
+                stringify(el);
+
+                if (needParens)
+                    state.emit(")");
+
+                ElementResult elem;
+                elem.str = std::move(state.result.name);
+
+                for (size_t i = savedSpansSize; i < state.result.typeSpans.size(); ++i)
+                    elem.spans.push_back(state.result.typeSpans[i]);
+                state.result.typeSpans.resize(savedSpansSize);
+
+                resultsLength += elem.str.length();
+                results.push_back(std::move(elem));
+
+                state.result.name = std::move(saved);
+
+                lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
+
+                if (lengthLimitHit)
+                    break;
             }
-            else
-            {
-                hasNonNilDisjunct = true;
-            }
 
-            std::string saved = std::move(state.result.name);
+            state.unsee(&uv);
 
-            bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+            if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
+                std::sort(
+                    results.begin(),
+                    results.end(),
+                    [](const ElementResult& a, const ElementResult& b)
+                    {
+                        return a.str < b.str;
+                    }
+                );
 
-            if (needParens)
+            if (optional && results.size() > 1)
                 state.emit("(");
 
-            stringify(el);
-
-            if (needParens)
-                state.emit(")");
-
-            resultsLength += state.result.name.length();
-            results.push_back(std::move(state.result.name));
-
-            state.result.name = std::move(saved);
-
-            lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
-
-            if (lengthLimitHit)
-                break;
-        }
-
-        state.unsee(&uv);
-
-        if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
-            std::sort(results.begin(), results.end());
-
-        if (optional && results.size() > 1)
-            state.emit("(");
-
-        bool first = true;
-        bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit;
-        for (std::string& ss : results)
-        {
-            if (!first)
+            bool first = true;
+            bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit;
+            for (ElementResult& elem : results)
             {
-                if (shouldPlaceOnNewlines)
-                    state.newline();
-                else
-                    state.emit(" ");
-                state.emit("| ");
+                if (!first)
+                {
+                    if (shouldPlaceOnNewlines)
+                        state.newline();
+                    else
+                        state.emit(" ");
+                    state.emit("| ");
+                }
+
+                size_t basePos = state.result.name.length();
+                state.emit(elem.str);
+                for (const auto& [start, end, ty] : elem.spans)
+                    state.result.typeSpans.emplace_back(basePos + start, basePos + end, ty);
+
+                first = false;
             }
-            state.emit(ss);
-            first = false;
+
+            if (optional)
+            {
+                const char* s = "?";
+                if (results.size() > 1)
+                    s = ")?";
+
+                if (!hasNonNilDisjunct)
+                    s = "nil";
+
+                state.emit(s);
+            }
         }
-
-        if (optional)
+        else
         {
-            const char* s = "?";
-            if (results.size() > 1)
-                s = ")?";
+            std::vector<std::string> results = {};
+            size_t resultsLength = 0;
+            bool lengthLimitHit = false;
 
-            if (!hasNonNilDisjunct)
-                s = "nil";
+            for (auto el : &uv)
+            {
+                el = follow(el);
 
-            state.emit(s);
+                if (state.opts.useQuestionMarks && isNil(el))
+                {
+                    optional = true;
+                    continue;
+                }
+                else
+                {
+                    hasNonNilDisjunct = true;
+                }
+
+                std::string saved = std::move(state.result.name);
+
+                bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+
+                if (needParens)
+                    state.emit("(");
+
+                stringify(el);
+
+                if (needParens)
+                    state.emit(")");
+
+                resultsLength += state.result.name.length();
+                results.push_back(std::move(state.result.name));
+
+                state.result.name = std::move(saved);
+
+                lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
+
+                if (lengthLimitHit)
+                    break;
+            }
+
+            state.unsee(&uv);
+
+            if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
+                std::sort(results.begin(), results.end());
+
+            if (optional && results.size() > 1)
+                state.emit("(");
+
+            bool first = true;
+            bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit;
+            for (std::string& ss : results)
+            {
+                if (!first)
+                {
+                    if (shouldPlaceOnNewlines)
+                        state.newline();
+                    else
+                        state.emit(" ");
+                    state.emit("| ");
+                }
+                state.emit(ss);
+                first = false;
+            }
+
+            if (optional)
+            {
+                const char* s = "?";
+                if (results.size() > 1)
+                    s = ")?";
+
+                if (!hasNonNilDisjunct)
+                    s = "nil";
+
+                state.emit(s);
+            }
         }
     }
 
@@ -959,56 +1092,133 @@ struct TypeStringifier
             return;
         }
 
-        std::vector<std::string> results = {};
-        size_t resultsLength = 0;
-        bool lengthLimitHit = false;
-
-        for (auto el : uv.parts)
+        if (FFlag::LuauToStringDecomposition)
         {
-            el = follow(el);
+            std::vector<ElementResult> results = {};
+            size_t resultsLength = 0;
+            bool lengthLimitHit = false;
 
-            std::string saved = std::move(state.result.name);
-
-            bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
-
-            if (needParens)
-                state.emit("(");
-
-            stringify(el);
-
-            if (needParens)
-                state.emit(")");
-
-            resultsLength += state.result.name.length();
-            results.push_back(std::move(state.result.name));
-
-            state.result.name = std::move(saved);
-
-            lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
-
-            if (lengthLimitHit)
-                break;
-        }
-
-        state.unsee(&uv);
-
-        if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
-            std::sort(results.begin(), results.end());
-
-        bool first = true;
-        bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);
-        for (std::string& ss : results)
-        {
-            if (!first)
+            for (auto el : uv.parts)
             {
-                if (shouldPlaceOnNewlines)
-                    state.newline();
-                else
-                    state.emit(" ");
-                state.emit("& ");
+                el = follow(el);
+
+                std::string saved = std::move(state.result.name);
+                size_t savedSpansSize = state.result.typeSpans.size();
+
+                bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
+
+                if (needParens)
+                    state.emit("(");
+
+                stringify(el);
+
+                if (needParens)
+                    state.emit(")");
+
+                ElementResult elem;
+                elem.str = std::move(state.result.name);
+
+                for (size_t i = savedSpansSize; i < state.result.typeSpans.size(); ++i)
+                    elem.spans.push_back(state.result.typeSpans[i]);
+                state.result.typeSpans.resize(savedSpansSize);
+
+                resultsLength += elem.str.length();
+                results.push_back(std::move(elem));
+
+                state.result.name = std::move(saved);
+
+                lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
+
+                if (lengthLimitHit)
+                    break;
             }
-            state.emit(ss);
-            first = false;
+
+            state.unsee(&uv);
+
+            if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
+                std::sort(
+                    results.begin(),
+                    results.end(),
+                    [](const ElementResult& a, const ElementResult& b)
+                    {
+                        return a.str < b.str;
+                    }
+                );
+
+            bool first = true;
+            bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);
+            for (ElementResult& elem : results)
+            {
+                if (!first)
+                {
+                    if (shouldPlaceOnNewlines)
+                        state.newline();
+                    else
+                        state.emit(" ");
+                    state.emit("& ");
+                }
+
+                size_t basePos = state.result.name.length();
+                state.emit(elem.str);
+                for (const auto& [start, end, spanTy] : elem.spans)
+                    state.result.typeSpans.emplace_back(basePos + start, basePos + end, spanTy);
+
+                first = false;
+            }
+        }
+        else
+        {
+            std::vector<std::string> results = {};
+            size_t resultsLength = 0;
+            bool lengthLimitHit = false;
+
+            for (auto el : uv.parts)
+            {
+                el = follow(el);
+
+                std::string saved = std::move(state.result.name);
+
+                bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
+
+                if (needParens)
+                    state.emit("(");
+
+                stringify(el);
+
+                if (needParens)
+                    state.emit(")");
+
+                resultsLength += state.result.name.length();
+                results.push_back(std::move(state.result.name));
+
+                state.result.name = std::move(saved);
+
+                lengthLimitHit = state.opts.maxTypeLength > 0 && resultsLength > state.opts.maxTypeLength;
+
+                if (lengthLimitHit)
+                    break;
+            }
+
+            state.unsee(&uv);
+
+            if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
+                std::sort(results.begin(), results.end());
+
+            bool first = true;
+            bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);
+            for (std::string& ss : results)
+            {
+                if (!first)
+                {
+                    if (shouldPlaceOnNewlines)
+                        state.newline();
+                    else
+                        state.emit(" ");
+                    state.emit("& ");
+                }
+                state.emit(ss);
+                first = false;
+            }
         }
     }
 
@@ -1414,7 +1624,10 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
                     result.name = format("%s.", moduleName->c_str());
             }
 
-            result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
+            if (FFlag::LuauToStringDecomposition)
+                state.emitAndRecordSpan(ttv->name ? *ttv->name : *ttv->syntheticName, ty);
+            else
+                result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
 
             tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
 
@@ -1423,7 +1636,10 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
         else if (auto mtv = get<MetatableType>(ty); mtv && mtv->syntheticName)
         {
             result.invalid = true;
-            result.name = *mtv->syntheticName;
+            if (FFlag::LuauToStringDecomposition)
+                state.emitAndRecordSpan(*mtv->syntheticName, ty);
+            else
+                result.name = *mtv->syntheticName;
             return result;
         }
     }

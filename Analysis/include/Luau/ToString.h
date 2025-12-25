@@ -59,6 +59,10 @@ struct ToStringResult
 {
     std::string name;
 
+    // Records which TypeId produced each substring of the output. Only recorded for named types
+    // Each entry: {startPos, endPos, typeId}
+    std::vector<std::tuple<size_t, size_t, TypeId>> typeSpans;
+
     bool invalid = false;
     bool error = false;
     bool cycle = false;
