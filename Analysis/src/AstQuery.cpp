@@ -12,6 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauQueryLocalFunctionBinding)
 
 namespace Luau
 {
@@ -348,34 +349,73 @@ static std::optional<AstStatLocal*> findBindingLocalStatement(const SourceModule
 
 std::optional<Binding> findBindingAtPosition(const Module& module, const SourceModule& source, Position pos)
 {
-    AstExpr* expr = findExprAtPosition(source, pos);
-    if (!expr)
-        return std::nullopt;
-
-    Symbol name;
-    if (auto g = expr->as<AstExprGlobal>())
-        name = g->name;
-    else if (auto l = expr->as<AstExprLocal>())
-        name = l->local;
-    else
-        return std::nullopt;
-
-    ScopePtr currentScope = findScopeAtPosition(module, pos);
-
-    while (currentScope)
+    if (FFlag::LuauQueryLocalFunctionBinding)
     {
-        auto iter = currentScope->bindings.find(name);
-        if (iter != currentScope->bindings.end() && iter->second.location.begin <= pos)
-        {
-            // Ignore this binding if we're inside its definition. e.g. local abc = abc -- Will take the definition of abc from outer scope
-            std::optional<AstStatLocal*> bindingStatement = findBindingLocalStatement(source, iter->second);
-            if (!bindingStatement || !(*bindingStatement)->location.contains(pos))
-                return iter->second;
-        }
-        currentScope = currentScope->parent;
-    }
+        ExprOrLocal exprOrLocal = findExprOrLocalAtPosition(source, pos);
 
-    return std::nullopt;
+        Symbol name;
+        if (auto expr = exprOrLocal.getExpr())
+        {
+            if (auto g = expr->as<AstExprGlobal>())
+                name = g->name;
+            else if (auto l = expr->as<AstExprLocal>())
+                name = l->local;
+            else
+                return std::nullopt;
+        }
+        else if (auto local = exprOrLocal.getLocal())
+            name = local;
+        else
+            return std::nullopt;
+
+        ScopePtr currentScope = findScopeAtPosition(module, pos);
+
+        while (currentScope)
+        {
+            auto iter = currentScope->bindings.find(name);
+            if (iter != currentScope->bindings.end() && iter->second.location.begin <= pos)
+            {
+                // Ignore this binding if we're inside its definition. e.g. local abc = abc -- Will take the definition of abc from outer scope
+                std::optional<AstStatLocal*> bindingStatement = findBindingLocalStatement(source, iter->second);
+                if (!bindingStatement || !(*bindingStatement)->location.contains(pos))
+                    return iter->second;
+            }
+            currentScope = currentScope->parent;
+        }
+
+        return std::nullopt;
+    }
+    else
+    {
+        AstExpr* expr = findExprAtPosition(source, pos);
+        if (!expr)
+            return std::nullopt;
+
+        Symbol name;
+        if (auto g = expr->as<AstExprGlobal>())
+            name = g->name;
+        else if (auto l = expr->as<AstExprLocal>())
+            name = l->local;
+        else
+            return std::nullopt;
+
+        ScopePtr currentScope = findScopeAtPosition(module, pos);
+
+        while (currentScope)
+        {
+            auto iter = currentScope->bindings.find(name);
+            if (iter != currentScope->bindings.end() && iter->second.location.begin <= pos)
+            {
+                // Ignore this binding if we're inside its definition. e.g. local abc = abc -- Will take the definition of abc from outer scope
+                std::optional<AstStatLocal*> bindingStatement = findBindingLocalStatement(source, iter->second);
+                if (!bindingStatement || !(*bindingStatement)->location.contains(pos))
+                    return iter->second;
+            }
+            currentScope = currentScope->parent;
+        }
+
+        return std::nullopt;
+    }
 }
 
 namespace
