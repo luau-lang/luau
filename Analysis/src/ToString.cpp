@@ -158,7 +158,7 @@ static std::pair<bool, std::optional<Luau::Name>> canUseTypeNameInScope(ScopePtr
 struct ElementResult
 {
     std::string str;
-    std::vector<std::tuple<size_t, size_t, TypeId>> spans;
+    std::vector<ToStringSpan> spans;
 };
 
 struct StringifierState
@@ -310,7 +310,7 @@ struct StringifierState
         size_t endPos = result.name.length();
 
         if (endPos > startPos)
-            result.typeSpans.emplace_back(startPos, result.name.length(), ty);
+            result.typeSpans.emplace_back(ToStringSpan{startPos, endPos, ty});
     }
 
     void emit(Polarity p)
@@ -985,7 +985,7 @@ struct TypeStringifier
                 size_t basePos = state.result.name.length();
                 state.emit(elem.str);
                 for (const auto& [start, end, ty] : elem.spans)
-                    state.result.typeSpans.emplace_back(basePos + start, basePos + end, ty);
+                    state.result.typeSpans.emplace_back(ToStringSpan{basePos + start, basePos + end, ty});
 
                 first = false;
             }
@@ -1161,7 +1161,7 @@ struct TypeStringifier
                 size_t basePos = state.result.name.length();
                 state.emit(elem.str);
                 for (const auto& [start, end, spanTy] : elem.spans)
-                    state.result.typeSpans.emplace_back(basePos + start, basePos + end, spanTy);
+                    state.result.typeSpans.emplace_back(ToStringSpan{basePos + start, basePos + end, spanTy});
 
                 first = false;
             }
