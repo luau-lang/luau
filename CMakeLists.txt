@@ -107,7 +107,7 @@ target_include_directories(isocline PUBLIC extern/isocline/include)
 
 target_include_directories(Luau.VM.Internals INTERFACE VM/src)
 
-set(LUAU_OPTIONS -g)
+set(LUAU_OPTIONS)
 
 if(MSVC)
     list(APPEND LUAU_OPTIONS /D_CRT_SECURE_NO_WARNINGS) # We need to use the portable CRT functions.
