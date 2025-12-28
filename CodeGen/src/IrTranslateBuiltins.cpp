@@ -9,6 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloat)
+LUAU_FASTFLAGVARIABLE(LuauCodegenMathIsNan)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -362,18 +363,30 @@ static BuiltinImplResult translateBuiltinMathUnary(IrBuilder& build, IrCmd cmd, 
 
 static BuiltinImplResult translateBuiltinMathIsNan(IrBuilder& build, int nparams, int ra, int arg, int nresults, int pcpos)
 {
-    if (nparams < 1 || nresults > 1)
+    if (nparams < 1 || nresults != 1)
         return {BuiltinImplType::None, -1};
 
-    builtinCheckDouble(build, build.vmReg(arg), pcpos);
+    IrOp va = build.vmReg(arg);
 
-    IrOp varg = builtinLoadDouble(build, build.vmReg(arg));
-    IrOp result = build.inst(IrCmd::CMP_ANY, varg, varg, build.cond(IrCondition::Equal));
+    builtinCheckDouble(build, va, pcpos);
 
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), result);
+    IrOp ifNan = build.block(IrBlockKind::Internal);
+    IrOp ifNotNan = build.block(IrBlockKind::Internal);
+    IrOp next = build.block(IrBlockKind::Internal);
 
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::JUMP_CMP_NUM, va, va, build.cond(IrCondition::NotEqual), ifNan, ifNotNan);
+
+    build.beginBlock(ifNan);
+    build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(1));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::JUMP, next);
+
+    build.beginBlock(ifNotNan);
+    build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+    build.inst(IrCmd::JUMP, next);
+
+    build.beginBlock(next);
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1476,7 +1489,10 @@ BuiltinImplResult translateBuiltin(
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     case LBF_MATH_ISNAN:
-        return translateBuiltinMathIsNan(build, nparams, ra, arg, nresults, pcpos);
+        if (FFlag::LuauCodegenMathIsNan)
+            return translateBuiltinMathIsNan(build, nparams, ra, arg, nresults, pcpos);
+        else
+            return {BuiltinImplType::None, -1};
     default:
         return {BuiltinImplType::None, -1};
     }
