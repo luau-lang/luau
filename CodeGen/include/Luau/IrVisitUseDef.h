@@ -5,6 +5,7 @@
 #include "Luau/IrData.h"
 
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenMathIsNan)
 
 namespace Luau
 {
@@ -48,6 +49,15 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         break;
     case IrCmd::JUMP_EQ_TAG:
         visitor.maybeUse(inst.a);
+        break;
+    case IrCmd::JUMP_CMP_NUM:
+        if (FFlag::LuauCodegenMathIsNan)
+        {
+            if (inst.a.kind == IrOpKind::VmReg)
+                visitor.use(inst.a);
+            if (inst.b.kind == IrOpKind::VmReg)
+                visitor.use(inst.b);
+        }
         break;
         // A <- B, C
     case IrCmd::DO_ARITH:
