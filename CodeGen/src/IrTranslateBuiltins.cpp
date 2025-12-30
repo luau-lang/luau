@@ -366,27 +366,15 @@ static BuiltinImplResult translateBuiltinMathIsNan(IrBuilder& build, int nparams
     if (nparams < 1 || nresults != 1)
         return {BuiltinImplType::None, -1};
 
-    IrOp va = build.vmReg(arg);
+    IrOp argument = build.vmReg(arg);
+    IrOp ret = build.vmReg(ra);
+    builtinCheckDouble(build, argument, pcpos);
 
-    builtinCheckDouble(build, va, pcpos);
+    IrOp comparisonResult = build.inst(IrCmd::CMP_ANY, argument, argument, build.cond(IrCondition::Equal));
+    IrOp isNan = build.inst(IrCmd::SUB_INT, build.constInt(1), comparisonResult); // invert the result of the comparison
 
-    IrOp ifNan = build.block(IrBlockKind::Internal);
-    IrOp ifNotNan = build.block(IrBlockKind::Internal);
-    IrOp next = build.block(IrBlockKind::Internal);
-
-    build.inst(IrCmd::JUMP_CMP_NUM, va, va, build.cond(IrCondition::NotEqual), ifNan, ifNotNan);
-
-    build.beginBlock(ifNan);
-    build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(1));
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-    build.inst(IrCmd::JUMP, next);
-
-    build.beginBlock(ifNotNan);
-    build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(0));
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
-    build.inst(IrCmd::JUMP, next);
-
-    build.beginBlock(next);
+    build.inst(IrCmd::STORE_INT, ret, isNan);
+    build.inst(IrCmd::STORE_TAG, ret, build.constTag(LUA_TBOOLEAN));
 
     return {BuiltinImplType::Full, 1};
 }
