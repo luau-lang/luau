@@ -603,8 +603,11 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
     AstExpr* targetExpr = ancestry.size() >= 1 ? ancestry[ancestry.size() - 1]->asExpr() : nullptr;
     AstExpr* parentExpr = ancestry.size() >= 2 ? ancestry[ancestry.size() - 2]->asExpr() : nullptr;
 
-    if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
-        return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
+    if (!FFlag::LuauQueryLocalFunctionBinding)
+    {
+        if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
+            return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
+    }
 
     if (targetExpr)
     {
@@ -688,6 +691,12 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 }
             }
         }
+    }
+
+    if (FFlag::LuauQueryLocalFunctionBinding)
+    {
+        if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
+            return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
     }
 
     if (std::optional<TypeId> ty = findTypeAtPosition(module, source, position))
