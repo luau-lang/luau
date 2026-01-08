@@ -3520,6 +3520,51 @@ private:
     }
 };
 
+class LintMisleadingConditional : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintMisleadingConditional pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (node->op != AstExprBinary::Or)
+            return true;
+
+        AstExprBinary* and_ = node->left->as<AstExprBinary>();
+        if (!and_ || and_->op != AstExprBinary::And)
+            return true;
+
+        const char* alt = nullptr;
+
+        if (and_->right->is<AstExprConstantNil>())
+            alt = "nil";
+        else if (AstExprConstantBool* c = and_->right->as<AstExprConstantBool>(); c && c->value == false)
+            alt = "false";
+
+        if (alt)
+            emitWarning(
+                *context,
+                LintWarning::Code_MisleadingConditional,
+                node->location,
+                "The and-or expression always evaluates to the second alternative because the first alternative is %s; consider using if-then-else "
+                "expression instead",
+                alt
+            );
+
+        return true;
+    }
+};
+
+
 std::vector<LintWarning> lint(
     AstStat* root,
     const AstNameTable& names,
@@ -3617,6 +3662,9 @@ std::vector<LintWarning> lint(
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);
     }
+
+    if (context.warningEnabled(LintWarning::Code_MisleadingConditional))
+        LintMisleadingConditional::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
