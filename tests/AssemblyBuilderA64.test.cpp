@@ -108,10 +108,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(tst(x0, x1), 0xEA01001F);
 
     // reg, imm
-    SINGLE_COMPARE(add(x3, x7, 78), 0x910138E3);
-    SINGLE_COMPARE(add(w3, w7, 78), 0x110138E3);
-    SINGLE_COMPARE(sub(w3, w7, 78), 0x510138E3);
-    SINGLE_COMPARE(cmp(w0, 42), 0x7100A81F);
+    SINGLE_COMPARE(add(x3, x7, uint16_t(78)), 0x910138E3);
+    SINGLE_COMPARE(add(w3, w7, uint16_t(78)), 0x110138E3);
+    SINGLE_COMPARE(sub(w3, w7, uint16_t(78)), 0x510138E3);
+    SINGLE_COMPARE(cmp(w0, uint16_t(42)), 0x7100A81F);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryExtended")
@@ -333,11 +333,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "StackOps")
     SINGLE_COMPARE(mov(x0, sp), 0x910003E0);
     SINGLE_COMPARE(mov(sp, x0), 0x9100001F);
 
-    SINGLE_COMPARE(add(sp, sp, 4), 0x910013FF);
-    SINGLE_COMPARE(sub(sp, sp, 4), 0xD10013FF);
+    SINGLE_COMPARE(add(sp, sp, uint16_t(4)), 0x910013FF);
+    SINGLE_COMPARE(sub(sp, sp, uint16_t(4)), 0xD10013FF);
 
-    SINGLE_COMPARE(add(x0, sp, 4), 0x910013E0);
-    SINGLE_COMPARE(sub(sp, x0, 4), 0xD100101F);
+    SINGLE_COMPARE(add(x0, sp, uint16_t(4)), 0x910013E0);
+    SINGLE_COMPARE(sub(sp, x0, uint16_t(4)), 0xD100101F);
 
     SINGLE_COMPARE(ldr(x0, mem(sp, 8)), 0xF94007E0);
     SINGLE_COMPARE(str(x0, mem(sp, 8)), 0xF90007E0);
@@ -411,6 +411,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
     SINGLE_COMPARE(frinta(d1, d2), 0x1E664041);
     SINGLE_COMPARE(frintm(d1, d2), 0x1E654041);
     SINGLE_COMPARE(frintp(d1, d2), 0x1E64C041);
+
+    SINGLE_COMPARE(frintm(s1, s2), 0x1E254041);
+    SINGLE_COMPARE(frintp(s1, s2), 0x1E24C041);
+
+    SINGLE_COMPARE(frintm(q1, q2), 0x4E219841);
 
     SINGLE_COMPARE(fcvt(s1, d2), 0x1E624041);
     SINGLE_COMPARE(fcvt(d1, s2), 0x1E22C041);
@@ -556,12 +561,12 @@ TEST_CASE("LogTest")
 {
     AssemblyBuilderA64 build(/* logText= */ true);
 
-    build.add(sp, sp, 4);
+    build.add(sp, sp, uint16_t(4));
     build.add(w0, w1, w2);
     build.add(x0, x1, x2, 2);
     build.add(x0, x1, x2, -2);
-    build.add(w7, w8, 5);
-    build.add(x7, x8, 5);
+    build.add(w7, w8, uint16_t(5));
+    build.add(x7, x8, uint16_t(5));
     build.ldr(x7, x8);
     build.ldr(x7, mem(x8, 8));
     build.ldr(x7, mem(x8, x9));

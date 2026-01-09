@@ -209,8 +209,8 @@ static void errorToString(std::ostream& stream, const T& err)
         for (auto [s, t] : err.recommendedArgs)
             recArgs += " " + s + ": " + toString(t);
         recArgs += " ]";
-        stream << "ExplicitFunctionAnnotationRecommended { recommmendedReturn = '" + toString(err.recommendedReturn) +
-                      "', recommmendedArgs = " + recArgs + "}";
+        stream << "ExplicitFunctionAnnotationRecommended { recommendedReturn = '" + toString(err.recommendedReturn) +
+                      "', recommendedArgs = " + recArgs + "}";
     }
     else if constexpr (std::is_same_v<T, UninhabitedTypePackFunction>)
         stream << "UninhabitedTypePackFunction { " << toString(err.tp) << " }";

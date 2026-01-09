@@ -1839,7 +1839,7 @@ static bool luau_hassse41()
     __cpuid(1, cpuinfo[0], cpuinfo[1], cpuinfo[2], cpuinfo[3]);
 #endif
 
-    // We requre SSE4.1 support for ROUNDSD
+    // We require SSE4.1 support for ROUNDSD
     // https://en.wikipedia.org/wiki/CPUID#EAX=1:_Processor_Info_and_Feature_Bits
     return (cpuinfo[2] & (1 << 19)) != 0;
 }

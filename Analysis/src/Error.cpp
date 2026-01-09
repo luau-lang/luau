@@ -19,8 +19,6 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauBetterTypeMismatchErrors)
 
 static std::string wrongNumberOfArgsString(
@@ -196,8 +194,7 @@ struct ErrorConverter
         switch (e.context)
         {
         case UnknownSymbol::Binding:
-            return FFlag::LuauUnknownGlobalFixSuggestion ? "Unknown global '" + e.name + "'; consider assigning to it first"
-                                                         : "Unknown global '" + e.name + "'";
+            return "Unknown global '" + e.name + "'; consider assigning to it first";
         case UnknownSymbol::Type:
             return "Unknown type '" + e.name + "'";
         }
@@ -783,38 +780,14 @@ struct ErrorConverter
 
     std::string operator()(const CheckedFunctionCallError& e) const
     {
-        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
-        {
-            return "the function '" + e.checkedFunctionName + "' expects to get a " + toString(e.expected) + " as its " +
-                   toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
-        }
-        else
-        {
-            // TODO: What happens if checkedFunctionName cannot be found??
-            return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" +
-                   std::to_string(e.argumentIndex + 1) + ", but got '" + Luau::toString(e.passed) + "'";
-        }
+        return "the function '" + e.checkedFunctionName + "' expects to get a " + toString(e.expected) + " as its " +
+            toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
     {
-        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
-        {
-            std::string prefix = e.functionName.empty() ? "" : "in the function '" + e.functionName + "', '";
-            return prefix + "the argument '" + e.argument + "' is used in a way that will error at runtime";
-        }
-        else
-        {
-            if (e.functionName.empty())
-            {
-                return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' is used in a way that will run time error";
-            }
-            else
-            {
-                return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
-                       "' is used in a way that will run time error";
-            }
-        }
+        std::string prefix = e.functionName.empty() ? "" : "in the function '" + e.functionName + "', '";
+        return prefix + "the argument '" + e.argument + "' is used in a way that will error at runtime";
     }
 
     std::string operator()(const PropertyAccessViolation& e) const
@@ -835,16 +808,8 @@ struct ErrorConverter
     std::string operator()(const CheckedFunctionIncorrectArgs& e) const
     {
 
-        if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
-        {
-            return "the function '" + e.functionName + "' will error at runtime if it is not called with " + std::to_string(e.expected) +
-                   " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
-        }
-        else
-        {
-            return "Checked Function " + e.functionName + " expects " + std::to_string(e.expected) + " arguments, but received " +
-                   std::to_string(e.actual);
-        }
+        return "the function '" + e.functionName + "' will error at runtime if it is not called with " + std::to_string(e.expected) +
+            " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
     }
 
     std::string operator()(const UnexpectedTypeInSubtyping& e) const

@@ -9,7 +9,7 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
 
 namespace
@@ -541,7 +541,7 @@ struct Printer
 
             const auto cstNode = lookupCstNode<CstExprCall>(a);
 
-            if (FFlag::LuauExplicitTypeExpressionInstantiation)
+            if (FFlag::LuauExplicitTypeInstantiationSyntax)
             {
                 if (writeTypes && (a->typeArguments.size > 0 || (cstNode && cstNode->explicitTypes)))
                 {
@@ -831,7 +831,7 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
 
             visualize(*a->expr);
 
@@ -1892,7 +1892,7 @@ struct Printer
 
     void visualizeExplicitTypeInstantiation(const AstArray<AstTypeOrPack>& typeArguments, const CstTypeInstantiation* cstNode)
     {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
 
         if (cstNode)
         {

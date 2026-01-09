@@ -647,7 +647,7 @@ void cloneTypesFromFragment(
     UsageFinder f{dfg};
     program->visit(&f);
     // These are defs that have been mentioned. find the appropriate lvalue type and rvalue types and place them in the scope
-    // First - any locals that have been mentioned in the fragment need to be placed in the bindings and lvalueTypes secionts.
+    // First - any locals that have been mentioned in the fragment need to be placed in the bindings and lvalueTypes sections.
 
     for (const auto& d : f.mentionedDefs)
     {
