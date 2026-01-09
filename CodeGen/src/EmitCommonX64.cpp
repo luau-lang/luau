@@ -24,7 +24,7 @@ namespace CodeGen
 namespace X64
 {
 
-void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label)
+void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label, bool floatPrecision)
 {
     // Refresher on comi/ucomi EFLAGS:
     // all zero: greater
@@ -36,14 +36,29 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
     if (cond == IrCondition::Greater || cond == IrCondition::GreaterEqual || cond == IrCondition::NotGreater || cond == IrCondition::NotGreaterEqual)
         std::swap(lhs, rhs);
 
-    if (rhs.cat == CategoryX64::reg)
+    if (floatPrecision)
     {
-        build.vucomisd(rhs, lhs);
+        if (rhs.cat == CategoryX64::reg)
+        {
+            build.vucomiss(rhs, lhs);
+        }
+        else
+        {
+            build.vmovss(tmp, rhs);
+            build.vucomiss(tmp, lhs);
+        }
     }
     else
     {
-        build.vmovsd(tmp, rhs);
-        build.vucomisd(tmp, lhs);
+        if (rhs.cat == CategoryX64::reg)
+        {
+            build.vucomisd(rhs, lhs);
+        }
+        else
+        {
+            build.vmovsd(tmp, rhs);
+            build.vucomisd(tmp, lhs);
+        }
     }
 
     // Keep in mind that 'Not' conditions want 'true' for comparisons with NaN

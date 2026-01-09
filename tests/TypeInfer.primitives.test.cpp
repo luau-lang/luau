@@ -55,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "string_method")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("p"), *getBuiltins()->numberType);
+    CHECK("number" == toString(requireType("p")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
@@ -67,7 +67,7 @@ TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("p"), *getBuiltins()->stringType);
+    CHECK("string" == toString(requireType("p")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")

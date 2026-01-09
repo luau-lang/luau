@@ -171,6 +171,30 @@ const char* getCmdName(IrCmd cmd)
         return "ABS_NUM";
     case IrCmd::SIGN_NUM:
         return "SIGN_NUM";
+    case IrCmd::ADD_FLOAT:
+        return "ADD_FLOAT";
+    case IrCmd::SUB_FLOAT:
+        return "SUB_FLOAT";
+    case IrCmd::MUL_FLOAT:
+        return "MUL_FLOAT";
+    case IrCmd::DIV_FLOAT:
+        return "DIV_FLOAT";
+    case IrCmd::MIN_FLOAT:
+        return "MIN_FLOAT";
+    case IrCmd::MAX_FLOAT:
+        return "MAX_FLOAT";
+    case IrCmd::UNM_FLOAT:
+        return "UNM_FLOAT";
+    case IrCmd::FLOOR_FLOAT:
+        return "FLOOR_FLOAT";
+    case IrCmd::CEIL_FLOAT:
+        return "CEIL_FLOAT";
+    case IrCmd::SQRT_FLOAT:
+        return "SQRT_FLOAT";
+    case IrCmd::ABS_FLOAT:
+        return "ABS_FLOAT";
+    case IrCmd::SIGN_FLOAT:
+        return "SIGN_FLOAT";
     case IrCmd::SELECT_NUM:
         return "SELECT_NUM";
     case IrCmd::MULADD_NUM:
@@ -187,6 +211,8 @@ const char* getCmdName(IrCmd cmd)
         return "MUL_VEC";
     case IrCmd::DIV_VEC:
         return "DIV_VEC";
+    case IrCmd::IDIV_VEC:
+        return "IDIV_VEC";
     case IrCmd::MULADD_VEC:
         return "MULADD_VEC";
     case IrCmd::UNM_VEC:
@@ -219,6 +245,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
         return "JUMP_CMP_NUM";
+    case IrCmd::JUMP_CMP_FLOAT:
+        return "JUMP_CMP_FLOAT";
     case IrCmd::JUMP_FORN_LOOP_COND:
         return "JUMP_FORN_LOOP_COND";
     case IrCmd::JUMP_SLOT_MATCH:
@@ -251,8 +279,10 @@ const char* getCmdName(IrCmd cmd)
         return "FLOAT_TO_NUM";
     case IrCmd::NUM_TO_FLOAT:
         return "NUM_TO_FLOAT";
-    case IrCmd::NUM_TO_VEC:
+    case IrCmd::NUM_TO_VEC_DEPRECATED:
         return "NUM_TO_VEC";
+    case IrCmd::FLOAT_TO_VEC:
+        return "FLOAT_TO_VEC";
     case IrCmd::TAG_VECTOR:
         return "TAG_VECTOR";
     case IrCmd::TRUNCATE_UINT:

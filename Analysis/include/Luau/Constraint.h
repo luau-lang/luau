@@ -279,7 +279,7 @@ struct SimplifyConstraint
 // push_function_type_constraint expectedFunctionType => functionType
 //
 // Attempt to "push" the types of `expectedFunctionType` into `functionType`,
-// assuming that `expr` is a lambda who's ungeneralized type is `functionType`.
+// assuming that `expr` is a lambda who's un-generalized type is `functionType`.
 // Similar to `FunctionCheckConstraint`. For example:
 //
 //  local Foo = {} :: { bar : (number) -> () }

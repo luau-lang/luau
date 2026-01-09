@@ -590,6 +590,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
         vroundsd(xmm8, xmm13, xmmword[r13 + rdx], RoundingModeX64::RoundToPositiveInfinity), 0xc4, 0x43, 0x11, 0x0b, 0x44, 0x15, 0x00, 0x0a
     );
     SINGLE_COMPARE(vroundsd(xmm9, xmm14, xmmword[rcx + r10], RoundingModeX64::RoundToZero), 0xc4, 0x23, 0x09, 0x0b, 0x0c, 0x11, 0x0b);
+
+    SINGLE_COMPARE(vroundps(xmm1, xmm3, RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0xe3, 0x79, 0x08, 0xcb, 0x09);
+    SINGLE_COMPARE(vroundps(xmm12, xmm14, RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0x43, 0x79, 0x08, 0xe6, 0x09);
+    SINGLE_COMPARE(vroundps(xmm12, xmmword[rax + r13], RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0x23, 0x79, 0x08, 0x24, 0x28, 0x09);
+
     SINGLE_COMPARE(vblendvpd(xmm7, xmm12, xmmword[rcx + r10], xmm5), 0xc4, 0xa3, 0x19, 0x4b, 0x3c, 0x11, 0x50);
 
     SINGLE_COMPARE(vpshufps(xmm7, xmm12, xmmword[rcx + r10], 0b11010100), 0xc4, 0xa1, 0x18, 0xc6, 0x3c, 0x11, 0xd4);
@@ -662,6 +667,7 @@ TEST_CASE("LogTest")
     build.imul(rcx, rdx);
     build.imul(rcx, rdx, 8);
     build.vroundsd(xmm1, xmm2, xmm3, RoundingModeX64::RoundToNearestEven);
+    build.vroundps(xmm1, xmm12, RoundingModeX64::RoundToNegativeInfinity);
     build.add(rdx, qword[rcx - 12]);
     build.pop(r12);
     build.cmov(ConditionX64::AboveEqual, rax, rbx);
@@ -709,6 +715,7 @@ TEST_CASE("LogTest")
  imul        rcx,rdx
  imul        rcx,rdx,8
  vroundsd    xmm1,xmm2,xmm3,8
+ vroundps    xmm1,xmm12,9
  add         rdx,qword ptr [rcx-0Ch]
  pop         r12
  cmovae      rax,rbx

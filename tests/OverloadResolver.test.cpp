@@ -7,8 +7,6 @@
 #include "Luau/Normalize.h"
 #include "Luau/UnifierSharedState.h"
 
-LUAU_FASTFLAG(LuauNewOverloadResolver2)
-
 using namespace Luau;
 
 struct OverloadResolverFixture : Fixture
@@ -156,34 +154,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities1")
     REQUIRE_EQ(numberNumberToNumber, overload);
 }
 
-TEST_CASE_FIXTURE(OverloadResolverFixture, "separate_non_viable_overloads_by_arity_mismatch")
-{
-    // ty: ((number)->number) & ((number)->string) & ((number, number)->number)
-    // args: (string)
-    OverloadResolver r = mkResolver();
-
-    const TypePack args = TypePack{{builtinTypes->stringType}, std::nullopt};
-    r.resolve_DEPRECATED(meet({numberToNumber, numberToString, numberNumberToNumber}), &args, &kDummyExpr, &kEmptyExprs, emptySet);
-
-    CHECK(r.ok.empty());
-    CHECK(r.nonFunctions.empty());
-    CHECK_EQ(1, r.arityMismatches.size());
-    CHECK_EQ(numberNumberToNumber, r.arityMismatches[0].first);
-
-    CHECK_EQ(2, r.nonviableOverloads.size());
-    bool numberToNumberFound = false;
-    bool numberToStringFound = false;
-    for (const auto& [ty, _] : r.nonviableOverloads)
-    {
-        if (ty == numberToNumber)
-            numberToNumberFound = true;
-        else if (ty == numberToString)
-            numberToStringFound = true;
-    }
-    CHECK(numberToNumberFound);
-    CHECK(numberToStringFound);
-}
-
 /////////////////////////////////////////////////////////////////
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection")
@@ -287,8 +257,6 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overloads_with_different_arities
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_overloads_with_different_arities1")
 {
-    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
-
     // ty: (number) -> number & (number, number) -> number
     // args: (number, number)
     OverloadResolution result = resolver.resolveOverload(
@@ -386,10 +354,8 @@ TEST_CASE_FIXTURE(OverloadResolverFixture, "new_pass_table_with_indexer")
 
 TEST_CASE_FIXTURE(OverloadResolverFixture, "generic_higher_order_function_called_improperly")
 {
-    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
-
     // apply: <A, B..., C...>((A, B...) -> C..., A) -> C...
-    const TypeId genericA = arena->addType(GenericType{"A"});
+    const TypeId genericA = arena->addType(GenericType{"A", Polarity::Mixed});
     const TypePackId genericBs = arena->addTypePack(GenericTypePack{"B"});
     const TypePackId genericCs = arena->addTypePack(GenericTypePack{"C"});
 

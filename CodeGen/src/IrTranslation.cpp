@@ -15,8 +15,10 @@
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoopStepDetectFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLinearAndOr)
+LUAU_FASTFLAGVARIABLE(LuauCodegenVectorIdiv)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
+LUAU_FASTFLAG(LuauCodegenSplitFloatExtra)
 
 namespace Luau
 {
@@ -463,7 +465,8 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     // Special fast-paths for vectors, matching the cases we have in VM
-    if (bcTypes.a == LBC_TYPE_VECTOR && bcTypes.b == LBC_TYPE_VECTOR && (tm == TM_ADD || tm == TM_SUB || tm == TM_MUL || tm == TM_DIV))
+    if (bcTypes.a == LBC_TYPE_VECTOR && bcTypes.b == LBC_TYPE_VECTOR &&
+        (tm == TM_ADD || tm == TM_SUB || tm == TM_MUL || tm == TM_DIV || (FFlag::LuauCodegenVectorIdiv && tm == TM_IDIV)))
     {
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
@@ -486,6 +489,9 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         case TM_DIV:
             result = build.inst(IrCmd::DIV_VEC, vb, vc);
             break;
+        case TM_IDIV:
+            result = build.inst(IrCmd::IDIV_VEC, vb, vc);
+            break;
         default:
             CODEGEN_ASSERT(!"Unknown TM op");
         }
@@ -495,14 +501,21 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
         return;
     }
-    else if (bcTypes.a == LBC_TYPE_NUMBER && bcTypes.b == LBC_TYPE_VECTOR && (tm == TM_MUL || tm == TM_DIV))
+    else if (bcTypes.a == LBC_TYPE_NUMBER && bcTypes.b == LBC_TYPE_VECTOR &&
+             (tm == TM_MUL || tm == TM_DIV || (FFlag::LuauCodegenVectorIdiv && tm == TM_IDIV)))
     {
         if (rb != -1)
             build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
 
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
-        IrOp vb = build.inst(IrCmd::NUM_TO_VEC, loadDoubleOrConstant(build, opb));
+        IrOp vb;
+
+        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenSplitFloatExtra)
+            vb = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, loadDoubleOrConstant(build, opb)));
+        else
+            vb = build.inst(IrCmd::NUM_TO_VEC_DEPRECATED, loadDoubleOrConstant(build, opb));
+
         IrOp vc = build.inst(IrCmd::LOAD_TVALUE, opc);
         IrOp result;
 
@@ -514,6 +527,9 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         case TM_DIV:
             result = build.inst(IrCmd::DIV_VEC, vb, vc);
             break;
+        case TM_IDIV:
+            result = build.inst(IrCmd::IDIV_VEC, vb, vc);
+            break;
         default:
             CODEGEN_ASSERT(!"Unknown TM op");
         }
@@ -523,7 +539,8 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
         return;
     }
-    else if (bcTypes.a == LBC_TYPE_VECTOR && bcTypes.b == LBC_TYPE_NUMBER && (tm == TM_MUL || tm == TM_DIV))
+    else if (bcTypes.a == LBC_TYPE_VECTOR && bcTypes.b == LBC_TYPE_NUMBER &&
+             (tm == TM_MUL || tm == TM_DIV || (FFlag::LuauCodegenVectorIdiv && tm == TM_IDIV)))
     {
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
@@ -531,7 +548,13 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
 
         IrOp vb = build.inst(IrCmd::LOAD_TVALUE, opb);
-        IrOp vc = build.inst(IrCmd::NUM_TO_VEC, loadDoubleOrConstant(build, opc));
+        IrOp vc;
+
+        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenSplitFloatExtra)
+            vc = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, loadDoubleOrConstant(build, opc)));
+        else
+            vc = build.inst(IrCmd::NUM_TO_VEC_DEPRECATED, loadDoubleOrConstant(build, opc));
+
         IrOp result;
 
         switch (tm)
@@ -541,6 +564,9 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             break;
         case TM_DIV:
             result = build.inst(IrCmd::DIV_VEC, vb, vc);
+            break;
+        case TM_IDIV:
+            result = build.inst(IrCmd::IDIV_VEC, vb, vc);
             break;
         default:
             CODEGEN_ASSERT(!"Unknown TM op");

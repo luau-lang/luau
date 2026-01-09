@@ -482,7 +482,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_stringified_differently_from_gener
     TypePackVar tpv{GenericTypePack{"a"}};
     CHECK_EQ(toString(&tpv), "a...");
 
-    Type tv{GenericType{"a"}};
+    Type tv{GenericType{"a", Polarity::Mixed}};
     CHECK_EQ(toString(&tv), "a");
 }
 

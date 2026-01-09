@@ -7,7 +7,6 @@
 #include <array>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileTypeofFold)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringCharSubFold)
 
 namespace Luau
@@ -504,7 +503,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_TYPEOF:
         if (count == 1 && args[0].type != Constant::Type_Unknown)
-            return FFlag::LuauCompileTypeofFold ? ctypeof(args[0]) : ctype(args[0]);
+            return ctypeof(args[0]);
         break;
 
     case LBF_STRING_SUB:
