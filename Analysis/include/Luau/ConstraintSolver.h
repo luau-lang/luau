@@ -459,9 +459,6 @@ public:
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
-    // Clip with LuauSimplifyIntersectionNoTreeSet
-    TypeId simplifyIntersection_DEPRECATED(NotNull<Scope> scope, Location location, std::set<TypeId> parts);
-
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeIds parts);
 
     TypeId simplifyUnion(NotNull<Scope> scope, Location location, TypeId left, TypeId right);

@@ -49,6 +49,7 @@ struct IrLoweringX64
 
     // Operand data lookup helpers
     OperandX64 memRegDoubleOp(IrOp op);
+    OperandX64 memRegFloatOp(IrOp op);
     OperandX64 memRegUintOp(IrOp op);
     OperandX64 memRegTagOp(IrOp op);
     RegisterX64 regOp(IrOp op);

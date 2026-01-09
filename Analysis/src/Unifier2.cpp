@@ -20,10 +20,10 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauIndividualRecursionLimits)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
+LUAU_FASTFLAGVARIABLE(LuauUnifier2HandleMismatchedPacks)
 
 namespace Luau
 {
@@ -89,7 +89,7 @@ static bool areCompatible(TypeId left, TypeId right)
     return true;
 }
 
-// returns `true` if `ty` is irressolvable and should be added to `incompleteSubtypes`.
+// returns `true` if `ty` is irresolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypeId ty)
 {
     if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state != TypeFunctionInstanceState::Unsolved)
@@ -98,7 +98,7 @@ static bool isIrresolvable(TypeId ty)
     return get<BlockedType>(ty) || get<TypeFunctionInstanceType>(ty);
 }
 
-// returns `true` if `tp` is irressolvable and should be added to `incompleteSubtypes`.
+// returns `true` if `tp` is irresolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypePackId tp)
 {
     return get<BlockedTypePack>(tp) || get<TypeFunctionInstanceTypePack>(tp);
@@ -110,7 +110,7 @@ Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes,
     , scope(scope)
     , ice(ice)
     , limits(TypeCheckLimits{}) // TODO: typecheck limits in unifier2
-    , recursionLimit(FFlag::LuauIndividualRecursionLimits ? DFInt::LuauUnifierRecursionLimit : FInt::LuauTypeInferRecursionLimit)
+    , recursionLimit(DFInt::LuauUnifierRecursionLimit)
     , uninhabitedTypeFunctions(nullptr)
 {
 }
@@ -127,7 +127,7 @@ Unifier2::Unifier2(
     , scope(scope)
     , ice(ice)
     , limits(TypeCheckLimits{}) // TODO: typecheck limits in unifier2
-    , recursionLimit(FFlag::LuauIndividualRecursionLimits ? DFInt::LuauUnifierRecursionLimit : FInt::LuauTypeInferRecursionLimit)
+    , recursionLimit(DFInt::LuauUnifierRecursionLimit)
     , uninhabitedTypeFunctions(uninhabitedTypeFunctions)
 {
 }
@@ -699,34 +699,83 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     if (subTypes.size() < maxLength)
         subTypes.resize(maxLength, builtinTypes->nilType);
 
-    if (subTypes.size() < maxLength || superTypes.size() < maxLength)
+    if (FFlag::LuauUnifier2HandleMismatchedPacks)
+    {
+        for (size_t i = 0; i < std::min(subTypes.size(), superTypes.size()); ++i)
+            unify_(subTypes[i], superTypes[i]);
+
+        if (subTypes.size() < maxLength && subTail)
+        {
+            TypePackId superTypesSlice = arena->addTypePack(
+                TypePack{
+                    std::vector(superTypes.begin() + subTypes.size(), superTypes.end()),
+                    superTail,
+                }
+            );
+            return unify_(*subTail, superTypesSlice);
+        }
+        else if (superTypes.size() < maxLength && superTail)
+        {
+            TypePackId subTypesSlice = arena->addTypePack(
+                TypePack{
+                    std::vector(subTypes.begin() + superTypes.size(), subTypes.end()),
+                    subTail,
+                }
+            );
+            return unify_(subTypesSlice, *superTail);
+        }
+
+        // These assertions are meant to ensure we haven't missed a case.
+        LUAU_ASSERT(
+            // If the heads are evenly matched, then we just check the tails.
+            subTypes.size() == superTypes.size() ||
+            // If neither type has a tail, alls good.
+            (!subTail && !superTail) ||
+            // If the sub pack has a tail, more types in its head, and the
+            // super pack has no tail, alls good.
+            (subTail && !superTail && subTypes.size() > superTypes.size()) ||
+            // ... and the other way 'round for the super pack.
+            (!subTail && superTail && subTypes.size() < superTypes.size())
+        );
+        if (subTail && superTail)
+            return unify_(*subTail, *superTail);
+        else if (subTail)
+            return unify_(*subTail, builtinTypes->emptyTypePack);
+        else if (superTail)
+            return unify(builtinTypes->emptyTypePack, *superTail);
+
         return UnifyResult::Ok;
-
-    for (size_t i = 0; i < maxLength; ++i)
-        unify_(subTypes[i], superTypes[i]);
-
-    if (subTail && superTail)
-    {
-        TypePackId followedSubTail = follow(*subTail);
-        TypePackId followedSuperTail = follow(*superTail);
-
-        if (get<FreeTypePack>(followedSubTail) || get<FreeTypePack>(followedSuperTail))
-            return unify_(followedSubTail, followedSuperTail);
     }
-    else if (subTail)
+    else
     {
-        TypePackId followedSubTail = follow(*subTail);
-        if (get<FreeTypePack>(followedSubTail))
-            emplaceTypePack<BoundTypePack>(asMutable(followedSubTail), builtinTypes->emptyTypePack);
-    }
-    else if (superTail)
-    {
-        TypePackId followedSuperTail = follow(*superTail);
-        if (get<FreeTypePack>(followedSuperTail))
-            emplaceTypePack<BoundTypePack>(asMutable(followedSuperTail), builtinTypes->emptyTypePack);
-    }
+        if (subTypes.size() < maxLength || superTypes.size() < maxLength)
+            return UnifyResult::Ok;
 
-    return UnifyResult::Ok;
+        for (size_t i = 0; i < maxLength; ++i)
+            unify_(subTypes[i], superTypes[i]);
+        if (subTail && superTail)
+        {
+            TypePackId followedSubTail = follow(*subTail);
+            TypePackId followedSuperTail = follow(*superTail);
+
+            if (get<FreeTypePack>(followedSubTail) || get<FreeTypePack>(followedSuperTail))
+                return unify_(followedSubTail, followedSuperTail);
+        }
+        else if (subTail)
+        {
+            TypePackId followedSubTail = follow(*subTail);
+            if (get<FreeTypePack>(followedSubTail))
+                emplaceTypePack<BoundTypePack>(asMutable(followedSubTail), builtinTypes->emptyTypePack);
+        }
+        else if (superTail)
+        {
+            TypePackId followedSuperTail = follow(*superTail);
+            if (get<FreeTypePack>(followedSuperTail))
+                emplaceTypePack<BoundTypePack>(asMutable(followedSuperTail), builtinTypes->emptyTypePack);
+        }
+
+        return UnifyResult::Ok;
+    }
 }
 
 TypeId Unifier2::mkUnion(TypeId left, TypeId right)

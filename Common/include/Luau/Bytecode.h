@@ -17,7 +17,7 @@
 //     E - least-significant byte for the opcode, followed by E (24-bit integer). E is a signed integer that commonly specifies a jump offset
 //
 // Instruction word is sometimes followed by one extra word, indicated as AUX - this is just a 32-bit word and is decoded according to the specification for each opcode.
-// For each opcode the encoding is *static* - that is, based on the opcode you know a-priory how large the instruction is, with the exception of NEWCLOSURE
+// For each opcode the encoding is *static* - that is, based on the opcode you know apriori how large the instruction is, with the exception of NEWCLOSURE
 
 // # Bytecode indices
 // Bytecode instructions commonly refer to integer values that define offsets or indices for various entities. For each type, there's a maximum encodable value.

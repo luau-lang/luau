@@ -105,11 +105,13 @@ struct GenericType
     GenericType();
 
     explicit GenericType(TypeLevel level);
-    explicit GenericType(const Name& name, Polarity polarity = Polarity::Unknown);
-    explicit GenericType(Scope* scope, Polarity polarity = Polarity::Unknown);
+    explicit GenericType(const Name& name, Polarity polarity);
+    explicit GenericType(Scope* scope, Polarity polarity);
 
     GenericType(TypeLevel level, const Name& name);
     GenericType(Scope* scope, const Name& name);
+
+    GenericType(Scope* scope, Name name, Polarity polarity);
 
     int index;
     TypeLevel level;
@@ -215,7 +217,7 @@ struct StringSingleton
     }
 };
 
-// No type for float singletons, partly because === isn't any equalivalence on floats
+// No type for float singletons, partly because === isn't any equivalence on floats
 // (NaN != NaN).
 
 using SingletonVariant = Luau::Variant<BooleanSingleton, StringSingleton>;
@@ -828,7 +830,7 @@ struct Type final
     {
     }
 
-    // Re-assignes the content of the type, but doesn't change the owning arena and can't make type persistent.
+    // Re-assigns the content of the type, but doesn't change the owning arena and can't make type persistent.
     void reassign(const Type& rhs)
     {
         ty = rhs.ty;
@@ -924,9 +926,6 @@ struct TypeFun
 
     bool operator==(const TypeFun& rhs) const;
 };
-
-using SeenSet = std::set<std::pair<const void*, const void*>>;
-bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs);
 
 enum class FollowOption
 {

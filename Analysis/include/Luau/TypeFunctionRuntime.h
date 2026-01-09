@@ -324,6 +324,9 @@ TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L);
 TypeFunctionType* allocateTypeFunctionType(lua_State* L, TypeFunctionTypeVariant type);
 TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunctionTypePackVariant type);
 
+void pushType(lua_State* L, TypeFunctionTypeId type);
+void pushTypePack(lua_State* L, TypeFunctionTypePackId tp);
+
 void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type);
 
 bool isTypeUserData(lua_State* L, int idx);

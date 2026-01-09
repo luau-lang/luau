@@ -2,6 +2,7 @@
 #include "Luau/TypePack.h"
 
 #include "Luau/Error.h"
+#include "Luau/StructuralTypeEquality.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 
@@ -70,6 +71,22 @@ GenericTypePack::GenericTypePack(Scope* scope, const Name& name)
     , scope(scope)
     , name(name)
     , explicitName(true)
+{
+}
+
+GenericTypePack::GenericTypePack(Scope* scope, Name name, Polarity polarity)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+    , name(std::move(name))
+    , explicitName(true)
+    , polarity(polarity)
+{
+}
+
+GenericTypePack::GenericTypePack(Polarity polarity)
+    : index(Unifiable::freshIndex())
+    , name("g" + std::to_string(index))
+    , polarity(polarity)
 {
 }
 
@@ -223,64 +240,6 @@ TypePackId getTail(TypePackId tp)
     }
 
     return follow(tp);
-}
-
-bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
-{
-    TypePackId lhsId = const_cast<TypePackId>(&lhs);
-    TypePackId rhsId = const_cast<TypePackId>(&rhs);
-    TypePackIterator lhsIter = begin(lhsId);
-    TypePackIterator rhsIter = begin(rhsId);
-    TypePackIterator lhsEnd = end(lhsId);
-    TypePackIterator rhsEnd = end(rhsId);
-    while (lhsIter != lhsEnd && rhsIter != rhsEnd)
-    {
-        if (!areEqual(seen, **lhsIter, **rhsIter))
-            return false;
-        ++lhsIter;
-        ++rhsIter;
-    }
-
-    if (lhsIter != lhsEnd || rhsIter != rhsEnd)
-        return false;
-
-    if (!lhsIter.tail() && !rhsIter.tail())
-        return true;
-    if (!lhsIter.tail() || !rhsIter.tail())
-        return false;
-
-    TypePackId lhsTail = *lhsIter.tail();
-    TypePackId rhsTail = *rhsIter.tail();
-
-    {
-        const FreeTypePack* lf = get_if<FreeTypePack>(&lhsTail->ty);
-        const FreeTypePack* rf = get_if<FreeTypePack>(&rhsTail->ty);
-        if (lf && rf)
-            return lf->index == rf->index;
-    }
-
-    {
-        const Unifiable::Bound<TypePackId>* lb = get_if<Unifiable::Bound<TypePackId>>(&lhsTail->ty);
-        const Unifiable::Bound<TypePackId>* rb = get_if<Unifiable::Bound<TypePackId>>(&rhsTail->ty);
-        if (lb && rb)
-            return areEqual(seen, *lb->boundTo, *rb->boundTo);
-    }
-
-    {
-        const GenericTypePack* lg = get_if<GenericTypePack>(&lhsTail->ty);
-        const GenericTypePack* rg = get_if<GenericTypePack>(&rhsTail->ty);
-        if (lg && rg)
-            return lg->index == rg->index;
-    }
-
-    {
-        const VariadicTypePack* lv = get_if<VariadicTypePack>(&lhsTail->ty);
-        const VariadicTypePack* rv = get_if<VariadicTypePack>(&rhsTail->ty);
-        if (lv && rv)
-            return areEqual(seen, *lv->ty, *rv->ty);
-    }
-
-    return false;
 }
 
 TypePackId follow(TypePackId tp)

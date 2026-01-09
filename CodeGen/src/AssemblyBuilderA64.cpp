@@ -658,9 +658,13 @@ void AssemblyBuilderA64::fmov(RegisterA64 dst, float src)
 
 void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
 
-    placeR1("fabs", dst, src, 0b000'11110'01'1'0000'01'10000);
+    if (dst.kind == KindA64::d)
+        placeR1("fabs", dst, src, 0b000'11110'01'1'0000'01'10000);
+    else
+        placeR1("fabs", dst, src, 0b000'11110'00'1'0000'01'10000);
 }
 
 void AssemblyBuilderA64::faddp(RegisterA64 dst, RegisterA64 src)
@@ -802,9 +806,13 @@ void AssemblyBuilderA64::fneg(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fsqrt(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
 
-    placeR1("fsqrt", dst, src, 0b000'11110'01'1'0000'11'10000);
+    if (dst.kind == KindA64::d)
+        placeR1("fsqrt", dst, src, 0b000'11110'01'1'0000'11'10000);
+    else
+        placeR1("fsqrt", dst, src, 0b000'11110'00'1'0000'11'10000);
 }
 
 void AssemblyBuilderA64::fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
@@ -939,16 +947,26 @@ void AssemblyBuilderA64::frinta(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::frintm(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s || dst.kind == KindA64::q);
 
-    placeR1("frintm", dst, src, 0b000'11110'01'1'001'010'10000);
+    if (dst.kind == KindA64::q)
+        placeR1("frintm", dst, src, 0b010'01110'00'1'0000'11001'10);
+    else if (dst.kind == KindA64::d)
+        placeR1("frintm", dst, src, 0b000'11110'01'1'001'010'10000);
+    else
+        placeR1("frintm", dst, src, 0b000'11110'00'1'001'010'10000);
 }
 
 void AssemblyBuilderA64::frintp(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
 
-    placeR1("frintp", dst, src, 0b000'11110'01'1'001'001'10000);
+    if (dst.kind == KindA64::d)
+        placeR1("frintp", dst, src, 0b000'11110'01'1'001'001'10000);
+    else
+        placeR1("frintp", dst, src, 0b000'11110'00'1'001'001'10000);
 }
 
 void AssemblyBuilderA64::fcvt(RegisterA64 dst, RegisterA64 src)
@@ -1004,23 +1022,34 @@ void AssemblyBuilderA64::fjcvtzs(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fcmp(RegisterA64 src1, RegisterA64 src2)
 {
-    CODEGEN_ASSERT(src1.kind == KindA64::d && src2.kind == KindA64::d);
+    CODEGEN_ASSERT(src1.kind == src2.kind);
+    CODEGEN_ASSERT(src1.kind == KindA64::d || src1.kind == KindA64::s);
 
-    placeFCMP("fcmp", src1, src2, 0b11110'01'1, 0b00);
+    if (src1.kind == KindA64::d)
+        placeFCMP("fcmp", src1, src2, 0b11110'01'1, 0b00);
+    else
+        placeFCMP("fcmp", src1, src2, 0b11110'00'1, 0b00);
 }
 
 void AssemblyBuilderA64::fcmpz(RegisterA64 src)
 {
-    CODEGEN_ASSERT(src.kind == KindA64::d);
+    CODEGEN_ASSERT(src.kind == KindA64::d || src.kind == KindA64::s);
 
-    placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'01'1, 0b01);
+    if (src.kind == KindA64::d)
+        placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'01'1, 0b01);
+    else
+        placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'00'1, 0b01);
 }
 
 void AssemblyBuilderA64::fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src1.kind && src1.kind == src2.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
 
-    placeCS("fcsel", dst, src1, src2, cond, 0b11110'01'1, 0b11);
+    if (src1.kind == KindA64::d)
+        placeCS("fcsel", dst, src1, src2, cond, 0b11110'01'1, 0b11);
+    else
+        placeCS("fcsel", dst, src1, src2, cond, 0b11110'00'1, 0b11);
 }
 
 void AssemblyBuilderA64::udf()

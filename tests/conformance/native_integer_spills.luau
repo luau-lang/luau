@@ -391,7 +391,7 @@ FUNC_LIST[2] = function(hashtable: buffer, entries: buffer, px: buffer, py: buff
             buffer.readf32(px, (i+7) * 4)
 
         local y0, y1, y2, y3, y4, y5, y6, y7 = 
-            buffer.readf32(py, (i)) * 4, 
+            buffer.readf32(py, (i) * 4), 
             buffer.readf32(py, (i+1) * 4),
             buffer.readf32(py, (i+2) * 4), 
             buffer.readf32(py, (i+3) * 4),

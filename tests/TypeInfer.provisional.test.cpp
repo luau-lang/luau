@@ -17,9 +17,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -573,8 +571,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 // Ideally, we would not try to export a function type with generic types from incorrect scope
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface")
 {
-    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
-
     fileResolver.source["game/A"] = R"(
 local wrapStrictTable
 
@@ -619,8 +615,6 @@ return wrapStrictTable(Constants, "Constants")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface_variadic")
 {
-    ScopedFastFlag sff{FFlag::LuauNewOverloadResolver2, true};
-
     fileResolver.source["game/A"] = R"(
 local wrapStrictTable
 
@@ -1437,10 +1431,7 @@ TEST_CASE_FIXTURE(Fixture, "unification_inferring_never_for_refined_param")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAddRefinementToAssertions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local foo: unknown = nil :: any
@@ -1512,7 +1503,5 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
     CHECK(get<TypeMismatch>(result.errors[0]));
     CHECK(get<TypeMismatch>(result.errors[1]));
 }
-
-
 
 TEST_SUITE_END();

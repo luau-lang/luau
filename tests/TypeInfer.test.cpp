@@ -30,8 +30,6 @@ LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauAvoidMintingMultipleBlockedTypesForGlobals)
@@ -211,8 +209,8 @@ TEST_CASE_FIXTURE(Fixture, "if_statement")
     }
     else
     {
-        CHECK_EQ(*getBuiltins()->stringType, *requireType("a"));
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("b"));
+        CHECK("string" == toString(requireType("a")));
+        CHECK("number" == toString(requireType("b")));
     }
 }
 
@@ -1379,8 +1377,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
-
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
@@ -1806,7 +1802,6 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 {
     ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -2729,8 +2724,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_err
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
 {
-    ScopedFastFlag _{FFlag::LuauMetatableAvoidSingletonUnion, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
         for l0,l2 in setmetatable(_,_),l0,_ do
