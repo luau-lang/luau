@@ -2584,7 +2584,7 @@ local _ = not numNil and true
     CHECK_EQ(result.warnings[2].text, R"((bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?)");
     CHECK_EQ(result.warnings[3].text, R"((not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?)");
     CHECK_EQ(result.warnings[4].text, R"(The or expression never evaluates the right side because (str) is always true; did you mean (str ~= "")?)");
-    CHECK_EQ(result.warnings[4].text, R"(The or expression always evaluates to the right side because (not str) is always false; did you mean (str == "")?)");
+    CHECK_EQ(result.warnings[5].text, R"(The or expression always evaluates to the right side because (not str) is always false; did you mean (str == "")?)");
     CHECK_EQ(result.warnings[6].text, R"(The and expression always evaluates to the right side because (tbl) is always true; did you mean (next(tbl) ~= nil)?)");
     CHECK_EQ(result.warnings[7].text, R"(The and expression never evaluates the right side because (not tbl) is always false; did you mean (next(tbl) == nil)?)");
 }

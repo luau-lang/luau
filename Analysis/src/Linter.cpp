@@ -3561,7 +3561,7 @@ private:
         }
         if (isString(*type))
         {
-            *msg = *negated ? "(not str) is always false; did you mean (str == "")?" : "(str) is always true; did you mean (str ~= "")?";
+            *msg = *negated ? "(not str) is always false; did you mean (str == \"\")?" : "(str) is always true; did you mean (str ~= \"\")?";
             return false;
         }
         if (getTableType(*type))
@@ -3614,14 +3614,15 @@ private:
         else if (node->op == AstExprBinary::And)
         {
             if (!checkCondition(node->left, &msg, &negated))
-                emitWarning(
-                    *context,
-                    LintWarning::Code_MisleadingCondition,
-                    node->location,
-                    "The and expression %s the right side because %s",
-                    negated ? "never evaluates" : "always evaluates to",
-                    msg
-                );
+                if (!node->left->as<AstExprCall>()) // silence "func() and ..." due to it's idiomatic usage for side-effects
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_MisleadingCondition,
+                        node->location,
+                        "The and expression %s the right side because %s",
+                        negated ? "never evaluates" : "always evaluates to",
+                        msg
+                    );
         }
 
         return true;
