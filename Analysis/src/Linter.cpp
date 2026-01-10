@@ -3554,9 +3554,14 @@ private:
 
         if (isNumber(*type))
         {
-            *msg = *negated ? "(not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?" :
-            "(bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?";
             *msg = *negated ? "(not num) is always false; did you mean (num == 0)?" : "(num) is always true; did you mean (num ~= 0)?";
+            if (const auto* call = cond->as<AstExprCall>())
+                if (const auto* func = call->func->as<AstExprIndexName>())
+                    if (const auto* global = func->expr->as<AstExprGlobal>())
+                        if (strcmp(global->name.value, "bit32") == 0)
+                            if (strcmp(func->index.value, "band") == 0)
+                                *msg = *negated ? "(not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?" :
+                                "(bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?";
             return false;
         }
         if (isString(*type))
