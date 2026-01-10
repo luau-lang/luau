@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauCompileStringCharSubFold)
-LUAU_FASTFLAG(LuauCompileTypeofFold)
 LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauCompileCallCostModel)
 
@@ -8385,7 +8384,7 @@ RETURN R1 -1
 
 TEST_CASE("BuiltinFolding")
 {
-    ScopedFastFlag _[]{{FFlag::LuauCompileTypeofFold, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}};
+    ScopedFastFlag _[]{{FFlag::LuauCompileMathIsNanInfFinite, true}};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8521,8 +8520,6 @@ RETURN R0 59
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
-    ScopedFastFlag luauCompileTypeofFold{FFlag::LuauCompileTypeofFold, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(

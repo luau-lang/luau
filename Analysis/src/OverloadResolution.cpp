@@ -13,7 +13,6 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
-LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 namespace Luau
 {
@@ -76,7 +75,7 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         return { incompatibleOverloads.front().first, {}, false };
     }
 
-    // FIXME: CLI-180645: if `incompatiableOverloads` is non-empty, return a
+    // FIXME: CLI-180645: if `incompatibleOverloads` is non-empty, return a
     // union of all its type packs to the user to use as the inferred return
     // type.
     //
@@ -678,45 +677,6 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload_D
     return {Analysis::OverloadIsNonviable, ty};
 }
 
-void OverloadResolver::resolve_DEPRECATED(
-    TypeId fnTy,
-    const TypePack* args,
-    AstExpr* selfExpr,
-    const std::vector<AstExpr*>* argExprs,
-    NotNull<DenseHashSet<TypeId>> uniqueTypes
-)
-{
-    fnTy = follow(fnTy);
-
-    auto it = get<IntersectionType>(fnTy);
-    if (!it)
-    {
-        auto [analysis, errors] = checkOverload(fnTy, args, selfExpr, argExprs, uniqueTypes);
-        add(analysis, fnTy, std::move(errors));
-        return;
-    }
-
-    for (TypeId ty : it)
-    {
-        if (resolution.find(ty) != resolution.end())
-            continue;
-
-        if (const FunctionType* fn = get<FunctionType>(follow(ty)))
-        {
-            // If the overload isn't arity compatible, report the mismatch and don't do more work
-            const TypePackId argPack = arena->addTypePack(*args);
-            if (!isArityCompatible(argPack, fn->argTypes, builtinTypes))
-            {
-                add(ArityMismatch, ty, {});
-                continue;
-            }
-        }
-
-        auto [analysis, errors] = checkOverload(ty, args, selfExpr, argExprs, uniqueTypes);
-        add(analysis, ty, std::move(errors));
-    }
-}
-
 std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload(
     TypeId fnTy,
     const TypePack* args,
@@ -746,17 +706,6 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload(
     }
     else
         return {TypeIsNotAFunction, {}}; // Intentionally empty. We can just fabricate the type error later on.
-}
-
-bool OverloadResolver::isLiteral(AstExpr* expr)
-{
-    if (auto group = expr->as<AstExprGroup>())
-        return isLiteral(group->expr);
-    else if (auto assertion = expr->as<AstExprTypeAssertion>())
-        return isLiteral(assertion->expr);
-
-    return expr->is<AstExprConstantNil>() || expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNumber>() ||
-           expr->is<AstExprConstantString>() || expr->is<AstExprFunction>() || expr->is<AstExprTable>();
 }
 
 void OverloadResolver::maybeEmplaceError(
@@ -880,32 +829,11 @@ bool OverloadResolver::isArityCompatible(const TypePackId candidate, const TypeP
     }
 
     // Too many parameters were passed
-    if (FFlag::LuauNewOverloadResolver2)
+    if (candidateHead.size() > desiredHead.size())
     {
-        if (candidateHead.size() > desiredHead.size())
-        {
-            // If the function being called accepts a variadic or generic tail, then the arities match.
-            return desiredTail.has_value();
-        }
+        // If the function being called accepts a variadic or generic tail, then the arities match.
+        return desiredTail.has_value();
     }
-    else
-    {
-        if (desiredTail && candidateHead.size() <= desiredHead.size() && !candidateTail)
-        {
-            // A non-tail candidate can't match a desired tail unless the tail accepts nils
-            // We don't allow generic packs to implicitly accept an empty pack here
-            TypePackId desiredTailTP = follow(*desiredTail);
-
-            if (desiredTailTP == builtinTypes->unknownTypePack || desiredTailTP == builtinTypes->anyTypePack)
-                return true;
-
-            if (const VariadicTypePack* vtp = get<VariadicTypePack>(desiredTailTP))
-                return vtp->ty == builtinTypes->nilType;
-
-            return false;
-        }
-    }
-
     // There aren't any other failure conditions; we don't care if we pass more args than needed
 
     return true;

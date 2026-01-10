@@ -197,7 +197,7 @@ inline void jumpIfTruthy(AssemblyBuilderX64& build, int ri, Label& target, Label
     build.jcc(ConditionX64::NotEqual, target); // true if boolean value is 'true'
 }
 
-void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label);
+void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label, bool floatPrecision);
 
 ConditionX64 getConditionInt(IrCondition cond);
 

@@ -265,10 +265,10 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope);
 
     template<typename SubTy, typename SuperTy>
-    SubtypingResult isContravariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy, NotNull<Scope> scope);
+    SubtypingResult isContravariantWith(SubtypingEnvironment& env, SubTy subTy, SuperTy superTy, NotNull<Scope> scope);
 
     template<typename SubTy, typename SuperTy>
-    SubtypingResult isInvariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy, NotNull<Scope> scope);
+    SubtypingResult isInvariantWith(SubtypingEnvironment& env, SubTy subTy, SuperTy superTy, NotNull<Scope> scope);
 
     template<typename SubTy, typename SuperTy>
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TryPair<const SubTy*, const SuperTy*>& pair, NotNull<Scope> scope);
@@ -441,7 +441,7 @@ private:
     SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, Nothing);
     SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, Nothing, TypePackId superTp, const GenericTypePack* super);
 
-    bool bindGeneric(SubtypingEnvironment& env, TypeId subTp, TypeId superTp);
+    bool bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId superTy) const;
 
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);

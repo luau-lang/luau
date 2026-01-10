@@ -16,9 +16,11 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
-LUAU_FASTFLAG(LuauGetmetatableError)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauSetmetatableWaitForPendingTypes)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -56,7 +58,7 @@ struct TypeFunctionFixture : Fixture
                          }};
 
         unfreeze(getFrontend().globals.globalTypes);
-        TypeId t = getFrontend().globals.globalTypes.addType(GenericType{"T"});
+        TypeId t = getFrontend().globals.globalTypes.addType(GenericType{"T", Polarity::Negative});
         GenericTypeDefinition genericT{t};
 
         ScopePtr globalScope = getFrontend().globals.globalScope;
@@ -1830,8 +1832,8 @@ TEST_CASE_FIXTURE(TFFixture, "or<'a, 'b>")
 
 TEST_CASE_FIXTURE(TFFixture, "a_type_function_parameterized_on_generics_is_solved")
 {
-    TypeId a = arena->addType(GenericType{"A"});
-    TypeId b = arena->addType(GenericType{"B"});
+    TypeId a = arena->addType(GenericType{"A", Polarity::Negative});
+    TypeId b = arena->addType(GenericType{"B", Polarity::Negative});
 
     TypeId addTy = arena->addType(TypeFunctionInstanceType{getBuiltinTypeFunctions()->addFunc, {a, b}});
 
@@ -1845,8 +1847,8 @@ TEST_CASE_FIXTURE(TFFixture, "a_type_function_parameterized_on_generics_is_solve
 
 TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_solved_tf_is_solved")
 {
-    TypeId a = arena->addType(GenericType{"A"});
-    TypeId b = arena->addType(GenericType{"B"});
+    TypeId a = arena->addType(GenericType{"A", Polarity::Negative});
+    TypeId b = arena->addType(GenericType{"B", Polarity::Negative});
 
     TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{getBuiltinTypeFunctions()->addFunc, {a, b}});
 
@@ -1897,10 +1899,7 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_degenerate_refinement")
 
 TEST_CASE_FIXTURE(TFFixture, "reduce_union_of_error_nil_table_with_table")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauGetmetatableError, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     TypeId refinement = arena->addType(TypeFunctionInstanceType{
         getBuiltinTypeFunctions()->refineFunc,
@@ -1952,6 +1951,34 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation3")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
 }
+
+TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation4")
+{
+    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type A = { B<any> }
+
+        type B<T> = { method: (B<T>) -> () }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation_with_defaults")
+{
+    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
+
+    // This is a fairly benign example, but the RFC claims it should be disallowed.
+    // See: https://github.com/luau-lang/luau/pull/68.
+    CheckResult result = check(R"(
+        type B<T = number> = { B<number> }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
+    // Also check the location (marking the entire alias is bad).
+    CHECK_EQ(Location{{1, 31}, {1, 40}}, result.errors[0].location);
+}
+
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2106_wait_for_pending_types_in_setmetatable_ex1")
 {
@@ -2013,6 +2040,58 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2106_wait_for_pending_types_in_setmetata
     )"));
 
     CHECK_EQ("string", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2114_type_instantiation_on_type_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
+        {FFlag::LuauExplicitTypeInstantiationSupport, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        type function id(t: type): type
+            return t
+        end
+
+        local function fn<T>(): id<T>
+            return nil :: any
+        end
+
+        local y = fn<<number>>()
+    )"));
+
+    CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
+        {FFlag::LuauExplicitTypeInstantiationSupport, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+
+        type ST = {
+            Member1: number,
+            Name: string
+        }
+
+        local function access<T>(t, field: T): index<ST, T>
+            return t[field]
+        end
+
+        local t: any = {}
+        local _b = access<<"Member1">>(t, "Member1")
+    )"));
+
+    CHECK_EQ("number", toString(requireType("_b")));
 }
 
 TEST_SUITE_END();

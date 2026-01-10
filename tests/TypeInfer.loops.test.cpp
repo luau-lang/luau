@@ -16,7 +16,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
@@ -42,7 +41,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
         CHECK("number?" == toString(requireType("q")));
     }
     else
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("q"));
+        CHECK("number" == toString(requireType("q")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
@@ -153,8 +152,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
     }
     else
     {
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
-        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
+        CHECK("number" == toString(requireType("n")));
+        CHECK("string" == toString(requireType("s")));
     }
 }
 
@@ -181,8 +180,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
     }
     else
     {
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
-        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
+        CHECK("number" == toString(requireType("n")));
+        CHECK("string" == toString(requireType("s")));
     }
 }
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements")
@@ -208,8 +207,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next_and_multiple_elements"
     }
     else
     {
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("n"));
-        CHECK_EQ(*getBuiltins()->stringType, *requireType("s"));
+        CHECK("number" == toString(requireType("n")));
+        CHECK("string" == toString(requireType("s")));
     }
 }
 
@@ -480,7 +479,7 @@ TEST_CASE_FIXTURE(Fixture, "while_loop")
     if (FFlag::LuauSolverV2)
         CHECK("number?" == toString(requireType("i")));
     else
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("i"));
+        CHECK("number" == toString(requireType("i")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop")
@@ -497,7 +496,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop")
     if (FFlag::LuauSolverV2)
         CHECK("string?" == toString(requireType("i")));
     else
-        CHECK_EQ(*getBuiltins()->stringType, *requireType("i"));
+        CHECK("string" == toString(requireType("i")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop_condition_binds_to_its_block")
@@ -783,10 +782,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_generic_next")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauNoScopeShallNotSubsumeAll, true},
-    };
-
     CheckResult result = check(R"(
         for k: number, v: number in next, {1, 2, 3} do
         end
@@ -819,7 +814,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
         CHECK("number?" == toString(keyTy));
     }
     else
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("key"));
+        CHECK("number" == toString(requireType("key")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
@@ -836,7 +831,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ(*getBuiltins()->nilType, *requireType("extra"));
+    CHECK("nil" == toString(requireType("extra")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")

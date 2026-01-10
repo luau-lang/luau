@@ -99,7 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
     TypeId newNumber = clone(oldNumber, dest, cloneState);
 
     CHECK_NE(newNumber, oldNumber);
-    CHECK_EQ(*oldNumber, *newNumber);
+    CHECK_EQ("number", toString(oldNumber));
     CHECK_EQ("number", toString(newNumber));
     CHECK_EQ(1, dest.types.size());
 }

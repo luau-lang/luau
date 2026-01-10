@@ -414,7 +414,7 @@ static int createSingleton(lua_State* L)
 }
 
 // Luau: `types.generic(name: string, ispack: boolean?) -> type
-// Create a generic type with the specified type. If an optinal boolean is set to true, result is a generic pack
+// Create a generic type with the specified type. If an optional boolean is set to true, result is a generic pack
 static int createGeneric(lua_State* L)
 {
     const char* name = luaL_checkstring(L, 1);
@@ -1108,7 +1108,7 @@ static TypeFunctionTypePackId getTypePack(lua_State* L, int headIdx, int tailIdx
     return result;
 }
 
-static void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
+void pushTypePack(lua_State* L, TypeFunctionTypePackId tp)
 {
     if (auto tftp = get<TypeFunctionTypePack>(tp))
     {
