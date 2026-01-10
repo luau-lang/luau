@@ -23,6 +23,7 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAGVARIABLE(LuauRenameClassToExtern)
 
 LUAU_FASTFLAGVARIABLE(LuauUnionofIntersectionofFlattens)
 
@@ -302,7 +303,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     else if (get<TypeFunctionFunctionType>(ty))
         return "function";
     else if (get<TypeFunctionExternType>(ty))
-        return "class";
+        return (FFlag::LuauRenameClassToExtern ? "extern" : "class");
     else if (get<TypeFunctionGenericType>(ty))
         return "generic";
 
