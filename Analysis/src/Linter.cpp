@@ -3534,6 +3534,20 @@ public:
 private:
     LintContext* context;
 
+    bool validateConditional(AstExpr* node)
+    {
+        bool negated = false;
+        if (auto* unary = node->as<AstExprUnary>())
+            if (unary-> op == AstExprUnary::Not)
+            {
+                negated = true;
+                node = unary->expr;
+                emitWarning(*context, LintWarning::Code_MisleadingConditional, node->location, "not");
+            }
+
+        return true;
+    }
+
     bool visit(AstStatIf* node) override
     {
         emitWarning(
@@ -3543,17 +3557,16 @@ private:
             "if statement"
         );
 
+        validateConditional(node->condition);
+
         return true;
     }
 
     bool visit(AstExprIfElse* node) override
     {
-        emitWarning(
-            *context,
-            LintWarning::Code_MisleadingConditional,
-            node->location,
-            "if else expr"
-        );
+        emitWarning(*context, LintWarning::Code_MisleadingConditional, node->location, "if else expr");
+
+        validateConditional(node->condition);
 
         return true;
     }
@@ -3577,19 +3590,25 @@ private:
         */
 
         if (node->op == AstExprBinary::Or)
+        {
             emitWarning(
                 *context,
                 LintWarning::Code_MisleadingConditional,
                 node->location,
                 "or"
             );
+            validateConditional(node->left);
+        }
         else if (node->op == AstExprBinary::And)
+        {
             emitWarning(
                 *context,
                 LintWarning::Code_MisleadingConditional,
                 node->location,
                 "and"
             );
+            validateConditional(node->left);
+        }
 
         return true;
     }
