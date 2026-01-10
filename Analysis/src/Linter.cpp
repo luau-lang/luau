@@ -3520,12 +3520,12 @@ private:
     }
 };
 
-class LintMisleadingConditional : AstVisitor
+class LintMisleadingCondition : AstVisitor
 {
 public:
     LUAU_NOINLINE static void process(LintContext& context)
     {
-        LintMisleadingConditional pass;
+        LintMisleadingCondition pass;
         pass.context = &context;
 
         context.root->visit(&pass);
@@ -3534,7 +3534,7 @@ public:
 private:
     LintContext* context;
 
-    bool validateConditional(AstExpr* node)
+    bool checkCondition(AstExpr* node)
     {
         bool negated = false;
         if (auto* unary = node->as<AstExprUnary>())
@@ -3542,7 +3542,7 @@ private:
             {
                 negated = true;
                 node = unary->expr;
-                emitWarning(*context, LintWarning::Code_MisleadingConditional, node->location, "not");
+                emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "not");
             }
 
         return true;
@@ -3552,21 +3552,21 @@ private:
     {
         emitWarning(
             *context,
-            LintWarning::Code_MisleadingConditional,
+            LintWarning::Code_MisleadingCondition,
             node->location,
             "if statement"
         );
 
-        validateConditional(node->condition);
+        checkCondition(node->condition);
 
         return true;
     }
 
     bool visit(AstExprIfElse* node) override
     {
-        emitWarning(*context, LintWarning::Code_MisleadingConditional, node->location, "if else expr");
+        emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "if else expr");
 
-        validateConditional(node->condition);
+        checkCondition(node->condition);
 
         return true;
     }
@@ -3593,21 +3593,21 @@ private:
         {
             emitWarning(
                 *context,
-                LintWarning::Code_MisleadingConditional,
+                LintWarning::Code_MisleadingCondition,
                 node->location,
                 "or"
             );
-            validateConditional(node->left);
+            checkCondition(node->left);
         }
         else if (node->op == AstExprBinary::And)
         {
             emitWarning(
                 *context,
-                LintWarning::Code_MisleadingConditional,
+                LintWarning::Code_MisleadingCondition,
                 node->location,
                 "and"
             );
-            validateConditional(node->left);
+            checkCondition(node->left);
         }
 
         return true;
@@ -3713,8 +3713,8 @@ std::vector<LintWarning> lint(
             LintRedundantNativeAttribute::process(context);
     }
 
-    if (context.warningEnabled(LintWarning::Code_MisleadingConditional))
-        LintMisleadingConditional::process(context);
+    if (context.warningEnabled(LintWarning::Code_MisleadingCondition))
+        LintMisleadingCondition::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
