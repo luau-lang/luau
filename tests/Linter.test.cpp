@@ -2547,4 +2547,46 @@ f(3)(4)
     CHECK_EQ(result.warnings[1].location, Location(Position(5, 4), Position(5, 11)));
 }
 
+TEST_CASE_FIXTURE(Fixture, "MisleadingCondition")
+{
+    LintResult result = lint(R"(
+local function foo(): number return 5; end
+local str: string = ""
+local strNil: string? = ""
+local num: number = 0
+local numNil: number? = 0
+
+-- warn about these
+if num then end
+if not num then end
+local _ = if bit32.band(6, 3) then 1 else 0
+local _ = if not bit32.band(6, 3) then 1 else 0
+local _ = "" or true
+local _ = not str or true
+local _ = {} and true
+local _ = not {} and true
+local _ = foo() and true -- silent because it may be using foo() for side effects
+
+-- don't warn about these
+if true then end
+if not true then end
+local _ = if nil then 1 else 0
+local _ = if not nil then 1 else 0
+local _ = strNil or true
+local _ = not strNil or true
+local _ = numNil and true
+local _ = not numNil and true
+)");
+
+    REQUIRE(8 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, R"((num) is always true; did you mean (num ~= 0)?)");
+    CHECK_EQ(result.warnings[1].text, R"((not num) is always false; did you mean (num == 0)?)");
+    CHECK_EQ(result.warnings[2].text, R"((bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?)");
+    CHECK_EQ(result.warnings[3].text, R"((not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?)");
+    CHECK_EQ(result.warnings[4].text, R"((str) is always true; did you mean (str ~= "")?)");
+    CHECK_EQ(result.warnings[5].text, R"((not str) is always false; did you mean (str == "")?)");
+    CHECK_EQ(result.warnings[6].text, R"((tbl) is always true; did you mean (next(tbl) ~= nil)?)");
+    CHECK_EQ(result.warnings[7].text, R"((not tbl) is always false; did you mean (next(tbl) == nil)?)");
+}
+
 TEST_SUITE_END();
