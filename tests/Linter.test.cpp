@@ -2559,6 +2559,9 @@ a<<"hi">>("hi")
 TEST_CASE_FIXTURE(Fixture, "MisleadingCondition")
 {
     LintResult result = lint(R"(
+bit32 = { -- linter unit test does not load builtins
+    band = function(...number): number return 0; end
+}
 local function foo(): number return 5; end
 local str: string = ""
 local strNil: string? = ""
