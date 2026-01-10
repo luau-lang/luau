@@ -3534,8 +3534,33 @@ public:
 private:
     LintContext* context;
 
+    bool visit(AstStatIf* node) override
+    {
+        emitWarning(
+            *context,
+            LintWarning::Code_MisleadingConditional,
+            node->location,
+            "if statement"
+        );
+
+        return true;
+    }
+
+    bool visit(AstExprIfElse* node) override
+    {
+        emitWarning(
+            *context,
+            LintWarning::Code_MisleadingConditional,
+            node->location,
+            "if else expr"
+        );
+
+        return true;
+    }
+
     bool visit(AstExprBinary* node) override
     {
+        /*
         if (node->op != AstExprBinary::Or)
             return true;
 
@@ -3549,15 +3574,21 @@ private:
             alt = "nil";
         else if (AstExprConstantBool* c = and_->right->as<AstExprConstantBool>(); c && c->value == false)
             alt = "false";
+        */
 
-        if (alt)
+        if (node->op == AstExprBinary::Or)
             emitWarning(
                 *context,
                 LintWarning::Code_MisleadingConditional,
                 node->location,
-                "The and-or expression always evaluates to the second alternative because the first alternative is %s; consider using if-then-else "
-                "expression instead",
-                alt
+                "or"
+            );
+        else if (node->op == AstExprBinary::And)
+            emitWarning(
+                *context,
+                LintWarning::Code_MisleadingConditional,
+                node->location,
+                "and"
             );
 
         return true;
