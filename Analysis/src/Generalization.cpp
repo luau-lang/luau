@@ -17,7 +17,6 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
-LUAU_FASTFLAGVARIABLE(LuauGenericCounterStepsInsteadOfCount)
 
 namespace Luau
 {
@@ -942,7 +941,7 @@ struct GenericCounter : TypeVisitor
     };
 
     // This traversal does need to walk into types multiple times because we
-    // care about generics that are only refererd to once. If a type is present
+    // care about generics that are only referred to once. If a type is present
     // more than once, however, we don't care exactly how many times, so we also
     // track counts in our "seen set."
     DenseHashMap<TypeId, size_t> seenCounts{nullptr};
@@ -954,7 +953,6 @@ struct GenericCounter : TypeVisitor
     Polarity polarity = Polarity::Positive;
 
     int steps = 0;
-    int depth_DEPRECATED = 0;
     bool hitLimits = false;
 
     explicit GenericCounter(NotNull<DenseHashSet<TypeId>> cachedTypes)
@@ -965,16 +963,8 @@ struct GenericCounter : TypeVisitor
 
     void checkLimits()
     {
-        if (FFlag::LuauGenericCounterStepsInsteadOfCount)
-        {
-            steps++;
-            hitLimits |= steps > FInt::LuauGenericCounterMaxSteps;
-        }
-        else
-        {
-            if (depth_DEPRECATED > FInt::LuauGenericCounterMaxDepth)
-                hitLimits = true;
-        }
+        steps++;
+        hitLimits |= steps > FInt::LuauGenericCounterMaxSteps;
     }
 
     bool visit(TypeId ty) override
@@ -986,10 +976,6 @@ struct GenericCounter : TypeVisitor
 
     bool visit(TypeId ty, const FunctionType& ft) override
     {
-        std::optional<RecursionCounter> rc;
-        if (!FFlag::LuauGenericCounterStepsInsteadOfCount)
-            rc.emplace(&depth_DEPRECATED);
-
         checkLimits();
 
         if (ty->persistent)
@@ -1011,9 +997,6 @@ struct GenericCounter : TypeVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
-        std::optional<RecursionCounter> rc;
-        if (!FFlag::LuauGenericCounterStepsInsteadOfCount)
-            rc.emplace(&depth_DEPRECATED);
         checkLimits();
 
         if (ty->persistent)

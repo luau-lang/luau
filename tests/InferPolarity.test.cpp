@@ -40,7 +40,7 @@ TEST_CASE_FIXTURE(Fixture, "T where T = { m: <a>(a) -> T }")
         }
     );
 
-    inferGenericPolarities(NotNull{&arena}, NotNull{globalScope.get()}, tType);
+    inferGenericPolarities_DEPRECATED(NotNull{&arena}, NotNull{globalScope.get()}, tType);
 
     const GenericType* aGeneric = get<GenericType>(aType);
     REQUIRE(aGeneric);
@@ -69,7 +69,7 @@ TEST_CASE_FIXTURE(Fixture, "<a, b>({ read x: a, write x: b }) -> ()")
         }
     );
 
-    inferGenericPolarities(NotNull{&arena}, NotNull{globalScope.get()}, mType);
+    inferGenericPolarities_DEPRECATED(NotNull{&arena}, NotNull{globalScope.get()}, mType);
 
     const GenericType* aGeneric = get<GenericType>(aType);
     REQUIRE(aGeneric);

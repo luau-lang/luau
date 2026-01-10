@@ -68,7 +68,7 @@ TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    REQUIRE_NE(*getBuiltins()->anyType, *requireType("foo"));
+    CHECK("any" != toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
@@ -111,7 +111,7 @@ TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*getBuiltins()->anyType, *requireType("m"));
+    CHECK("any" == toString(requireType("m")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
@@ -180,7 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
     TypeId fooProp = ttv->props["foo"].type_DEPRECATED();
     REQUIRE(fooProp != nullptr);
 
-    CHECK_EQ(*fooProp, *getBuiltins()->anyType);
+    CHECK("any" == toString(fooProp));
 }
 
 TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
@@ -200,8 +200,8 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     TableType* ttv = getMutable<TableType>(requireType("T"));
     REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
 
-    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type_DEPRECATED());
-    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type_DEPRECATED());
+    CHECK("any" == toString(ttv->props["one"].type_DEPRECATED()));
+    CHECK("any" == toString(ttv->props["two"].type_DEPRECATED()));
     CHECK_MESSAGE(
         get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED()
     );
