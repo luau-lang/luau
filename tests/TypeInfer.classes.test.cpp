@@ -16,6 +16,7 @@ using std::nullopt;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauSubtypingHandlesExternTypesWithIndexers)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -1177,6 +1178,73 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
     )"));
 
     CHECK_EQ("(Foobar) -> Foobar & { read Baz: number }", toString(requireType("update")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true};
+
+    loadDefinition(R"(
+        declare extern type Color3 with
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local function f(c: Color3): { Color3 }
+            return c
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("Color3", toString(err->givenType));
+    CHECK_EQ("{Color3}", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")
+{
+    ScopedFastFlag _{FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true};
+
+    loadDefinition(R"(
+        declare extern type Color3 with
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local f : ((Color3) -> ()) & (({Color3}) -> ())
+        local c: Color3
+        f(c)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_indexer_interactions")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true}
+    };
+
+    loadDefinition(R"(
+        declare extern type Container with
+            [string | number]: boolean | string
+        end
+
+        declare extern type Point with
+            X: number
+            Y: number
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local c: Container
+        local p: Point
+        local _: { [ string | number ]: boolean | string } = c -- OK
+        local _: { [string]: boolean | string } = c -- not OK
+        local _: { [ string | number ]: boolean } = c -- not OK
+        local _: { [string]: number } = p -- not OK
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    for (const auto& err: result.errors)
+        CHECK(get<TypeMismatch>(err));
 }
 
 TEST_SUITE_END();

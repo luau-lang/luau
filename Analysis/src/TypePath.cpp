@@ -17,8 +17,6 @@
 #include <sstream>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauNewOverloadResolver2)
-LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -793,44 +791,14 @@ std::string toStringHuman(const TypePath::Path& path)
         }
         else if constexpr (std::is_same_v<T, TypePath::Index>)
         {
-            if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
-            {
-                if (state == State::Initial && !last)
-                    result << "in" << ' ';
-                else if (state == State::PendingIs)
-                    result << ' ' << "has" << ' ';
-                else if (state == State::Property)
-                    result << '`' << ' ' << "has" << ' ';
+            if (state == State::Initial && !last)
+                result << "in" << ' ';
+            else if (state == State::PendingIs)
+                result << ' ' << "has" << ' ';
+            else if (state == State::Property)
+                result << '`' << ' ' << "has" << ' ';
 
-                result << "the " << toHumanReadableIndex(c.index);
-            }
-            else
-            {
-                size_t humanIndex = c.index + 1;
-
-                if (state == State::Initial && !last)
-                    result << "in" << ' ';
-                else if (state == State::PendingIs)
-                    result << ' ' << "has" << ' ';
-                else if (state == State::Property)
-                    result << '`' << ' ' << "has" << ' ';
-
-                result << "the " << humanIndex;
-                switch (humanIndex)
-                {
-                case 1:
-                    result << "st";
-                    break;
-                case 2:
-                    result << "nd";
-                    break;
-                case 3:
-                    result << "rd";
-                    break;
-                default:
-                    result << "th";
-                }
-            }
+            result << "the " << toHumanReadableIndex(c.index);
 
             switch (c.variant)
             {
@@ -1025,7 +993,7 @@ std::optional<TypeOrPack> traverse(const TypePackId root, const Path& path, cons
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
     {
-        if (FFlag::LuauNewOverloadResolver2 && state.encounteredErrorSuppression)
+        if (state.encounteredErrorSuppression)
             return builtinTypes->errorType;
         return state.current;
     }

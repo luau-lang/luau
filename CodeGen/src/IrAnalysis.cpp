@@ -64,7 +64,7 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
     std::vector<IrInst>& instructions = function.instructions;
 
 #if defined(LUAU_ASSERTENABLED)
-    // Last use assignements should be called only once
+    // Last use assignments should be called only once
     for (IrInst& inst : instructions)
         CODEGEN_ASSERT(inst.lastUse == 0);
 #endif

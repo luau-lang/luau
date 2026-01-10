@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
 using namespace Luau;
 
@@ -966,6 +967,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_local_alias_shouldnt_shadow_imported
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 {
+    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
+
     fileResolver.source["game/A"] = R"(
         export type bad<T> = {bad<{T}>}
         return {}
@@ -984,10 +987,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
     REQUIRE(b != nullptr);
     std::optional<TypeId> fType = requireType(b, "f");
     REQUIRE(fType);
-    if (FFlag::LuauSolverV2)
-        CHECK(toString(*fType) == "*error-type*");
-    else
-        CHECK(toString(*fType) == "bad<number>");
+    CHECK(toString(*fType) == "bad<number>");
 }
 
 TEST_SUITE_END();

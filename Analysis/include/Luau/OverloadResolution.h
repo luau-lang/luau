@@ -194,22 +194,12 @@ private:
     );
 
 public:
-    // We want to clip this with LuauNewOverloadResolver2, but there are other
-    // call sites such as `solveFunctionCall`.
+    // Clip this with LuauBuiltinTypeFunctionsUseNewOverloadResolution
     std::pair<Analysis, TypeId> selectOverload_DEPRECATED(
         TypeId ty,
         TypePackId args,
         NotNull<DenseHashSet<TypeId>> uniqueTypes,
         bool useFreeTypeBounds
-    );
-
-    // Clip with LuauNewOverloadResolver2
-    void resolve_DEPRECATED(
-        TypeId fnTy,
-        const TypePack* args,
-        AstExpr* selfExpr,
-        const std::vector<AstExpr*>* argExprs,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes
     );
 
 private:
@@ -221,7 +211,6 @@ private:
         NotNull<DenseHashSet<TypeId>> uniqueTypes,
         bool callMetamethodOk = true
     );
-    static bool isLiteral(AstExpr* expr);
     LUAU_NOINLINE
     std::pair<Analysis, ErrorVec> checkOverload_(
         TypeId fnTy,

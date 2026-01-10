@@ -41,7 +41,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAGVARIABLE(LuauPassTypeCheckLimitsEarly)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 
@@ -1007,52 +1006,22 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     double timestamp = getTimestamp();
     const std::vector<RequireCycle>& requireCycles = item.requireCycles;
 
-    TypeCheckLimits typeCheckLimits;
+    TypeCheckLimits typeCheckLimits = makeTypeCheckLimits(item.options);
 
-    if (FFlag::LuauPassTypeCheckLimitsEarly)
+    // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+    // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+    // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+    if (item.options.applyInternalLimitScaling)
     {
-        typeCheckLimits = makeTypeCheckLimits(item.options);
-
-        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
-        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
-        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-        if (item.options.applyInternalLimitScaling)
-        {
-            if (FInt::LuauTarjanChildLimit > 0)
-                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.instantiationChildLimit = std::nullopt;
-
-            if (FInt::LuauTypeInferIterationLimit > 0)
-                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.unifierIterationLimit = std::nullopt;
-        }
-    }
-    else
-    {
-        if (item.options.moduleTimeLimitSec)
-            typeCheckLimits.finishTime = TimeTrace::getClock() + *item.options.moduleTimeLimitSec;
+        if (FInt::LuauTarjanChildLimit > 0)
+            typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
         else
-            typeCheckLimits.finishTime = std::nullopt;
+            typeCheckLimits.instantiationChildLimit = std::nullopt;
 
-        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
-        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
-        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-        if (item.options.applyInternalLimitScaling)
-        {
-            if (FInt::LuauTarjanChildLimit > 0)
-                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.instantiationChildLimit = std::nullopt;
-
-            if (FInt::LuauTypeInferIterationLimit > 0)
-                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.unifierIterationLimit = std::nullopt;
-        }
-
-        typeCheckLimits.cancellationToken = item.options.cancellationToken;
+        if (FInt::LuauTypeInferIterationLimit > 0)
+            typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+        else
+            typeCheckLimits.unifierIterationLimit = std::nullopt;
     }
 
     if (item.options.forAutocomplete)

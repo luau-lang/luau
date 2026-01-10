@@ -18,10 +18,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauNoScopeShallNotSubsumeAll)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauTypeFunctionsUseSolveFunctionCall)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -82,7 +81,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
         CHECK("(string & ~(false?)) | string" == toString(requireType("s")));
     }
     else
-        CHECK_EQ(*requireType("s"), *getBuiltins()->stringType);
+        CHECK("string" == toString(requireType("s")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_does_not_always_add_boolean")
@@ -102,7 +101,7 @@ TEST_CASE_FIXTURE(Fixture, "and_adds_boolean_no_superfluous_union")
         local x:boolean = s
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("x"), *getBuiltins()->booleanType);
+    CHECK("boolean" == toString(requireType("x")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_or_ternary")
@@ -129,9 +128,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 
     std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType.has_value());
-    CHECK_EQ(getBuiltins()->numberType, follow(*retType));
-    CHECK_EQ(requireType("n"), getBuiltins()->numberType);
-    CHECK_EQ(requireType("s"), getBuiltins()->stringType);
+    CHECK("number" == toString(*retType));
+    CHECK("number" == toString(requireType("n")));
+    CHECK("string" == toString(requireType("s")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable_with_follows")
@@ -411,7 +410,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_basic")
         s += 20
     )");
     CHECK_EQ(0, result.errors.size());
-    CHECK_EQ(toString(*requireType("s")), "number");
+    CHECK_EQ(toString(requireType("s")), "number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
@@ -607,8 +606,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
 
         TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
         REQUIRE(tm);
-        CHECK_EQ(toString(tm->givenType), "bar");
-        CHECK_EQ(*tm->wantedType, *getBuiltins()->numberType);
+        CHECK("bar" == toString(tm->givenType));
+        CHECK("number" == toString(tm->wantedType));
     }
     else
     {
@@ -622,6 +621,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 {
+    ScopedFastFlag _{FFlag::LuauTypeFunctionsUseSolveFunctionCall, true};
+
     CheckResult result = check(R"(
         --!strict
         local mt = {}
@@ -639,15 +640,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 
     if (FFlag::LuauSolverV2)
     {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        CHECK("string" == toString(requireType("a")));
+        // FIXME CLI-183037
+        // This is not as nice but it's a consistent behavior (for now) as some
+        // operators depend on type function inhabitance for error checking.
+        CHECK("unm<foo>" == toString(requireType("a")));
 
-        TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+        CHECK(get<UninhabitedTypeFunction>(result.errors[0]));
+
+        auto tm = get<TypeMismatch>(result.errors[1]);
         REQUIRE(tm);
-
-        // FIXME: This error is a bit weird.
-        CHECK("({ @metatable { __unm: (boolean) -> string }, { value: number } }) -> string" == toString(tm->wantedType, {true}));
+        CHECK("(foo) -> unm<foo>" == toString(tm->wantedType));
         CHECK("(boolean) -> string" == toString(tm->givenType));
     }
     else
@@ -657,7 +661,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
         CHECK_EQ("string", toString(requireType("a")));
 
         TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-        REQUIRE_EQ(*tm->wantedType, *getBuiltins()->booleanType);
+        REQUIRE("boolean" == toString(tm->wantedType));
         // given type is the typeof(foo) which is complex to compare against
     }
 }
@@ -689,8 +693,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE_MESSAGE(tm, "Expected a TypeMismatch but got " << result.errors[0]);
 
-    REQUIRE_EQ(*tm->wantedType, *getBuiltins()->numberType);
-    REQUIRE_EQ(*tm->givenType, *getBuiltins()->stringType);
+    CHECK("number" == toString(tm->wantedType));
+    CHECK("string" == toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unary_not_is_boolean")
@@ -749,8 +753,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
     {
         TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
         REQUIRE_MESSAGE(tm, "Expected a TypeMismatch but got " << result.errors[0]);
-        CHECK_EQ(*tm->wantedType, *getBuiltins()->numberType);
-        CHECK_EQ(*tm->givenType, *getBuiltins()->stringType);
+        CHECK("number" == toString(tm->wantedType));
+        CHECK("string" == toString(tm->givenType));
 
         GenericError* gen1 = get<GenericError>(result.errors[1]);
         REQUIRE(gen1);
@@ -761,8 +765,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
 
         TypeMismatch* tm2 = get<TypeMismatch>(result.errors[2]);
         REQUIRE(tm2);
-        CHECK_EQ(*tm2->wantedType, *getBuiltins()->numberType);
-        CHECK_EQ(*tm2->givenType, *requireType("foo"));
+        CHECK("number" == toString(tm2->wantedType));
+        CHECK(requireType("foo") == tm2->givenType);
     }
 }
 
@@ -934,8 +938,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalCompoundAssign")
 {
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
-
     // In non-strict mode, global definition is still allowed
     {
         if (!FFlag::LuauSolverV2)
@@ -1444,11 +1446,7 @@ local function foo(arg: {name: string}?)
 end
     )");
 
-    // FIXME(CLI-165431): fixing subtyping revealed an overload selection problems
-    if (FFlag::LuauSolverV2 && FFlag::LuauNoScopeShallNotSubsumeAll)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array_simplified")

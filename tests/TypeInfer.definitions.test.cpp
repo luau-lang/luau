@@ -504,8 +504,8 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 
     REQUIRE(bool(etv->indexer));
 
-    CHECK_EQ(*etv->indexer->indexType, *getBuiltins()->numberType);
-    CHECK_EQ(*etv->indexer->indexResultType, *getBuiltins()->stringType);
+    CHECK("number" == toString(etv->indexer->indexType));
+    CHECK("string" == toString(etv->indexer->indexResultType));
 
     CHECK_EQ(toString(requireType("y")), "string");
 }

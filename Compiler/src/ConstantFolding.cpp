@@ -7,7 +7,7 @@
 #include <vector>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 
 namespace Luau
 {
@@ -613,7 +613,7 @@ struct ConstantVisitor : AstVisitor
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             result = analyze(expr->expr);
         }
         else

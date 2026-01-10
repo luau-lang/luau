@@ -277,7 +277,7 @@ struct NormalizedType
     /// Returns true if this type should result in error suppressing behavior.
     bool shouldSuppressErrors() const;
 
-    /// Returns true if this type contains the primitve top table type, `table`.
+    /// Returns true if this type contains the primitive top table type, `table`.
     bool hasTopTable() const;
 
     /// Returns true if this type is `nil` or `nil | *error-type*`

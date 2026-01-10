@@ -13,9 +13,9 @@ LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
-LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
+LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 
 using namespace Luau;
 
@@ -1192,8 +1192,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
-    CHECK_EQ(*getBuiltins()->numberType, *requireType("a"));
-    CHECK_EQ(*getBuiltins()->nilType, *requireType("b"));
+    CHECK("number" == toString(requireType("a")));
+    CHECK("nil" == toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_table_method")
@@ -1845,6 +1845,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_packs_shouldnt_be_bound_to_themselves")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontIncludeVarargWithAnnotation, true},
     };
 
     CheckResult result = check(R"(
@@ -1880,7 +1881,7 @@ end
     )");
 
     // Note: we just need this test not to crash
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "follow_bound_type_packs_in_generic_type_visitor")
@@ -2112,10 +2113,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_isfrozen_and_clear_work_on_any_table")
 
 TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauIncludeExplicitGenericPacks, true},
-    };
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
 
@@ -2135,10 +2132,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauIncludeExplicitGenericPacks, true},
-    };
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f<Return...>(callback: () -> Return...) end
 
@@ -2159,6 +2152,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped
             foo(x)
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "variadic_generics_dont_leak")
+{
+    ScopedFastFlag _{FFlag::LuauDontIncludeVarargWithAnnotation, true};
+
+    CheckResult res = check(R"(
+        local function makeApplier<A..., R...>(f: (A...) -> (R...))
+            return function (... : A...): R...
+                f(...)
+            end
+        end
+        local function add(x: number, y: number): number return x + y end
+        local f = makeApplier(add)
+    )");
+
+    CHECK_EQ("(number, number) -> number", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

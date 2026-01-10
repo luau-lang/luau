@@ -903,10 +903,10 @@ void registerHiddenTypes(Frontend& frontend)
 
     unfreeze(globals.globalTypes);
 
-    TypeId t = globals.globalTypes.addType(GenericType{"T"});
+    TypeId t = globals.globalTypes.addType(GenericType{"T", Polarity::Mixed});
     GenericTypeDefinition genericT{t};
 
-    TypeId u = globals.globalTypes.addType(GenericType{"U"});
+    TypeId u = globals.globalTypes.addType(GenericType{"U", Polarity::Mixed});
     GenericTypeDefinition genericU{u};
 
     ScopePtr globalScope = globals.globalScope;

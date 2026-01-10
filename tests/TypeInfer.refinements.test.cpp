@@ -10,15 +10,9 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
-LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
-LUAU_FASTFLAG(LuauAddRefinementToAssertions)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauNormalizationPreservesAny)
-LUAU_FASTFLAG(LuauRefineNoRefineAlways2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauFixSubtypingOfNegations)
 
 using namespace Luau;
 
@@ -1717,8 +1711,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_propertie
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "x_is_not_instance_or_else_not_part")
 {
-    ScopedFastFlag sff{FFlag::LuauRefineDistributesOverUnions, true};
-
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
             if typeof(x) ~= "Instance" or not x:IsA("Part") then
@@ -2828,10 +2820,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_by_no_refine_should_always_reduce")
     // how we report constraint solving incomplete errors revealed that this
     // test would always fail to solve all constraints, except under eager
     // generalization.
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineNoRefineAlways2, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         function foo(t): boolean return true end
@@ -2901,7 +2890,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineDistributesOverUnions, true},
     };
 
     loadDefinition(R"(
@@ -3029,10 +3017,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1517_equality_doesnt_add_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_refinement_context")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAddRefinementToAssertions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -3049,10 +3034,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_refinement_context")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_typeof_refinement_context")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAddRefinementToAssertions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -3067,10 +3049,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_typeof_refinement_context")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "foo_call_should_not_refine")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAddRefinementToAssertions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -3089,10 +3068,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "foo_call_should_not_refine")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_should_not_refine_despite_typeof")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAddRefinementToAssertions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -3113,10 +3089,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_should_not_refine_despite_typeof
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_conditional_context_in_if_should_not_refine")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauAddRefinementToAssertions, true},
-    };
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         local function bing(_: any) end
@@ -3163,8 +3136,6 @@ TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
 {
-    ScopedFastFlag _{FFlag::LuauNormalizationPreservesAny, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local REACT_FRAGMENT_TYPE = (nil :: any)
         local function typeOf(object: any)
@@ -3185,7 +3156,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181100_fast_track_refinement_against_unk
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineNoRefineAlways2, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3211,10 +3181,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181100_fast_track_refinement_against_unk
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181549_refined_string_should_be_subtype_of_string")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauFixSubtypingOfNegations, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(Mode::Nonstrict, R"(
       local hello : string = "world"

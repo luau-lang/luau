@@ -224,6 +224,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Set.h
     Analysis/include/Luau/Simplify.h
+    Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
     Analysis/include/Luau/SubtypingVariance.h
@@ -302,6 +303,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
     Analysis/src/Simplify.cpp
+    Analysis/src/StructuralTypeEquality.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
     Analysis/src/Symbol.cpp

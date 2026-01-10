@@ -375,7 +375,7 @@ n1 [label="ErrorType 1"];
 
 TEST_CASE_FIXTURE(Fixture, "generic")
 {
-    Type type{TypeVariant{GenericType{"T"}}};
+    Type type{TypeVariant{GenericType{"T", Polarity::Mixed}}};
 
     ToDotOptions opts;
     opts.showPointers = false;

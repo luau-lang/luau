@@ -520,6 +520,15 @@ end
 
 bufferbounds(0)
 
+local function bufferboundsmerge1(b12: buffer, a: number, ...)
+  local r1 = buffer.readi32(b12, a + 8) + buffer.readi32(b12, a + 4) + buffer.readi32(b12, a + 0)
+  assert(r1 == 0)
+
+  assert(is_native())
+end
+
+bufferboundsmerge1(buffer.create(12), 0)
+
 function deadStoreChecks1()
   local a = 1.0
   local b = 0.0

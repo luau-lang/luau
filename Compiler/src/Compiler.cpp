@@ -27,7 +27,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
 
 namespace Luau
@@ -1157,9 +1157,9 @@ struct Compiler
 
             // it's technically safe to share closures whenever all upvalues are immutable
             // this is because of a runtime equality check in DUPCLOSURE.
-            // however, this results in frequent deoptimization and increases the set of reachable objects, making some temporary objects permanent
+            // however, this results in frequent de-optimization and increases the set of reachable objects, making some temporary objects permanent
             // instead we apply a heuristic: we share closures if they refer to top-level upvalues, or closures that refer to top-level upvalues
-            // this will only deoptimize (outside of fenv changes) if top level code is executed twice with different results.
+            // this will only de-optimize (outside of fenv changes) if top level code is executed twice with different results.
             if (uv->functionDepth != 0 || uv->loopDepth != 0)
             {
                 AstExprFunction* uf = ul->init ? ul->init->as<AstExprFunction>() : nullptr;
@@ -2525,7 +2525,7 @@ struct Compiler
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             compileExpr(expr->expr, target, targetTemp);
         }
         else
@@ -2955,7 +2955,7 @@ struct Compiler
 
         setDebugLine(stat->condition);
 
-        // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptible and we want all loops to have at least one interruptible
+        // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptable and we want all loops to have at least one interruptable
         // instruction
         bytecode.emitAD(LOP_JUMPBACK, 0, 0);
 
@@ -3045,7 +3045,7 @@ struct Compiler
 
             size_t backLabel = bytecode.emitLabel();
 
-            // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptible and we want all loops to have at least one interruptible
+            // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptable and we want all loops to have at least one interruptable
             // instruction
             bytecode.emitAD(LOP_JUMPBACK, 0, 0);
 
@@ -4442,7 +4442,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
         root->visit(&fenvVisitor);
     }
 
-    // builtin folding is enabled on optimization level 2 since we can't deoptimize folding at runtime
+    // builtin folding is enabled on optimization level 2 since we can't de-optimize folding at runtime
     if (options.optimizationLevel >= 2 && (!compiler.getfenvUsed && !compiler.setfenvUsed))
     {
         compiler.builtinsFold = &compiler.builtins;

@@ -1324,7 +1324,7 @@ static KOption getoption(Header* h, const char** fmt, int* size)
 ** Read, classify, and fill other details about the next option.
 ** 'psize' is filled with option's size, 'notoalign' with its
 ** alignment requirements.
-** Local variable 'size' gets the size to be aligned. (Kpadal option
+** Local variable 'size' gets the size to be aligned. (Kpaddalign option
 ** always gets its full alignment, other options are limited by
 ** the maximum alignment ('maxalign'). Kchar option needs no alignment
 ** despite its size.
