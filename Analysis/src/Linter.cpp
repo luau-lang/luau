@@ -3534,121 +3534,94 @@ public:
 private:
     LintContext* context;
 
-    bool checkCondition(AstExpr* cond)
+    bool checkCondition(AstExpr* cond, const char ** msg, bool * negated)
     {
-        bool negated = false;
+        *negated = false;
         if (const auto* unary = cond->as<AstExprUnary>())
             if (unary-> op == AstExprUnary::Not)
             {
-                negated = true;
+                *negated = true;
                 cond = unary->expr;
-                emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "not");
             }
 
         const std::optional<TypeId> type = context->getType(cond);
         if (!type)
-        {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "ok: no type");
             return true;
-        }
         if (isBoolean(*type))
-        {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "ok: boolean");
             return true;  // boolean is a valid condition
-        }
         if (isOptional(*type))
-        //if (hasPrimitiveTypeInIntersection(*type, PrimitiveType::NilType))
-        //if (isSubset(PrimitiveType::NilType, *type))
-        {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "ok: nilable");
             return true;  // anything that can be nil is a valid condition
-        }
 
-        if (isNil(*type))
-        {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "probably intntional: nil");
-            return false;  // just nil is weird enough that it's probably intentional. Also it would req
-        }
         if (isNumber(*type))
         {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "NOT OK: number");
-            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+            *msg = *negated ? "(not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?" :
+            "(bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?";
+            *msg = *negated ? "(not num) is always false; did you mean (num == 0)?" : "(num) is always true; did you mean (num ~= 0)?";
+            return false;
         }
         if (isString(*type))
         {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "NOT OK: string");
-            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+            *msg = *negated ? "(not str) is always false; did you mean (str == "")?" : "(str) is always true; did you mean (str ~= "")?";
+            return false;
         }
         if (getTableType(*type))
         {
-            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "use \"next(tbl) ~= nil\" instead");
+            *msg = *negated ? "(not tbl) is always false; did you mean (next(tbl) == nil)?" : "(tbl) is always true; did you mean (next(tbl) ~= nil)?";
             return false;  // just nil is weird enough that it's probably intentional. Also it would req
         }
 
-        emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "NOT OK: neither boolean nor nillable");
+        *msg = *negated ? "condition is always false" : "condition is always true";
         return false;
     }
 
     bool visit(AstStatIf* node) override
     {
-        emitWarning(
-            *context,
-            LintWarning::Code_MisleadingCondition,
-            node->location,
-            "if statement"
-        );
-
-        checkCondition(node->condition);
+        const char * msg;
+        bool negated;
+        if (!checkCondition(node->condition, &msg, &negated))
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
 
         return true;
     }
 
     bool visit(AstExprIfElse* node) override
     {
-        emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "if else expr");
-
-        checkCondition(node->condition);
+        const char * msg;
+        bool negated;
+        if (!checkCondition(node->condition, &msg, &negated))
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
 
         return true;
     }
 
     bool visit(AstExprBinary* node) override
     {
-        /*
-        if (node->op != AstExprBinary::Or)
-            return true;
-
-        AstExprBinary* and_ = node->left->as<AstExprBinary>();
-        if (!and_ || and_->op != AstExprBinary::And)
-            return true;
-
-        const char* alt = nullptr;
-
-        if (and_->right->is<AstExprConstantNil>())
-            alt = "nil";
-        else if (AstExprConstantBool* c = and_->right->as<AstExprConstantBool>(); c && c->value == false)
-            alt = "false";
-        */
+        const char * msg;
+        bool negated;
 
         if (node->op == AstExprBinary::Or)
         {
-            emitWarning(
-                *context,
-                LintWarning::Code_MisleadingCondition,
-                node->location,
-                "or"
-            );
-            checkCondition(node->left);
+            if (!checkCondition(node->left, &msg, &negated))
+                emitWarning(
+                    *context,
+                    LintWarning::Code_MisleadingCondition,
+                    node->location,
+                    "The or expression %s the right side because %s",
+                    negated ? "always evaluates to" : "never evaluates",
+                    msg
+                );
         }
         else if (node->op == AstExprBinary::And)
         {
-            emitWarning(
-                *context,
-                LintWarning::Code_MisleadingCondition,
-                node->location,
-                "and"
-            );
-            checkCondition(node->left);
+            if (!checkCondition(node->left, &msg, &negated))
+                emitWarning(
+                    *context,
+                    LintWarning::Code_MisleadingCondition,
+                    node->location,
+                    "The and expression %s the right side because %s",
+                    negated ? "never evaluates" : "always evaluates to",
+                    msg
+                );
         }
 
         return true;
