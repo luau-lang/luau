@@ -10,12 +10,12 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauUserTypeFunctionsNoUninhabitedError)
 LUAU_FASTFLAG(LuauUnionofIntersectionofFlattens)
 LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
+LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -1168,7 +1168,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_3")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         -- this function should not see 'fourth' function when invoked from 'third' that sees it
@@ -1221,7 +1220,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_each_other_unordered")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_no_shared_state")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -1299,7 +1297,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_optionify")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_calling_illegal_global")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         type function illegal(arg)
@@ -2525,7 +2522,6 @@ local y: Test.foo<{ a: string }> = "x"
 TEST_CASE_FIXTURE(ExternTypeFixture, "type_alias_not_too_many_globals")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
 type function get()
@@ -2790,6 +2786,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 {
     ScopedFastFlag sff{FFlag::LuauSolverV2, true};
     ScopedFastFlag noCrash{FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks, true};
+    ScopedFastFlag noErrors[] = {
+        {FFlag::LuauUserTypeFunctionsNoUninhabitedError, true},
+        {FFlag::LuauDontIncludeVarargWithAnnotation, true},
+    };
 
     CheckResult results = check(R"(
         type function identity(t: type)
@@ -2801,16 +2801,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
         whomp(function(...) end :: func<any>)
     )");
 
-    // FIXME: this should not error at all, but type alias expansion is broken because we don't have proper instantiation
-    // LUAU_REQUIRE_NO_ERRORS(results);
-
-    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
-        LUAU_REQUIRE_ERROR_COUNT(1, results);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(2, results);
-    auto err = get<UserDefinedTypeFunctionError>(results.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("Encountered unexpected generic type pack", err->message);
+    LUAU_REQUIRE_NO_ERRORS(results);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")

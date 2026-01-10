@@ -1767,9 +1767,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
     // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
     // (~(false?), ~(false?)) -> (~(false?) & ~(false?)) | ~(false?)
 
-    TypeId aTy = arena.addType(GenericType{"A"});
+    TypeId aTy = arena.addType(GenericType{"A", Polarity::Mixed});
     getMutable<GenericType>(aTy)->scope = moduleScope.get();
-    TypeId bTy = arena.addType(GenericType{"B"});
+    TypeId bTy = arena.addType(GenericType{"B", Polarity::Mixed});
     getMutable<GenericType>(bTy)->scope = moduleScope.get();
 
     TypeId genericFunctionTy = arena.addType(
@@ -1817,7 +1817,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
     TypeArena arena;
     Scope scope(getBuiltins()->anyTypePack);
 
-    TypeId genericT = arena.addType(GenericType{"T"});
+    TypeId genericT = arena.addType(GenericType{"T", Polarity::Mixed});
 
     TypeId idTy = arena.addType(
         FunctionType{/* generics */ {genericT},

@@ -335,7 +335,7 @@ public:
     void merge(RefinementMap& l, const RefinementMap& r);
 
     // Produce an "emergency backup type" for recovery from type errors.
-    // This comes in two flavours, depening on whether or not we can make a good guess
+    // This comes in two flavours, depending on whether or not we can make a good guess
     // for an error recovery type.
     TypeId errorRecoveryType(TypeId guess);
     TypePackId errorRecoveryTypePack(TypePackId guess);

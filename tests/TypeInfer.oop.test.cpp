@@ -17,7 +17,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauHandleFunctionOversaturation)
 LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
-LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
@@ -174,7 +174,7 @@ TEST_CASE_FIXTURE(Fixture, "pass_too_many_arguments")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::LuauPushTypeConstraintLambdas3, true},
         {FFlag::LuauHandleFunctionOversaturation, true},
     };
 

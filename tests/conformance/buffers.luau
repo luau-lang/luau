@@ -463,6 +463,22 @@ end
 
 boundchecksempty()
 
+local function boundchecksrangemerge1(buf: buffer, a: number)
+  assert(ecall(function(buf: buffer, a: number)
+    return buffer.readi32(buf, a + 8) + buffer.readi32(buf, a + 4) + buffer.readi32(buf, a + 0)
+  end, buf, a) == "buffer access out of bounds")
+end
+
+boundchecksrangemerge1(buffer.create(4), 0)
+
+local function boundchecksrangemerge2(buf: buffer, a: number)
+  assert(ecall(function(buf: buffer, a: number)
+    return buffer.readi32(buf, a) + buffer.readi32(buf, a - 8)
+  end, buf, a) == "buffer access out of bounds")
+end
+
+boundchecksrangemerge2(buffer.create(16), 4)
+
 local function intuint()
   local b = buffer.create(32)
 

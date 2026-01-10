@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauCodegenNumToUintFoldRange)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
 LUAU_FASTFLAG(LuauCodegenGcoDse)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
 
 using namespace Luau::CodeGen;
 
@@ -2783,6 +2784,9 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
+    ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -2792,30 +2796,30 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), sourceBuf);
     IrOp buffer1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer1, build.constInt(12), build.constInt(4), fallback);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer1, build.constInt(12), build.constInt(0), build.constInt(4), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI32, buffer1, build.constInt(12), build.constInt(32));
 
     // Now with lower index, should be removed
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), sourceBuf);
     IrOp buffer2 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer2, build.constInt(8), build.constInt(4), fallback);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer2, build.constInt(8), build.constInt(0), build.constInt(4), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI32, buffer2, build.constInt(8), build.constInt(30));
 
     // Now with higher index, should raise the initial check bound
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), sourceBuf);
     IrOp buffer3 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, build.constInt(16), build.constInt(4), fallback);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, build.constInt(16), build.constInt(0), build.constInt(4), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI32, buffer3, build.constInt(16), build.constInt(60));
 
-    // Now with different access size, should not reuse previous checks (can be improved in the future)
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, build.constInt(16), build.constInt(2), fallback);
+    // Now with different access size, still in bounds of existing checks
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, build.constInt(16), build.constInt(0), build.constInt(2), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI16, buffer3, build.constInt(16), build.constInt(55));
 
     // Now with same, but unknown index value
     IrOp index = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, index, build.constInt(2), fallback);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, index, build.constInt(0), build.constInt(2), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI16, buffer3, index, build.constInt(1));
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, index, build.constInt(2), fallback);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer3, index, build.constInt(0), build.constInt(2), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI16, buffer3, index, build.constInt(2));
 
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constUint(1));
@@ -2831,14 +2835,13 @@ bb_0:
    %0 = LOAD_TVALUE R0
    STORE_TVALUE R2, %0
    %2 = LOAD_POINTER R2
-   CHECK_BUFFER_LEN %2, 16i, 4i, bb_fallback_1
+   CHECK_BUFFER_LEN %2, 12i, -4i, 8i, undef, bb_fallback_1
    BUFFER_WRITEI32 %2, 12i, 32i
    BUFFER_WRITEI32 %2, 8i, 30i
    BUFFER_WRITEI32 %2, 16i, 60i
-   CHECK_BUFFER_LEN %2, 16i, 2i, bb_fallback_1
    BUFFER_WRITEI16 %2, 16i, 55i
    %15 = LOAD_INT R1
-   CHECK_BUFFER_LEN %2, %15, 2i, bb_fallback_1
+   CHECK_BUFFER_LEN %2, %15, 0i, 2i, undef, bb_fallback_1
    BUFFER_WRITEI16 %2, %15, 1i
    BUFFER_WRITEI16 %2, %15, 2i
    RETURN R1, 1u
@@ -2851,6 +2854,9 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLenghtChecksNegativeIndex")
 {
+    ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -2860,7 +2866,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLenghtChecksNegativeIndex")
 
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), sourceBuf);
     IrOp buffer1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
-    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer1, build.constInt(-4), build.constInt(4), fallback);
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buffer1, build.constInt(-4), build.constInt(0), build.constInt(4), build.undef(), fallback);
     build.inst(IrCmd::BUFFER_WRITEI32, buffer1, build.constInt(-4), build.constInt(32));
     build.inst(IrCmd::RETURN, build.vmReg(1), build.constUint(1));
 

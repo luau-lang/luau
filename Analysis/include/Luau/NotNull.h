@@ -20,7 +20,7 @@ namespace Luau
  * Pointer arithmetic, increment, decrement, and array indexing are all
  * forbidden.
  *
- * An implicit coersion from NotNull<T> to T* is afforded, as are the pointer
+ * An implicit coercion from NotNull<T> to T* is afforded, as are the pointer
  * indirection and member access operators. (*p and p->prop)
  *
  * The explicit delete statement is permitted (but not recommended) on a
