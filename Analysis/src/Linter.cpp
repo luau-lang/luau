@@ -3534,18 +3534,59 @@ public:
 private:
     LintContext* context;
 
-    bool checkCondition(AstExpr* node)
+    bool checkCondition(AstExpr* cond)
     {
         bool negated = false;
-        if (auto* unary = node->as<AstExprUnary>())
+        if (const auto* unary = cond->as<AstExprUnary>())
             if (unary-> op == AstExprUnary::Not)
             {
                 negated = true;
-                node = unary->expr;
-                emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "not");
+                cond = unary->expr;
+                emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "not");
             }
 
-        return true;
+        const std::optional<TypeId> type = context->getType(cond);
+        if (!type)
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "ok: no type");
+            return true;
+        }
+        if (isBoolean(*type))
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "ok: boolean");
+            return true;  // boolean is a valid condition
+        }
+        if (isOptional(*type))
+        //if (hasPrimitiveTypeInIntersection(*type, PrimitiveType::NilType))
+        //if (isSubset(PrimitiveType::NilType, *type))
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "ok: nilable");
+            return true;  // anything that can be nil is a valid condition
+        }
+
+        if (isNil(*type))
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "probably intntional: nil");
+            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+        }
+        if (isNumber(*type))
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "NOT OK: number");
+            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+        }
+        if (isString(*type))
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "NOT OK: string");
+            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+        }
+        if (getTableType(*type))
+        {
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "use \"next(tbl) ~= nil\" instead");
+            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+        }
+
+        emitWarning(*context, LintWarning::Code_MisleadingCondition, cond->location, "NOT OK: neither boolean nor nillable");
+        return false;
     }
 
     bool visit(AstStatIf* node) override
