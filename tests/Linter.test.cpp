@@ -18,7 +18,7 @@ TEST_CASE_FIXTURE(Fixture, "CleanCode")
 {
     LintResult result = lint(R"(
 function fib(n)
-    return n < 2 and 1 or fib(n-1) + fib(n-2)
+    return n < 2 and true or fib(n-1) + fib(n-2)
 end
 
 )");
@@ -371,7 +371,7 @@ TEST_CASE_FIXTURE(Fixture, "LocalUnused")
 local arg = 6
 
 local function bar()
-    local arg = 5
+    local arg = true
     local blarg = 6
     if arg then
         blarg = 42
@@ -2240,7 +2240,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")
 {
-    LintResult result = lint(R"(
+    LintResult result = lint(R"(--!nolint MisleadingCondition
 if true then
 elseif false then
 elseif true then -- duplicate
@@ -2258,7 +2258,7 @@ _ = true or true
 _ = (true and false) and true
 _ = (true and true) and true
 _ = (true and true) or true
-_ = (true and false) and (42 and false)
+_ = (true and false) and (42 and false) -- also fails MisleadingCondition
 
 _ = true and true or false -- no warning since this is is a common pattern used as a ternary replacement
 
@@ -2320,10 +2320,11 @@ return foo, moo, a1, a2
 TEST_CASE_FIXTURE(Fixture, "MisleadingAndOr")
 {
     LintResult result = lint(R"(
+--!nolint MisleadingCondition
 _ = math.random() < 0.5 and true or 42
 _ = math.random() < 0.5 and false or 42 -- misleading
 _ = math.random() < 0.5 and nil or 42 -- misleading
-_ = math.random() < 0.5 and 0 or 42
+_ = math.random() < 0.5 and 0 or 42 -- fails MisleadingCondition
 _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 )");
 
@@ -2379,14 +2380,15 @@ TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfStatAndExpr")
 {
     LintResult result = lint(R"(
-if if 1 then 2 else 3 then
-elseif if 1 then 2 else 3 then
-elseif if 0 then 5 else 4 then
+a = true; b = true; c = false; d = true; e = false; f = true
+if if b then c else d then
+elseif if b then c else d then
+elseif if a then f else e then
 end
 )");
 
     REQUIRE(1 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
+    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 3");
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")

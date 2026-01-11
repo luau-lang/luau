@@ -3551,6 +3551,8 @@ private:
             return true;  // boolean is a valid condition
         if (isOptional(*type))
             return true;  // anything that can be nil is a valid condition
+        if (get<GenericType>(follow(type)))
+            return true;  // needed to make several unit tests pass, due to AnyType not being fully initialized in the Linter tests
 
         if (isNumber(*type))
         {
