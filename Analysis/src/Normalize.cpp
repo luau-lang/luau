@@ -20,8 +20,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAGVARIABLE(LuauImproveNormalizeExternTypeCheck)
-LUAU_FASTFLAGVARIABLE(LuauNormalizationPreservesAny)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 
 namespace Luau
@@ -195,21 +193,10 @@ bool NormalizedType::isUnknown() const
     {
         if (auto ct = get<ExternType>(t))
         {
-            if (FFlag::LuauImproveNormalizeExternTypeCheck)
+            if (t == builtinTypes->externType && disj.empty())
             {
-                if (t == builtinTypes->externType && disj.empty())
-                {
-                    isTopExternType = true;
-                    break;
-                }
-            }
-            else
-            {
-                if (ct->name == "userdata" && disj.empty())
-                {
-                    isTopExternType = true;
-                    break;
-                }
+                isTopExternType = true;
+                break;
             }
         }
     }
@@ -918,7 +905,7 @@ NormalizationResult Normalizer::normalizeIntersections(
     consumeFuel();
 
     NormalizedType norm{builtinTypes};
-    norm.tops = FFlag::LuauNormalizationPreservesAny ? builtinTypes->unknownType : builtinTypes->anyType;
+    norm.tops = builtinTypes->unknownType;
     // Now we need to intersect the two types
     for (auto ty : intersections)
     {
@@ -1780,7 +1767,7 @@ NormalizationResult Normalizer::unionNormalWithTy(
         seenSetTypes.insert(there);
 
         NormalizedType norm{builtinTypes};
-        norm.tops = FFlag::LuauNormalizationPreservesAny ? builtinTypes->unknownType : builtinTypes->anyType;
+        norm.tops = builtinTypes->unknownType;
         for (IntersectionTypeIterator it = begin(itv); it != end(itv); ++it)
         {
             NormalizationResult res = intersectNormalWithTy(norm, *it, seenTablePropPairs, seenSetTypes);
@@ -2117,31 +2104,19 @@ void Normalizer::subtractSingleton(NormalizedType& here, TypeId ty)
 TypeId Normalizer::intersectionOfTops(TypeId here, TypeId there)
 {
     consumeFuel();
+    // NOTE: We need to wrap these in parens as C++'s parser isn't _quite_
+    // able to recognize these are generic function calls after macro
+    // expansion.
+    LUAU_ASSERT((is<NeverType, UnknownType, AnyType>(here)));
+    LUAU_ASSERT((is<NeverType, UnknownType, AnyType>(there)));
 
-    if (FFlag::LuauNormalizationPreservesAny)
-    {
-        // NOTE: We need to wrap these in parens as C++'s parser isn't _quite_
-        // able to recognize these are generic function calls after macro
-        // expansion.
-        LUAU_ASSERT((is<NeverType, UnknownType, AnyType>(here)));
-        LUAU_ASSERT((is<NeverType, UnknownType, AnyType>(there)));
+    if (get<NeverType>(here) || get<NeverType>(there))
+        return builtinTypes->neverType;
 
-        if (get<NeverType>(here) || get<NeverType>(there))
-            return builtinTypes->neverType;
+    if (get<AnyType>(here) || get<AnyType>(there))
+        return builtinTypes->anyType;
 
-        if (get<AnyType>(here) || get<AnyType>(there))
-            return builtinTypes->anyType;
-
-        return builtinTypes->unknownType;
-
-    }
-    else
-    {
-        if (get<NeverType>(here) || get<AnyType>(there))
-            return here;
-        else
-            return there;
-    }
+    return builtinTypes->unknownType;
 }
 
 TypeId Normalizer::intersectionOfBools(TypeId here, TypeId there)

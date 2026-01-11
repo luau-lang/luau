@@ -7,8 +7,9 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAG(LuauSolverV2)
+
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 
 using namespace Luau;
 
@@ -40,7 +41,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 {
-    ScopedFastFlag sff{FFlag::LuauUnknownGlobalFixSuggestion, true};
     LintResult result = lint("--!nocheck\nreturn foo");
 
     REQUIRE(1 == result.warnings.size());
@@ -2549,6 +2549,21 @@ f(3)(4)
     CHECK_EQ(result.warnings[1].location, Location(Position(5, 4), Position(5, 11)));
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_instantiation_lints")
+{
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
+
+    LintResult result = lint(R"(
+local function a<b>(cool: b)
+    print(cool)
+end
+
+a<<"hi">>("hi")
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
 TEST_CASE_FIXTURE(Fixture, "MisleadingCondition")
 {
     LintResult result = lint(R"(
@@ -2592,6 +2607,5 @@ local _ = not numNil and true
     CHECK_EQ(result.warnings[5].text, R"(The or expression always evaluates to the right side because (not str) is always false; did you mean (str == "")?)");
     CHECK_EQ(result.warnings[6].text, R"(The and expression always evaluates to the right side because (tbl) is always true; did you mean (next(tbl) ~= nil)?)");
     CHECK_EQ(result.warnings[7].text, R"(The and expression never evaluates the right side because (not tbl) is always false; did you mean (next(tbl) == nil)?)");
-}
 
 TEST_SUITE_END();
