@@ -3547,6 +3547,7 @@ private:
             return true;  // anything that can be nil is a valid condition
         if (get<GenericType>(follow(type)))
             return true;  // needed to make several unit tests pass, due to AnyType not being fully initialized in the Linter tests
+        // Unions of X | boolean are technically falsifiable, but they seem wrong for other reasons, so I don't let them pass
 
         if (isNumber(*type))
         {
