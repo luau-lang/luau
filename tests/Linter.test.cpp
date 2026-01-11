@@ -2607,5 +2607,6 @@ local _ = not numNil and true
     CHECK_EQ(result.warnings[5].text, R"(The or expression always evaluates to the right side because (not str) is always false; did you mean (str == "")?)");
     CHECK_EQ(result.warnings[6].text, R"(The and expression always evaluates to the right side because (tbl) is always true; did you mean (next(tbl) ~= nil)?)");
     CHECK_EQ(result.warnings[7].text, R"(The and expression never evaluates the right side because (not tbl) is always false; did you mean (next(tbl) == nil)?)");
+}
 
 TEST_SUITE_END();
