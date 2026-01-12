@@ -3545,8 +3545,13 @@ private:
             return true;  // boolean is a valid condition
         if (isOptional(*type))
             return true;  // anything that can be nil is a valid condition
-        if (get<GenericType>(follow(type)))
-            return true;  // needed to make several unit tests pass, due to AnyType not being fully initialized in the Linter tests
+        // Several unit tests fail without this check, but only on the old solver:
+        // UnreachableCodeIfMerge, UnreachableCodeErrorReturnSilent, UnreachableCodeErrorReturnSilent,UnreachableCodeErrorReturnNonSilentBranch, UnreachableCodeErrorReturnPropagate
+        // They all test an untyped function argument
+        if (FFlag::LuauSolverV2 && get<GenericType>(follow(type)))
+            return true;
+        //auto id = get<TypeId>(follow(type));
+        //auto tid = type.value()->ty.getTypeId<>()
         // Unions of X | boolean are technically falsifiable, but they seem wrong for other reasons, so I don't let them pass
 
         if (isNumber(*type))
