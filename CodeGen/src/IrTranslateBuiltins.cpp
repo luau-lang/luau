@@ -14,6 +14,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloatExtra)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVectorCreateXy)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAGVARIABLE(LuauCodegenMathIsNan)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -374,6 +375,24 @@ static BuiltinImplResult translateBuiltinMathUnary(IrBuilder& build, IrCmd cmd, 
 
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    return {BuiltinImplType::Full, 1};
+}
+
+static BuiltinImplResult translateBuiltinMathIsNan(IrBuilder& build, int nparams, int ra, int arg, int nresults, int pcpos)
+{
+    if (nparams < 1 || nresults != 1)
+        return {BuiltinImplType::None, -1};
+
+    IrOp argument = build.vmReg(arg);
+    IrOp ret = build.vmReg(ra);
+    builtinCheckDouble(build, argument, pcpos);
+
+    IrOp comparisonResult = build.inst(IrCmd::CMP_ANY, argument, argument, build.cond(IrCondition::Equal));
+    IrOp isNan = build.inst(IrCmd::SUB_INT, build.constInt(1), comparisonResult); // invert the result of the comparison
+
+    build.inst(IrCmd::STORE_INT, ret, isNan);
+    build.inst(IrCmd::STORE_TAG, ret, build.constTag(LUA_TBOOLEAN));
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1613,6 +1632,11 @@ BuiltinImplResult translateBuiltin(
         return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
+    case LBF_MATH_ISNAN:
+        if (FFlag::LuauCodegenMathIsNan)
+            return translateBuiltinMathIsNan(build, nparams, ra, arg, nresults, pcpos);
+        else
+            return {BuiltinImplType::None, -1};
     default:
         return {BuiltinImplType::None, -1};
     }
