@@ -15,6 +15,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -1201,6 +1202,8 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(tyof);
     else if (t->is<AstTypeOptional>())
         return;
+    else if (auto nty = t->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
+        return visitType(nty->type);
     else if (auto u = t->as<AstTypeUnion>())
         return visitType(u);
     else if (auto i = t->as<AstTypeIntersection>())

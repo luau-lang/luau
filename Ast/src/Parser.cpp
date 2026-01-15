@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2681,6 +2682,25 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionType(allowPack, AstArray<AstAttr*>({nullptr, 0}));
+    }
+    else if (FFlag::LuauTypeNegationSyntax && lexer.current().type == '~')
+    {
+        Location loc = lexer.current().location;
+        nextLexeme();
+
+        AstTypeOrPack ty = parseSimpleType(false, inDeclarationContext);
+        if (ty.typePack || ty.type->is<AstGenericType>())
+            return {
+                reportTypeError(
+                    loc,
+                    {},
+                    "Type packs and generics cannot be negated"
+                ),
+                {}
+            };
+
+        AstTypeNegation* nty = allocator.alloc<AstTypeNegation>(Location(loc), ty.type);
+        return { .type = nty, .typePack = {} };
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
     {

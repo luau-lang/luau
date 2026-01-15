@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -5951,6 +5952,10 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     else if (annotation.is<AstTypeOptional>())
     {
         return builtinTypes->nilType;
+    }
+    else if (const AstTypeNegation* nty = annotation.as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
+    {
+        return addType(NegationType{resolveType(scope, *nty->type)});
     }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {

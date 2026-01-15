@@ -52,6 +52,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -4294,6 +4295,10 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (ty->is<AstTypeOptional>())
     {
         result = builtinTypes->nilType;
+    }
+    else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
+    {
+        result = arena->addType(NegationType{resolveType(scope, nty->type, inTypeArguments, replaceErrorWithFresh)});
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {

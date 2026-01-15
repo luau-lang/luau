@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -4600,6 +4601,31 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
     ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
 
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        type T = ~number
+    )");
+
+    REQUIRE_EQ(1, block->body.size);
+
+    const auto stat1 = block->body.data[0];
+    LUAU_ASSERT(stat1);
+    CHECK_EQ(Position{1, 18}, stat1->location.end);
+
+    AstStatTypeAlias* ta = stat1->as<AstStatTypeAlias>();
+    CHECK(ta != nullptr);
+
+    CHECK(ta->type->is<AstTypeNegation>());
+
+    AstTypeReference* tr = ta->type->as<AstTypeNegation>()->type->as<AstTypeReference>();
+    CHECK(tr != nullptr);
+
+    CHECK_EQ(tr->name, "number");
 }
 
 TEST_SUITE_END();
