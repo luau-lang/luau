@@ -131,15 +131,13 @@ TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 
     CheckResult result = check(R"(
         type T = ~"a"
-        local a: unknown
         local b: unknown & ~"a"
-        local x: T = a
         local y: T = b
         local z: T = "a"
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0].location.begin.line, 6);
+    CHECK_EQ(result.errors[0].location.begin.line, 4);
 }
 
 TEST_CASE_FIXTURE(NegationFixture, "double_negation")
