@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauUserTypeFunctionsNoUninhabitedError)
 LUAU_FASTFLAG(LuauUnionofIntersectionofFlattens)
 LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
 LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2803,5 +2804,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
     LUAU_REQUIRE_NO_ERRORS(results);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
+{
+    ScopedFastFlag _[] = {
+        { FFlag::LuauSolverV2, true },
+        { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true }
+    };
+
+    loadDefinition(R"(
+        declare extern type Bar with
+        end
+    )");
+
+    CheckResult results = check(R"(
+        type function foo(t: type)
+            assert(t.tag == "extern")
+            return t
+        end
+
+        type T = foo<Bar>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
 
 TEST_SUITE_END();
