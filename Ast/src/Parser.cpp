@@ -2700,7 +2700,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
             };
 
         AstTypeNegation* nty = allocator.alloc<AstTypeNegation>(Location(loc), ty.type);
-        return { .type = nty, .typePack = {} };
+        return {nty, {}};
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
     {

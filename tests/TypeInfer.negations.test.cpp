@@ -156,4 +156,38 @@ TEST_CASE_FIXTURE(NegationFixture, "double_negation")
     LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
+/*
+TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~{ p: unknown }
+        type U = ~(number) -> unknown
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 1);
+    CHECK_EQ(result.errors[1].location.begin.line, 2);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = <U>(U) -> ~U
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location.begin.column, 27);
+}
+*/
+
 TEST_SUITE_END();
