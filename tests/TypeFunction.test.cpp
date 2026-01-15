@@ -1785,6 +1785,7 @@ struct TFFixture
     Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}, SolverMode::New};
     TypeCheckLimits limits;
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
+    Subtyping subtyping{getBuiltins(), arena, NotNull{&normalizer}, NotNull{&runtime}, NotNull{&ice}};
 
     BuiltinTypeFunctions builtinTypeFunctions;
 
@@ -1795,7 +1796,8 @@ struct TFFixture
         NotNull{&normalizer},
         NotNull{&runtime},
         NotNull{&ice},
-        NotNull{&limits}
+        NotNull{&limits},
+        NotNull{&subtyping}
     };
 
     NotNull<TypeFunctionContext> tfc{&tfc_};
