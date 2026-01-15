@@ -121,6 +121,26 @@ TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
     CHECK_EQ(result.errors[0].location.begin.line, 4);
 }
 
+TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true},
+        {FFlag::LuauSolverV2, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~"a"
+        local x: T = "b" :: "b"
+        x = nil
+        x = 5
+        x = "a"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 5);
+}
+
 TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 {
     ScopedFastFlag _[] = {
@@ -156,12 +176,12 @@ TEST_CASE_FIXTURE(NegationFixture, "double_negation")
     LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
-/*
 TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
+        {FFlag::LuauSolverV2, true}
     };
 
     CheckResult result = check(R"(
@@ -172,13 +192,16 @@ TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(result.errors[0].location.begin.line, 1);
     CHECK_EQ(result.errors[1].location.begin.line, 2);
+    CHECK(get<BadNegation>(result.errors[0]));
+    CHECK(get<BadNegation>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
+        {FFlag::LuauSolverV2, true}
     };
 
     CheckResult result = check(R"(
@@ -187,7 +210,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(result.errors[0].location.begin.column, 27);
+    CHECK(get<BadNegation>(result.errors[0]));
 }
-*/
 
 TEST_SUITE_END();

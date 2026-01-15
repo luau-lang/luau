@@ -2689,16 +2689,6 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
         nextLexeme();
 
         AstTypeOrPack ty = parseSimpleType(false, inDeclarationContext);
-        if (ty.typePack || ty.type->is<AstGenericType>())
-            return {
-                reportTypeError(
-                    loc,
-                    {},
-                    "Type packs and generics cannot be negated"
-                ),
-                {}
-            };
-
         AstTypeNegation* nty = allocator.alloc<AstTypeNegation>(Location(loc), ty.type);
         return {nty, {}};
     }

@@ -994,6 +994,11 @@ struct ErrorConverter
     {
         return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
     }
+
+    std::string operator()(const BadNegation& bn) const
+    {
+        return "Cannot negate " + toString(bn.inner) + ". Negating structural (table/function) and generic types are prohibited.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1435,6 +1440,10 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
+bool BadNegation::operator==(const BadNegation& rhs) const
+{
+    return inner == rhs.inner;
+}
 
 std::string toString(const TypeError& error)
 {
@@ -1688,6 +1697,10 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
         e.function = clone(e.function);
         e.arguments = clone(e.arguments);
+    }
+    else if constexpr (std::is_same_v<T, BadNegation>)
+    {
+        e.inner = clone(e.inner);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

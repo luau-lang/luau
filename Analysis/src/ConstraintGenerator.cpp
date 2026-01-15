@@ -4298,7 +4298,17 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     }
     else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
     {
-        result = arena->addType(NegationType{resolveType(scope, nty->type, inTypeArguments, replaceErrorWithFresh)});
+        TypeId inner = resolveType(scope, nty->type, inTypeArguments, replaceErrorWithFresh);
+
+        if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
+        {
+            reportError(nty->location, BadNegation{inner});
+            result = builtinTypes->errorType;
+        }
+        else if (!get<ErrorType>(inner)) // avoid excessive cascading
+            result = arena->addType(NegationType{inner});
+        else
+            result = builtinTypes->errorType;
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {
