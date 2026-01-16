@@ -271,6 +271,8 @@ const char* getCmdName(IrCmd cmd)
         return "INT_TO_NUM";
     case IrCmd::UINT_TO_NUM:
         return "UINT_TO_NUM";
+    case IrCmd::UINT_TO_FLOAT:
+        return "UINT_TO_FLOAT";
     case IrCmd::NUM_TO_INT:
         return "NUM_TO_INT";
     case IrCmd::NUM_TO_UINT:
@@ -335,6 +337,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_BUFFER_LEN";
     case IrCmd::CHECK_USERDATA_TAG:
         return "CHECK_USERDATA_TAG";
+    case IrCmd::CHECK_CMP_INT:
+        return "CHECK_CMP_INT";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:

@@ -17,6 +17,7 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 
 using namespace Luau;
 
@@ -1810,6 +1811,32 @@ function bindAction(callback: ActionCallback)
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(res);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_are_suppressing")
+{
+    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
+
+    TypeId tableOne = parseType("{foo: any, bar: any}");
+    TypeId tableTwo = parseType("{foo: number, bar: string}");
+
+    SubtypingResult sr = subtyping.isSubtype(tableOne, tableTwo, NotNull{rootScope.get()});
+
+    CHECK(!sr.isSubtype);
+    CHECK(sr.isErrorSuppressing);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_non_suppressing_if_any_mismatches_are_non_suppressing")
+{
+    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
+
+    TypeId tableOne = parseType("{foo: any, bar: string, baz: any}");
+    TypeId tableTwo = parseType("{foo: number, bar: number, baz: boolaen}");
+
+    SubtypingResult sr = subtyping.isSubtype(tableOne, tableTwo, NotNull{rootScope.get()});
+
+    CHECK(!sr.isSubtype);
+    CHECK(!sr.isErrorSuppressing);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")

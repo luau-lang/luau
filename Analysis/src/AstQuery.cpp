@@ -487,7 +487,7 @@ struct FindExprOrLocal : public AstVisitor
         return true;
     }
 
-    virtual bool visit(AstExprFunction* fn) override
+    bool visit(AstExprFunction* fn) override
     {
         for (size_t i = 0; i < fn->args.size; ++i)
         {
@@ -496,13 +496,13 @@ struct FindExprOrLocal : public AstVisitor
         return visit((class AstExpr*)fn);
     }
 
-    virtual bool visit(AstStatFor* forStat) override
+    bool visit(AstStatFor* forStat) override
     {
         visitLocal(forStat->var);
         return true;
     }
 
-    virtual bool visit(AstStatForIn* forIn) override
+    bool visit(AstStatForIn* forIn) override
     {
         for (AstLocal* var : forIn->vars)
         {

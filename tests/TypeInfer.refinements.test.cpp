@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 
 using namespace Luau;
 
@@ -3193,6 +3194,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181549_refined_string_should_be_subtype_
       end
 
       string.find(hello, "bye")
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read_type")
+{
+    ScopedFastFlag _{FFlag::LuauUnionOfTablesPreservesReadWrite, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type States = "Closed" | "Closing" | "Opening" | "Open"
+        export type MyType<A = any> = {
+            State: States,
+            IsOpen: boolean,
+            Open: (self: MyType<A>) -> (),
+        }
+
+        local value = {} :: MyType
+
+        function value:Open()
+            if self.IsOpen == true then
+            elseif self.State == "Closing" or self.State == "Opening" then
+                -- Prior, this line errored as we were erroneously refining
+                -- `self` with `{ State: "Closing" | "Opening" }` rather
+                -- than `{ read State: "Closing" | "Opening" }
+                self:Open()
+            end
+        end
     )"));
 }
 
