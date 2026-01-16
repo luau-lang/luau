@@ -35,8 +35,17 @@ inline int countrz(uint32_t n)
 inline int countrz(uint64_t n)
 {
 #ifdef _MSC_VER
+
+#ifdef _WIN64
     unsigned long rl;
     return _BitScanForward64(&rl, n) ? int(rl) : 64;
+#else
+    unsigned long rl;
+    if (_BitScanForward(&r, uint32_t(n)))
+        return rl;
+    return _BitScanForward(&rl, uint32_t(n >> 32)) ? int(rl) : 64;
+#endif
+
 #else
     return n == 0 ? 64 : __builtin_ctzll(n);
 #endif
