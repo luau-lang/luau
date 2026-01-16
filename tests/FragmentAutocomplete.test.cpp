@@ -29,7 +29,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
-LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
 LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
@@ -4527,7 +4526,6 @@ local function whatever() end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "in_place_edit_of_for_loop_before_in_keyword_returns_fragment_starting_from_for")
 {
-    ScopedFastFlag sff{FFlag::LuauForInRangesConsiderInLocation, true};
     std::string source = R"(
 local x = {}
 for i, value in x do

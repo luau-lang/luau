@@ -14,8 +14,9 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauSubtypingHandlesExternTypesWithIndexers)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
@@ -709,7 +710,19 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             local y = x[true]
         )");
 
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+        {
+            // clang-format off
+            const std::string expected =
+                "Expected this to be 'number | string', but got 'boolean';\n"
+                "this is because\n"
+                "\t* the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
+                "\t* the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
+            ;
+            // clang-format on
+            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+        }
+        else if (FFlag::LuauSolverV2)
         {
             if (FFlag::LuauBetterTypeMismatchErrors)
                 CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
@@ -732,7 +745,19 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             x[true] = 42
         )");
 
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+        {
+            // clang-format off
+            const std::string expected =
+                "Expected this to be 'number | string', but got 'boolean';\n"
+                "this is because\n"
+                "\t * the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
+                "\t * the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
+            ;
+            // clang-format on
+            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+        }
+        else if (FFlag::LuauSolverV2)
         {
             if (FFlag::LuauBetterTypeMismatchErrors)
                 CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
