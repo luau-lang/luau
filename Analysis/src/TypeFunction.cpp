@@ -684,7 +684,7 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     if (ctx->normalizer->sharedState->reentrantTypeReduction)
         return {};
 
-    TypeReductionRentrancyGuard _{ctx->normalizer->sharedState};
+    TypeReductionReentrancyGuard _{ctx->normalizer->sharedState};
     while (!reducer.done())
     {
         reducer.step();

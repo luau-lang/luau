@@ -34,18 +34,16 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
-LUAU_FASTFLAGVARIABLE(LuauNewOverloadResolver2)
 LUAU_FASTFLAGVARIABLE(LuauHandleFunctionOversaturation)
-LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
-LUAU_FASTFLAG(LuauAddRefinementToAssertions)
-LUAU_FASTFLAGVARIABLE(LuauSuppressIndexingIntoError)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
@@ -1339,8 +1337,16 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 
     if (const Scope* scope = findInnermostScope(stat->location))
     {
-        if (scope->isInvalidTypeAliasName(stat->name.value))
-            reportError(RecursiveRestraintViolation{}, stat->location);
+        if (FFlag::LuauReworkInfiniteTypeFinder)
+        {
+            if (auto loc = scope->isInvalidTypeAlias(stat->name.value))
+                reportError(RecursiveRestraintViolation{}, *loc);
+        }
+        else
+        {
+            if (scope->isInvalidTypeAliasName_DEPRECATED(stat->name.value))
+                reportError(RecursiveRestraintViolation{}, stat->location);
+        }
     }
 
     visitGenerics(stat->generics, stat->genericPacks);
@@ -1430,7 +1436,7 @@ void TypeChecker2::visit(AstExpr* expr, ValueContext context)
         return visit(e);
     else if (auto e = expr->as<AstExprInstantiate>())
     {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
         return visit(e);
     }
     else if (auto e = expr->as<AstExprInterpString>())
@@ -1589,7 +1595,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         return;
     }
 
-    if (FFlag::LuauExplicitTypeExpressionInstantiation)
+    if (FFlag::LuauExplicitTypeInstantiationSupport)
     {
         if (call->typeArguments.size)
         {
@@ -1763,220 +1769,126 @@ void TypeChecker2::visitCall(AstExprCall* call)
     DenseHashSet<TypeId> uniqueTypes{nullptr};
     findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
-    if (FFlag::LuauNewOverloadResolver2)
+    TypePackId argsPack = module->internalTypes.addTypePack(args);
+    const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
+
+    if (!result2.potentialOverloads.empty())
+        reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+
+    /*
+     * If one overload matches, stop.  Nothing to report.
+     *
+     * If 2 or more overloads match, report that it is ambiguous.  List the overloads that match.
+     *
+     * If 0 overloads match:
+     *      If multiple overloads are arity matches, but are nonviable, report MultipleNonviableOverloads and report the overloads that have matching
+     * arities. Note: Error suppressing overloads are ignored in this calculation! If only one overload is an arity match but it is nonviable, report
+     * subtyping errors for just that.
+     *
+     *      If no overloads are arity matches, list all overloads.
+     */
+
+    if (!result2.ok.empty())
     {
-        TypePackId argsPack = module->internalTypes.addTypePack(args);
-        const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
+        if (result2.ok.size() > 1)
+            reportError(AmbiguousFunctionCall{fnTy, argsPack}, call->location);
+        return;
+    }
 
-        if (!result2.potentialOverloads.empty())
-            reportError(InternalError{"Internal error: outstanding free or blocked type in function call"}, call->location);
+    std::vector<TypeId> overloadsToReport;
 
-        /*
-         * If one overload matches, stop.  Nothing to report.
-         *
-         * If 2 or more overloads match, report that it is ambiguous.  List the overloads that match.
-         *
-         * If 0 overloads match:
-         *      If multiple overloads are arity matches, but are nonviable, report MultipleNonviableOverloads and report the overloads that have matching arities.
-         *          Note: Error suppressing overloads are ignored in this calculation!
-         *      If only one overload is an arity match but it is nonviable, report subtyping errors for just that.
-         *
-         *      If no overloads are arity matches, list all overloads.
-         */
-
-        if (!result2.ok.empty())
+    if (1 == result2.incompatibleOverloads.size())
+    {
+        for (const auto& [ty, reasons] : result2.incompatibleOverloads)
         {
-            if (result2.ok.size() > 1)
-                reportError(AmbiguousFunctionCall{fnTy, argsPack}, call->location);
-            return;
-        }
-
-        std::vector<TypeId> overloadsToReport;
-
-        if (1 == result2.incompatibleOverloads.size())
-        {
-            for (const auto& [ty, reasons] : result2.incompatibleOverloads)
+            if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
             {
-                if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
-                {
-                    for (const SubtypingReasoning& reason : *sr)
-                        resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
-                }
-                else if (const auto errorVec = get_if<ErrorVec>(&reasons))
-                {
-                    reportErrors(*errorVec);
-                }
-                else
-                    LUAU_ASSERT(!"Unreachable");
+                for (const SubtypingReasoning& reason : *sr)
+                    resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
             }
-
-            return;
-        }
-
-        // TODO: arity mismatches need expected/actual counts.
-        const auto [argHead, _argTail] = flatten(argsPack);
-        if (result2.incompatibleOverloads.size() > 1)
-        {
-            overloadsToReport.reserve(result2.nonFunctions.size());
-            for (const auto& [overloadTy, _reasons] : result2.incompatibleOverloads)
+            else if (const auto errorVec = get_if<ErrorVec>(&reasons))
             {
-                if (!isErrorSuppressing(call->location, overloadTy))
-                    overloadsToReport.emplace_back(overloadTy);
+                reportErrors(*errorVec);
             }
-
-            // If all nonviable overloads are error suppressing, don't report anything.
-            if (!overloadsToReport.empty())
-            {
-                reportError(MultipleNonviableOverloads{argHead.size()}, call->location);
-                reportAvailableOverloads(module->errors, call->location, overloadsToReport);
-            }
-
-            return;
-        }
-
-        LUAU_ASSERT(0 == result2.ok.size() && 0 == result2.incompatibleOverloads.size());
-
-        if (1 == result2.arityMismatches.size())
-        {
-            const TypeId fnTy = follow(result2.arityMismatches.front());
-            const FunctionType* fn = get<FunctionType>(fnTy);
-            LUAU_ASSERT(fn);
-
-            if (fn)
-            {
-                const bool isVariadic = Luau::isVariadic(fn->argTypes);
-
-                auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                reportError(
-                    CountMismatch{
-                        minParams,
-                        optMaxParams,
-                        argHead.size(),
-                        CountMismatch::Arg,
-                        isVariadic
-                    },
-                    call->func->location
-                );
-                return;
-            }
-        }
-
-        if (!result2.arityMismatches.empty())
-        {
-            std::stringstream ss;
-            ss << "No overload for function accepts " << argHead.size() << " arguments.";
-            reportError(GenericError{ss.str()}, call->func->location);
-            reportAvailableOverloads(module->errors, call->func->location, result2.arityMismatches);
-            return;
-        }
-
-        if (!result2.nonFunctions.empty())
-        {
-            auto norm = normalizer.normalize(fnTy);
-            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
-                reportError(NormalizationTooComplex{}, call->func->location);
-            // At this point norm is non-null and inhabited.
-            if (!norm->shouldSuppressErrors())
-                reportError(CannotCallNonFunction{fnTy}, call->func->location);
-            return;
+            else
+                LUAU_ASSERT(!"Unreachable");
         }
 
         return;
     }
 
-    resolver.resolve_DEPRECATED(fnTy, &args, call->func, &argExprs, NotNull{&uniqueTypes});
-
-    auto norm = normalizer.normalize(fnTy);
-    if (!norm)
-        reportError(NormalizationTooComplex{}, call->func->location);
-    auto isInhabited = normalizer.isInhabited(norm.get());
-    if (isInhabited == NormalizationResult::HitLimits)
-        reportError(NormalizationTooComplex{}, call->func->location);
-
-    if (norm && norm->shouldSuppressErrors())
-        return; // error suppressing function type!
-    else if (!resolver.ok.empty())
-        return; // We found a call that works, so this is ok.
-    else if (!norm || isInhabited == NormalizationResult::False)
-        return; // Ok. Calling an uninhabited type is no-op.
-    else if (!resolver.nonviableOverloads.empty())
+    // TODO: arity mismatches need expected/actual counts.
+    const auto [argHead, _argTail] = flatten(argsPack);
+    if (result2.incompatibleOverloads.size() > 1)
     {
-        const bool reportedErrors =
-            reportNonviableOverloadErrors(resolver.nonviableOverloads, call->func->location, args.head.size(), call->location);
-        if (!reportedErrors)
-            return; // We did not report any errors, so we can just return.
-    }
-    else if (!resolver.arityMismatches.empty())
-    {
-        if (resolver.arityMismatches.size() == 1)
-            reportErrors(resolver.arityMismatches.front().second);
-        else
+        overloadsToReport.reserve(result2.nonFunctions.size());
+        for (const auto& [overloadTy, _reasons] : result2.incompatibleOverloads)
         {
-            std::string s = "No overload for function accepts ";
-            s += std::to_string(args.head.size());
-            s += " arguments.";
-            reportError(GenericError{std::move(s)}, call->location);
+            if (!isErrorSuppressing(call->location, overloadTy))
+                overloadsToReport.emplace_back(overloadTy);
+        }
+
+        // If all nonviable overloads are error suppressing, don't report anything.
+        if (!overloadsToReport.empty())
+        {
+            reportError(MultipleNonviableOverloads{argHead.size()}, call->location);
+            reportAvailableOverloads(module->errors, call->location, overloadsToReport);
+        }
+
+        return;
+    }
+
+    LUAU_ASSERT(0 == result2.ok.size() && 0 == result2.incompatibleOverloads.size());
+
+    if (1 == result2.arityMismatches.size())
+    {
+        const TypeId fnTy = follow(result2.arityMismatches.front());
+        const FunctionType* fn = get<FunctionType>(fnTy);
+        LUAU_ASSERT(fn);
+
+        if (fn)
+        {
+            const bool isVariadic = Luau::isVariadic(fn->argTypes);
+
+            auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+            reportError(CountMismatch{minParams, optMaxParams, argHead.size(), CountMismatch::Arg, isVariadic}, call->func->location);
+            return;
         }
     }
-    else if (!resolver.nonFunctions.empty())
-        reportError(CannotCallNonFunction{fnTy}, call->func->location);
-    else
-        LUAU_ASSERT(!"Generating the best possible error from this function call resolution was inexhaustive?");
 
-    if (resolver.nonviableOverloads.size() <= 1 && resolver.arityMismatches.size() <= 1)
+    if (!result2.arityMismatches.empty())
+    {
+        std::stringstream ss;
+        ss << "No overload for function accepts " << argHead.size() << " arguments.";
+        reportError(GenericError{ss.str()}, call->func->location);
+        reportAvailableOverloads(module->errors, call->func->location, result2.arityMismatches);
         return;
-
-    std::string s = "Available overloads: ";
-
-    std::vector<TypeId> overloads;
-    if (resolver.nonviableOverloads.empty())
-    {
-        for (const auto& [ty, p] : resolver.resolution)
-        {
-            if (p.first == OverloadResolver::TypeIsNotAFunction)
-                continue;
-
-            overloads.push_back(ty);
-        }
-    }
-    else
-    {
-        for (const auto& [ty, _] : resolver.nonviableOverloads)
-            overloads.push_back(ty);
     }
 
-    if (overloads.size() <= 1)
+    if (!result2.nonFunctions.empty())
+    {
+        auto norm = normalizer.normalize(fnTy);
+        if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
+            reportError(NormalizationTooComplex{}, call->func->location);
+        // At this point norm is non-null and inhabited.
+        if (!norm->shouldSuppressErrors())
+            reportError(CannotCallNonFunction{fnTy}, call->func->location);
         return;
-
-    for (size_t i = 0; i < overloads.size(); ++i)
-    {
-        if (i > 0)
-            s += (i == overloads.size() - 1) ? "; and " : "; ";
-
-        s += toString(overloads[i]);
     }
 
-    reportError(ExtraInformation{std::move(s)}, call->func->location);
 }
 
 void TypeChecker2::visit(AstExprCall* call)
 {
     std::optional<InConditionalContext> flipper;
-    if (FFlag::LuauAddRefinementToAssertions)
-    {
-        // We want to preserve the existing conditional context if we are in a `typeof` call.
-        if (!matchTypeOf(*call))
-            flipper.emplace(&typeContext, TypeContext::Default);
 
-        visit(call->func, ValueContext::RValue);
-    }
-    else
-    {
-        InConditionalContext flipper(&typeContext, TypeContext::Default);
-        visit(call->func, ValueContext::RValue);
-    }
+    // We want to preserve the existing conditional context if we are in a `typeof` call.
+    if (!matchTypeOf(*call))
+        flipper.emplace(&typeContext, TypeContext::Default);
 
-    if (FFlag::LuauAddRefinementToAssertions && matchAssert(*call) && call->args.size > 0)
+    visit(call->func, ValueContext::RValue);
+
+    if (matchAssert(*call) && call->args.size > 0)
     {
         {
             InConditionalContext flipper(&typeContext);
@@ -2143,24 +2055,19 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
         // if all of the typeArguments are a table type, the union must be a table, and so we shouldn't error.
         if (!std::all_of(begin(ut), end(ut), getTableType))
         {
-            if (FFlag::LuauSuppressIndexingIntoError)
+            switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
             {
-                switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
-                {
-                case ErrorSuppression::Suppress:
-                    break;
-                case ErrorSuppression::NormalizationFailed:
-                    reportError(NormalizationTooComplex{}, indexExpr->location);
-                    [[fallthrough]];
-                case ErrorSuppression::DoNotSuppress:
-                    if (FFlag::LuauFixIndexingUnionWithNonTable)
-                        reportError(NotATable{exprType}, indexExpr->location);
-                    else
-                        reportError(OptionalValueAccess{exprType}, indexExpr->location);
-                }
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                reportError(NormalizationTooComplex{}, indexExpr->location);
+                [[fallthrough]];
+            case ErrorSuppression::DoNotSuppress:
+                if (FFlag::LuauFixIndexingUnionWithNonTable)
+                    reportError(NotATable{exprType}, indexExpr->location);
+                else
+                    reportError(OptionalValueAccess{exprType}, indexExpr->location);
             }
-            else
-                reportError(NotATable{exprType}, indexExpr->location);
         }
     }
     else if (auto it = get<IntersectionType>(exprType))
@@ -2847,14 +2754,15 @@ void TypeChecker2::visit(AstExprIfElse* expr)
 
 void TypeChecker2::visit(AstExprInstantiate* explicitTypeInstantiation)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
-    checkTypeInstantiation(
-        explicitTypeInstantiation->expr,
-        lookupType(explicitTypeInstantiation->expr),
-        explicitTypeInstantiation->location,
-        explicitTypeInstantiation->typeArguments
-    );
+    if (FFlag::LuauExplicitTypeInstantiationSupport)
+        checkTypeInstantiation(
+            explicitTypeInstantiation->expr,
+            lookupType(explicitTypeInstantiation->expr),
+            explicitTypeInstantiation->location,
+            explicitTypeInstantiation->typeArguments
+        );
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -3199,7 +3107,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             if (FFlag::LuauIceLess)
             {
                 reportError(InternalError{"Subtyping test returned a reasoning with an invalid path"}, location);
-                return {}; // TOOD test this
+                return {}; // TODO test this
             }
             else
                 ice->ice("Subtyping test returned a reasoning with an invalid path", location);
@@ -3390,22 +3298,11 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         {
             // If we _happen_ to have an intersection of tables, let's try to
             // construct it and use it as the input to this algorithm.
-            if (FFlag::LuauSimplifyIntersectionNoTreeSet)
-            {
-                TypeIds parts;
-                parts.insert(begin(itv), end(itv));
-                TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
-                if (is<TableType>(simplified))
-                    return testPotentialLiteralIsSubtype(expr, simplified);
-            }
-            else
-            {
-
-                std::set<TypeId> parts{begin(itv), end(itv)};
-                TypeId simplified = simplifyIntersection_DEPRECATED(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
-                if (is<TableType>(simplified))
-                    return testPotentialLiteralIsSubtype(expr, simplified);
-            }
+            TypeIds parts;
+            parts.insert(begin(itv), end(itv));
+            TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+            if (is<TableType>(simplified))
+                return testPotentialLiteralIsSubtype(expr, simplified);
         }
 
         return testIsSubtype(exprType, expectedType, expr->location);
@@ -3838,8 +3735,8 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
             return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
         if (cls->indexer)
         {
-            TypeId inhabitatedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
-            return {normalizer.isInhabited(inhabitatedTestType), {cls->indexer->indexResultType}};
+            TypeId inhabitedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
+            return {normalizer.isInhabited(inhabitedTestType), {cls->indexer->indexResultType}};
         }
         return {NormalizationResult::False, {}};
     }
@@ -3938,7 +3835,7 @@ void TypeChecker2::checkTypeInstantiation(
     const AstArray<AstTypeOrPack>& typeArguments
 )
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSupport);
 
     const FunctionType* ftv = get<FunctionType>(follow(fnType));
     if (!ftv)

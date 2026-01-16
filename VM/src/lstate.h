@@ -175,7 +175,7 @@ typedef struct global_State
     GCObject* grayagain; // list of objects to be traversed atomically
     GCObject* weak;      // list of weak tables (to be cleared)
 
-    size_t GCthreshold;                       // when totalbytes > GCthreshold, run GC step
+    size_t GCthreshold;                       // when totalbytes >= GCthreshold, run GC step
     size_t totalbytes;                        // number of bytes currently allocated
 
     int gcgoal;                               // see LUAI_GCGOAL

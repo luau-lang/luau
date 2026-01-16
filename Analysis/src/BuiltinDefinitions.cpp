@@ -35,8 +35,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
-LUAU_FASTFLAG(LuauNewOverloadResolver2)
 LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
+LUAU_FASTFLAG(LuauStorePolarityInline)
 
 namespace Luau
 {
@@ -296,7 +296,8 @@ void addGlobalBinding(GlobalTypes& globals, const ScopePtr& scope, const std::st
 
 void addGlobalBinding(GlobalTypes& globals, const ScopePtr& scope, const std::string& name, Binding binding)
 {
-    inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{scope.get()}, binding.typeId);
+    if (!FFlag::LuauStorePolarityInline)
+        inferGenericPolarities_DEPRECATED(NotNull{&globals.globalTypes}, NotNull{scope.get()}, binding.typeId);
     scope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = binding;
 }
 
@@ -378,8 +379,10 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     );
     LUAU_ASSERT(loadResult.success);
 
-    TypeId genericK = arena.addType(GenericType{globalScope, "K"});
-    TypeId genericV = arena.addType(GenericType{globalScope, "V"});
+    TypeId genericK =
+        FFlag::LuauStorePolarityInline ? arena.addType(GenericType{globalScope, "K", Polarity::Mixed}) : arena.addType(GenericType{globalScope, "K"});
+    TypeId genericV =
+        FFlag::LuauStorePolarityInline ? arena.addType(GenericType{globalScope, "V", Polarity::Mixed}) : arena.addType(GenericType{globalScope, "V"});
     TypeId mapOfKtoV = arena.addType(TableType{{}, TableIndexer(genericK, genericV), globals.globalScope->level, TableState::Generic});
 
     std::optional<TypeId> stringMetatableTy = getMetatable(builtinTypes->stringType, builtinTypes);
@@ -428,14 +431,16 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
     addGlobalBinding(globals, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
 
-    TypeId genericMT = arena.addType(GenericType{globalScope, "MT"});
+    TypeId genericMT = FFlag::LuauStorePolarityInline ? arena.addType(GenericType{globalScope, "MT", Polarity::Mixed})
+                                                      : arena.addType(GenericType{globalScope, "MT"});
 
     TableType tab{TableState::Generic, globals.globalScope->level};
     TypeId tabTy = arena.addType(std::move(tab));
 
     TypeId tableMetaMT = arena.addType(MetatableType{tabTy, genericMT});
 
-    TypeId genericT = arena.addType(GenericType{globalScope, "T"});
+    TypeId genericT =
+        FFlag::LuauStorePolarityInline ? arena.addType(GenericType{globalScope, "T", Polarity::Mixed}) : arena.addType(GenericType{globalScope, "T"});
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
@@ -493,7 +498,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
-        TypeId genericT = arena.addType(GenericType{globalScope, "T"});
+        TypeId genericT = FFlag::LuauStorePolarityInline ? arena.addType(GenericType{globalScope, "T", Polarity::Mixed})
+                                                         : arena.addType(GenericType{globalScope, "T"});
+
         TypeId refinedTy = arena.addType(
             TypeFunctionInstanceType{
                 NotNull{
@@ -525,14 +532,20 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
             // the top table type.  We do the best we can by modelling these
             // functions using unconstrained generics.  It's not quite right,
             // but it'll be ok for now.
-            TypeId genericTy = arena.addType(GenericType{globalScope, "T"});
+            TypeId genericTy = FFlag::LuauStorePolarityInline ? arena.addType(GenericType{globalScope, "T", Polarity::Mixed})
+                                                              : arena.addType(GenericType{globalScope, "T"});
             TypePackId thePack = arena.addTypePack({genericTy});
             TypeId idTyWithMagic = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
             ttv->props["freeze"] = makeProperty(idTyWithMagic, "@luau/global/table.freeze");
-            inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTyWithMagic);
+
+            if (!FFlag::LuauStorePolarityInline)
+                inferGenericPolarities_DEPRECATED(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTyWithMagic);
 
             TypeId idTy = arena.addType(FunctionType{{genericTy}, {}, thePack, thePack});
-            inferGenericPolarities(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTy);
+
+            if (!FFlag::LuauStorePolarityInline)
+                inferGenericPolarities_DEPRECATED(NotNull{&globals.globalTypes}, NotNull{globalScope}, idTy);
+
             ttv->props["clone"] = makeProperty(idTy, "@luau/global/table.clone");
         }
         else
@@ -1719,11 +1732,7 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
 
     const auto& [paramTypes, paramTail] = extendTypePack(*arena, context.solver->builtinTypes, context.arguments, 1);
     if (paramTypes.empty() || context.callSite->args.size == 0)
-    {
-        if (!FFlag::LuauNewOverloadResolver2)
-            context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
-    }
 
     TypeId inputType = follow(paramTypes[0]);
 

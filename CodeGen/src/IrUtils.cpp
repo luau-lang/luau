@@ -20,7 +20,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenBetterSccRemoval)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNumToUintFoldRange)
 LUAU_FASTFLAG(LuauCodegenLinearAndOr)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
-
+LUAU_FASTFLAGVARIABLE(LuauCodegenTruncateFold)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
 
 namespace Luau
@@ -195,10 +195,24 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::SELECT_NUM:
     case IrCmd::MULADD_NUM:
         return IrValueKind::Double;
+    case IrCmd::ADD_FLOAT:
+    case IrCmd::SUB_FLOAT:
+    case IrCmd::MUL_FLOAT:
+    case IrCmd::DIV_FLOAT:
+    case IrCmd::MIN_FLOAT:
+    case IrCmd::MAX_FLOAT:
+    case IrCmd::UNM_FLOAT:
+    case IrCmd::FLOOR_FLOAT:
+    case IrCmd::CEIL_FLOAT:
+    case IrCmd::SQRT_FLOAT:
+    case IrCmd::ABS_FLOAT:
+    case IrCmd::SIGN_FLOAT:
+        return IrValueKind::Float;
     case IrCmd::ADD_VEC:
     case IrCmd::SUB_VEC:
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
+    case IrCmd::IDIV_VEC:
     case IrCmd::UNM_VEC:
     case IrCmd::SELECT_VEC:
     case IrCmd::SELECT_IF_TRUTHY:
@@ -220,6 +234,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_CMP_INT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
+    case IrCmd::JUMP_CMP_FLOAT:
     case IrCmd::JUMP_FORN_LOOP_COND:
     case IrCmd::JUMP_SLOT_MATCH:
         return IrValueKind::None;
@@ -247,7 +262,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Double;
     case IrCmd::NUM_TO_FLOAT:
         return IrValueKind::Float;
-    case IrCmd::NUM_TO_VEC:
+    case IrCmd::NUM_TO_VEC_DEPRECATED:
+    case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
         return IrValueKind::Tvalue;
     case IrCmd::TRUNCATE_UINT:
@@ -851,6 +867,68 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             substitute(function, inst, build.constDouble(v > 0.0 ? 1.0 : v < 0.0 ? -1.0 : 0.0));
         }
         break;
+    case IrCmd::ADD_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) + float(function.doubleOp(inst.b))));
+        break;
+    case IrCmd::SUB_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) - float(function.doubleOp(inst.b))));
+        break;
+    case IrCmd::MUL_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) * float(function.doubleOp(inst.b))));
+        break;
+    case IrCmd::DIV_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) / float(function.doubleOp(inst.b))));
+        break;
+    case IrCmd::MIN_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            float a1 = float(function.doubleOp(inst.a));
+            float a2 = float(function.doubleOp(inst.b));
+
+            substitute(function, inst, build.constDouble(a1 < a2 ? a1 : a2));
+        }
+        break;
+    case IrCmd::MAX_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            float a1 = float(function.doubleOp(inst.a));
+            float a2 = float(function.doubleOp(inst.b));
+
+            substitute(function, inst, build.constDouble(a1 > a2 ? a1 : a2));
+        }
+        break;
+    case IrCmd::UNM_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(-float(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::FLOOR_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(floorf(float(function.doubleOp(inst.a)))));
+        break;
+    case IrCmd::CEIL_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(ceilf(float(function.doubleOp(inst.a)))));
+        break;
+    case IrCmd::SQRT_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(sqrtf(float(function.doubleOp(inst.a)))));
+        break;
+    case IrCmd::ABS_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(fabsf(float(function.doubleOp(inst.a)))));
+        break;
+    case IrCmd::SIGN_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            float v = float(function.doubleOp(inst.a));
+
+            substitute(function, inst, build.constDouble(v > 0.0f ? 1.0f : v < 0.0f ? -1.0f : 0.0f));
+        }
+        break;
     case IrCmd::SELECT_NUM:
         if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
         {
@@ -1003,6 +1081,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 replace(function, block, index, {IrCmd::JUMP, inst.e});
         }
         break;
+    case IrCmd::JUMP_CMP_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            if (compare(float(function.doubleOp(inst.a)), float(function.doubleOp(inst.b)), conditionOp(inst.c)))
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
+            else
+                replace(function, block, index, {IrCmd::JUMP, inst.e});
+        }
+        break;
     case IrCmd::TRY_NUM_TO_INDEX:
         if (inst.a.kind == IrOpKind::Constant)
         {
@@ -1069,6 +1156,14 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         // double -> float for a constant just needs to lower precision
         if (inst.a.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::TRUNCATE_UINT:
+        if (FFlag::LuauCodegenTruncateFold)
+        {
+            // Truncating a constant integer is a no-op as constant integers only store 32 bits
+            if (inst.a.kind == IrOpKind::Constant)
+                substitute(function, inst, inst.a);
+        }
         break;
     case IrCmd::CHECK_TAG:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)

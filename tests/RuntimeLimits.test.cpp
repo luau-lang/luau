@@ -27,7 +27,6 @@ LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
-LUAU_FASTFLAG(LuauGenericCounterStepsInsteadOfCount)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -542,10 +541,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * 
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauGenericCounterStepsInsteadOfCount, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     ScopedFastInt sfi{FInt::LuauGenericCounterMaxSteps, 1};
 

@@ -772,6 +772,11 @@ void AssemblyBuilderX64::vsubsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vsubsd", dst, src1, src2, 0x5c, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vsubss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vsubss", dst, src1, src2, 0x5c, false, AVX_0F, AVX_F3);
+}
+
 void AssemblyBuilderX64::vsubps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vsubps", dst, src1, src2, 0x5c, false, AVX_0F, AVX_NP);
@@ -782,6 +787,11 @@ void AssemblyBuilderX64::vmulsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vmulsd", dst, src1, src2, 0x59, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vmulss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vmulss", dst, src1, src2, 0x59, false, AVX_0F, AVX_F3);
+}
+
 void AssemblyBuilderX64::vmulps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vmulps", dst, src1, src2, 0x59, false, AVX_0F, AVX_NP);
@@ -790,6 +800,11 @@ void AssemblyBuilderX64::vmulps(OperandX64 dst, OperandX64 src1, OperandX64 src2
 void AssemblyBuilderX64::vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vdivsd", dst, src1, src2, 0x5e, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vdivss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vdivss", dst, src1, src2, 0x5e, false, AVX_0F, AVX_F3);
 }
 
 void AssemblyBuilderX64::vdivps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
@@ -812,6 +827,11 @@ void AssemblyBuilderX64::vandnpd(OperandX64 dst, OperandX64 src1, OperandX64 src
     placeAvx("vandnpd", dst, src1, src2, 0x55, false, AVX_0F, AVX_66);
 }
 
+void AssemblyBuilderX64::vxorps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vxorps", dst, src1, src2, 0x57, false, AVX_0F, AVX_NP);
+}
+
 void AssemblyBuilderX64::vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vxorpd", dst, src1, src2, 0x57, false, AVX_0F, AVX_66);
@@ -830,6 +850,11 @@ void AssemblyBuilderX64::vorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 void AssemblyBuilderX64::vucomisd(OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vucomisd", src1, src2, 0x2e, false, AVX_0F, AVX_66);
+}
+
+void AssemblyBuilderX64::vucomiss(OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vucomiss", src1, src2, 0x2e, false, AVX_0F, AVX_NP);
 }
 
 void AssemblyBuilderX64::vcvttsd2si(OperandX64 dst, OperandX64 src)
@@ -865,6 +890,25 @@ void AssemblyBuilderX64::vcvtss2sd(OperandX64 dst, OperandX64 src1, OperandX64 s
 void AssemblyBuilderX64::vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode)
 {
     placeAvx("vroundsd", dst, src1, src2, uint8_t(roundingMode) | kRoundingPrecisionInexact, 0x0b, false, AVX_0F3A, AVX_66);
+}
+
+void AssemblyBuilderX64::vroundss(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode)
+{
+    placeAvx("vroundss", dst, src1, src2, uint8_t(roundingMode) | kRoundingPrecisionInexact, 0x0a, false, AVX_0F3A, AVX_66);
+}
+
+void AssemblyBuilderX64::vroundps(OperandX64 dst, OperandX64 src, RoundingModeX64 roundingMode)
+{
+    // 'placeAvx' wrapper doesn't have an overload for this archetype (opcode r/m, reg, imm8)
+    if (logText)
+        log("vroundps", dst, src, uint8_t(roundingMode) | kRoundingPrecisionInexact);
+
+    placeVex(dst, noreg, src, false, AVX_0F3A, AVX_66);
+    place(0x08);
+    placeRegAndModRegMem(dst, src, /*extraCodeBytes=*/1);
+    placeImm8(uint8_t(roundingMode) | kRoundingPrecisionInexact);
+
+    commit();
 }
 
 void AssemblyBuilderX64::vsqrtpd(OperandX64 dst, OperandX64 src)
@@ -952,9 +996,19 @@ void AssemblyBuilderX64::vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vmaxsd", dst, src1, src2, 0x5f, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vmaxss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vmaxss", dst, src1, src2, 0x5f, false, AVX_0F, AVX_F3);
+}
+
 void AssemblyBuilderX64::vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vminsd", dst, src1, src2, 0x5d, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vminss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vminss", dst, src1, src2, 0x5d, false, AVX_0F, AVX_F3);
 }
 
 void AssemblyBuilderX64::vcmpeqsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
@@ -965,6 +1019,11 @@ void AssemblyBuilderX64::vcmpeqsd(OperandX64 dst, OperandX64 src1, OperandX64 sr
 void AssemblyBuilderX64::vcmpltsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vcmpltsd", dst, src1, src2, 0x01, 0xc2, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vcmpltss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vcmpltss", dst, src1, src2, 0x01, 0xc2, false, AVX_0F, AVX_F3);
 }
 
 void AssemblyBuilderX64::vcmpeqps(OperandX64 dst, OperandX64 src1, OperandX64 src2)

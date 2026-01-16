@@ -10,7 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
-LUAU_FASTFLAG(LuauSimplifyIntersectionNoTreeSet)
 
 namespace
 {
@@ -674,8 +673,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
 {
-    ScopedFastFlag _{FFlag::LuauSimplifyIntersectionNoTreeSet, true};
-
     TableType empty;
     empty.state = TableState::Sealed;
     TypeId emptyTable = arena->addType(std::move(empty));

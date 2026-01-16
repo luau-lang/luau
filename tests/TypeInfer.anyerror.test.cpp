@@ -14,7 +14,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -367,8 +366,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "type_error_addition")
 {
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
-
     CheckResult result = check(R"(
 --!strict
 local foo = makesandwich()

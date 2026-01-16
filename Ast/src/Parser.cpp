@@ -20,7 +20,7 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
-LUAU_FASTFLAGVARIABLE(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
 
@@ -3087,7 +3087,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         {
             expr = parseFunctionArgs(expr, false);
         }
-        else if (FFlag::LuauExplicitTypeExpressionInstantiation && lexer.current().type == '<' && lexer.lookahead().type == '<')
+        else if (FFlag::LuauExplicitTypeInstantiationSyntax && lexer.current().type == '<' && lexer.lookahead().type == '<')
         {
             expr = parseExplicitTypeInstantiationExpr(start, *expr);
         }
@@ -3113,7 +3113,7 @@ AstExpr* Parser::parseMethodCall(Position start, AstExpr* expr)
     Name index = parseIndexName("method name", opPosition);
     AstExpr* func = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, ':');
 
-    if (FFlag::LuauExplicitTypeExpressionInstantiation)
+    if (FFlag::LuauExplicitTypeInstantiationSyntax)
     {
         AstArray<AstTypeOrPack> typeArguments;
         CstTypeInstantiation* cstTypeArguments = options.storeCstData ? allocator.alloc<CstTypeInstantiation>() : nullptr;
@@ -4114,7 +4114,7 @@ LUAU_NOINLINE AstExpr* Parser::parseExplicitTypeInstantiationExpr(Position start
 
 AstArray<AstTypeOrPack> Parser::parseTypeInstantiationExpr(CstTypeInstantiation* cstNodeOut, Location* endLocationOut)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
 
     LUAU_ASSERT(lexer.current().type == '<' && lexer.lookahead().type == '<');
 

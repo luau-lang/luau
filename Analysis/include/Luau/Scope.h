@@ -102,9 +102,19 @@ struct Scope
     std::optional<std::vector<TypeId>> interiorFreeTypes;
     std::optional<std::vector<TypePackId>> interiorFreeTypePacks;
 
+    // Currently, Luau has a very strict restriction on recursive uses of
+    // type aliases (see: https://github.com/luau-lang/luau/pull/68). We keep
+    // a mapping of type aliases that violate this restriction to the location
+    // that marked said trigger.
+    //
+    // CLI-183875: Surely this can be an AstName?
+    DenseHashMap<std::string, Location> invalidTypeAliases{{}};
+    std::optional<Location> isInvalidTypeAlias(const std::string& name) const;
+
+    // Clip with LuauReworkInfiniteTypeFinder
     // A set of type alias names that are invalid because they violate the recursion restrictions of type aliases.
-    DenseHashSet<std::string> invalidTypeAliasNames{""};
-    bool isInvalidTypeAliasName(const std::string& name) const;
+    DenseHashSet<std::string> invalidTypeAliasNames_DEPRECATED{""};
+    bool isInvalidTypeAliasName_DEPRECATED(const std::string& name) const;
 
     NotNull<Scope> findNarrowestScopeContaining(Location);
 };

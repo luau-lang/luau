@@ -200,6 +200,44 @@ enum class IrCmd : uint8_t
     // A: double
     SIGN_NUM,
 
+    // Add/Sub/Mul/Div/Idiv/Mod two float numbers
+    // A, B: float
+    // In final x64 lowering, B can also be Rn or Kn
+    ADD_FLOAT,
+    SUB_FLOAT,
+    MUL_FLOAT,
+    DIV_FLOAT,
+
+    // Get the minimum/maximum of two numbers
+    // If one of the values is NaN, 'B' is returned as the result
+    // A, B: float
+    MIN_FLOAT,
+    MAX_FLOAT,
+
+    // Negate a float number
+    // A: float
+    UNM_FLOAT,
+
+    // Round number to negative infinity
+    // A: float
+    FLOOR_FLOAT,
+
+    // Round number to positive infinity
+    // A: float
+    CEIL_FLOAT,
+
+    // Get square root of the argument
+    // A: float
+    SQRT_FLOAT,
+
+    // Get absolute value of the argument
+    // A: float
+    ABS_FLOAT,
+
+    // Get the sign of the argument
+    // A: float
+    SIGN_FLOAT,
+
     // Select B if C == D, otherwise select A
     // A, B: double (endpoints)
     // C, D: double (condition arguments)
@@ -222,6 +260,7 @@ enum class IrCmd : uint8_t
     SUB_VEC,
     MUL_VEC,
     DIV_VEC,
+    IDIV_VEC,
     // Lanewise A * B + C
     // A, B, C: TValue
     MULADD_VEC,
@@ -308,6 +347,13 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_NUM,
 
+    // Perform a conditional jump based on the result of float comparison
+    // A, B: float
+    // C: condition
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_CMP_FLOAT,
+
     // Perform jump based on a numerical loop condition (step > 0 ? idx <= limit : limit <= idx)
     // A: double (index)
     // B: double (limit)
@@ -384,7 +430,11 @@ enum class IrCmd : uint8_t
 
     // Converts a double number to a vector with the value in X/Y/Z
     // A: double
-    NUM_TO_VEC,
+    NUM_TO_VEC_DEPRECATED,
+
+    // Converts a float number to a vector with the value in X/Y/Z (use NUM_TO_FLOAT to convert from double)
+    // A: float
+    FLOAT_TO_VEC,
 
     // Adds VECTOR type tag to a vector, preserving X/Y/Z components
     // A: TValue
@@ -536,11 +586,14 @@ enum class IrCmd : uint8_t
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NODE_VALUE,
 
-    // Guard against access at specified offset/size overflowing the buffer length
+    // Guard against access at specified offset with [min, max) range of bytes overflowing the buffer length
+    // When base offset source number is provided, instruction will additionally validate that the integer and double versions of base are exact
     // A: pointer (buffer)
-    // B: int (offset)
-    // C: int (size)
-    // D: block/vmexit/undef
+    // B: int (base offset)
+    // C: int (access range min inclusive)
+    // D: int (access range max exclusive)
+    // E: double/undef (base offset source double)
+    // F: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_BUFFER_LEN,
 

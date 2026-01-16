@@ -801,7 +801,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
     build.ldrb(w2, x2);
     build.sub(x1, x1, x2);
 
-    build.add(x1, x1, 2);
+    build.add(x1, x1, uint16_t(2));
     build.add(x0, x0, x1, /* LSL */ 1);
 
     build.ret();
@@ -854,19 +854,19 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
 
     unwind->startInfo(UnwindBuilder::A64);
 
-    build.sub(sp, sp, 32);
+    build.sub(sp, sp, uint16_t(32));
     build.stp(x29, x30, mem(sp));
     build.str(x28, mem(sp, 16));
     build.mov(x29, sp);
 
     Label prologueEnd = build.setLabel();
 
-    build.add(x0, x0, 15);
+    build.add(x0, x0, uint16_t(15));
     build.blr(x1);
 
     build.ldr(x28, mem(sp, 16));
     build.ldp(x29, x30, mem(sp));
-    build.add(sp, sp, 32);
+    build.add(sp, sp, uint16_t(32));
 
     build.ret();
 

@@ -276,8 +276,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
     }
     else
     {
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("a"));
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("b"));
+        CHECK("number" == toString(requireType("a")));
+        CHECK("number" == toString(requireType("b")));
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ(

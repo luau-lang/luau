@@ -28,7 +28,7 @@ struct TxnLogFixture
     TypeId b = freshType(NotNull{&arena}, NotNull{&builtinTypes}, globalScope.get());
     TypeId c = freshType(NotNull{&arena}, NotNull{&builtinTypes}, childScope.get());
 
-    TypeId g = arena.addType(GenericType{"G"});
+    TypeId g = arena.addType(GenericType{"G", Polarity::Mixed});
 };
 
 TEST_SUITE_BEGIN("TxnLog");
