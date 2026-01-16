@@ -50,6 +50,8 @@ LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAGVARIABLE(LuauAvoidMintingMultipleBlockedTypesForGlobals)
 LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
+LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
+LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAGVARIABLE(LuauReadWriteOnlyIndexers)
 
 namespace Luau
