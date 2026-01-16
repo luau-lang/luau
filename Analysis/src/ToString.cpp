@@ -755,7 +755,10 @@ struct TypeStringifier
                 if (ttv.syntheticName)
                 {
                     state.result.invalid = true;
-                    state.emit(*ttv.syntheticName);
+                    if (FFlag::LuauToStringDecomposition)
+                        state.emitAndRecordSpan(*ttv.syntheticName, ty);
+                    else
+                        state.emit(*ttv.syntheticName);
                     stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                     return;
                 }
@@ -945,7 +948,7 @@ struct TypeStringifier
                 std::string saved = std::move(state.result.name);
                 size_t savedSpansSize = state.result.typeSpans.size();
 
-                bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+                bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) != nullptr || get<FunctionType>(el) != nullptr);
 
                 if (needParens)
                     state.emit("(");
@@ -1043,7 +1046,8 @@ struct TypeStringifier
 
                 std::string saved = std::move(state.result.name);
 
-                bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+                bool needParens = !state.cycleNames.contains(el) &&
+                                  (get<IntersectionType>(el) || get<FunctionType>(el)); // NOLINT(readability-implicit-bool-conversion)
 
                 if (needParens)
                     state.emit("(");
@@ -1124,7 +1128,7 @@ struct TypeStringifier
                 std::string saved = std::move(state.result.name);
                 size_t savedSpansSize = state.result.typeSpans.size();
 
-                bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
+                bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) != nullptr || get<FunctionType>(el) != nullptr);
 
                 if (needParens)
                     state.emit("(");
@@ -1197,7 +1201,8 @@ struct TypeStringifier
 
                 std::string saved = std::move(state.result.name);
 
-                bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
+                bool needParens =
+                    !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el)); // NOLINT(readability-implicit-bool-conversion)
 
                 if (needParens)
                     state.emit("(");
@@ -1609,6 +1614,43 @@ enum class IgnoreSyntheticName
 };
 
 static void tableTypeToStringDetailed(
+    TypeId ty,
+    const TableType* ttv,
+    const IgnoreSyntheticName ignoreSyntheticName,
+    ToStringResult& result,
+    const std::shared_ptr<Scope>& scope,
+    const std::string_view nameToUse,
+    TypeStringifier& tvs
+)
+{
+    LUAU_ASSERT(FFlag::LuauToStringIgnoresSyntheticName);
+
+    if (ignoreSyntheticName == IgnoreSyntheticName::No && ttv->syntheticName)
+        result.invalid = true;
+
+    // If scope is provided, add module name and check visibility
+    if (ttv->name && scope)
+    {
+        auto [success, moduleName] = canUseTypeNameInScope(scope, *ttv->name);
+
+        if (!success)
+            result.invalid = true;
+
+        if (moduleName)
+            result.name = format("%s.", moduleName->c_str());
+    }
+
+    size_t startPos = result.name.length();
+    result.name += nameToUse;
+    size_t endPos = result.name.length();
+
+    if (endPos > startPos)
+        result.typeSpans.emplace_back(ToStringSpan{startPos, endPos, ty});
+
+    tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
+}
+
+static void tableTypeToStringDetailed_DEPRECATED(
     const TableType* ttv,
     const IgnoreSyntheticName ignoreSyntheticName,
     ToStringResult& result,
@@ -1669,14 +1711,24 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
             {
                 if (auto ttv = get<TableType>(ty); ttv && ttv->name)
                 {
-                    tableTypeToStringDetailed(ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
+                    if (FFlag::LuauToStringDecomposition)
+                        tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
+                    else
+                        tableTypeToStringDetailed_DEPRECATED(ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
 
                     return result;
                 }
             }
             else if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
             {
-                tableTypeToStringDetailed(ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs);
+                if (FFlag::LuauToStringDecomposition)
+                    tableTypeToStringDetailed(
+                        ty, ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs
+                    );
+                else
+                    tableTypeToStringDetailed_DEPRECATED(
+                        ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs
+                    );
 
                 return result;
             }
