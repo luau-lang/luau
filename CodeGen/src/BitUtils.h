@@ -41,7 +41,7 @@ inline int countrz(uint64_t n)
     return _BitScanForward64(&rl, n) ? int(rl) : 64;
 #else
     unsigned long rl;
-    if (_BitScanForward(&r, uint32_t(n)))
+    if (_BitScanForward(&rl, uint32_t(n)))
         return rl;
     return _BitScanForward(&rl, uint32_t(n >> 32)) + 32 ? int(rl) : 64;
 #endif
