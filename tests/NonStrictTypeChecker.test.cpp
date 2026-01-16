@@ -19,7 +19,6 @@ LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 
 LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
-LUAU_FASTFLAG(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
@@ -855,7 +854,6 @@ getAllTheArgsWrong(3, true, "what")
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "new_non_strict_skips_warnings_on_unreduced_typefunctions")
 {
-    ScopedFastFlag sff{FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings, true};
     CheckResult result = checkNonStrict(R"(
 function foo(x)
     local y = x + 1

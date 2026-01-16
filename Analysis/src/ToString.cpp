@@ -41,6 +41,8 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
 
+LUAU_FASTFLAGVARIABLE(LuauToStringIgnoresSyntheticName)
+
 namespace Luau
 {
 
@@ -168,12 +170,16 @@ struct StringifierState
     size_t indentation = 0;
 
     bool exhaustive;
+    bool ignoreSyntheticName = false;
 
     StringifierState(ToStringOptions& opts, ToStringResult& result)
         : opts(opts)
         , result(result)
         , exhaustive(opts.exhaustive)
     {
+        if (FFlag::LuauToStringIgnoresSyntheticName)
+            ignoreSyntheticName = opts.ignoreSyntheticName;
+
         for (const auto& [_, v] : opts.nameMap.types)
             usedNames.insert(v);
         for (const auto& [_, v] : opts.nameMap.typePacks)
@@ -720,7 +726,20 @@ struct TypeStringifier
             }
         }
 
-        if (!state.exhaustive)
+        if (FFlag::LuauToStringIgnoresSyntheticName)
+        {
+            if (!state.exhaustive && !state.ignoreSyntheticName)
+            {
+                if (ttv.syntheticName)
+                {
+                    state.result.invalid = true;
+                    state.emit(*ttv.syntheticName);
+                    stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
+                    return;
+                }
+            }
+        }
+        else if (!state.exhaustive)
         {
             if (ttv.syntheticName)
             {
@@ -1373,6 +1392,43 @@ static void assignCycleNames(
     }
 }
 
+enum class IgnoreSyntheticName
+{
+    Yes,
+    No
+};
+
+static void tableTypeToStringDetailed(
+    const TableType* ttv,
+    const IgnoreSyntheticName ignoreSyntheticName,
+    ToStringResult& result,
+    const std::shared_ptr<Scope>& scope,
+    const std::string_view nameToUse,
+    TypeStringifier& tvs
+)
+{
+    LUAU_ASSERT(FFlag::LuauToStringIgnoresSyntheticName);
+
+    if (ignoreSyntheticName == IgnoreSyntheticName::No && ttv->syntheticName)
+        result.invalid = true;
+
+    // If scope is provided, add module name and check visibility
+    if (ttv->name && scope)
+    {
+        auto [success, moduleName] = canUseTypeNameInScope(scope, *ttv->name);
+
+        if (!success)
+            result.invalid = true;
+
+        if (moduleName)
+            result.name = format("%s.", moduleName->c_str());
+    }
+
+    result.name += nameToUse;
+
+    tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
+}
+
 ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 {
     /*
@@ -1397,12 +1453,36 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     if (!opts.exhaustive)
     {
-        if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
+        if (FFlag::LuauToStringIgnoresSyntheticName)
+        {
+            if (state.ignoreSyntheticName)
+            {
+                if (auto ttv = get<TableType>(ty); ttv && ttv->name)
+                {
+                    tableTypeToStringDetailed(ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
+
+                    return result;
+                }
+            }
+            else if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
+            {
+                tableTypeToStringDetailed(ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs);
+
+                return result;
+            }
+            else if (auto mtv = get<MetatableType>(ty); mtv && mtv->syntheticName)
+            {
+                result.invalid = true;
+                result.name = *mtv->syntheticName;
+                return result;
+            }
+        }
+        else if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
         {
             if (ttv->syntheticName)
                 result.invalid = true;
 
-            // If scope if provided, add module name and check visibility
+            // If scope is provided, add module name and check visibility
             if (ttv->name && opts.scope)
             {
                 auto [success, moduleName] = canUseTypeNameInScope(opts.scope, *ttv->name);

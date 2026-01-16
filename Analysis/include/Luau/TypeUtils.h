@@ -398,6 +398,8 @@ struct ContainsAnyGeneric final : public TypeOnceVisitor
     bool visit(TypeId ty) override;
     bool visit(TypePackId ty) override;
 
+    bool visit(TypeId ty, const ExternType&) override;
+
     /**
      * @returns if there is _any_ generic in `ty`
      */

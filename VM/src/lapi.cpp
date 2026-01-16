@@ -54,7 +54,7 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
 
 #define api_update_top(L, p) \
     { \
-        api_check(L, p >= L->base && p < L->ci->top); \
+        api_check(L, p >= L->base && p <= L->ci->top); \
         L->top = p; \
     }
 

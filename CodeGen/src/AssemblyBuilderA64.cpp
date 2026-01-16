@@ -7,8 +7,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
+LUAU_FASTFLAG(LuauCodegenLocationEndFix)
+LUAU_FASTFLAG(LuauCodegenUintToFloat)
 
 namespace Luau
 {
@@ -582,7 +584,7 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
 {
-    if (FFlag::LuauCodegenUpvalueLoadProp || FFlag::LuauCodegenSplitFloat)
+    if (FFlag::LuauCodegenUpvalueLoadProp2 || FFlag::LuauCodegenSplitFloat)
     {
         if (dst.kind == KindA64::d && src.kind == KindA64::d)
             placeR1("fmov", dst, src, 0b00'11110'01'1'0000'00'10000);
@@ -1005,10 +1007,23 @@ void AssemblyBuilderA64::scvtf(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::ucvtf(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d);
-    CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
+    if (FFlag::LuauCodegenUintToFloat)
+    {
+        CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
+        CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
 
-    placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
+        if (dst.kind == KindA64::d)
+            placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
+        else
+            placeR1("ucvtf", dst, src, 0b000'11110'00'1'00'011'000000);
+    }
+    else
+    {
+        CODEGEN_ASSERT(dst.kind == KindA64::d);
+        CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
+
+        placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
+    }
 }
 
 void AssemblyBuilderA64::fjcvtzs(RegisterA64 dst, RegisterA64 src)
@@ -1128,7 +1143,7 @@ uint32_t AssemblyBuilderA64::getCodeSize() const
 
 unsigned AssemblyBuilderA64::getInstructionCount() const
 {
-    return unsigned(getCodeSize()) / 4;
+    return FFlag::LuauCodegenLocationEndFix ? unsigned(getCodeSize()) : unsigned(getCodeSize()) / 4;
 }
 
 bool AssemblyBuilderA64::isMaskSupported(uint32_t mask)

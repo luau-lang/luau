@@ -5,7 +5,6 @@
 #include "Luau/Allocator.h"
 #include "Luau/Common.h"
 #include "Luau/Lexer.h"
-#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/ParseResult.h"
 #include "Luau/Compiler.h"
@@ -25,6 +24,7 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 
 LUAU_FASTFLAGVARIABLE(LuauUnionofIntersectionofFlattens)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 
 namespace Luau
 {
@@ -228,11 +228,12 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 }
 
 // Pushes a new type userdata onto the stack
-void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type)
+void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
 {
     // allocate a new type userdata
     TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
     *ptr = allocateTypeFunctionType(L, std::move(type));
+    const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
 
     // set the new userdata's metatable to type metatable
     luaL_getmetatable(L, "type");
@@ -756,6 +757,9 @@ static int setTableProp(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setproperty: expected self to be a table, but got %s instead", getTag(L, self).c_str());
 
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
     if (!tfst)
@@ -789,6 +793,9 @@ static int setReadTableProp(lua_State* L)
     auto tftt = getMutable<TypeFunctionTableType>(self);
     if (!tftt)
         luaL_error(L, "type.setreadproperty: expected self to be a table, but got %s instead", getTag(L, self).c_str());
+
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setreadproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
@@ -834,6 +841,9 @@ static int setWriteTableProp(lua_State* L)
     auto tftt = getMutable<TypeFunctionTableType>(self);
     if (!tftt)
         luaL_error(L, "type.setwriteproperty: expected self to be a table, but got %s instead", getTag(L, self).c_str());
+
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setwriteproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
@@ -956,6 +966,9 @@ static int setTableIndexer(lua_State* L)
     if (!tftt)
         luaL_error(L, "type.setindexer: expected self to be either a table, but got %s instead", getTag(L, self).c_str());
 
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setindexer: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     TypeFunctionTypeId value = getTypeUserData(L, 3);
 
@@ -996,6 +1009,9 @@ static int setTableMetatable(lua_State* L)
     auto tftt = getMutable<TypeFunctionTableType>(self);
     if (!tftt)
         luaL_error(L, "type.setmetatable: expected self to be a table, but got %s instead", getTag(L, self).c_str());
+
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setmetatable: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
     if (!get<TypeFunctionTableType>(arg))
@@ -1226,6 +1242,9 @@ static int setFunctionParameters(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setparameters: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setparameters: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
     tfft->argTypes = getTypePack(L, 2, 3);
 
     return 0;
@@ -1262,6 +1281,9 @@ static int setFunctionReturns(lua_State* L)
     if (!tfft)
         luaL_error(L, "type.setreturns: expected self to be a function, but got %s instead", getTag(L, self).c_str());
 
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setreturns: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
     tfft->retTypes = getTypePack(L, 2, 3);
 
     return 0;
@@ -1292,6 +1314,9 @@ static int setFunctionGenerics(lua_State* L)
     auto tfft = getMutable<TypeFunctionFunctionType>(self);
     if (!tfft)
         luaL_error(L, "type.setgenerics: expected self to be a function, but got %s instead", getTag(L, self).c_str());
+
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setgenerics: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     int argumentCount = lua_gettop(L);
     if (argumentCount > 3)
@@ -2289,6 +2314,11 @@ TypeFunctionProperty TypeFunctionProperty::rw(TypeFunctionTypeId read, TypeFunct
     p.readTy = read;
     p.writeTy = write;
     return p;
+}
+
+bool TypeFunctionProperty::isShared() const
+{
+    return readTy && writeTy && readTy == writeTy;
 }
 
 bool TypeFunctionProperty::isReadOnly() const

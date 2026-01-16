@@ -13,11 +13,12 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenExplicitUint16)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLocationEndFix)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge2)
 
 namespace Luau
 {
@@ -136,7 +137,7 @@ static void emitAddOffset(AssemblyBuilderA64& build, RegisterA64 dst, RegisterA6
 
 static void checkObjectBarrierConditions_DEPRECATED(AssemblyBuilderA64& build, RegisterA64 object, RegisterA64 temp, IrOp ra, int ratag, Label& skip)
 {
-    CODEGEN_ASSERT(!FFlag::LuauCodegenUpvalueLoadProp);
+    CODEGEN_ASSERT(!FFlag::LuauCodegenUpvalueLoadProp2);
 
     RegisterA64 tempw = castReg(KindA64::w, temp);
     AddressA64 addr = temp;
@@ -1632,6 +1633,13 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ucvtf(inst.regA64, temp);
         break;
     }
+    case IrCmd::UINT_TO_FLOAT:
+    {
+        inst.regA64 = regs.allocReg(KindA64::s, index);
+        RegisterA64 temp = tempInt(inst.a);
+        build.ucvtf(inst.regA64, temp);
+        break;
+    }
     case IrCmd::NUM_TO_INT:
     {
         inst.regA64 = regs.allocReg(KindA64::w, index);
@@ -1987,7 +1995,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     case IrCmd::GET_UPVALUE:
     {
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
         {
             inst.regA64 = regs.allocReg(KindA64::q, index);
 
@@ -2037,7 +2045,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::SET_UPVALUE:
     {
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
         {
             RegisterA64 temp1 = regs.allocTemp(KindA64::x);
             RegisterA64 temp2 = regs.allocTemp(KindA64::x);
@@ -2289,7 +2297,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge && FFlag::LuauCodegenNumIntFolds2)
+        if (FFlag::LuauCodegenBufferRangeMerge2 && FFlag::LuauCodegenNumIntFolds2)
         {
             int minOffset = intOp(inst.c);
             int maxOffset = intOp(inst.d);
@@ -2465,6 +2473,35 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         finalizeTargetLabel(inst.c, fresh);
         break;
     }
+    case IrCmd::CHECK_CMP_INT:
+    {
+        IrCondition cond = conditionOp(inst.c);
+
+        Label fresh; // used when guard aborts execution or jumps to a VM exit
+        Label& fail = getTargetLabel(inst.d, fresh);
+
+        if (cond == IrCondition::Equal && intOp(inst.b) == 0)
+        {
+            build.cbnz(regOp(inst.a), fail);
+        }
+        else if (cond == IrCondition::NotEqual && intOp(inst.b) == 0)
+        {
+            build.cbz(regOp(inst.a), fail);
+        }
+        else
+        {
+            RegisterA64 tempA = tempInt(inst.a);
+
+            if (inst.b.kind == IrOpKind::Constant && unsigned(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate)
+                build.cmp(tempA, uint16_t(intOp(inst.b)));
+            else
+                build.cmp(tempA, tempInt(inst.b));
+
+            build.b(getConditionInt(getNegatedCondition(cond)), fail);
+        }
+        finalizeTargetLabel(inst.d, fresh);
+        break;
+    }
     case IrCmd::INTERRUPT:
     {
         regs.spill(index);
@@ -2509,7 +2546,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp = regs.allocTemp(KindA64::x);
 
         Label skip;
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
             checkObjectBarrierConditions(regOp(inst.a), temp, noreg, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
         else
             checkObjectBarrierConditions_DEPRECATED(build, regOp(inst.a), temp, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
@@ -2556,7 +2593,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp = regs.allocTemp(KindA64::x);
 
         Label skip;
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
             checkObjectBarrierConditions(regOp(inst.a), temp, noreg, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
         else
             checkObjectBarrierConditions_DEPRECATED(build, regOp(inst.a), temp, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
@@ -3282,7 +3319,7 @@ void IrLoweringA64::finishFunction()
     }
 
     // An undefined instruction is placed after the function to be used as an aborting jump offset
-    function.endLocation = build.setLabel().location;
+    function.endLocation = FFlag::LuauCodegenLocationEndFix ? build.getLabelOffset(build.setLabel()) : build.setLabel().location;
     build.udf();
 
     if (stats)
@@ -3357,7 +3394,7 @@ void IrLoweringA64::checkSafeEnv(IrOp target, const IrBlock& next)
 
 void IrLoweringA64::checkObjectBarrierConditions(RegisterA64 object, RegisterA64 temp, RegisterA64 ra, IrOp raOp, int ratag, Label& skip)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp);
+    CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
 
     RegisterA64 tempw = castReg(KindA64::w, temp);
 
@@ -3544,7 +3581,7 @@ AddressA64 IrLoweringA64::tempAddr(IrOp op, int offset, RegisterA64 tempStorage)
         if (constantOffset / 4 <= AddressA64::kMaxOffset)
             return mem(rConstants, int(constantOffset));
 
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
         {
             RegisterA64 temp = tempStorage == noreg ? regs.allocTemp(KindA64::x) : tempStorage;
             CODEGEN_ASSERT(temp.kind == KindA64::x && "temp storage, when provided, must be an 'x' register");

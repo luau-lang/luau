@@ -259,6 +259,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/UserDefinedTypeFunction.h
     Analysis/include/Luau/VisitType.h
     Analysis/include/Luau/IterativeTypeVisitor.h
+    Analysis/include/Luau/IterativeTypeFunctionTypeVisitor.h
 
     Analysis/src/Anyification.cpp
     Analysis/src/ApplyTypeFunction.cpp
@@ -290,6 +291,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Instantiation2.cpp
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/IterativeTypeVisitor.cpp
+    Analysis/src/IterativeTypeFunctionTypeVisitor.cpp
     Analysis/src/JsonEmitter.cpp
     Analysis/src/Linter.cpp
     Analysis/src/LValue.cpp

@@ -16,7 +16,9 @@
 #include <optional>
 #include <sstream>
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal

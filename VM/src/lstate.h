@@ -188,8 +188,6 @@ typedef struct global_State
     struct lua_Page* allgcopages; // page linked list with all pages for all collectable object classes
     struct lua_Page* sweepgcopage; // position of the sweep in `allgcopages'
 
-    size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
-
     struct lua_State* mainthread;
     UpVal uvhead; // head of double-linked list of all open upvalues
     struct LuaTable* mt[LUA_T_COUNT]; // metatables for basic types
@@ -209,6 +207,10 @@ typedef struct global_State
     lua_Callbacks cb;
 
     lua_ExecutionCallbacks ecb;
+
+    alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
+
+    size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
     LuaTable* udatamt[LUA_UTAG_LIMIT]; // metatables for tagged userdata
