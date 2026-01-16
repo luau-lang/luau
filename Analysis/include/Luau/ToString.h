@@ -55,9 +55,19 @@ struct ToStringOptions
     std::vector<std::string> namedFunctionOverrideArgNames; // If present, named function argument names will be overridden
 };
 
+struct ToStringSpan
+{
+    size_t startPos;
+    size_t endPos;
+    TypeId type;
+};
+
 struct ToStringResult
 {
     std::string name;
+
+    // Records which TypeId produced each substring of the output. Only recorded for named types
+    std::vector<ToStringSpan> typeSpans;
 
     bool invalid = false;
     bool error = false;
