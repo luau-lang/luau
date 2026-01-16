@@ -44,6 +44,7 @@ LUAU_FASTFLAG(LuauTypeCheckerMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauCodegenChainedSpills)
 LUAU_FASTFLAG(LuauCodegenSpillRestoreFreeTemp)
 LUAU_FASTFLAG(LuauCodegenDwordSpillSlots)
+LUAU_FASTFLAG(LuauActivationRecordStopDeadnaming)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -2574,11 +2575,14 @@ TEST_CASE("IfElseExpression")
 // Optionally returns debug info for the first Luau stack frame that is encountered on the callstack.
 static std::optional<lua_Debug> getFirstLuauFrameDebugInfo(lua_State* L)
 {
-    static std::string_view kLua = "Lua";
+    static std::string_view kLuau = "Lua";
+    if (FFlag::LuauActivationRecordStopDeadnaming)
+        kLuau = "Luau";
+
     lua_Debug ar;
     for (int i = 0; lua_getinfo(L, i, "sl", &ar); i++)
     {
-        if (kLua == ar.what)
+        if (kLuau == ar.what)
             return ar;
     }
     return std::nullopt;
