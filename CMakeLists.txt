@@ -195,7 +195,7 @@ if(MSVC AND LUAU_BUILD_CLI)
 endif()
 
 if(MSVC AND LUAU_BUILD_TESTS)
-    # Luau.CLI.Test also needs increased stack size in Debug due to complex repl functionality and metatable traversals
+    # the default stack size that MSVC linker uses is 1 MB; we need more stack space in Debug because stack frames are larger
     set_target_properties(Luau.CLI.Test PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
 endif()
 
