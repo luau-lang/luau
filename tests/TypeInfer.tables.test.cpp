@@ -6753,7 +6753,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_writeonly")
     CHECK_EQ(3, result.errors[1].location.begin.line);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_readonly")
+TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_writeonly")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
