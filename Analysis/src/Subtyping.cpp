@@ -1986,14 +1986,21 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (superTable->indexer)
     {
-        if (FFlag::LuauReadWriteOnlyIndexers && superTable->indexer.has_value() && subTable->indexer.has_value())
-        {
-            if (((int)superTable->indexer->access & (int)subTable->indexer->access) == 0 || (int)superTable->indexer->access > (int)subTable->indexer->access)
-                return SubtypingResult{false}; /* .withBothComponent(TypePath::TypeField::IndexLookup); */ // Error is more confusing with this
-        }
-
         if (subTable->indexer)
+        {
+            if (FFlag::LuauReadWriteOnlyIndexers)
+            {
+                int superAccess = (int)superTable->indexer->access;
+                int subAccess = (int)subTable->indexer->access;
+
+                // First check: No coincident bits (Super is Read, Sub is Write, etc)
+                // Second check: Essentially if Super is ReadWrite and Sub is only Read or Write
+                if ((superAccess & subAccess) == 0 || (superAccess > subAccess))
+                    return SubtypingResult{false}.withBothComponent(TypePath::TypeField::IndexLookup);
+            }
+
             result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+        }
         else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
