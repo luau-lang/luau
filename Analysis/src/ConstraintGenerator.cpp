@@ -48,6 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -2057,7 +2058,25 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
         if (props.count(propName) == 0)
         {
-            props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            Property tableProp;
+
+            if (FFlag::LuauExternReadWriteAttributes)
+            {
+                if (prop.access == AstTableAccess::Read)
+                    tableProp = Property::readonly(propTy);
+                else if (prop.access == AstTableAccess::Write)
+                    tableProp = Property::writeonly(propTy);
+                else
+                    tableProp = Property::rw(propTy);
+
+                tableProp.location = prop.location;
+            }
+            else
+            {
+                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            }
+
+            props[propName] = tableProp;
         }
         else
         {
