@@ -37,13 +37,14 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
-LUAU_FASTFLAGVARIABLE(LuauIceLess)
-LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
-LUAU_FASTFLAGVARIABLE(LuauHandleFunctionOversaturation)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
-LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
+LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
+LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAGVARIABLE(LuauHandleFunctionOversaturation)
+LUAU_FASTFLAGVARIABLE(LuauIceLess)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
@@ -1473,7 +1474,8 @@ void TypeChecker2::visit(AstExprConstantBool* expr)
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
     SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
-    if (!isErrorSuppressing(expr->location, inferredType))
+    bool suppress = FFlag::LuauMorePreciseErrorSuppression ? r.isErrorSuppressing : isErrorSuppressing(expr->location, inferredType);
+    if (!suppress)
     {
         if (!r.isSubtype)
             reportError(TypeMismatch{inferredType, bestType}, expr->location);
@@ -1609,10 +1611,21 @@ void TypeChecker2::visitCall(AstExprCall* call)
         if (result.isSubtype)
             fnTy = follow(*selectedOverloadTy);
 
-        if (!isErrorSuppressing(call->location, *selectedOverloadTy))
+        if (FFlag::LuauMorePreciseErrorSuppression)
         {
-            for (auto& e : result.errors)
-                e.location = call->location;
+            if (result.isErrorSuppressing)
+            {
+                for (auto& e : result.errors)
+                    e.location = call->location;
+            }
+        }
+        else
+        {
+            if (!isErrorSuppressing(call->location, *selectedOverloadTy))
+            {
+                for (auto& e : result.errors)
+                    e.location = call->location;
+            }
         }
         reportErrors(std::move(result.errors));
         if (result.normalizationTooComplex)
@@ -3188,15 +3201,20 @@ Reasonings TypeChecker2::explainReasonings(TypePackId subTp, TypePackId superTp,
 
 void TypeChecker2::explainError(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& result)
 {
-    switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
-    {
-    case ErrorSuppression::Suppress:
+    if (FFlag::LuauMorePreciseErrorSuppression && result.isErrorSuppressing)
         return;
-    case ErrorSuppression::NormalizationFailed:
-        reportError(NormalizationTooComplex{}, location);
-        break;
-    case ErrorSuppression::DoNotSuppress:
-        break;
+    else
+    {
+        switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
+        {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::NormalizationFailed:
+            reportError(NormalizationTooComplex{}, location);
+            break;
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        }
     }
 
     Reasonings reasonings = explainReasonings(subTy, superTy, location, result);
@@ -3207,15 +3225,20 @@ void TypeChecker2::explainError(TypeId subTy, TypeId superTy, Location location,
 
 void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location location, const SubtypingResult& result)
 {
-    switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
-    {
-    case ErrorSuppression::Suppress:
+    if (FFlag::LuauMorePreciseErrorSuppression && result.isErrorSuppressing)
         return;
-    case ErrorSuppression::NormalizationFailed:
-        reportError(NormalizationTooComplex{}, location);
-        break;
-    case ErrorSuppression::DoNotSuppress:
-        break;
+    else
+    {
+        switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
+        {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::NormalizationFailed:
+            reportError(NormalizationTooComplex{}, location);
+            break;
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        }
     }
 
     Reasonings reasonings = explainReasonings(subTy, superTy, location, result);
@@ -3393,11 +3416,23 @@ bool TypeChecker2::testIsSubtype(TypeId subTy, TypeId superTy, Location location
     NotNull<Scope> scope{findInnermostScope(location)};
     SubtypingResult r = subtyping->isSubtype(subTy, superTy, scope);
 
-    if (!isErrorSuppressing(location, subTy))
+    if (FFlag::LuauMorePreciseErrorSuppression)
     {
+        if (r.isErrorSuppressing)
+            return r.isSubtype;
+
         for (auto& e : r.errors)
             e.location = location;
     }
+    else
+    {
+        if (!isErrorSuppressing(location, subTy))
+        {
+            for (auto& e : r.errors)
+                e.location = location;
+        }
+    }
+
     reportErrors(std::move(r.errors));
     if (r.normalizationTooComplex)
         reportError(NormalizationTooComplex{}, location);

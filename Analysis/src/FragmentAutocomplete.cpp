@@ -32,7 +32,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
 {
@@ -186,7 +185,7 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                     else
                     {
                         // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
-                        if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
+                        if (cursorPosition < forIn->inLocation.begin)
                             return nonEmpty;
                         else
                             return Location{forIn->inLocation.begin, cursorPosition};

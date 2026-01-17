@@ -184,6 +184,11 @@ if(MSVC AND LUAU_BUILD_CLI)
     set_target_properties(Luau.Repl.CLI PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
 endif()
 
+if(MSVC AND LUAU_BUILD_TESTS)
+    # the default stack size that MSVC linker uses is 1 MB; we need more stack space in Debug because stack frames are larger
+    set_target_properties(Luau.CLI.Test PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)
+endif()
+
 # embed .natvis inside the library debug information
 if(MSVC)
     target_link_options(Luau.Ast INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/Ast.natvis)

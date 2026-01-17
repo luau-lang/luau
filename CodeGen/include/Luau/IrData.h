@@ -410,7 +410,14 @@ enum class IrCmd : uint8_t
     // Convert integer into a double number
     // A: int
     INT_TO_NUM,
+
+    // Convert unsigned integer into a double number
+    // A: uint
     UINT_TO_NUM,
+
+    // Convert unsigned integer into a float number
+    // A: uint
+    UINT_TO_FLOAT,
 
     // Converts a double number to an integer. 'A' may be any representable integer in a double.
     // A: double
@@ -603,6 +610,13 @@ enum class IrCmd : uint8_t
     // C: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_USERDATA_TAG,
+
+    // Guard against the result of integer comparison being false
+    // A, B: int
+    // C: condition
+    // D: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_CMP_INT,
 
     // Special operations
 
@@ -1092,6 +1106,7 @@ inline constexpr uint32_t kBlockNoStartPc = ~0u;
 
 inline constexpr uint8_t kBlockFlagSafeEnvCheck = 1 << 0;
 inline constexpr uint8_t kBlockFlagSafeEnvClear = 1 << 1;
+inline constexpr uint8_t kBlockFlagEntryArgCheck = 1 << 2;
 
 struct IrBlock
 {

@@ -19,7 +19,7 @@
 LUAU_FASTFLAGVARIABLE(LuauCodegenBetterSccRemoval)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNumToUintFoldRange)
 LUAU_FASTFLAG(LuauCodegenLinearAndOr)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTruncateFold)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
 
@@ -255,6 +255,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
         return IrValueKind::Double;
+    case IrCmd::UINT_TO_FLOAT:
+        return IrValueKind::Float;
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
         return IrValueKind::Int;
@@ -284,7 +286,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CONCAT:
         return IrValueKind::None;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp ? IrValueKind::Tvalue : IrValueKind::None;
+        return FFlag::LuauCodegenUpvalueLoadProp2 ? IrValueKind::Tvalue : IrValueKind::None;
     case IrCmd::SET_UPVALUE:
     case IrCmd::CHECK_TAG:
     case IrCmd::CHECK_TRUTHY:
@@ -297,6 +299,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
     case IrCmd::CHECK_USERDATA_TAG:
+    case IrCmd::CHECK_CMP_INT:
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::BARRIER_OBJ:
@@ -1119,6 +1122,10 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         if (inst.a.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(double(unsigned(function.intOp(inst.a)))));
         break;
+    case IrCmd::UINT_TO_FLOAT:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(unsigned(function.intOp(inst.a)))));
+        break;
     case IrCmd::NUM_TO_INT:
         if (inst.a.kind == IrOpKind::Constant)
         {
@@ -1195,6 +1202,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             {
                 kill(function, inst);
             }
+        }
+        break;
+    case IrCmd::CHECK_CMP_INT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            if (compare(function.intOp(inst.a), function.intOp(inst.b), conditionOp(inst.c)))
+                kill(function, inst);
+            else
+                replace(function, block, index, {IrCmd::JUMP, inst.d}); // Shows a conflict in assumptions on this path
         }
         break;
     case IrCmd::BITAND_UINT:

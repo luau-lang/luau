@@ -377,3 +377,27 @@ const E* findError(const CheckResult& result)
             CHECK_MESSAGE(false, "Expected to find no " #Type " error"); \
         } \
     } while (false)
+
+#define CHECK_LONG_STRINGS_EQ(a, b) \
+    do \
+    { \
+        const auto aa = (a); \
+        const auto bb = (b); \
+        const auto aLines = split(aa, '\n'); \
+        const auto bLines = split(bb, '\n'); \
+        CHECK_MESSAGE(aLines.size() == bLines.size(), "Line counts don't match: " << aLines.size() << " != " << bLines.size()); \
+        bool anyWrong = false; \
+        for (size_t i = 0; i < std::min(aLines.size(), bLines.size()); ++i) \
+        { \
+            auto aLine = strip(aLines.at(i)); \
+            auto bLine = strip(bLines.at(i)); \
+            if (aLine != bLine) \
+                anyWrong = true; \
+            CHECK_MESSAGE(aLine == bLine, "Mismatch on line " << i << " between:\n\t«" << aLine << "»\nand\t«" << bLine << "»\n"); \
+        } \
+        if (anyWrong) \
+        { \
+            MESSAGE(aa); \
+            MESSAGE(bb); \
+        } \
+    } while (0)

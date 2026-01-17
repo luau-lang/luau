@@ -33,4 +33,7 @@ size_t hashRange(const char* data, size_t size);
 
 std::string escape(std::string_view s, bool escapeForInterpString = false);
 bool isIdentifier(std::string_view s);
+
+std::string_view strip(std::string_view s);
+
 } // namespace Luau

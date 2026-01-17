@@ -7,7 +7,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauPushTypeUnifyConstantHandling)
 
@@ -231,7 +232,21 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        // clang-format off
+        const std::string expected =
+            "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; \n"
+            "this is because \n"
+            "	 * the 1st component of the union is `\"foo\"`, and `\"bang\"` is not a subtype of `\"foo\"`\n"
+            "	 * the 2nd component of the union is `\"bar\"`, and `\"bang\"` is not a subtype of `\"bar\"`\n"
+            "	 * the 3rd component of the union is `\"baz\"`, and `\"bang\"` is not a subtype of `\"baz\"`"
+        ;
+        // clang-format on
+
+        CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+    }
+    else if (FFlag::LuauSolverV2)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK("Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'" == toString(result.errors[0]));

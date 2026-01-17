@@ -13,7 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenStorePriority)
 LUAU_FASTFLAG(LuauCodegenBetterSccRemoval)
 LUAU_FASTFLAG(LuauCodegenLinearAndOr)
 LUAU_FASTFLAG(LuauCodegenHydrateLoadWithTag)
@@ -21,7 +20,7 @@ LUAU_FASTFLAG(LuauCodegenNumToUintFoldRange)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
 LUAU_FASTFLAG(LuauCodegenGcoDse)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge2)
 
 using namespace Luau::CodeGen;
 
@@ -2785,7 +2784,7 @@ bb_fallback_1:
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
@@ -2855,7 +2854,7 @@ bb_fallback_1:
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLenghtChecksNegativeIndex")
 {
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
@@ -3093,7 +3092,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore3")
 {
-    ScopedFastFlag luauCodegenStorePriority{FFlag::LuauCodegenStorePriority, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
@@ -4005,6 +4003,77 @@ bb_0:
    STORE_SPLIT_TVALUE R8, tnumber, %2
    STORE_TVALUE R9, %11
    RETURN R8, 2i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "IndirectFloatLoadExtractionMustRespectVersion")
+{
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tvector), build.vmExit(1));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(5)), build.constTag(tvector), build.vmExit(1));
+
+    IrOp x1 = build.inst(IrCmd::FLOAT_TO_NUM, build.inst(IrCmd::LOAD_FLOAT, build.vmReg(4), build.constInt(0)));
+    IrOp x2 = build.inst(IrCmd::FLOAT_TO_NUM, build.inst(IrCmd::LOAD_FLOAT, build.vmReg(5), build.constInt(0)));
+
+    IrOp xMin = build.inst(IrCmd::NUM_TO_FLOAT, build.inst(IrCmd::MIN_NUM, x1, x2));
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(7), xMin, build.constDouble(0.0), build.constDouble(0.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(7), build.constTag(tvector));
+
+    IrOp xMinVec = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(7), build.constInt(0), build.constTag(tvector));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(6), xMinVec);
+
+    IrOp xMax = build.inst(IrCmd::NUM_TO_FLOAT, build.inst(IrCmd::MAX_NUM, x1, x2));
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(7), xMax, build.constDouble(0.0), build.constDouble(0.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(7), build.constTag(tvector));
+
+    IrOp xMaxVec = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(7), build.constInt(0), build.constTag(tvector));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(5), xMaxVec);
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), xMinVec);
+
+    IrOp xMinCopy = build.inst(IrCmd::FLOAT_TO_NUM, build.inst(IrCmd::LOAD_FLOAT, build.vmReg(4), build.constInt(0)));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), xMinCopy);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R4, R5
+   %0 = LOAD_TAG R4
+   CHECK_TAG %0, tvector, exit(1)
+   %2 = LOAD_TAG R5
+   CHECK_TAG %2, tvector, exit(1)
+   %4 = LOAD_FLOAT R4, 0i
+   %5 = FLOAT_TO_NUM %4
+   %6 = LOAD_FLOAT R5, 0i
+   %7 = FLOAT_TO_NUM %6
+   %8 = MIN_NUM %5, %7
+   %9 = NUM_TO_FLOAT %8
+   STORE_VECTOR R7, %9, 0, 0
+   STORE_TAG R7, tvector
+   %12 = LOAD_TVALUE R7, 0i, tvector
+   STORE_TVALUE R6, %12
+   %14 = MAX_NUM %5, %7
+   %15 = NUM_TO_FLOAT %14
+   STORE_VECTOR R7, %15, 0, 0
+   %18 = LOAD_TVALUE R7, 0i, tvector
+   STORE_TVALUE R5, %18
+   STORE_TVALUE R4, %12
+   %21 = EXTRACT_VEC %12, 0i
+   %22 = FLOAT_TO_NUM %21
+   STORE_DOUBLE R0, %22
+   STORE_TAG R0, tnumber
+   RETURN R0, 1i
 
 )");
 }

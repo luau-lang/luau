@@ -295,4 +295,21 @@ std::string escape(std::string_view s, bool escapeForInterpString)
 
     return r;
 }
+
+static bool isWhitespace(char c)
+{
+    return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+}
+
+std::string_view strip(std::string_view s)
+{
+    while (!s.empty() && isWhitespace(s.front()))
+        s.remove_prefix(1);
+
+    while (!s.empty() && isWhitespace(s.back()))
+        s.remove_suffix(1);
+
+    return s;
+}
+
 } // namespace Luau

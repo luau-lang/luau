@@ -20,7 +20,7 @@ struct NullConfigResolver : ConfigResolver
 {
     Config defaultConfig;
 
-    virtual const Config& getConfig(const ModuleName& name, const TypeCheckLimits& limits) const override
+    const Config& getConfig(const ModuleName& name, const TypeCheckLimits& limits) const override
     {
         return defaultConfig;
     }
