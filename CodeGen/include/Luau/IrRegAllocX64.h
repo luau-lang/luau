@@ -70,6 +70,9 @@ struct IrRegAllocX64
 
     uint32_t findInstructionWithFurthestNextUse(const std::array<uint32_t, 16>& regInstUsers) const;
 
+    bool isExtraSpillSlot(unsigned slot) const;
+    int getExtraSpillAddressOffset(unsigned slot) const;
+
     void assertFree(RegisterX64 reg) const;
     void assertAllFree() const;
     void assertNoSpills() const;

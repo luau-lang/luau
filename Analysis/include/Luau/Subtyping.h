@@ -102,11 +102,18 @@ struct MappedGenericEnvironment
     bool bindGeneric(TypePackId genericTp, TypePackId bindeeTp);
 };
 
+enum class SubtypingSuppressionPolicy
+{
+    Any,
+    All
+};
+
 struct SubtypingResult
 {
     bool isSubtype = false;
     bool normalizationTooComplex = false;
     bool isCacheable = true;
+    bool isErrorSuppressing = false;
     ErrorVec errors;
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
@@ -120,7 +127,7 @@ struct SubtypingResult
     /// If any generic bounds were invalid, report them here
     std::vector<GenericBoundsMismatch> genericBoundsMismatches;
 
-    SubtypingResult& andAlso(const SubtypingResult& other);
+    SubtypingResult& andAlso(const SubtypingResult& other, SubtypingSuppressionPolicy policy = SubtypingSuppressionPolicy::Any);
     SubtypingResult& orElse(const SubtypingResult& other);
     SubtypingResult& withBothComponent(TypePath::Component component);
     SubtypingResult& withSuperComponent(TypePath::Component component);
@@ -325,6 +332,12 @@ private:
         SubtypingEnvironment& env,
         const FunctionType* subFunction,
         const FunctionType* superFunction,
+        NotNull<Scope> scope
+    );
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const MetatableType* subMt,
+        const PrimitiveType* superPrim,
         NotNull<Scope> scope
     );
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const PrimitiveType* superPrim, NotNull<Scope> scope);

@@ -12,7 +12,7 @@
 
 #include "lstate.h"
 
-LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck);
+LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
 
 namespace Luau
 {
@@ -169,11 +169,11 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     // Unlikely, but this might be the last return from VM
     build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));
-    build.tbnz(w4, countrz(LUA_CALLINFO_RETURN), helpers.exitNoContinueVm);
+    build.tbnz(w4, countrz(uint32_t(LUA_CALLINFO_RETURN)), helpers.exitNoContinueVm);
 
     // Continue in interpreter if function has no native data
     build.ldr(w4, mem(x2, offsetof(CallInfo, flags)));
-    build.tbz(w4, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
+    build.tbz(w4, countrz(uint32_t(LUA_CALLINFO_NATIVE)), helpers.exitContinueVm);
 
     // Need to update state of the current function before we jump away
     build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));

@@ -10,7 +10,8 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState)
+LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
+LUAU_FASTFLAG(LuauCodegenLinearVecEq)
 
 namespace Luau
 {
@@ -110,7 +111,7 @@ void loadBytecodeTypeInfo(IrFunction& function)
     }
 
     // Preserve original information
-    if (FFlag::LuauCodegenSetBlockEntryState)
+    if (FFlag::LuauCodegenSetBlockEntryState2)
         function.bcOriginalTypeInfo = function.bcTypeInfo;
 
     CODEGEN_ASSERT(offset == size_t(proto->sizetypeinfo));
@@ -1343,12 +1344,25 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_JUMPBACK:
             case LOP_JUMPIF:
             case LOP_JUMPIFNOT:
+                break;
             case LOP_JUMPIFEQ:
             case LOP_JUMPIFLE:
             case LOP_JUMPIFLT:
             case LOP_JUMPIFNOTEQ:
             case LOP_JUMPIFNOTLE:
             case LOP_JUMPIFNOTLT:
+            {
+                if (FFlag::LuauCodegenLinearVecEq)
+                {
+                    int ra = LUAU_INSN_A(*pc);
+                    int rb = pc[1];
+
+                    bcType.a = regTags[ra];
+                    bcType.b = regTags[rb];
+                }
+
+                break;
+            }
             case LOP_JUMPX:
             case LOP_JUMPXEQKNIL:
             case LOP_JUMPXEQKB:

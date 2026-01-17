@@ -82,6 +82,9 @@ struct IrRegAllocA64
 
     uint32_t findInstructionWithFurthestNextUse(Set& set) const;
 
+    bool isExtraSpillSlot(unsigned slot) const;
+    int getExtraSpillAddressOffset(unsigned slot) const;
+
     Set& getSet(KindA64 kind);
 
     AssemblyBuilderA64& build;
@@ -95,7 +98,8 @@ struct IrRegAllocA64
     std::vector<Spill> spills;
 
     // which 8-byte slots are free
-    uint32_t freeSpillSlots = 0;
+    uint32_t freeSpillSlots_DEPRECATED = 0;
+    uint64_t freeSpillSlots_NEW = 0;
 
     bool error = false;
 };

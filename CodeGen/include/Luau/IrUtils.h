@@ -5,8 +5,7 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenFloatLoadStoreProp)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 
 namespace Luau
 {
@@ -67,6 +66,7 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
     case IrCmd::CHECK_USERDATA_TAG:
+    case IrCmd::CHECK_CMP_INT:
         return true;
     default:
         break;
@@ -146,6 +146,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NEW_USERDATA:
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
+    case IrCmd::UINT_TO_FLOAT:
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
     case IrCmd::FLOAT_TO_NUM:
@@ -181,7 +182,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BUFFER_READF64:
         return true;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp;
+        return FFlag::LuauCodegenUpvalueLoadProp2;
     default:
         break;
     }
@@ -226,7 +227,7 @@ inline bool hasSideEffects(IrCmd cmd)
     if (cmd == IrCmd::INVOKE_FASTCALL)
         return true;
 
-    if (FFlag::LuauCodegenFloatLoadStoreProp && isPseudo(cmd))
+    if (isPseudo(cmd))
         return false;
 
     // Instructions that don't produce a result most likely have other side-effects to make them useful
@@ -237,6 +238,45 @@ inline bool hasSideEffects(IrCmd cmd)
 inline bool producesDirtyHighRegisterBits(IrCmd cmd)
 {
     return cmd == IrCmd::NUM_TO_UINT || cmd == IrCmd::INVOKE_FASTCALL || cmd == IrCmd::CMP_ANY;
+}
+
+// Returns a condition that for 'a op b' will result in '!(a op b)'
+inline IrCondition getNegatedCondition(IrCondition cond)
+{
+    switch (cond)
+    {
+    case IrCondition::Equal:
+        return IrCondition::NotEqual;
+    case IrCondition::NotEqual:
+        return IrCondition::Equal;
+    case IrCondition::Less:
+        return IrCondition::NotLess;
+    case IrCondition::NotLess:
+        return IrCondition::Less;
+    case IrCondition::LessEqual:
+        return IrCondition::NotLessEqual;
+    case IrCondition::NotLessEqual:
+        return IrCondition::LessEqual;
+    case IrCondition::Greater:
+        return IrCondition::NotGreater;
+    case IrCondition::NotGreater:
+        return IrCondition::Greater;
+    case IrCondition::GreaterEqual:
+        return IrCondition::NotGreaterEqual;
+    case IrCondition::NotGreaterEqual:
+        return IrCondition::GreaterEqual;
+    case IrCondition::UnsignedLess:
+        return IrCondition::UnsignedGreaterEqual;
+    case IrCondition::UnsignedLessEqual:
+        return IrCondition::UnsignedGreater;
+    case IrCondition::UnsignedGreater:
+        return IrCondition::UnsignedLessEqual;
+    case IrCondition::UnsignedGreaterEqual:
+        return IrCondition::UnsignedLess;
+    default:
+        CODEGEN_ASSERT(!"Unsupported condition");
+        return IrCondition::Count;
+    }
 }
 
 IrValueKind getCmdValueKind(IrCmd cmd);
