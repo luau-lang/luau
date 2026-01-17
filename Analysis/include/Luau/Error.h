@@ -594,6 +594,14 @@ struct AmbiguousFunctionCall
     bool operator==(const AmbiguousFunctionCall& rhs) const;
 };
 
+// Error for attempting to negate a structural or generic type
+struct InvalidNegation
+{
+    TypeId inner; // type being negated
+
+    bool operator==(const InvalidNegation& rhs) const;
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -656,7 +664,8 @@ using TypeErrorData = Variant<
     UnappliedTypeFunction,
     InstantiateGenericsOnNonFunction,
     TypeInstantiationCountMismatch,
-    AmbiguousFunctionCall>;
+    AmbiguousFunctionCall,
+    InvalidNegation>;
 
 struct TypeErrorSummary
 {

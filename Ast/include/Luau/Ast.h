@@ -1210,6 +1210,18 @@ public:
     void visit(AstVisitor* visitor) override;
 };
 
+class AstTypeNegation : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeNegation)
+
+    AstTypeNegation(const Location& location, AstType* type);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstType* type;
+};
+
 class AstTypeUnion : public AstType
 {
 public:

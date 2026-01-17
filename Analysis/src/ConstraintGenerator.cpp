@@ -48,6 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -3858,10 +3859,13 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (is<TypeFunctionInstanceType>(follow(result)))
+    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)))
     {
-        reportError(ty->location, UnappliedTypeFunction{});
-        addConstraint(scope, ty->location, ReduceConstraint{result});
+        if (!FFlag::LuauTypeNegationSupport || (tfit->typeArguments.empty() && tfit->packArguments.empty()))
+        {
+            reportError(ty->location, UnappliedTypeFunction{});
+            addConstraint(scope, ty->location, ReduceConstraint{result});
+        }
     }
 
     if (FFlag::LuauStorePolarityInline)
@@ -4140,6 +4144,28 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (ty->is<AstTypeOptional>())
     {
         result = builtinTypes->nilType;
+    }
+    else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
+    {
+        TypeId inner = resolveType(scope, nty->type, inTypeArguments, replaceErrorWithFresh);
+
+        if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
+        {
+            reportError(nty->location, InvalidNegation{inner});
+            result = builtinTypes->errorType;
+        }
+        else if (!get<ErrorType>(inner)) // avoid excessive cascading
+        {
+            result = createTypeFunctionInstance(
+                builtinTypes->typeFunctions->negateFunc,
+                {inner},
+                {},
+                scope,
+                ty->location
+            );
+        }
+        else
+            result = builtinTypes->errorType;
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {
