@@ -2738,17 +2738,15 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
         return {std::nullopt, Reduction::MaybeOk, {inner}, {}};
 
     if (is<TableType>(inner) || is<MetatableType>(inner) || is<FunctionType>(inner) || is<GenericType>(inner))
-        return {ctx->builtins->errorType, Reduction::Erroneous, {}, {}};
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     TypeId negated = ctx->arena->addType(NegationType{inner});
-    std::shared_ptr<const NormalizedType> normalized = ctx->normalizer->normalize(negated);
+    std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(negated);
+    NormalizationResult inhabited = ctx->normalizer->isInhabited(normTy.get());
 
-    if (!normalized)
+    // if the type failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normTy || inhabited == NormalizationResult::HitLimits)
         return {std::nullopt, Reduction::MaybeOk, {}, {}};
-
-    auto result = ctx->normalizer->isInhabited(normalized.get());
-    if (result == NormalizationResult::False)
-        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     return {negated, Reduction::MaybeOk, {}, {}};
 }
