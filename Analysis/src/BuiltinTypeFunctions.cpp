@@ -2719,6 +2719,40 @@ TypeFunctionReductionResult<TypeId> weakoptionalTypeFunc(
     return {targetTy, Reduction::MaybeOk, {}, {}};
 }
 
+TypeFunctionReductionResult<TypeId> negateTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("negate type function: encountered a type function instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId inner = follow(typeParams.at(0));
+
+    if (isPending(inner, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {inner}, {}};
+
+    if (is<TableType>(inner) || is<MetatableType>(inner) || is<FunctionType>(inner) || is<GenericType>(inner))
+        return {ctx->builtins->errorType, Reduction::Erroneous, {}, {}};
+
+    TypeId negated = ctx->arena->addType(NegationType{inner});
+    std::shared_ptr<const NormalizedType> normalized = ctx->normalizer->normalize(negated);
+
+    if (!normalized)
+        return {std::nullopt, Reduction::MaybeOk, {}, {}};
+
+    auto result = ctx->normalizer->isInhabited(normalized.get());
+    if (result == NormalizationResult::False)
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
+
+    return {negated, Reduction::MaybeOk, {}, {}};
+}
+
 BuiltinTypeFunctions::BuiltinTypeFunctions()
     : userFunc{"user", userDefinedTypeFunction}
     , notFunc{"not", notTypeFunction}
@@ -2740,6 +2774,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}
+    , negateFunc{"negate", negateTypeFunction}
     , keyofFunc{"keyof", keyofTypeFunction}
     , rawkeyofFunc{"rawkeyof", rawkeyofTypeFunction}
     , indexFunc{"index", indexTypeFunction}

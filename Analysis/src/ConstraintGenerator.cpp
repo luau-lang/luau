@@ -4152,7 +4152,34 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
             result = builtinTypes->errorType;
         }
         else if (!get<ErrorType>(inner)) // avoid excessive cascading
-            result = arena->addType(NegationType{inner});
+        {
+            //result = arena->addType(NegationType{inner});
+            //result = arena->addType(PendingExpansionType{std::nullopt, AstName("negate"), { inner }, {}});
+
+            // If we're not in a type argument context, we need to create a constraint that expands this.
+            // The dispatching of the above constraint will queue up additional constraints for nested
+            // type function applications.
+            //if (!inTypeArguments)
+            //    addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
+
+            //result = arena->addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->negateFunc, { inner }});
+            //addConstraint(scope, ty->location, ReduceConstraint{/* target */ result});
+
+            //TypeId negation = createTypeFunctionInstance(
+            //    builtinTypes->typeFunctions->negateFunc,
+            //    {inner},
+            //    {},
+            //    scope,
+            //    ty->location
+            //);
+
+            TypeId negation = arena->addTypeFunction(builtinTypes->typeFunctions->negateFunc, {inner}, {});
+            NotNull<Constraint> constraint = addConstraint(scope, ty->location, ReduceConstraint{negation});
+
+            BlockedType bty;
+            bty.setOwner(constraint);
+            result = arena->addType(bty);
+        }
         else
             result = builtinTypes->errorType;
     }

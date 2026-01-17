@@ -1008,7 +1008,19 @@ struct ErrorConverter
 
     std::string operator()(const BadNegation& bn) const
     {
-        return "Cannot negate " + toString(bn.inner) + ". Negating structural (table/function) and generic types are prohibited.";
+        std::string message = "Cannot negate " + toString(bn.inner) + " because it is a ";
+
+        if (get<TableType>(bn.inner) || get<MetatableType>(bn.inner))
+            message += "table type";
+        else if (get<FunctionType>(bn.inner))
+            message += "function type";
+        else if (get<GenericType>(bn.inner))
+            message += "generic type";
+        else
+            message += "structural or generic type";
+
+        message += ".";
+        return message;
     }
 };
 
