@@ -301,8 +301,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnappliedTypeFunction {}";
     else if constexpr (std::is_same_v<T, AmbiguousFunctionCall>)
         stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
-    else if constexpr (std::is_same_v<T, BadNegation>)
-        stream << "BadNegation { " << toString(err.inner) << " }";
+    else if constexpr (std::is_same_v<T, InvalidNegation>)
+        stream << "InvalidNegation { " << toString(err.inner) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

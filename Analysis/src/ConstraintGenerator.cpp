@@ -4151,7 +4151,7 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
 
         if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
         {
-            reportError(nty->location, BadNegation{inner});
+            reportError(nty->location, InvalidNegation{inner});
             result = builtinTypes->errorType;
         }
         else if (!get<ErrorType>(inner)) // avoid excessive cascading

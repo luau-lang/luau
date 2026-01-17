@@ -1006,20 +1006,20 @@ struct ErrorConverter
         return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
     }
 
-    std::string operator()(const BadNegation& bn) const
+    std::string operator()(const InvalidNegation& bn) const
     {
-        std::string message = "Cannot negate " + toString(bn.inner) + " because it is a ";
+        std::string message = "It is not possible to negate the type " + toString(bn.inner) + " as ";
 
         if (get<TableType>(bn.inner) || get<MetatableType>(bn.inner))
-            message += "table type";
+            message += "the negation of a table type";
         else if (get<FunctionType>(bn.inner))
-            message += "function type";
+            message += "the negation of a function type";
         else if (get<GenericType>(bn.inner))
-            message += "generic type";
+            message += "the negation of a generic type";
         else
-            message += "structural or generic type";
+            message += "it";
 
-        message += ".";
+        message += " would not be well-defined.";
         return message;
     }
 };
@@ -1463,7 +1463,7 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
-bool BadNegation::operator==(const BadNegation& rhs) const
+bool InvalidNegation::operator==(const InvalidNegation& rhs) const
 {
     return inner == rhs.inner;
 }
@@ -1721,7 +1721,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.function = clone(e.function);
         e.arguments = clone(e.arguments);
     }
-    else if constexpr (std::is_same_v<T, BadNegation>)
+    else if constexpr (std::is_same_v<T, InvalidNegation>)
     {
         e.inner = clone(e.inner);
     }

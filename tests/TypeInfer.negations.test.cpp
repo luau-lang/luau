@@ -192,8 +192,8 @@ TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(result.errors[0].location.begin.line, 1);
     CHECK_EQ(result.errors[1].location.begin.line, 2);
-    CHECK(get<BadNegation>(result.errors[0]));
-    CHECK(get<BadNegation>(result.errors[1]));
+    CHECK(get<InvalidNegation>(result.errors[0]));
+    CHECK(get<InvalidNegation>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
@@ -210,7 +210,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(result.errors[0].location.begin.column, 27);
-    CHECK(get<BadNegation>(result.errors[0]));
+    CHECK(get<InvalidNegation>(result.errors[0]));
 }
 
 TEST_SUITE_END();
