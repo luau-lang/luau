@@ -4532,7 +4532,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
         type U = {write [string]: boolean}
     )");
 
-    if (FFlag::LuauReadWriteOnlyIndexers)
+    if (FFlag::LuauSolverV2 && FFlag::LuauReadWriteOnlyIndexers)
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     else
     {
@@ -4719,26 +4719,6 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
     CHECK(Location{{4, 18}, {4, 22}} == result.errors[2].location);
     CHECK("write keyword is illegal here" == toString(result.errors[3]));
     CHECK(Location{{5, 18}, {5, 23}} == result.errors[3].location);
-}
-
-TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
-{
-    CheckResult result = check(R"(
-        type T = {read [string]: number}
-        type U = {write [string]: boolean}
-    )");
-
-    if (FFlag::LuauReadWriteOnlyIndexers)
-        LUAU_REQUIRE_ERROR_COUNT(0, result);
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-        CHECK("read keyword is illegal here" == toString(result.errors[0]));
-        CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
-        CHECK("write keyword is illegal here" == toString(result.errors[1]));
-        CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
