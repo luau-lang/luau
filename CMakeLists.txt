@@ -162,9 +162,9 @@ if(LUAU_EXTERN_C)
     # enable extern "C" for VM (lua.h, lualib.h) and Compiler (luacode.h) to make Luau friendlier to use from non-C++ languages
     # note that we enable LUA_USE_LONGJMP=1 as well; otherwise functions like luaL_error will throw C++ exceptions, which can't be done from extern "C" functions
     target_compile_definitions(Luau.VM PUBLIC LUA_USE_LONGJMP=1)
-    target_compile_definitions(Luau.VM PUBLIC LUA_API=extern\"C\")
-    target_compile_definitions(Luau.Compiler PUBLIC LUACODE_API=extern\"C\")
-    target_compile_definitions(Luau.CodeGen PUBLIC LUACODEGEN_API=extern\"C\")
+    target_compile_definitions(Luau.VM PUBLIC $<$<COMPILE_LANGUAGE:CXX>:LUA_API=extern\"C\">)
+    target_compile_definitions(Luau.Compiler PUBLIC $<$<COMPILE_LANGUAGE:CXX>:LUACODE_API=extern\"C\">)
+    target_compile_definitions(Luau.CodeGen PUBLIC $<$<COMPILE_LANGUAGE:CXX>:LUACODEGEN_API=extern\"C\">)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
