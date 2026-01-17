@@ -2,10 +2,10 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerMathIsNanInfFinite)
-LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorReadOnly)
 LUAU_FASTFLAGVARIABLE(LuauUseTopTableForTableClearAndIsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorReadOnly)
 
 namespace Luau
 {

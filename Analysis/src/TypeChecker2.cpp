@@ -3680,6 +3680,10 @@ void TypeChecker2::checkIndexTypeFromType(
     {
         if (propTypes.foundOneProp())
             reportError(MissingUnionProperty{tableTy, propTypes.missingProp, prop}, location);
+        else if (!FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
+        {
+            reportError(UnknownProperty{tableTy, prop}, location);
+        }
         // For class LValues, we don't want to report an extension error,
         // because extern typeArguments come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
