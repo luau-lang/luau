@@ -11,7 +11,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
@@ -2057,18 +2056,6 @@ xpcall(v, print, x)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_array")
-{
-    ScopedFastFlag _{FFlag::DebugLuauStringSingletonBasedOnQuotes, true};
-    CheckResult res = check(R"(
-        local function a<T>(arr: { T }) end
-
-        a({ 'one', 'two' })
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(res);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")

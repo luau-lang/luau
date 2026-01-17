@@ -5,6 +5,7 @@
 #include "Luau/Instantiation2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesGenericPolarity2)
+LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesGenericPolarityFollow)
 namespace Luau
 {
 
@@ -56,7 +57,7 @@ TypeId Instantiation2::clean(TypeId ty)
         LUAU_ASSERT(ft);
 
         TypeId res;
-        if (is<NeverType>(ft->lowerBound))
+        if (is<NeverType>(FFlag::LuauInstantiationUsesGenericPolarityFollow ? follow(ft->lowerBound) : ft->lowerBound))
         {
             // If the lower bound is never, assume that we can pick the
             // upper bound, and that this will provide a reasonable type.
@@ -67,7 +68,7 @@ TypeId Instantiation2::clean(TypeId ty)
             // This seems ... fine.
             res = ft->upperBound;
         }
-        else if (is<UnknownType>(ft->upperBound))
+        else if (is<UnknownType>(FFlag::LuauInstantiationUsesGenericPolarityFollow ? follow(ft->upperBound) : ft->upperBound))
         {
             // If the upper bound is unknown, assume we can pick the
             // lower bound, and that this will provide a reasonable

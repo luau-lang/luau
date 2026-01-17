@@ -16,12 +16,15 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodegenLocationEndFix)
+LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenIntegerAddSub)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge2)
+LUAU_FASTFLAG(LuauCodegenDwordSpillSlots)
 
 namespace Luau
 {
@@ -1508,6 +1511,23 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vcvtsi2sd(inst.regX64, inst.regX64, qwordReg(regOp(inst.a)));
         }
         break;
+    case IrCmd::UINT_TO_FLOAT:
+        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+
+        // AVX has no uint->float conversion; the source must come from UINT op and they all should clear top 32 bits so we can usually
+        // use 64-bit reg; the one exception is NUM_TO_UINT which doesn't clear top bits
+        if (IrCmd source = function.instOp(inst.a).cmd; source == IrCmd::NUM_TO_UINT)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::dword};
+            build.mov(tmp.reg, regOp(inst.a));
+            build.vcvtsi2ss(inst.regX64, inst.regX64, qwordReg(tmp.reg));
+        }
+        else
+        {
+            CODEGEN_ASSERT(source != IrCmd::SUBSTITUTE); // we don't process substitutions
+            build.vcvtsi2ss(inst.regX64, inst.regX64, qwordReg(regOp(inst.a)));
+        }
+        break;
     case IrCmd::NUM_TO_INT:
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
@@ -1785,7 +1805,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::GET_UPVALUE:
     {
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
         {
             inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
@@ -1841,13 +1861,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.mov(tmp1.reg, qword[tmp2.reg + offsetof(UpVal, v)]);
 
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
         {
             build.vmovups(xmmword[tmp1.reg], regOp(inst.b));
         }
         else
         {
-            // If LuauCodegenUpvalueLoadProp is removed as false, this scope has to be preserved!
+            // If LuauCodegenUpvalueLoadProp2 is removed as false, this scope has to be preserved!
             {
                 ScopedRegX64 tmp3{regs, SizeX64::xmmword};
                 build.vmovups(tmp3.reg, luauReg(vmRegOp(inst.b)));
@@ -1859,7 +1879,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (inst.c.kind == IrOpKind::Undef || isGCO(tagOp(inst.c)))
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp)
+            if (FFlag::LuauCodegenUpvalueLoadProp2)
                 callBarrierObject(regs, build, tmp2.release(), {}, regOp(inst.b), inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
             else
                 callBarrierObject_DEPRECATED(regs, build, tmp2.release(), {}, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
@@ -1995,7 +2015,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge && FFlag::LuauCodegenNumIntFolds2)
+        if (FFlag::LuauCodegenBufferRangeMerge2 && FFlag::LuauCodegenNumIntFolds2)
         {
             int minOffset = intOp(inst.c);
             int maxOffset = intOp(inst.d);
@@ -2152,6 +2172,29 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.c, next);
         break;
     }
+    case IrCmd::CHECK_CMP_INT:
+    {
+        IrCondition cond = conditionOp(inst.c);
+
+        if ((cond == IrCondition::Equal || cond == IrCondition::NotEqual) && inst.b.kind == IrOpKind::Constant && intOp(inst.b) == 0)
+        {
+            build.test(regOp(inst.a), regOp(inst.a));
+            jumpOrAbortOnUndef(cond == IrCondition::Equal ? ConditionX64::NotZero : ConditionX64::Zero, inst.d, next);
+        }
+        else if (inst.a.kind == IrOpKind::Constant)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::dword};
+            build.mov(tmp.reg, memRegIntOp(inst.a));
+            build.cmp(tmp.reg, memRegIntOp(inst.b));
+            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), inst.d, next);
+        }
+        else
+        {
+            build.cmp(regOp(inst.a), memRegIntOp(inst.b));
+            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), inst.d, next);
+        }
+        break;
+    }
     case IrCmd::INTERRUPT:
     {
         unsigned pcpos = uintOp(inst.a);
@@ -2178,7 +2221,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callStepGc(regs, build);
         break;
     case IrCmd::BARRIER_OBJ:
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
             callBarrierObject(regs, build, regOp(inst.a), inst.a, noreg, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
         else
             callBarrierObject_DEPRECATED(regs, build, regOp(inst.a), inst.a, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
@@ -2192,7 +2235,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        if (FFlag::LuauCodegenUpvalueLoadProp)
+        if (FFlag::LuauCodegenUpvalueLoadProp2)
             checkObjectBarrierConditions(build, tmp.reg, regOp(inst.a), noreg, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
         else
             checkObjectBarrierConditions_DEPRECATED(build, tmp.reg, regOp(inst.a), inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
@@ -2860,13 +2903,21 @@ void IrLoweringX64::finishFunction()
     }
 
     // An undefined instruction is placed after the function to be used as an aborting jump offset
-    function.endLocation = build.setLabel().location;
+    function.endLocation = FFlag::LuauCodegenLocationEndFix ? build.getLabelOffset(build.setLabel()) : build.setLabel().location;
     build.ud2();
 
     if (stats)
     {
-        if (regs.maxUsedSlot > kSpillSlots)
-            stats->regAllocErrors++;
+        if (FFlag::LuauCodegenChainedSpills && FFlag::LuauCodegenDwordSpillSlots && FFlag::LuauCodegenExtraSpills)
+        {
+            if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
+                stats->regAllocErrors++;
+        }
+        else
+        {
+            if (regs.maxUsedSlot > kSpillSlots_DEPRECATED)
+                stats->regAllocErrors++;
+        }
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
             stats->maxSpillSlotsUsed = regs.maxUsedSlot;
@@ -2876,8 +2927,16 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (regs.maxUsedSlot > kSpillSlots)
-        return true;
+    if (FFlag::LuauCodegenChainedSpills && FFlag::LuauCodegenDwordSpillSlots && FFlag::LuauCodegenExtraSpills)
+    {
+        if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
+            return true;
+    }
+    else
+    {
+        if (regs.maxUsedSlot > kSpillSlots_DEPRECATED)
+            return true;
+    }
 
     return false;
 }
@@ -3060,6 +3119,23 @@ OperandX64 IrLoweringX64::memRegUintOp(IrOp op)
     return noreg;
 }
 
+OperandX64 IrLoweringX64::memRegIntOp(IrOp op)
+{
+    switch (op.kind)
+    {
+    case IrOpKind::Inst:
+        return regOp(op);
+    case IrOpKind::Constant:
+        return OperandX64(intOp(op));
+    case IrOpKind::VmReg:
+        return luauRegValueInt(vmRegOp(op));
+    default:
+        CODEGEN_ASSERT(!"Unsupported operand kind");
+    }
+
+    return noreg;
+}
+
 OperandX64 IrLoweringX64::memRegTagOp(IrOp op)
 {
     switch (op.kind)
@@ -3117,8 +3193,16 @@ RegisterX64 IrLoweringX64::vecOp(IrOp op, ScopedRegX64& tmp)
     // source that comes from memory or from tag instruction has .w = TVECTOR, which is denormal
     // to avoid performance degradation on some CPUs we mask this component to produce zero
     // otherwise we conservatively assume the vector is a result of a well formed math op so .w is a normal number or zero
-    if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::TAG_VECTOR)
-        return regOp(op);
+    if (FFlag::LuauCodegenUpvalueLoadProp2)
+    {
+        if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::GET_UPVALUE && source.cmd != IrCmd::TAG_VECTOR)
+            return regOp(op);
+    }
+    else
+    {
+        if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::TAG_VECTOR)
+            return regOp(op);
+    }
 
     tmp.alloc(SizeX64::xmmword);
     build.vandps(tmp.reg, regOp(op), vectorAndMaskOp());

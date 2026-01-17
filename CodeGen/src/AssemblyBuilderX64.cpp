@@ -867,6 +867,11 @@ void AssemblyBuilderX64::vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 s
     placeAvx("vcvtsi2sd", dst, src1, src2, 0x2a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::qword, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vcvtsi2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vcvtsi2ss", dst, src1, src2, 0x2a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::qword, AVX_0F, AVX_F3);
+}
+
 void AssemblyBuilderX64::vcvtsd2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     if (src2.cat == CategoryX64::reg)

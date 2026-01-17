@@ -29,7 +29,6 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
-LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTINT(LuauStackGuardThreshold)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
@@ -693,7 +692,7 @@ NotNull<BuiltinTypes> Fixture::getBuiltins()
 
 const BuiltinTypeFunctions& Fixture::getBuiltinTypeFunctions()
 {
-    return FFlag::LuauBuiltinTypeFunctionsArentGlobal ? *getBuiltins()->typeFunctions : builtinTypeFunctions_DEPRECATED();
+    return *getBuiltins()->typeFunctions;
 }
 
 Frontend& Fixture::getFrontend()

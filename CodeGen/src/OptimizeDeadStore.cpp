@@ -11,7 +11,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge2)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -802,13 +802,16 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         state.checkLiveIns(inst.b);
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge && FFlag::LuauCodegenNumIntFolds2)
+        if (FFlag::LuauCodegenBufferRangeMerge2 && FFlag::LuauCodegenNumIntFolds2)
             state.checkLiveIns(inst.f);
         else
             state.checkLiveIns(inst.d);
         break;
     case IrCmd::CHECK_USERDATA_TAG:
         state.checkLiveIns(inst.c);
+        break;
+    case IrCmd::CHECK_CMP_INT:
+        state.checkLiveIns(inst.d);
         break;
 
     case IrCmd::JUMP:
