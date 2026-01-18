@@ -247,7 +247,6 @@ TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
             return ty
         end
 
-        type T<U> = U
         local _x: ~(A<number>) = true
     )");
 
