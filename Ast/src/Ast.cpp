@@ -1230,9 +1230,9 @@ void AstTypeOptional::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstTypeNegation::AstTypeNegation(const Location& location, AstType* type)
+AstTypeNegation::AstTypeNegation(const Location& location, AstType* inner)
     : AstType(ClassIndex(), location)
-    , type(type)
+    , inner(inner)
 {
 }
 

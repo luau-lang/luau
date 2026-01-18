@@ -3808,7 +3808,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
     if (alias.has_value())
     {
         // If the alias is not generic, we don't need to set up a blocked type and an instantiation constraint
-        if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
+        if (alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
         {
             result = alias->type;
         }
@@ -4077,7 +4077,6 @@ TypeId ConstraintGenerator::resolveFunctionType(
         ftv.deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
-
     // This replicates the behavior of the appropriate FunctionType
     // constructors.
     ftv.generics = std::move(genericTypes);
@@ -4147,7 +4146,10 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     }
     else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
     {
-        TypeId inner = resolveType(scope, nty->type, inTypeArguments, replaceErrorWithFresh);
+        TypeId inner = resolveType(scope, nty->inner, true, replaceErrorWithFresh);
+        // The `inner` type is within type arguments of the `negate` type function,
+        // we need to add an expansion constraint
+        addConstraint(scope, nty->inner->location, TypeAliasExpansionConstraint{/* target */ inner});
 
         if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
         {

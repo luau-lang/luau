@@ -5953,10 +5953,6 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     {
         return builtinTypes->nilType;
     }
-    else if (const AstTypeNegation* nty = annotation.as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
-    {
-        return addType(NegationType{resolveType(scope, *nty->type)});
-    }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {
         if (un->types.size == 1)

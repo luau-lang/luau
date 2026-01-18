@@ -4622,7 +4622,7 @@ TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
 
     CHECK(ta->type->is<AstTypeNegation>());
 
-    AstTypeReference* tr = ta->type->as<AstTypeNegation>()->type->as<AstTypeReference>();
+    AstTypeReference* tr = ta->type->as<AstTypeNegation>()->inner->as<AstTypeReference>();
     CHECK(tr != nullptr);
 
     CHECK_EQ(tr->name, "number");
