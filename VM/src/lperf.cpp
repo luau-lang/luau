@@ -21,10 +21,6 @@
 #include <emscripten/emscripten.h>
 #endif
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
 #include <time.h>
 
 static double clock_period()
