@@ -23,12 +23,13 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
-LUAU_FASTFLAG(LuauCacheDuplicateHasPropConstraints)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 LUAU_FASTFLAG(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -518,32 +519,43 @@ TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_3")
         T:method()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK(result.errors[0].location == Location{Position{6, 8}, Position{6, 9}});
-
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauSubtypingMissingPropertiesAsNil)
     {
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK(toString(result.errors[0]) == "Expected this to be '{ read baz: unknown }', but got 'T'");
-        else
-            CHECK(toString(result.errors[0]) == "Type 'T' could not be converted into '{ read baz: unknown }'");
+        // This does not error because `baz` in the method is being inferred as having the type `unknown`, which is an optional type.
+        // Specifically, `T` has the type `{ bar: string, method: ... }` and `method` has the type `function({ read baz: unknown }) -> ()`.
+        // In this case, `T` functions as a valid argument type for `method` because it will always read `baz` as `nil` which is a subtype of `unknown.`
+        // This is safe because in order to do anything with that value, the function body _must_ do some kind of conditional testing.
+        LUAU_REQUIRE_NO_ERRORS(result);
     }
     else
     {
-        TypeError& err = result.errors[0];
-        MissingProperties* error = get<MissingProperties>(err);
-        REQUIRE_MESSAGE(error != nullptr, "Expected MissingProperties but got " << toString(err));
-        REQUIRE(error->properties.size() == 1);
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        CHECK_EQ("baz", error->properties[0]);
+        CHECK(result.errors[0].location == Location{Position{6, 8}, Position{6, 9}});
+        if (FFlag::LuauSolverV2)
+        {
 
-        // TODO(rblanckaert): Revist when we can bind self at function creation time
-        /*
-        CHECK_EQ(err->location,
-            (Location{ Position{4, 22}, Position{4, 30} })
-        );
-        */
+            if (FFlag::LuauBetterTypeMismatchErrors)
+                CHECK(toString(result.errors[0]) == "Expected this to be '{ read baz: unknown }', but got 'T'");
+            else
+                CHECK(toString(result.errors[0]) == "Type 'T' could not be converted into '{ read baz: unknown }'");
+        }
+        else
+        {
+            TypeError& err = result.errors[0];
+            MissingProperties* error = get<MissingProperties>(err);
+            REQUIRE_MESSAGE(error != nullptr, "Expected MissingProperties but got " << toString(err));
+            REQUIRE(error->properties.size() == 1);
+
+            CHECK_EQ("baz", error->properties[0]);
+
+            // TODO(rblanckaert): Revist when we can bind self at function creation time
+            /*
+              CHECK_EQ(err->location,
+              (Location{ Position{4, 22}, Position{4, 30} })
+              );
+            */
+        }
     }
 }
 
@@ -1410,6 +1422,8 @@ TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_local_unsealed_table_is
 // This unit test could be flaky if the fix has regressed.
 TEST_CASE_FIXTURE(Fixture, "pass_incompatible_union_to_a_generic_table_without_crashing")
 {
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+
     CheckResult result = check(R"(
         -- must be in this specific order, and with (roughly) those exact properties!
         type A = {x: number, [any]: any} | {}
@@ -6229,7 +6243,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_167052")
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_prop_references_share_same_result_type_and_constraint")
 {
-    ScopedFastFlag sff{FFlag::LuauCacheDuplicateHasPropConstraints, true};
     CheckResult result = check(R"(
 local tbl = {}
 function f(x : number) : () end
@@ -6639,5 +6652,45 @@ TEST_CASE_FIXTURE(Fixture, "table_access_indexer_fails_with_missing_key")
     CHECK(get<UnknownProperty>(result.errors[0]));
     CHECK_EQ("any", toString(requireType("_")));
 }
+
+TEST_CASE_FIXTURE(Fixture, "cli_184926_bidi_inference_pushes_into_lambda_return_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeConstraintLambdas3, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type MyType = { Func: (transformFunction: () -> ({number})) -> () }
+
+        local myValue = {} :: MyType
+
+        myValue.Func(function() return {} end)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_allow_laundering")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function foo(t: {}): { x: nil }
+            return t
+        end
+
+        local t: { x: number } = { x = 42 }
+        local laundered = foo(t) -- via width subtyping
+        laundered.x = nil
+        assert(type(t) == "number")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 
 TEST_SUITE_END();

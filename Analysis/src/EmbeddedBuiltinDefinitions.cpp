@@ -3,6 +3,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerMathIsNanInfFinite)
 LUAU_FASTFLAGVARIABLE(LuauUseTopTableForTableClearAndIsFrozen)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
 LUAU_FASTFLAGVARIABLE(LuauTypeDefinitionsTypeIsSubtypeOf)
 
@@ -406,66 +407,46 @@ std::string getBuiltinDefinitionSource()
     return result;
 }
 
-// TODO: split into separate tagged unions when the new solver can appropriately handle that.
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc = R"BUILTIN_SRC(
+// With both `extern` replacing `class`, and `:issubtypeof`
+static constexpr const char* kBuiltinDefinitionTypeMethodSrc_EXTERN_ISSUBTYPEOF = R"BUILTIN_SRC(
+
+export type type = {
+    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
+         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
+
+     issubtypeof: (self: type, arg: type) -> boolean,
+)BUILTIN_SRC";
+
+// With only `:issubtypeof`
+static constexpr const char* kBuiltinDefinitionTypeMethodSrc_ISSUBTYPEOF = R"BUILTIN_SRC(
 
 export type type = {
     tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
          "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
 
-    is: (self: type, arg: string) -> boolean,
-    issubtypeof: (self: type, arg: type) -> boolean,
+     issubtypeof: (self: type, arg: type) -> boolean,
+)BUILTIN_SRC";
 
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
+// With only `extern` replacing `class`
+static constexpr const char* kBuiltinDefinitionTypeMethodSrc_EXTERN = R"BUILTIN_SRC(
 
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
+export type type = {
+    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
+         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
 
 )BUILTIN_SRC";
 
+// With neither `extern` nor `:issubtypeof`
 static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED = R"BUILTIN_SRC(
 
 export type type = {
     tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
          "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
+
+)BUILTIN_SRC";
+
+// TODO: split into separate tagged unions when the new solver can appropriately handle that.
+static constexpr const char* kBuiltinDefinitionTypeMethodSrc = R"BUILTIN_SRC(
 
     is: (self: type, arg: string) -> boolean,
 
@@ -566,11 +547,23 @@ declare types: {
 std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
-
-    if (FFlag::LuauTypeDefinitionsTypeIsSubtypeOf)
-        result = kBuiltinDefinitionTypeMethodSrc;
+  
+    if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+    {
+        if (FFlag::LuauTypeDefinitionsTypeIsSubtypeOf)
+            result += kBuiltinDefinitionTypeMethodSrc_EXTERN_ISSUBTYPEOF;
+        else
+            result += kBuiltinDefinitionTypeMethodSrc_EXTERN;
+    }
     else
-        result = kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
+    {
+        if (FFlag::LuauTypeDefinitionsTypeIsSubtypeOf)
+            result += kBuiltinDefinitionTypeMethodSrc_ISSUBTYPEOF;
+        else
+            result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
+    }
+
+    result += kBuiltinDefinitionTypeMethodSrc;
 
     if (FFlag::LuauMorePermissiveNewtableType)
         result += kBuiltinDefinitionTypesLibSrc;

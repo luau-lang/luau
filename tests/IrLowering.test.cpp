@@ -16,24 +16,24 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCompileUnusedUdataFix)
 LUAU_FASTFLAG(LuauCodegenVecOpGvn)
 LUAU_FASTFLAG(LuauCodegenLibmGvn)
 LUAU_FASTFLAG(LuauCodegenLoopStepDetectFix)
-LUAU_FASTFLAG(LuauCodegenFloatLoadStoreProp)
 LUAU_FASTFLAG(LuauCodegenLoadFloatSubstituteLast)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenChainLink)
-LUAU_FASTFLAG(LuauCodegenInterruptIsNotForWrites)
 LUAU_FASTFLAG(LuauCodegenIntegerAddSub)
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState)
+LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
+LUAU_FASTFLAG(LuauCodegenBit32Guards)
+LUAU_FASTFLAG(LuauCodegenUintToFloat)
 LUAU_FASTFLAG(LuauCodegenBetterSccRemoval)
 LUAU_FASTFLAG(LuauCodegenLinearAndOr)
 LUAU_FASTFLAG(LuauCodegenHydrateLoadWithTag)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenVectorIdiv)
 LUAU_FASTFLAG(LuauCodegenGcoDse)
 LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
+LUAU_FASTFLAG(LuauCodegenLinearVecEq)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenNumToUintFoldRange)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
@@ -41,7 +41,9 @@ LUAU_FASTFLAG(LuauCodegenTruncateFold)
 LUAU_FASTFLAG(LuauCodegenVectorCreateXy)
 LUAU_FASTFLAG(LuauCodegenFloatOps)
 LUAU_FASTFLAG(LuauCodegenSplitFloatExtra)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge2)
+LUAU_FASTFLAG(LuauCodegenTableDirectFlow)
+LUAU_FASTFLAG(LuauCompileExtraTableHints)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -161,7 +163,13 @@ static void initializeCodegen(lua_State* L)
     }
 }
 
-static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1, int optimizationLevel = 2)
+static std::string getCodegenAssembly(
+    const char* source,
+    bool includeIrTypes = false,
+    int debugLevel = 1,
+    int optimizationLevel = 2,
+    bool clipToFirstReturn = false
+)
 {
     Luau::Allocator allocator;
     Luau::AstNameTable names(allocator);
@@ -211,6 +219,15 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
             // Checking that other target lower correctly as well
             options.target = Luau::CodeGen::AssemblyOptions::Target::A64;
             Luau::CodeGen::getAssembly(L, -1, options, nullptr);
+        }
+
+        if (clipToFirstReturn)
+        {
+            if (auto pos = result.find("RETURN"); pos != std::string::npos)
+            {
+                if (auto newLine = result.find('\n', pos); newLine != std::string::npos)
+                    return result.substr(0, newLine + 1);
+            }
         }
 
         return result;
@@ -1116,7 +1133,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorRandomProp")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -1198,8 +1215,7 @@ bb_bytecode_1:
 TEST_CASE("VectorCustomNamecall")
 {
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
 
@@ -1241,8 +1257,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorCustomNamecall2")
 {
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
 
@@ -1336,8 +1351,7 @@ bb_bytecode_1:
 TEST_CASE("VectorCustomNamecallChain")
 {
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
 
@@ -1399,9 +1413,8 @@ bb_bytecode_1:
 
 TEST_CASE("VectorCustomNamecallChain2")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
@@ -1475,6 +1488,45 @@ bb_6:
   STORE_TAG R2, tnumber
   INTERRUPT 12u
   RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE("VectorLoadFloatPropagation")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
+    ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
+    ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
+    ScopedFastFlag luauCodegenSplitFloatExtra{FFlag::LuauCodegenSplitFloatExtra, true};
+    ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(t: vector)
+    t = t * 2
+    return vector.create(t.x, t.y, t.x)
+end
+)"),
+        R"(
+; function foo($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %6 = LOAD_TVALUE R0, 0i, tvector
+  %8 = FLOAT_TO_VEC 2
+  %9 = MUL_VEC %6, %8
+  %14 = EXTRACT_VEC %9, 0i
+  %20 = EXTRACT_VEC %9, 1i
+  STORE_VECTOR R1, %14, %20, %14
+  STORE_TAG R1, tvector
+  INTERRUPT 11u
+  RETURN R1, 1i
 )"
     );
 }
@@ -1670,7 +1722,7 @@ bb_4:
 TEST_CASE("EntryBlockChecksAreNotInferred")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -1722,10 +1774,99 @@ bb_bytecode_4:
     );
 }
 
+TEST_CASE("EntryBlockChecksWithOptional1")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+function eq(a: number?, b: number)
+  return if a ~= nil then a + b else b
+end
+)"
+               ),
+        R"(
+; function eq($arg0, $arg1) line 2
+bb_0:
+  %0 = LOAD_TAG R0
+  JUMP_EQ_TAG %0, tnil, bb_3, bb_4
+bb_4:
+  CHECK_TAG %0, tnumber, exit(entry)
+  JUMP bb_3
+bb_3:
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_5
+bb_5:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  JUMP_EQ_TAG R0, tnil, bb_bytecode_2, bb_6
+bb_6:
+  CHECK_TAG R0, tnumber, exit(2)
+  %14 = LOAD_DOUBLE R0
+  %16 = ADD_NUM %14, R1
+  STORE_DOUBLE R2, %16
+  STORE_TAG R2, tnumber
+  INTERRUPT 3u
+  RETURN R2, 1i
+bb_bytecode_2:
+  %21 = LOAD_TVALUE R1, 0i, tnumber
+  STORE_TVALUE R2, %21
+  INTERRUPT 5u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE("EntryBlockChecksWithOptional2")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+function eq(a: number, b: number?)
+  return if b ~= nil then a + b else a
+end
+)"
+               ),
+        R"(
+; function eq($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  %2 = LOAD_TAG R1
+  JUMP_EQ_TAG %2, tnil, bb_3, bb_4
+bb_4:
+  CHECK_TAG %2, tnumber, exit(entry)
+  JUMP bb_3
+bb_3:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  JUMP_EQ_TAG R1, tnil, bb_bytecode_2, bb_5
+bb_5:
+  CHECK_TAG R1, tnumber, exit(2)
+  %13 = LOAD_DOUBLE R0
+  %15 = ADD_NUM %13, R1
+  STORE_DOUBLE R2, %15
+  STORE_TAG R2, tnumber
+  INTERRUPT 3u
+  RETURN R2, 1i
+bb_bytecode_2:
+  %20 = LOAD_TVALUE R0, 0i, tnumber
+  STORE_TVALUE R2, %20
+  INTERRUPT 5u
+  RETURN R2, 1i
+)"
+    );
+}
+
 TEST_CASE("ExplicitUpvalueAndLocalTypes")
 {
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
@@ -1775,7 +1916,7 @@ bb_bytecode_0:
 
 TEST_CASE("DuplicateArrayLoads")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
 
     // TODO: opportunity - if we can track heap space version, we can remove duplicate loads
     CHECK_EQ(
@@ -1784,7 +1925,11 @@ TEST_CASE("DuplicateArrayLoads")
 local function foo(n: number, t: {number}, u: {number})
     return t[n] * t[n] + u[n] * u[n]
 end
-)"
+)",
+                   false,
+                   1,
+                   2,
+                   true
                ),
         R"(
 ; function foo($arg0, $arg1, $arg2) line 2
@@ -1830,66 +1975,6 @@ bb_linear_17:
   %173 = ADD_NUM %133, %163
   STORE_DOUBLE R3, %173
   STORE_TAG R3, tnumber
-  INTERRUPT 7u
-  RETURN R3, 1i
-bb_4:
-  %29 = LOAD_POINTER R1
-  %30 = LOAD_DOUBLE R0
-  %31 = TRY_NUM_TO_INDEX %30, bb_fallback_5
-  %32 = SUB_INT %31, 1i
-  CHECK_ARRAY_SIZE %29, %32, bb_fallback_5
-  CHECK_NO_METATABLE %29, bb_fallback_5
-  %35 = GET_ARR_ADDR %29, %32
-  %36 = LOAD_TVALUE %35
-  STORE_TVALUE R6, %36
-  JUMP bb_6
-bb_6:
-  CHECK_TAG R5, tnumber, bb_fallback_7
-  CHECK_TAG R6, tnumber, bb_fallback_7
-  %46 = LOAD_DOUBLE R5
-  %48 = MUL_NUM %46, R6
-  STORE_DOUBLE R4, %48
-  STORE_TAG R4, tnumber
-  JUMP bb_8
-bb_8:
-  %59 = LOAD_POINTER R2
-  %60 = LOAD_DOUBLE R0
-  %61 = TRY_NUM_TO_INDEX %60, bb_fallback_9
-  %62 = SUB_INT %61, 1i
-  CHECK_ARRAY_SIZE %59, %62, bb_fallback_9
-  CHECK_NO_METATABLE %59, bb_fallback_9
-  %65 = GET_ARR_ADDR %59, %62
-  %66 = LOAD_TVALUE %65
-  STORE_TVALUE R6, %66
-  JUMP bb_10
-bb_10:
-  %76 = LOAD_POINTER R2
-  %77 = LOAD_DOUBLE R0
-  %78 = TRY_NUM_TO_INDEX %77, bb_fallback_11
-  %79 = SUB_INT %78, 1i
-  CHECK_ARRAY_SIZE %76, %79, bb_fallback_11
-  CHECK_NO_METATABLE %76, bb_fallback_11
-  %82 = GET_ARR_ADDR %76, %79
-  %83 = LOAD_TVALUE %82
-  STORE_TVALUE R7, %83
-  JUMP bb_12
-bb_12:
-  CHECK_TAG R6, tnumber, bb_fallback_13
-  CHECK_TAG R7, tnumber, bb_fallback_13
-  %93 = LOAD_DOUBLE R6
-  %95 = MUL_NUM %93, R7
-  STORE_DOUBLE R5, %95
-  STORE_TAG R5, tnumber
-  JUMP bb_14
-bb_14:
-  CHECK_TAG R4, tnumber, bb_fallback_15
-  CHECK_TAG R5, tnumber, bb_fallback_15
-  %106 = LOAD_DOUBLE R4
-  %108 = ADD_NUM %106, R5
-  STORE_DOUBLE R3, %108
-  STORE_TAG R3, tnumber
-  JUMP bb_16
-bb_16:
   INTERRUPT 7u
   RETURN R3, 1i
 )"
@@ -1959,8 +2044,7 @@ TEST_CASE("FastcallTypeInferThroughUpvalue")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
@@ -2099,8 +2183,7 @@ TEST_CASE("ArgumentTypeRefinement")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
     CHECK_EQ(
@@ -2140,7 +2223,6 @@ bb_bytecode_0:
 
 TEST_CASE("InlineFunctionType")
 {
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
     CHECK_EQ(
@@ -2311,8 +2393,7 @@ end
 TEST_CASE("ResolveVectorNamecalls")
 {
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
 
@@ -3010,7 +3091,6 @@ bb_bytecode_1:
 
 TEST_CASE("CustomUserdataMapping")
 {
-    ScopedFastFlag luauCompileUnusedUdataFix{FFlag::LuauCompileUnusedUdataFix, true};
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
 
@@ -3191,9 +3271,98 @@ bb_bytecode_1:
     );
 }
 
+TEST_CASE("Bit32ReplaceDirect")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
+    ScopedFastFlag luauCodegenBit32Guards{FFlag::LuauCodegenBit32Guards, true};
+    ScopedFastFlag luauCodegenUintToFloat{FFlag::LuauCodegenUintToFloat, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number, b: number)
+    local x = bit32.band(a, 0x003FFFFF)
+    local y = bit32.band(b, 0x003FFFFF)
+    local z = bit32.replace(bit32.rshift(a, 22), bit32.rshift(b, 22), 10, 10)
+
+    return vector.create(x, y, z)
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %9 = LOAD_DOUBLE R0
+  %10 = NUM_TO_UINT %9
+  %12 = BITAND_UINT %10, 4194303i
+  %19 = LOAD_DOUBLE R1
+  %20 = NUM_TO_UINT %19
+  %22 = BITAND_UINT %20, 4194303i
+  %31 = BITRSHIFT_UINT %10, 22i
+  %40 = BITRSHIFT_UINT %20, 22i
+  %74 = BITAND_UINT %31, -1047553i
+  %75 = BITAND_UINT %40, 1023i
+  %76 = BITLSHIFT_UINT %75, 10i
+  %77 = BITOR_UINT %74, %76
+  %91 = UINT_TO_FLOAT %12
+  %92 = UINT_TO_FLOAT %22
+  %93 = UINT_TO_FLOAT %77
+  STORE_VECTOR R5, %91, %92, %93, tvector
+  INTERRUPT 42u
+  RETURN R5, 1i
+)"
+    );
+}
+
+TEST_CASE("Bit32ExtractDirect")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenBit32Guards{FFlag::LuauCodegenBit32Guards, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: number, b: number)
+    return bit32.extract(a, b, 4)
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tnumber, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  STORE_DOUBLE R5, 4
+  STORE_TAG R5, tnumber
+  %13 = LOAD_DOUBLE R0
+  %14 = LOAD_DOUBLE R1
+  %15 = NUM_TO_UINT %13
+  %16 = NUM_TO_INT %14
+  %21 = ADD_INT %16, 4i
+  CHECK_CMP_INT %16, 0i, ge, exit(3)
+  CHECK_CMP_INT %21, 32i, le, exit(3)
+  %28 = BITRSHIFT_UINT %15, %16
+  %29 = BITAND_UINT %28, 15i
+  %30 = UINT_TO_NUM %29
+  STORE_DOUBLE R2, %30
+  STORE_TAG R2, tnumber
+  INTERRUPT 8u
+  RETURN R2, 1i
+)"
+    );
+}
+
 TEST_CASE("VectorLoadReuse")
 {
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
     CHECK_EQ(
@@ -3261,7 +3430,6 @@ TEST_CASE("VectorShuffle2")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3297,7 +3465,6 @@ TEST_CASE("VectorShuffleFromComposite1")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
@@ -3407,11 +3574,47 @@ bb_bytecode_1:
     );
 }
 
+TEST_CASE("VectorComparison")
+{
+    ScopedFastFlag luauCodegenLinearVecEq{FFlag::LuauCodegenLinearVecEq, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(a: vector, b: vector)
+    return a == b
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  JUMP bb_4
+bb_4:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  SET_SAVEDPC 1u
+  %7 = CMP_ANY R0, R1, eq
+  JUMP_CMP_INT %7, 0i, eq, bb_5, bb_bytecode_2
+bb_5:
+  STORE_INT R2, 0i
+  STORE_TAG R2, tboolean
+  JUMP bb_bytecode_3
+bb_bytecode_2:
+  STORE_INT R2, 1i
+  STORE_TAG R2, tboolean
+  JUMP bb_bytecode_3
+bb_bytecode_3:
+  INTERRUPT 4u
+  RETURN R2, 1i
+)"
+    );
+}
+
 TEST_CASE("VectorLoadStoreOnlySamePrecision")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
 
     CHECK_EQ(
@@ -3451,7 +3654,7 @@ TEST_CASE("BufferRelatedIndicesPositiveBase")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3495,7 +3698,7 @@ TEST_CASE("BufferRelatedIndicesPositiveBaseInverted")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3542,7 +3745,7 @@ TEST_CASE("BufferRelatedIndicesPositiveDynamicBase")
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3598,12 +3801,11 @@ TEST_CASE("BufferRelatedIndicesPositiveLoopRangeBase")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenInterruptIsNotForWrites{FFlag::LuauCodegenInterruptIsNotForWrites, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenLoopStepDetectFix{FFlag::LuauCodegenLoopStepDetectFix, true};
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     // TODO: opportunity 1 - lifting the R2 tag check at the start of the block will eliminate many dead stores
     // TODO: opportunity 2 - buffer.len is not a fastcall, but under safe env we can treat it like one and read buffer len field
@@ -3701,7 +3903,7 @@ TEST_CASE("BufferRelatedIndicesPositiveAdvancingBase")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3758,7 +3960,7 @@ TEST_CASE("BufferRelatedIndicesNegativeBase")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3805,7 +4007,7 @@ TEST_CASE("BufferRelatedIndicesMixedBase")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3849,7 +4051,7 @@ TEST_CASE("BufferSanityPositive")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3918,7 +4120,7 @@ TEST_CASE("BufferSanityNegative")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -3987,7 +4189,7 @@ TEST_CASE("NumericConversionReplacementCheck")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -4032,7 +4234,7 @@ TEST_CASE("BufferRelatedIndicesPositiveMultBase")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -4079,7 +4281,7 @@ TEST_CASE("BufferRelatedIndicesPositiveMultBase2")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     // Different index multipliers are not merged
     CHECK_EQ(
@@ -4133,7 +4335,7 @@ TEST_CASE("BufferRelatedIndicesPositiveMultBaseInt")
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenIntegerAddSub{FFlag::LuauCodegenIntegerAddSub, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -4469,7 +4671,7 @@ bb_bytecode_0:
 
 TEST_CASE("OldStyleConditional")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
     ScopedFastFlag luauCodegenLinearAndOr{FFlag::LuauCodegenLinearAndOr, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
 
@@ -4516,7 +4718,7 @@ TEST_CASE("NewStyleConditional")
 {
     ScopedFastFlag luauCodegenLinearAndOr{FFlag::LuauCodegenLinearAndOr, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
 
     // TODO: opportunity - this can be done in one SELECT_IF_TRUTHY, but this is also hard to detect in current system
     CHECK_EQ(
@@ -4788,10 +4990,24 @@ end
 );
 }
 
+TEST_CASE("FuzzTest10")
+{
+    // Check that this compiles with no assertions
+    CHECK(
+        getCodegenAssembly(R"(
+local function f(...)
+    local b, t = ...
+    t[buffer.readi8(b, -52436992 * -52436992)] /= buffer.readi8(b, -52436992 * 52436991)
+end
+)")
+            .size() > 0
+    );
+}
+
 TEST_CASE("UpvalueAccessLoadStore1")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse, true};
 
     CHECK_EQ(
@@ -4838,7 +5054,7 @@ TEST_CASE("UpvalueAccessLoadStore2")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
 
     // TODO: opportunity - if the value was just stored to VM register in parts, we can use those parts to store upvalue
     CHECK_EQ(
@@ -4884,7 +5100,7 @@ bb_bytecode_1:
 TEST_CASE("UpvalueAccessLoadStore3")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -4930,9 +5146,9 @@ bb_bytecode_0:
 TEST_CASE("UpvalueAccessLoadStore4")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
     ScopedFastFlag luauCodegenLoopStepDetectFix{FFlag::LuauCodegenLoopStepDetectFix, true};
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
 
     CHECK_EQ(
@@ -5076,7 +5292,7 @@ TEST_CASE("BufferLoadStoreProp1")
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -5116,7 +5332,7 @@ TEST_CASE("BufferLoadStoreProp2")
     ScopedFastFlag luauCodegenChainLink{FFlag::LuauCodegenChainLink, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -5172,7 +5388,7 @@ TEST_CASE("BufferLoadStoreProp3")
     ScopedFastFlag luauCodegenNumToUintFoldRange{FFlag::LuauCodegenNumToUintFoldRange, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -5285,7 +5501,7 @@ TEST_CASE("BufferLoadStoreProp4")
     ScopedFastFlag luauCodegenIntegerAddSub{FFlag::LuauCodegenIntegerAddSub, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -5453,7 +5669,7 @@ bb_bytecode_3:
 TEST_CASE("LoopStepDetection2")
 {
     ScopedFastFlag luauCodegenLoopStepDetectFix{FFlag::LuauCodegenLoopStepDetectFix, true};
-    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -5531,7 +5747,7 @@ TEST_CASE("UintSourceSanity")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenNumIntFolds{FFlag::LuauCodegenNumIntFolds2, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge2, true};
 
     // TODO: opportunity - many conversions and stores remain because of VM exits
     CHECK_EQ(
@@ -5597,7 +5813,6 @@ bb_bytecode_1:
 TEST_CASE("LibmIsPure")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenLibmGvn{FFlag::LuauCodegenLibmGvn, true};
@@ -5653,7 +5868,6 @@ TEST_CASE("VecOpReuse")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
@@ -5706,7 +5920,6 @@ TEST_CASE("VecOpReuse2")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
-    ScopedFastFlag luauCodegenFloatLoadStoreProp{FFlag::LuauCodegenFloatLoadStoreProp, true};
     ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
     ScopedFastFlag luauCodegenSplitFloatExtra{FFlag::LuauCodegenSplitFloatExtra, true};
@@ -5746,6 +5959,146 @@ bb_bytecode_1:
   SETLIST 8u, R2, R3, 2i, 1u, 2u
   INTERRUPT 10u
   RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE("TableOperationTagSuggestion1")
+{
+    ScopedFastFlag luauCodegenTableDirectFlow{FFlag::LuauCodegenTableDirectFlow, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function test(t: { x: number, y: number }, a: string)
+    t.x = 2
+    t[a] = 4
+    return t.x * 2
+end
+)",
+                   true,
+                   1,
+                   2,
+                   true
+               ),
+        R"(
+; function test($arg0, $arg1) line 2
+; R0: table [argument]
+; R1: string [argument]
+bb_0:
+  CHECK_TAG R0, ttable, exit(entry)
+  CHECK_TAG R1, tstring, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  STORE_DOUBLE R2, 2
+  STORE_TAG R2, tnumber
+  %10 = LOAD_POINTER R0
+  %11 = GET_SLOT_NODE_ADDR %10, 1u, K0 ('x')
+  CHECK_SLOT_MATCH %11, K0 ('x'), bb_fallback_3
+  CHECK_READONLY %10, bb_fallback_3
+  STORE_SPLIT_TVALUE %11, tnumber, 2, 0i
+  JUMP bb_linear_9
+bb_linear_9:
+  STORE_DOUBLE R2, 4
+  SET_SAVEDPC 5u
+  SET_TABLE R2, R0, R1
+  %51 = GET_SLOT_NODE_ADDR %10, 5u, K0 ('x')
+  CHECK_SLOT_MATCH %51, K0 ('x'), bb_fallback_5
+  %53 = LOAD_TVALUE %51, 0i
+  STORE_TVALUE R3, %53
+  CHECK_TAG R3, tnumber, bb_fallback_7
+  %58 = LOAD_DOUBLE R3
+  %59 = ADD_NUM %58, %58
+  STORE_DOUBLE R2, %59
+  INTERRUPT 8u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE("TableOperationTagSuggestion2")
+{
+    ScopedFastFlag luauCodegenTableDirectFlow{FFlag::LuauCodegenTableDirectFlow, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
+    ScopedFastFlag luauCompileExtraTableHints{FFlag::LuauCompileExtraTableHints, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function test(self, t: { id: string }, a: number)
+    self.map[t.id] = self.map[t.id] + a
+    self.foo(self.map[t.id])
+end
+)",
+                   true,
+                   1,
+                   2,
+                   true
+               ),
+        R"(
+; function test($arg0, $arg1, $arg2) line 2
+; R1: table [argument]
+; R2: number [argument]
+; R4: string from 10 to 11
+; R6: string from 17 to 18
+; R8: string from 8 to 9
+bb_0:
+  CHECK_TAG R1, ttable, exit(entry)
+  CHECK_TAG R2, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  CHECK_TAG R0, ttable, bb_fallback_3
+  %8 = LOAD_POINTER R0
+  %9 = GET_SLOT_NODE_ADDR %8, 0u, K0 ('map')
+  CHECK_SLOT_MATCH %9, K0 ('map'), bb_fallback_3
+  %11 = LOAD_TVALUE %9, 0i
+  STORE_TVALUE R3, %11
+  JUMP bb_linear_19
+bb_linear_19:
+  %100 = LOAD_POINTER R1
+  %101 = GET_SLOT_NODE_ADDR %100, 2u, K1 ('id')
+  CHECK_SLOT_MATCH %101, K1 ('id'), bb_fallback_5
+  %103 = LOAD_TVALUE %101, 0i
+  STORE_TVALUE R4, %103
+  CHECK_NODE_VALUE %9, bb_fallback_7
+  %111 = LOAD_TVALUE %9, 0i
+  STORE_TVALUE R7, %111
+  CHECK_NODE_VALUE %101, bb_fallback_9
+  %117 = LOAD_TVALUE %101, 0i
+  STORE_TVALUE R8, %117
+  SET_SAVEDPC 9u
+  GET_TABLE R6, R7, R8
+  CHECK_TAG R6, tnumber, bb_fallback_11
+  %124 = LOAD_DOUBLE R6
+  %126 = ADD_NUM %124, R2
+  STORE_DOUBLE R5, %126
+  STORE_TAG R5, tnumber
+  SET_SAVEDPC 11u
+  SET_TABLE R5, R3, R4
+  %135 = GET_SLOT_NODE_ADDR %8, 11u, K2 ('foo')
+  CHECK_SLOT_MATCH %135, K2 ('foo'), bb_fallback_13
+  %137 = LOAD_TVALUE %135, 0i
+  STORE_TVALUE R3, %137
+  %143 = GET_SLOT_NODE_ADDR %8, 13u, K0 ('map')
+  CHECK_SLOT_MATCH %143, K0 ('map'), bb_fallback_15
+  %145 = LOAD_TVALUE %143, 0i
+  STORE_TVALUE R5, %145
+  %149 = GET_SLOT_NODE_ADDR %100, 15u, K1 ('id')
+  CHECK_SLOT_MATCH %149, K1 ('id'), bb_fallback_17
+  %151 = LOAD_TVALUE %149, 0i
+  STORE_TVALUE R6, %151
+  SET_SAVEDPC 18u
+  GET_TABLE R4, R5, R6
+  INTERRUPT 18u
+  SET_SAVEDPC 19u
+  CALL R3, 1i, 0i
+  INTERRUPT 19u
+  RETURN R0, 0i
 )"
     );
 }

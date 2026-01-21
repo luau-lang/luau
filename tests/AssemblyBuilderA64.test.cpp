@@ -7,7 +7,8 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
+LUAU_FASTFLAG(LuauCodegenUintToFloat)
 
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::A64;
@@ -383,7 +384,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOfLabel")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 {
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
+    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp2, true};
 
     SINGLE_COMPARE(fmov(d0, d1), 0x1E604020);
     SINGLE_COMPARE(fmov(d0, x1), 0x9E670020);
@@ -392,6 +393,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
 {
+    ScopedFastFlag luauCodegenUintToFloat{FFlag::LuauCodegenUintToFloat, true};
+
     SINGLE_COMPARE(fabs(d1, d2), 0x1E60C041);
     SINGLE_COMPARE(fadd(d1, d2, d3), 0x1E632841);
     SINGLE_COMPARE(fadd(s29, s29, s28), 0x1E3C2BBD);
@@ -427,8 +430,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
 
     SINGLE_COMPARE(scvtf(d1, w2), 0x1E620041);
     SINGLE_COMPARE(scvtf(d1, x2), 0x9E620041);
+
     SINGLE_COMPARE(ucvtf(d1, w2), 0x1E630041);
     SINGLE_COMPARE(ucvtf(d1, x2), 0x9E630041);
+    SINGLE_COMPARE(ucvtf(s1, w2), 0x1E230041);
+    SINGLE_COMPARE(ucvtf(s1, x2), 0x9E230041);
 
     CHECK(check(
         [](AssemblyBuilderA64& build)

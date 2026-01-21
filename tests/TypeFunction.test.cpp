@@ -15,7 +15,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauSetmetatableWaitForPendingTypes)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
@@ -1775,7 +1774,7 @@ struct TFFixture
 
     NotNull<BuiltinTypeFunctions> getBuiltinTypeFunctions()
     {
-        return FFlag::LuauBuiltinTypeFunctionsArentGlobal ? NotNull{builtinTypes_.typeFunctions.get()} : NotNull{&builtinTypeFunctions};
+        return NotNull{builtinTypes_.typeFunctions.get()};
     }
 
     ScopePtr globalScope = std::make_shared<Scope>(getBuiltins()->anyTypePack);
@@ -1977,6 +1976,17 @@ TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation_with_defaults")
     CHECK(get<RecursiveRestraintViolation>(result.errors[0]));
     // Also check the location (marking the entire alias is bad).
     CHECK_EQ(Location{{1, 31}, {1, 40}}, result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_184124_recursive_restraint_violation_from_devforum")
+{
+    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type TypeA<A... = ()> = { Func: (self: TypeA<A...>, func: (A...) -> ()) -> () }
+        type TypeB<A = any> = { Value: TypeA<TypeB<A>> }
+        local value = {} :: TypeB
+    )"));
 }
 
 

@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUseIterativeTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
 
 namespace Luau
 {
@@ -900,6 +901,12 @@ ContainsAnyGeneric::ContainsAnyGeneric()
     : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
 {
 }
+
+bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
+{
+    return !FFlag::LuauContainsAnyGenericDoesntTraverseIntoExtern;
+}
+
 bool ContainsAnyGeneric::visit(TypeId ty)
 {
     found = found || is<GenericType>(ty);

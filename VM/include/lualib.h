@@ -61,6 +61,8 @@ LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 // wrapper for making calls from yieldable C functions
 LUALIB_API int luaL_callyieldable(lua_State* L, int nargs, int nresults);
 
+LUALIB_API void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
+
 /*
 ** ===============================================================
 ** some useful macros

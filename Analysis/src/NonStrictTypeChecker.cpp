@@ -22,7 +22,6 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
-LUAU_FASTFLAGVARIABLE(LuauUnreducedTypeFunctionsDontTriggerWarnings)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
 
 namespace Luau
@@ -714,13 +713,7 @@ struct NonStrictTypeChecker
                 AstExpr* arg = arguments[i];
                 if (auto runTimeFailureType = willRunTimeError(arg, fresh, scope))
                 {
-                    if (FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings)
-                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
-                    else
-                    {
-                        if (!get<NeverType>(follow(*runTimeFailureType)))
-                            reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
-                    }
+                    reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                 }
             }
             if (arguments.size() < argTypes.size())
@@ -1202,7 +1195,7 @@ struct NonStrictTypeChecker
             {
 
                 TypeId actualType = lookupType(fragment);
-                if (FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings && shouldSkipRuntimeErrorTesting(actualType))
+                if (shouldSkipRuntimeErrorTesting(actualType))
                     continue;
                 SubtypingResult r = subtyping.isSubtype(actualType, *contextTy, scope);
                 if (r.normalizationTooComplex)

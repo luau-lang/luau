@@ -20,10 +20,8 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
-LUAU_FASTFLAG(LuauNoMoreComparisonTypeFunctions)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
-LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableWaitForPendingTypes)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsUseSolveFunctionCall)
 
@@ -107,10 +105,7 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
 
         TypeId resultTy = ctx->arena->addType(
             TypeFunctionInstanceType{
-                NotNull{
-                    FFlag::LuauBuiltinTypeFunctionsArentGlobal ? &ctx->builtins->typeFunctions->unionFunc
-                                                               : &builtinTypeFunctions_DEPRECATED().unionFunc
-                },
+                NotNull{&ctx->builtins->typeFunctions->unionFunc},
                 std::move(results),
                 {},
             }
@@ -1669,24 +1664,13 @@ struct CollectUnionTypeOptions : TypeOnceVisitor
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
     {
-        if (FFlag::LuauBuiltinTypeFunctionsArentGlobal)
+        if (tfit.function->name != ctx->builtins->typeFunctions->unionFunc.name)
         {
-            if (tfit.function->name != ctx->builtins->typeFunctions->unionFunc.name)
-            {
-                options.insert(ty);
-                blockingTypes.insert(ty);
-                return false;
-            }
+            options.insert(ty);
+            blockingTypes.insert(ty);
+            return false;
         }
-        else
-        {
-            if (tfit.function->name != builtinTypeFunctions_DEPRECATED().unionFunc.name)
-            {
-                options.insert(ty);
-                blockingTypes.insert(ty);
-                return false;
-            }
-        }
+
         return true;
     }
 };
@@ -2137,16 +2121,8 @@ bool searchPropsAndIndexer(
         if (auto tfit = get<TypeFunctionInstanceType>(indexType))
         {
             // if we have an index function here, it means we're in a cycle, so let's see if it's well-founded if we tie the knot
-            if (FFlag::LuauBuiltinTypeFunctionsArentGlobal)
-            {
-                if (tfit->function.get() == &ctx->builtins->typeFunctions->indexFunc)
-                    indexType = follow(tblIndexer->indexResultType);
-            }
-            else
-            {
-                if (tfit->function.get() == &builtinTypeFunctions_DEPRECATED().indexFunc)
-                    indexType = follow(tblIndexer->indexResultType);
-            }
+            if (tfit->function.get() == &ctx->builtins->typeFunctions->indexFunc)
+                indexType = follow(tblIndexer->indexResultType);
         }
 
         if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
@@ -2830,14 +2806,6 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
 
     scope->exportedTypeBindings[setmetatableFunc.name] = mkBinaryTypeFunction(&setmetatableFunc);
     scope->exportedTypeBindings[getmetatableFunc.name] = mkUnaryTypeFunction(&getmetatableFunc);
-}
-
-
-const BuiltinTypeFunctions& builtinTypeFunctions_DEPRECATED()
-{
-    static std::unique_ptr<const BuiltinTypeFunctions> result = std::make_unique<BuiltinTypeFunctions>();
-
-    return *result;
 }
 
 } // namespace Luau

@@ -13,7 +13,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState)
+LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
 LUAU_FASTFLAG(LuauCodegenChainLink)
 
 namespace Luau
@@ -40,10 +40,13 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
     return false;
 }
 
-static void buildArgumentTypeChecks(IrBuilder& build)
+static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 {
-    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
+    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState2 ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
+
+    if (FFlag::LuauCodegenSetBlockEntryState2)
+        build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
     {
@@ -66,6 +69,9 @@ static void buildArgumentTypeChecks(IrBuilder& build)
             build.inst(IrCmd::JUMP_EQ_TAG, load, build.constTag(LUA_TNIL), nextCheck, fallbackCheck);
 
             build.beginBlock(fallbackCheck);
+
+            if (FFlag::LuauCodegenSetBlockEntryState2)
+                build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
         }
 
         switch (tag)
@@ -115,7 +121,11 @@ static void buildArgumentTypeChecks(IrBuilder& build)
         if (optional)
         {
             build.inst(IrCmd::JUMP, nextCheck);
+
             build.beginBlock(nextCheck);
+
+            if (FFlag::LuauCodegenSetBlockEntryState2)
+                build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
         }
     }
 
@@ -152,7 +162,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     {
         beginBlock(entry);
 
-        buildArgumentTypeChecks(*this);
+        buildArgumentTypeChecks(*this, entry);
 
         inst(IrCmd::JUMP, blockAtInst(0));
     }

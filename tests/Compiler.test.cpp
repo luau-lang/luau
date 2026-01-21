@@ -26,6 +26,7 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauCompileStringCharSubFold)
 LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauCompileCallCostModel)
+LUAU_FASTFLAG(LuauCompileInlineInitializers)
 
 using namespace Luau;
 
@@ -7792,6 +7793,8 @@ RETURN R1 1
 
 TEST_CASE("InlineNonConstInitializers")
 {
+    ScopedFastFlag luauCompileInlineInitializers{FFlag::LuauCompileInlineInitializers, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7817,10 +7820,7 @@ CALL R2 1 0
 RETURN R0 0
 )"
     );
-}
 
-TEST_CASE("InlineNonConstInitializers2")
-{
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7850,6 +7850,141 @@ JUMPIFLT R2 R1 L2
 LOADB R5 0 +1
 L2: LOADB R5 1
 L3: RETURN R0 0
+)"
+    );
+
+    // inlined when passed as a temporary
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function test(a, b, c, comp)
+    return comp(a, b) and comp(b, c)
+end
+
+test(x, y, z, function(a, b) return a > b end)
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['test']
+DUPCLOSURE R4 K1 []
+JUMPIFLT R1 R0 L0
+LOADB R5 0 +1
+L0: LOADB R5 1
+L1: JUMPIFNOT R5 L3
+JUMPIFLT R2 R1 L2
+LOADB R5 0 +1
+L2: LOADB R5 1
+L3: RETURN R0 0
+)"
+    );
+
+    // inlined passed as an upvalue
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function test(a, b, c, comp)
+    return comp(a, b) and comp(b, c)
+end
+
+local function greater(a, b)
+    return a > b
+end
+
+local function bar(x, y, z)
+    return test(x, y, z, greater)
+end
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETUPVAL R4 0
+JUMPIFLT R1 R0 L0
+LOADB R3 0 +1
+L0: LOADB R3 1
+L1: JUMPIFNOT R3 L3
+JUMPIFLT R2 R1 L2
+LOADB R3 0 +1
+L2: LOADB R3 1
+L3: RETURN R3 1
+)"
+    );
+
+    // not inlined when the upvalue is mutable
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function test(a, b, c, comp)
+    return comp(a, b) and comp(b, c)
+end
+
+local function greater(a, b)
+    return a > b
+end
+
+local function bar(x, y, z)
+    return test(x, y, z, greater)
+end
+
+greater = function(a, b) return a < b end
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETUPVAL R4 0
+MOVE R5 R4
+MOVE R6 R0
+MOVE R7 R1
+CALL R5 2 1
+MOVE R3 R5
+JUMPIFNOT R3 L0
+MOVE R5 R4
+MOVE R6 R1
+MOVE R7 R2
+CALL R5 2 1
+MOVE R3 R5
+L0: RETURN R3 1
+)"
+    );
+
+    // not inlined when argument itself is mutable
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z, debug = ...
+local function test(a, b, c, comp)
+    if debug then comp = function(a, b) return a >= b end end
+
+    return comp(a, b) and comp(b, c)
+end
+
+test(x, y, z, function(a, b) return a > b end)
+)",
+                   3,
+                   2
+               ),
+        R"(
+GETVARARGS R0 4
+DUPCLOSURE R4 K0 ['test']
+CAPTURE VAL R3
+DUPCLOSURE R5 K1 []
+JUMPIFNOT R3 L0
+DUPCLOSURE R5 K2 []
+L0: MOVE R6 R5
+MOVE R7 R0
+MOVE R8 R1
+CALL R6 2 1
+JUMPIFNOT R6 L1
+MOVE R6 R5
+MOVE R7 R1
+MOVE R8 R2
+CALL R6 2 1
+L1: RETURN R0 0
 )"
     );
 }
