@@ -169,9 +169,15 @@ TEST_CASE_FIXTURE(NegationFixture, "double_negation")
     };
 
     CheckResult result = check(R"(
-        type T = ~~any
-        local a: any
+        type T = ~~false?
+        local a: false?
         local x: T = a
+
+        if x ~= false then
+            local y: nil = x
+        elseif x ~= nil then
+            local z: false = x
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
