@@ -13,7 +13,6 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
-#include "Luau/Simplify.h"
 
 #include "lua.h"
 #include "lualib.h"
