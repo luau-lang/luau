@@ -13,8 +13,7 @@
 #include <string.h>
 
 // Simple FileResolver for type checking on luau.org/demo
-struct DemoFileResolver
-    : Luau::FileResolver
+struct DemoFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
     {

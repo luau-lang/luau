@@ -163,9 +163,9 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 return nonEmpty;
             else
             {
-                    auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
-                    if (completeableExtents.containsClosed(cursorPosition))
-                        return nonEmpty;
+                auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
+                if (completeableExtents.containsClosed(cursorPosition))
+                    return nonEmpty;
 
                 return empty;
             }

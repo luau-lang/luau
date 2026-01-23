@@ -301,6 +301,12 @@ end
 
 assert(pcall(fuzzfail28) == false)
 
+local function fuzzfail29(...)
+  return (vector.create(335572085, 4, 5) // 2) == ...
+end
+
+assert(fuzzfail29() == false)
+
 assert(arraySizeInv1() == true)
 
 local function arraySizeInv2()

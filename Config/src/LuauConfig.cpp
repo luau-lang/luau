@@ -96,6 +96,15 @@ static std::optional<ConfigTable> serializeTable(lua_State* L, std::string* erro
     return table;
 }
 
+static std::optional<std::string> load(lua_State* L, const std::string& source)
+{
+    std::string bytecode = compile(source);
+    if (luau_load(L, "=config", bytecode.data(), bytecode.size(), 0) != 0)
+        return lua_tostring(L, -1);
+
+    return std::nullopt;
+}
+
 std::optional<ConfigTable> extractConfig(const std::string& source, const InterruptCallbacks& callbacks, std::string* error)
 {
     // Initialize Luau VM
@@ -104,10 +113,8 @@ std::optional<ConfigTable> extractConfig(const std::string& source, const Interr
     luaL_openlibs(L);
     luaL_sandbox(L);
 
-    // Compile and load source code
-    std::string bytecode = compile(source);
-    if (luau_load(L, "=config", bytecode.data(), bytecode.size(), 0) != 0)
-        RETURN_WITH_ERROR(lua_tostring(L, -1));
+    if (std::optional<std::string> loadError = load(L, source))
+        RETURN_WITH_ERROR(*loadError);
 
     // Execute configuration
     if (callbacks.initCallback)

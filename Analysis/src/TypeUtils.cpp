@@ -1001,5 +1001,15 @@ bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
     }
 }
 
+bool isBlocked(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto tfit = get<TypeFunctionInstanceType>(ty))
+        return tfit->state == TypeFunctionInstanceState::Unsolved;
+
+    return is<BlockedType, PendingExpansionType>(ty);
+}
+
 
 } // namespace Luau

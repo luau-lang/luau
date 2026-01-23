@@ -78,7 +78,8 @@ struct TracingVisitor : IterativeTypeVisitor
 
     TracingVisitor(bool visitOnce, bool skipBoundTypes)
         : IterativeTypeVisitor("TracingVisitor", visitOnce, skipBoundTypes)
-    {}
+    {
+    }
 
     void cycle(TypeId ty) override
     {
@@ -110,7 +111,8 @@ struct TableSkippingVisitor : IterativeTypeVisitor
 {
     TableSkippingVisitor()
         : IterativeTypeVisitor("TracingVisitor", /*visitOnce*/ true, /*skipBoundTypes*/ true)
-    {}
+    {
+    }
 
     std::vector<std::string> trace;
 
@@ -148,17 +150,9 @@ TEST_CASE_FIXTURE(Fixture, "detects_cycles")
 
     TypeId fType = arena.addType(BlockedType{});
 
-    TypeId tType = arena.addType(TableType{
-        TableType::Props{{"method", fType}},
-        std::nullopt,
-        TypeLevel{},
-        TableState::Sealed
-    });
+    TypeId tType = arena.addType(TableType{TableType::Props{{"method", fType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
-    asMutable(fType)->ty.emplace<FunctionType>(
-        arena.addTypePack({tType, getBuiltins()->numberType}),
-        getBuiltins()->emptyTypePack
-    );
+    asMutable(fType)->ty.emplace<FunctionType>(arena.addTypePack({tType, getBuiltins()->numberType}), getBuiltins()->emptyTypePack);
 
     TracingVisitor vis(true, true);
     vis.run(fType);
@@ -200,17 +194,9 @@ TEST_CASE_FIXTURE(Fixture, "visitOnce")
     // An acyclic type that has redundant interior structure.
     // ({x: number}, {x: number}) -> {x: number}
 
-    TypeId xTable = arena.addType(TableType{
-        TableType::Props{{"x", getBuiltins()->numberType}},
-        std::nullopt,
-        TypeLevel{},
-        TableState::Sealed
-    });
+    TypeId xTable = arena.addType(TableType{TableType::Props{{"x", getBuiltins()->numberType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
-    TypeId fnTy = arena.addType(FunctionType{
-        arena.addTypePack({xTable, xTable}),
-        arena.addTypePack({xTable})
-    });
+    TypeId fnTy = arena.addType(FunctionType{arena.addTypePack({xTable, xTable}), arena.addTypePack({xTable})});
 
     SUBCASE("visitOnce_true")
     {

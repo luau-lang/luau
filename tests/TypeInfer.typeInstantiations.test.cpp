@@ -142,7 +142,8 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
                 );
             else
                 REQUIRE_EQ(
-                    toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
+                    toString(result.errors[0]),
+                    "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
                 );
         }
     }
@@ -195,8 +196,8 @@ TEST_CASE_FIXTURE(Fixture, "anonymous_type_inferred")
 
 TEST_CASE_FIXTURE(Fixture, "type_packs")
 {
-        ScopedFastFlag syntax{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-        ScopedFastFlag semantics{FFlag::LuauExplicitTypeInstantiationSupport, true};
+    ScopedFastFlag syntax{FFlag::LuauExplicitTypeInstantiationSyntax, true};
+    ScopedFastFlag semantics{FFlag::LuauExplicitTypeInstantiationSupport, true};
 
     // FIXME: This triggers a GenericTypePackCountMismatch error, and it's not obvious if the
     // code for explicit types is broken, or if subtyping is broken.

@@ -569,7 +569,7 @@ std::string getTypeFunctionDefinitionSource()
     if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
         result += kBuiltinDefinitionTypeMethodSrc;
     else
-        result +=  kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
+        result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
 
     if (FFlag::LuauMorePermissiveNewtableType)
         result += kBuiltinDefinitionTypesLibSrc;
