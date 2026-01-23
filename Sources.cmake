@@ -6,6 +6,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/DenseHash.h
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
+    Common/include/Luau/SmallVector.h
     Common/include/Luau/StringUtils.h
     Common/include/Luau/TimeTrace.h
     Common/include/Luau/Variant.h
@@ -227,6 +228,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
+    Analysis/include/Luau/SubtypingUnifier.h
     Analysis/include/Luau/SubtypingVariance.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/TableLiteralInference.h
@@ -308,6 +310,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/StructuralTypeEquality.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
+    Analysis/src/SubtypingUnifier.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/TableLiteralInference.cpp
     Analysis/src/ToDot.cpp

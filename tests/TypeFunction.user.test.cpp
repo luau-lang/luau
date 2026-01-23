@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
 LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAG(LuauUdtfIndirectAliases)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2449,6 +2450,62 @@ local y: foo<{b: number}> = { b = 2 }
     CHECK(toString(requireType("y"), ToStringOptions{true}) == "{ b: number }?");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    CheckResult result = check(R"(
+type Test<T> = T?
+
+type function foo(t)
+    return Test(t)
+end
+
+type function bar(t)
+    return foo(t)
+end
+
+local x: bar<{a: number}> = { a = 2 }
+local y: bar<{b: number}> = { b = 2 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: number }?");
+    CHECK(toString(requireType("y"), ToStringOptions{true}) == "{ b: number }?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect_levels")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    CheckResult result = check(R"(
+type Test<T> = T?
+
+type function foo(t)
+    return Test(t)
+end
+
+do
+    type function bar(t)
+        return foo(t)
+    end
+
+    local x: bar<{a: number}> = { a = 2 }
+    local y: bar<{b: number}> = { b = 2 }
+
+    print(x, y)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireTypeAtPosition(Position{15, 10}), ToStringOptions{true}) == "{ a: number }?");
+    CHECK(toString(requireTypeAtPosition(Position{15, 13}), ToStringOptions{true}) == "{ b: number }?");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_values")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
@@ -2468,6 +2525,34 @@ local y: foo<string> = "a"
 
     CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: number }?");
     CHECK(toString(requireType("y"), ToStringOptions{true}) == "string | { a: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unordered")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    CheckResult result = check(R"(
+type function foobar(ty)
+    if ty:is("number") then
+        return ty
+    end
+    return TableOf(ty)
+end
+
+type TableOf<T> = { prop: T }
+
+type ShouldBeNumber = foobar<number>
+type ShouldBeTableOfString = foobar<string>
+
+local x: ShouldBeNumber = 2
+local y: ShouldBeTableOfString = { prop = "a" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "number");
+    CHECK(toString(requireType("y"), ToStringOptions{true}) == "{ prop: string }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_with_reduction")
@@ -2515,6 +2600,42 @@ return {}
     CheckResult bResult = check(R"(
 local Test = require(game.A);
 local y: Test.foo<{ a: string }> = "x"
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    CHECK(toString(requireType("y")) == R"(string)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_implicit_export_indirect")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    fileResolver.source["game/A"] = R"(
+type Test<T> = rawget<T, "a">
+
+type function foo(t)
+    return Test(t)
+end
+
+export type function bar(t)
+    return foo(t)
+end
+
+local x: bar<{ a: number }> = 2
+return {}
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CHECK(toString(requireType("game/A", "x")) == R"(number)");
+
+    CheckResult bResult = check(R"(
+local Test = require(game.A);
+local y: Test.bar<{ a: string }> = "x"
     )");
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
@@ -2808,10 +2929,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 {
-    ScopedFastFlag _[] = {
-        { FFlag::LuauSolverV2, true },
-        { FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true }
-    };
+    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true}};
 
     loadDefinition(R"(
         declare extern type Bar with

@@ -1787,15 +1787,8 @@ struct TFFixture
 
     BuiltinTypeFunctions builtinTypeFunctions;
 
-    TypeFunctionContext tfc_{
-        arena,
-        getBuiltins(),
-        NotNull{globalScope.get()},
-        NotNull{&normalizer},
-        NotNull{&runtime},
-        NotNull{&ice},
-        NotNull{&limits}
-    };
+    TypeFunctionContext
+        tfc_{arena, getBuiltins(), NotNull{globalScope.get()}, NotNull{&normalizer}, NotNull{&runtime}, NotNull{&ice}, NotNull{&limits}};
 
     NotNull<TypeFunctionContext> tfc{&tfc_};
 };
@@ -1861,7 +1854,8 @@ TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_solved_tf_is_solved")
 
 TEST_CASE_FIXTURE(TFFixture, "a_tf_parameterized_on_a_stuck_tf_is_stuck")
 {
-    TypeId innerAddTy = arena->addType(TypeFunctionInstanceType{getBuiltinTypeFunctions()->addFunc, {builtinTypes_.bufferType, builtinTypes_.booleanType}});
+    TypeId innerAddTy =
+        arena->addType(TypeFunctionInstanceType{getBuiltinTypeFunctions()->addFunc, {builtinTypes_.bufferType, builtinTypes_.booleanType}});
 
     TypeId outerAddTy = arena->addType(TypeFunctionInstanceType{getBuiltinTypeFunctions()->addFunc, {builtinTypes_.numberType, innerAddTy}});
 
@@ -1898,13 +1892,12 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_union_of_error_nil_table_with_table")
 {
     ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
-    TypeId refinement = arena->addType(TypeFunctionInstanceType{
-        getBuiltinTypeFunctions()->refineFunc,
-        {
-            arena->addType(UnionType{{builtinTypes_.errorType, builtinTypes_.nilType, builtinTypes_.tableType}}),
-            builtinTypes_.tableType
+    TypeId refinement = arena->addType(
+        TypeFunctionInstanceType{
+            getBuiltinTypeFunctions()->refineFunc,
+            {arena->addType(UnionType{{builtinTypes_.errorType, builtinTypes_.nilType, builtinTypes_.tableType}}), builtinTypes_.tableType}
         }
-    });
+    );
     reduceTypeFunctions(refinement, Location{}, tfc, true);
     CHECK_EQ("*error-type* | table", toString(refinement));
 }

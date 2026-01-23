@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauCompileStringCharSubFold)
 LUAU_FASTFLAG(LuauCompileCallCostModel)
+LUAU_FASTFLAGVARIABLE(LuauCompileCorrectLocalPc)
 
 namespace Luau
 {
@@ -1221,6 +1222,32 @@ void BytecodeBuilder::expandJumps()
     // this was hard, but we're done.
     insns.swap(newinsns);
     lines.swap(newlines);
+
+    if (FFlag::LuauCompileCorrectLocalPc)
+    {
+        for (DebugLocal& debugLocal : debugLocals)
+        {
+            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+            if (debugLocal.startpc != debugLocal.endpc)
+                debugLocal.endpc = remap[debugLocal.endpc - 1] + 1;
+            else
+                debugLocal.endpc = remap[debugLocal.endpc];
+
+            debugLocal.startpc = remap[debugLocal.startpc];
+
+        }
+
+        for (TypedLocal& typedLocal : typedLocals)
+        {
+            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+            if (typedLocal.startpc != typedLocal.endpc)
+                typedLocal.endpc = remap[typedLocal.endpc - 1] + 1;
+            else
+                typedLocal.endpc = remap[typedLocal.endpc];
+
+            typedLocal.startpc = remap[typedLocal.startpc];
+        }
+    }
 }
 
 std::string BytecodeBuilder::getError(const std::string& message)

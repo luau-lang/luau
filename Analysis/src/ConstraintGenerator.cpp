@@ -48,6 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAGVARIABLE(LuauUdtfIndirectAliases)
 
 namespace Luau
 {
@@ -887,6 +888,9 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
     if (hasTypeFunction)
         typeFunctionEnvScope = std::make_shared<Scope>(typeFunctionRuntime->rootScope);
 
+    std::vector<TypeFunctionInstanceType*> createdTypeFunctions;
+    DenseHashMap<AstStatTypeFunction*, const TypeFunctionInstanceType*> referencedTypeFunctions{nullptr};
+
     // Additional pass for user-defined type functions to fill in their environments completely
     for (AstStat* stat : block->body)
     {
@@ -912,14 +916,18 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
             // Fill it with all visible type functions and referenced type aliases
             if (mainTypeFun)
             {
+                if (FFlag::LuauUdtfIndirectAliases)
+                    createdTypeFunctions.push_back(mainTypeFun);
+
                 GlobalNameCollector globalNameCollector;
                 stat->visit(&globalNameCollector);
 
                 UserDefinedFunctionData& userFuncData = mainTypeFun->userFuncData;
                 size_t level = 0;
 
-                auto addToEnvironment =
-                    [this, &globalNameCollector](UserDefinedFunctionData& userFuncData, ScopePtr scope, const Name& name, TypeFun tf, size_t level)
+                auto addToEnvironment = [this, &globalNameCollector, &referencedTypeFunctions](
+                                            UserDefinedFunctionData& userFuncData, ScopePtr scope, const Name& name, TypeFun tf, size_t level
+                                        )
                 {
                     if (auto ty = get<TypeFunctionInstanceType>(follow(tf.type)); ty && ty->userFuncData.definition)
                     {
@@ -927,6 +935,9 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                             return;
 
                         userFuncData.environmentFunction[name] = std::make_pair(ty->userFuncData.definition, level);
+
+                        if (FFlag::LuauUdtfIndirectAliases)
+                            referencedTypeFunctions[ty->userFuncData.definition] = ty;
 
                         if (auto it = astTypeFunctionEnvironmentScopes.find(ty->userFuncData.definition))
                         {
@@ -965,6 +976,33 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                         addToEnvironment(userFuncData, typeFunctionEnvScope, name, tf, level);
 
                     level++;
+                }
+            }
+        }
+    }
+
+    if (FFlag::LuauUdtfIndirectAliases)
+    {
+        // Finally, we need to include aliases from functions we might call
+        for (TypeFunctionInstanceType* type : createdTypeFunctions)
+        {
+            UserDefinedFunctionData& sourceFuncData = type->userFuncData;
+
+            // Go over all functions in our environment
+            for (const auto& [targetFuncName, definitionAndLevel] : sourceFuncData.environmentFunction)
+            {
+                if (const TypeFunctionInstanceType** it = referencedTypeFunctions.find(definitionAndLevel.first))
+                {
+                    const UserDefinedFunctionData& targetFuncData = (*it)->userFuncData;
+
+                    for (const auto& [aliasName, typeAndLevel] : targetFuncData.environmentAlias)
+                    {
+                        if (!sourceFuncData.environmentAlias.find(aliasName))
+                        {
+                            // Combine definition levels because we are viewing target function aliases from the perspective of the target function
+                            sourceFuncData.environmentAlias[aliasName] = {typeAndLevel.first, typeAndLevel.second + definitionAndLevel.second};
+                        }
+                    }
                 }
             }
         }
@@ -3415,12 +3453,13 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
         //      end
         //  }
         TypeId itemTy = check(
-            scope,
-            item.value,
-            /* expectedType */ std::nullopt,
-            /* forceSingleton */ false,
-            /* generalize */ !FFlag::LuauPushTypeConstraintLambdas3
-        ).ty;
+                            scope,
+                            item.value,
+                            /* expectedType */ std::nullopt,
+                            /* forceSingleton */ false,
+                            /* generalize */ !FFlag::LuauPushTypeConstraintLambdas3
+        )
+                            .ty;
 
         if (item.key)
         {
@@ -3694,7 +3733,6 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
             genericTypePacks.push_back(varargPack);
         if (!fn->returnAnnotation)
             genericTypePacks.push_back(returnType);
-
     }
     else
     {

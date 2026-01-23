@@ -1095,7 +1095,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInstantiate* i)
             }
         }
     }
-    
+
     return visitExpr(i->expr);
 }
 
