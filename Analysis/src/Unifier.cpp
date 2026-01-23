@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
+LUAU_FASTFLAGVARIABLE(LuauUnifierDoesntReferToNewSolver)
 
 namespace Luau
 {
@@ -1496,7 +1497,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level)
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauUnifierDoesntReferToNewSolver)
                 return freshType(NotNull{types}, builtinTypes, scope);
             else
                 return types->freshType(builtinTypes, scope, level);

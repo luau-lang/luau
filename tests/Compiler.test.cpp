@@ -27,6 +27,8 @@ LUAU_FASTFLAG(LuauCompileStringCharSubFold)
 LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauCompileCallCostModel)
 LUAU_FASTFLAG(LuauCompileInlineInitializers)
+LUAU_FASTFLAG(LuauCompileCorrectLocalPc)
+LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
 
 using namespace Luau;
 
@@ -361,6 +363,52 @@ GETIMPORT R0 3 [math.max]
 CALL R0 2 -1
 L0: RETURN R0 -1
 )");
+}
+
+TEST_CASE("ImportCallRedirectLocal")
+{
+    ScopedFastFlag luauCompileFastcallsSurvivePolyfills{FFlag::LuauCompileFastcallsSurvivePolyfills, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local math = math
+return math.max(1, 2)
+)"),
+        R"(
+GETIMPORT R0 1 [math]
+LOADN R2 1
+FASTCALL2K 18 R2 K2 L0 [2]
+LOADK R3 K2 [2]
+GETTABLEKS R1 R0 K3 ['max']
+CALL R1 2 -1
+L0: RETURN R1 -1
+)"
+    );
+}
+
+TEST_CASE("ImportCallRedirectLocalPolyfill")
+{
+    ScopedFastFlag luauCompileFastcallsSurvivePolyfills{FFlag::LuauCompileFastcallsSurvivePolyfills, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local math = math or require("math-polyfill")
+return math.max(1, 2)
+)"),
+        R"(
+GETIMPORT R0 1 [math]
+JUMPIF R0 L0
+GETIMPORT R0 3 [require]
+LOADK R1 K4 ['math-polyfill']
+CALL R0 1 1
+L0: LOADN R2 1
+FASTCALL2K 18 R2 K5 L1 [2]
+LOADK R3 K5 [2]
+GETTABLEKS R1 R0 K6 ['max']
+CALL R1 2 -1
+L1: RETURN R1 -1
+)"
+    );
 }
 
 TEST_CASE("FakeImportCall")
@@ -4630,8 +4678,10 @@ RETURN R0 0
 
 TEST_CASE("JumpTrampoline")
 {
+    ScopedFastFlag luauCompileCorrectLocalPc{FFlag::LuauCompileCorrectLocalPc, true};
+
     std::string source;
-    source += "local sum = 0\n";
+    source += "local sum: number = 0\n";
     source += "for i=1,3 do\n";
     for (int i = 0; i < 10000; ++i)
     {
@@ -4642,8 +4692,12 @@ TEST_CASE("JumpTrampoline")
     source += "return sum\n";
 
     Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, source.c_str());
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Locals | Luau::BytecodeBuilder::Dump_Types);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+    options.typeInfoLevel = 1;
+    Luau::compileOrThrow(bcb, source, options);
 
     std::stringstream bcs(bcb.dumpFunction(0));
 
@@ -4654,10 +4708,14 @@ TEST_CASE("JumpTrampoline")
 
     // FORNPREP and early JUMPs (break) need to go through a trampoline
     std::string head;
-    for (size_t i = 0; i < 16; ++i)
+    for (size_t i = 0; i < 20; ++i)
         head += insns[i] + "\n";
 
     CHECK_EQ("\n" + head, R"(
+local 0: reg 3, start pc 8 line 3, end pc 54545 line 20002
+local 1: reg 0, start pc 2 line 2, end pc 54549 line 20004
+R3: any from 2 to 54546
+R0: number from 1 to 54550
 LOADN R0 0
 LOADN R3 1
 LOADN R1 3
@@ -4679,7 +4737,7 @@ L5: JUMPX L14543
     // FORNLOOP has to go through a trampoline since the jump is back to the beginning of the function
     // however, late JUMPs (break) don't need a trampoline since the loop end is really close by
     std::string tail;
-    for (size_t i = 44539; i < insns.size(); ++i)
+    for (size_t i = 44543; i < insns.size(); ++i)
         tail += insns[i] + "\n";
 
     CHECK_EQ("\n" + tail, R"(

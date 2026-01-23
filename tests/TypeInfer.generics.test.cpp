@@ -14,6 +14,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping)
 LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 
 using namespace Luau;
@@ -1502,10 +1503,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
         LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-// Important FIXME CLI-161128: This test exposes some problems with overload
-// selection and generic type substitution when
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
+    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping, true};
+
     CheckResult result;
 
     if (FFlag::LuauSolverV2)
@@ -1525,11 +1526,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
             ) -- type binders are not inferred
         )");
 
-        CHECK("add<X, X> | number" == toString(requireType("b"))); // FIXME CLI-161128
+        CHECK("number" == toString(requireType("b")));
         CHECK("<T>(T, T, (T, T) -> T) -> T" == toString(requireType("sum")));
         CHECK("<T>(T, T, (T, T) -> T) -> T" == toString(requireTypeAtPosition({7, 29})));
-        LUAU_REQUIRE_ERROR_COUNT(1, result); // FIXME CLI-161128
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
     }
     else
     {
@@ -1543,8 +1542,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
             local b = sumrec(sum) -- ok
             local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
         )");
-        LUAU_REQUIRE_NO_ERRORS(result);
     }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions_2")
@@ -2156,6 +2155,20 @@ TEST_CASE_FIXTURE(Fixture, "variadic_generics_dont_leak")
     )");
 
     CHECK_EQ("(number, number) -> number", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function id<T>(t: T) return t end
+        local function foo(x)
+            id(x)
+        end
+    )"));
+
+    CHECK_EQ("(unknown) -> ()", toString(requireType("foo")));
 }
 
 TEST_SUITE_END();

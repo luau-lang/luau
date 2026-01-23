@@ -841,7 +841,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    for (const auto& e: result.errors)
+    for (const auto& e : result.errors)
         CHECK(get<TypeMismatch>(e));
 }
 

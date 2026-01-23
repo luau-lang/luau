@@ -744,27 +744,17 @@ void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTe
                 continue;
             }
 
-            redirect(clone.a);
-            redirect(clone.b);
-            redirect(clone.c);
-            redirect(clone.d);
-            redirect(clone.e);
-            redirect(clone.f);
-            redirect(clone.g);
+            for (auto& op : clone.ops)
+                redirect(op);
 
-            addUse(function, clone.a);
-            addUse(function, clone.b);
-            addUse(function, clone.c);
-            addUse(function, clone.d);
-            addUse(function, clone.e);
-            addUse(function, clone.f);
-            addUse(function, clone.g);
+            for (auto& op : clone.ops)
+                addUse(function, op);
 
             // Instructions that referenced the original will have to be adjusted to use the clone
             instRedir[index] = uint32_t(function.instructions.size());
 
             // Reconstruct the fresh clone
-            inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f, clone.g);
+            inst(clone.cmd, clone.ops);
         }
     }
 }
@@ -807,27 +797,17 @@ void IrBuilder::clone_DEPRECATED(const IrBlock& source, bool removeCurrentTermin
             continue;
         }
 
-        redirect(clone.a);
-        redirect(clone.b);
-        redirect(clone.c);
-        redirect(clone.d);
-        redirect(clone.e);
-        redirect(clone.f);
-        redirect(clone.g);
+        for (auto& op : clone.ops)
+            redirect(op);
 
-        addUse(function, clone.a);
-        addUse(function, clone.b);
-        addUse(function, clone.c);
-        addUse(function, clone.d);
-        addUse(function, clone.e);
-        addUse(function, clone.f);
-        addUse(function, clone.g);
+        for (auto& op : clone.ops)
+            addUse(function, op);
 
         // Instructions that referenced the original will have to be adjusted to use the clone
         instRedir[index] = uint32_t(function.instructions.size());
 
         // Reconstruct the fresh clone
-        inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f, clone.g);
+        inst(clone.cmd, clone.ops);
     }
 }
 
@@ -903,43 +883,70 @@ IrOp IrBuilder::cond(IrCondition cond)
 
 IrOp IrBuilder::inst(IrCmd cmd)
 {
-    return inst(cmd, {}, {}, {}, {}, {}, {});
+    return inst(cmd, {});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a)
 {
-    return inst(cmd, a, {}, {}, {}, {}, {});
+    return inst(cmd, {a});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b)
 {
-    return inst(cmd, a, b, {}, {}, {}, {});
+    return inst(cmd, {a, b});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c)
 {
-    return inst(cmd, a, b, c, {}, {}, {});
+    return inst(cmd, {a, b, c});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d)
 {
-    return inst(cmd, a, b, c, d, {}, {});
+    return inst(cmd, {a, b, c, d});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e)
 {
-    return inst(cmd, a, b, c, d, e, {});
+    return inst(cmd, {a, b, c, d, e});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f)
 {
-    return inst(cmd, a, b, c, d, e, f, {});
+    return inst(cmd, {a, b, c, d, e, f});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f, IrOp g)
 {
+    return inst(cmd, {a, b, c, d, e, f, g});
+}
+
+IrOp IrBuilder::inst(IrCmd cmd, std::initializer_list<IrOp> ops)
+{
     uint32_t index = uint32_t(function.instructions.size());
-    function.instructions.push_back({cmd, a, b, c, d, e, f, g});
+    function.instructions.push_back({cmd, ops});
+
+    CODEGEN_ASSERT(!inTerminatedBlock);
+
+    if (isBlockTerminator(cmd))
+    {
+        function.blocks[activeBlockIdx].finish = index;
+        inTerminatedBlock = true;
+    }
+
+    if (FFlag::LuauCodegenBlockSafeEnv && canInvalidateSafeEnv(cmd))
+    {
+        // Mark that block has instruction with this flag
+        function.blocks[activeBlockIdx].flags |= kBlockFlagSafeEnvClear;
+    }
+
+    return {IrOpKind::Inst, index};
+}
+
+IrOp IrBuilder::inst(IrCmd cmd, const IrOps& ops)
+{
+    uint32_t index = uint32_t(function.instructions.size());
+    function.instructions.push_back({cmd, ops});
 
     CODEGEN_ASSERT(!inTerminatedBlock);
 

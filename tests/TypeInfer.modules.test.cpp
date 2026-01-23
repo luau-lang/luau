@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINT(LuauSolverConstraintLimit)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
@@ -896,6 +897,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::DebugLuauMagicTypes, true},
+        // With this flag on we no longer try to unify the members of the return
+        // table with `any`, so we don't end up being unable to solve constraints.
+        {FFlag::LuauUnifyWithSubtyping, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -903,9 +907,8 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
     )";
 
     CheckResult result = getFrontend().check("game/A");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
-    CHECK(get<InternalError>(result.errors[1]));
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<InternalError>(result.errors[0]));
     CHECK("(...any) -> { X: *error-type*, Y: *error-type* }" == toString(getFrontend().moduleResolver.getModule("game/A")->returnType));
 }
 

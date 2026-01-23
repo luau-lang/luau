@@ -1747,7 +1747,8 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
     return true;
 }
 
-// MagicFreeze is a magic function because table.freeze is a bounded version of the identity function with a custom output (accepts any subtype of `table` and returns a read-only version of that table).
+// MagicFreeze is a magic function because table.freeze is a bounded version of the identity function with a custom output (accepts any subtype of
+// `table` and returns a read-only version of that table).
 bool MagicFreeze::typeCheck(const MagicFunctionTypeCheckContext& ctx)
 {
     if (!FFlag::LuauTableFreezeCheckIsSubtype)
@@ -1769,8 +1770,10 @@ bool MagicFreeze::typeCheck(const MagicFunctionTypeCheckContext& ctx)
     }
     else if (paramTail)
     {
-        // TODO (CLI-185019): We ideally want to report a Count Mismatch error if there's no head but a variadic tail, but CountMismatch requires actual count size, which we don't have with variadic tails, so we can't report it properly yet.
-        // Instead, we continue to typecheck with the first argument in the variadic tail and report a type mismatch error based on that, which is more informative than reporting a count mismatch where the head (paramTypes.size()) is 0.
+        // TODO (CLI-185019): We ideally want to report a Count Mismatch error if there's no head but a variadic tail, but CountMismatch requires
+        // actual count size, which we don't have with variadic tails, so we can't report it properly yet. Instead, we continue to typecheck with the
+        // first argument in the variadic tail and report a type mismatch error based on that, which is more informative than reporting a count
+        // mismatch where the head (paramTypes.size()) is 0.
         firstParamType = first(*paramTail);
     }
 
@@ -1781,7 +1784,8 @@ bool MagicFreeze::typeCheck(const MagicFunctionTypeCheckContext& ctx)
     }
     else
     {
-        // If we can't get a type from the type or type pack, we testIsSubtype against the entire context's argument type pack to report a Type Pack Mismatch error.
+        // If we can't get a type from the type or type pack, we testIsSubtype against the entire context's argument type pack to report a Type Pack
+        // Mismatch error.
         TypePackId tableTyPack = ctx.typechecker->module->internalTypes.addTypePack({ctx.typechecker->builtinTypes->tableType});
         ctx.typechecker->testIsSubtype(follow(ctx.arguments), tableTyPack, ctx.callSite->location);
         return true;
