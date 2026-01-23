@@ -1966,6 +1966,11 @@ std::string prettyPrint(AstStatBlock& block, const CstNodeMap& cstNodeMap)
     return writer.str();
 }
 
+std::string prettyPrint(AstStatBlock& block)
+{
+    return prettyPrint(block, CstNodeMap{nullptr});
+}
+
 std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap)
 {
     StringWriter writer;
