@@ -243,14 +243,14 @@ public:
         return ptr;
     }
 
-    T& operator[](unsigned index)
+    T& operator[](size_t index)
     {
         LUAU_ASSERT(index < count);
 
         return ptr[index];
     }
 
-    const T& operator[](unsigned index) const
+    const T& operator[](size_t index) const
     {
         LUAU_ASSERT(index < count);
 

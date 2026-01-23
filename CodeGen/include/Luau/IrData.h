@@ -1089,7 +1089,7 @@ struct IrInstHash
 
         h = mix(h, uint32_t(key.cmd));
         for (size_t i = 0; i < 7; i++)
-            h = mix(h, i < key.ops.size() ? key.ops[i] : IrOp{});
+            h = mix(h, i < uint32_t(key.ops.size()) ? key.ops[i] : IrOp{});
 
         // MurmurHash2 tail
         h ^= h >> 13;
