@@ -32,7 +32,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
 {
@@ -164,9 +163,9 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 return nonEmpty;
             else
             {
-                    auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
-                    if (completeableExtents.containsClosed(cursorPosition))
-                        return nonEmpty;
+                auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
+                if (completeableExtents.containsClosed(cursorPosition))
+                    return nonEmpty;
 
                 return empty;
             }
@@ -186,7 +185,7 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                     else
                     {
                         // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
-                        if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
+                        if (cursorPosition < forIn->inLocation.begin)
                             return nonEmpty;
                         else
                             return Location{forIn->inLocation.begin, cursorPosition};
@@ -647,7 +646,7 @@ void cloneTypesFromFragment(
     UsageFinder f{dfg};
     program->visit(&f);
     // These are defs that have been mentioned. find the appropriate lvalue type and rvalue types and place them in the scope
-    // First - any locals that have been mentioned in the fragment need to be placed in the bindings and lvalueTypes secionts.
+    // First - any locals that have been mentioned in the fragment need to be placed in the bindings and lvalueTypes sections.
 
     for (const auto& d : f.mentionedDefs)
     {

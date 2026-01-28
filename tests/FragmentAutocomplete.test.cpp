@@ -29,8 +29,6 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
-LUAU_FASTFLAG(LuauDoNotSuggestGenericsInAnonFuncs)
-LUAU_FASTFLAG(LuauForInRangesConsiderInLocation)
 LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
@@ -4528,7 +4526,6 @@ local function whatever() end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "in_place_edit_of_for_loop_before_in_keyword_returns_fragment_starting_from_for")
 {
-    ScopedFastFlag sff{FFlag::LuauForInRangesConsiderInLocation, true};
     std::string source = R"(
 local x = {}
 for i, value in x do
@@ -4618,8 +4615,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "anonymous_autofilled_generic_type_pack_vararg")
 {
-    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
-
     std::string source = R"(
 local function foo<A>(a: (...A) -> number, ...: A)
 	return a(...)
@@ -4653,8 +4648,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "anonymous_autofilled_generic_named_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
-
     std::string source = R"(
 local function foo<A>(f: (a: A) -> number, a: A)
 	return f(a)
@@ -4688,8 +4681,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "anonymous_autofilled_generic_return_type")
 {
-    ScopedFastFlag sff{FFlag::LuauDoNotSuggestGenericsInAnonFuncs, true};
-
     std::string source = R"(
 local function foo<A>(f: () -> A)
 	return f()

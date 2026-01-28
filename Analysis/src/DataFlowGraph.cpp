@@ -13,7 +13,8 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 namespace Luau
 {
@@ -499,7 +500,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatWhile* w)
     }
 
     auto scope = currentScope();
-    // If the inner loop unconditioanlly returns or throws we shouldn't
+    // If the inner loop unconditionally returns or throws we shouldn't
     // consume any type state from the loop body.
     if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
         join(scope, scope, whileScope);
@@ -620,7 +621,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFor* f)
     }
 
     auto scope = currentScope();
-    // If the inner loop unconditioanlly returns or throws we shouldn't
+    // If the inner loop unconditionally returns or throws we shouldn't
     // consume any type state from the loop body.
     if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
         join(scope, scope, forScope);
@@ -656,7 +657,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatForIn* f)
     }
 
     auto scope = currentScope();
-    // If the inner loop unconditioanlly returns or throws we shouldn't
+    // If the inner loop unconditionally returns or throws we shouldn't
     // consume any type state from the loop body.
     if (!matches(cf, ControlFlow::Returns | ControlFlow::Throws))
         join(scope, scope, forScope);
@@ -857,7 +858,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
             return visitExpr(i);
         else if (auto i = e->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             return visitExpr(i);
         }
         else if (auto error = e->as<AstExprError>())
@@ -1079,18 +1080,19 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInstantiate* i)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
-
-    for (const AstTypeOrPack& typeOrPack : i->typeArguments)
+    if (FFlag::LuauExplicitTypeInstantiationSupport)
     {
-        if (typeOrPack.type)
+        for (const AstTypeOrPack& typeOrPack : i->typeArguments)
         {
-            visitType(typeOrPack.type);
-        }
-        else
-        {
-            LUAU_ASSERT(typeOrPack.typePack);
-            visitTypePack(typeOrPack.typePack);
+            if (typeOrPack.type)
+            {
+                visitType(typeOrPack.type);
+            }
+            else
+            {
+                LUAU_ASSERT(typeOrPack.typePack);
+                visitTypePack(typeOrPack.typePack);
+            }
         }
     }
 

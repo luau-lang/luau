@@ -15,7 +15,7 @@
 #include <utility>
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(AddReturnExectargetCheck, false)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 
 namespace Luau
 {
@@ -24,7 +24,7 @@ namespace CodeGen
 namespace X64
 {
 
-void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label)
+void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label, bool floatPrecision)
 {
     // Refresher on comi/ucomi EFLAGS:
     // all zero: greater
@@ -36,14 +36,29 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
     if (cond == IrCondition::Greater || cond == IrCondition::GreaterEqual || cond == IrCondition::NotGreater || cond == IrCondition::NotGreaterEqual)
         std::swap(lhs, rhs);
 
-    if (rhs.cat == CategoryX64::reg)
+    if (floatPrecision)
     {
-        build.vucomisd(rhs, lhs);
+        if (rhs.cat == CategoryX64::reg)
+        {
+            build.vucomiss(rhs, lhs);
+        }
+        else
+        {
+            build.vmovss(tmp, rhs);
+            build.vucomiss(tmp, lhs);
+        }
     }
     else
     {
-        build.vmovsd(tmp, rhs);
-        build.vucomisd(tmp, lhs);
+        if (rhs.cat == CategoryX64::reg)
+        {
+            build.vucomisd(rhs, lhs);
+        }
+        else
+        {
+            build.vmovsd(tmp, rhs);
+            build.vucomisd(tmp, lhs);
+        }
     }
 
     // Keep in mind that 'Not' conditions want 'true' for comparisons with NaN
@@ -230,7 +245,7 @@ void callSetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, Operan
 
 void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, RegisterX64 ra, IrOp raOp, int ratag, Label& skip)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp);
+    CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
 
     // Barrier should've been optimized away if we know that it's not collectable, checking for correctness
     if (ratag == -1 || !isGCO(ratag))
@@ -270,7 +285,7 @@ void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, Re
 
 void checkObjectBarrierConditions_DEPRECATED(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, IrOp ra, int ratag, Label& skip)
 {
-    CODEGEN_ASSERT(!FFlag::LuauCodegenUpvalueLoadProp);
+    CODEGEN_ASSERT(!FFlag::LuauCodegenUpvalueLoadProp2);
 
     // Barrier should've been optimized away if we know that it's not collectable, checking for correctness
     if (ratag == -1 || !isGCO(ratag))
@@ -294,7 +309,7 @@ void checkObjectBarrierConditions_DEPRECATED(AssemblyBuilderX64& build, Register
 
 void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, RegisterX64 ra, IrOp raOp, int ratag)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp);
+    CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
 
     Label skip;
 
@@ -316,7 +331,7 @@ void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX
 
 void callBarrierObject_DEPRECATED(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, IrOp ra, int ratag)
 {
-    CODEGEN_ASSERT(!FFlag::LuauCodegenUpvalueLoadProp);
+    CODEGEN_ASSERT(!FFlag::LuauCodegenUpvalueLoadProp2);
 
     Label skip;
 

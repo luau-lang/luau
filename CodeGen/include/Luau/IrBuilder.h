@@ -50,6 +50,8 @@ struct IrBuilder
 
     IrOp cond(IrCondition cond);
 
+    IrOp inst(IrCmd cmd, const IrOps& ops);
+    IrOp inst(IrCmd cmd, std::initializer_list<IrOp> ops);
     IrOp inst(IrCmd cmd);
     IrOp inst(IrCmd cmd, IrOp a);
     IrOp inst(IrCmd cmd, IrOp a, IrOp b);

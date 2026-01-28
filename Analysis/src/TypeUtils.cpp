@@ -2,6 +2,7 @@
 #include "Luau/TypeUtils.h"
 
 #include "Luau/Common.h"
+#include "Luau/IterativeTypeVisitor.h"
 #include "Luau/Normalize.h"
 #include "Luau/Scope.h"
 #include "Luau/Simplify.h"
@@ -13,6 +14,8 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauUseIterativeTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
 
 namespace Luau
 {
@@ -898,6 +901,12 @@ ContainsAnyGeneric::ContainsAnyGeneric()
     : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
 {
 }
+
+bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
+{
+    return !FFlag::LuauContainsAnyGenericDoesntTraverseIntoExtern;
+}
+
 bool ContainsAnyGeneric::visit(TypeId ty)
 {
     found = found || is<GenericType>(ty);
@@ -922,6 +931,84 @@ bool ContainsAnyGeneric::hasAnyGeneric(TypePackId tp)
     ContainsAnyGeneric cg;
     cg.traverse(tp);
     return cg.found;
+}
+
+template<typename BaseVisitor>
+struct ContainsGenerics : public BaseVisitor
+{
+    NotNull<DenseHashSet<const void*>> generics;
+
+    explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
+        : BaseVisitor("ContainsGenerics", /* skipBoundTypes */ true)
+        , generics{generics}
+    {
+    }
+
+    bool found = false;
+
+    bool visit(TypeId ty) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const GenericType&) override
+    {
+        found |= generics->contains(ty);
+        return true;
+    }
+
+    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
+    {
+        return !found;
+    }
+
+    bool visit(TypePackId tp, const GenericTypePack&) override
+    {
+        found |= generics->contains(tp);
+        return !found;
+    }
+};
+
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics)
+{
+    if (FFlag::LuauUseIterativeTypeVisitor)
+    {
+        ContainsGenerics<IterativeTypeVisitor> cg{generics};
+        cg.run(ty);
+        return cg.found;
+    }
+    else
+    {
+        ContainsGenerics<TypeOnceVisitor> cg{generics};
+        cg.traverse(ty);
+        return cg.found;
+    }
+}
+
+bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
+{
+    if (FFlag::LuauUseIterativeTypeVisitor)
+    {
+        ContainsGenerics<IterativeTypeVisitor> cg{generics};
+        cg.run(ty);
+        return cg.found;
+    }
+    else
+    {
+        ContainsGenerics<TypeOnceVisitor> cg{generics};
+        cg.traverse(ty);
+        return cg.found;
+    }
+}
+
+bool isBlocked(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto tfit = get<TypeFunctionInstanceType>(ty))
+        return tfit->state == TypeFunctionInstanceState::Unsolved;
+
+    return is<BlockedType, PendingExpansionType>(ty);
 }
 
 

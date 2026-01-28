@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
+LUAU_FASTFLAGVARIABLE(LuauUnifierDoesntReferToNewSolver)
 
 namespace Luau
 {
@@ -1496,7 +1497,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level)
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauSolverV2 || FFlag::LuauUnifierDoesntReferToNewSolver)
                 return freshType(NotNull{types}, builtinTypes, scope);
             else
                 return types->freshType(builtinTypes, scope, level);
@@ -2218,7 +2219,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
             child->tryUnify_(ty, superTy);
 
             // To perform subtype <: free table unification, we have tried to unify (subtype's metatable) <: free table
-            // There is a chance that it was unified with the origial subtype, but then, (subtype's metatable) <: subtype could've failed
+            // There is a chance that it was unified with the original subtype, but then, (subtype's metatable) <: subtype could've failed
             // Here we check if we have a new supertype instead of the original free table and try original subtype <: new supertype check
             TypeId newSuperTy = child->log.follow(superTy);
 

@@ -11,11 +11,11 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAG(LuauUseTopTableForTableClearAndIsFrozen)
-LUAU_FASTFLAG(LuauIncludeExplicitGenericPacks)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 
 using namespace Luau;
 
@@ -1192,8 +1192,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
-    CHECK_EQ(*getBuiltins()->numberType, *requireType("a"));
-    CHECK_EQ(*getBuiltins()->nilType, *requireType("b"));
+    CHECK("number" == toString(requireType("a")));
+    CHECK("nil" == toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_table_method")
@@ -1503,10 +1503,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
         LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-// Important FIXME CLI-161128: This test exposes some problems with overload
-// selection and generic type substitution when
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
+    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping, true};
+
     CheckResult result;
 
     if (FFlag::LuauSolverV2)
@@ -1526,11 +1526,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
             ) -- type binders are not inferred
         )");
 
-        CHECK("add<X, X> | number" == toString(requireType("b"))); // FIXME CLI-161128
+        CHECK("number" == toString(requireType("b")));
         CHECK("<T>(T, T, (T, T) -> T) -> T" == toString(requireType("sum")));
         CHECK("<T>(T, T, (T, T) -> T) -> T" == toString(requireTypeAtPosition({7, 29})));
-        LUAU_REQUIRE_ERROR_COUNT(1, result); // FIXME CLI-161128
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
     }
     else
     {
@@ -1544,8 +1542,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
             local b = sumrec(sum) -- ok
             local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
         )");
-        LUAU_REQUIRE_NO_ERRORS(result);
     }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions_2")
@@ -1845,6 +1843,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_packs_shouldnt_be_bound_to_themselves")
 {
     ScopedFastFlag flags[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauDontIncludeVarargWithAnnotation, true},
     };
 
     CheckResult result = check(R"(
@@ -1880,7 +1879,7 @@ end
     )");
 
     // Note: we just need this test not to crash
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "follow_bound_type_packs_in_generic_type_visitor")
@@ -2058,18 +2057,6 @@ xpcall(v, print, x)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "array_of_singletons_should_subtype_against_generic_array")
-{
-    ScopedFastFlag _{FFlag::DebugLuauStringSingletonBasedOnQuotes, true};
-    CheckResult res = check(R"(
-        local function a<T>(arr: { T }) end
-
-        a({ 'one', 'two' })
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(res);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic")
 {
     CheckResult res = check(R"(
@@ -2112,10 +2099,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_isfrozen_and_clear_work_on_any_table")
 
 TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauIncludeExplicitGenericPacks, true},
-    };
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
 
@@ -2135,10 +2118,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_179086_dont_ignore_explicit_variadics")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauIncludeExplicitGenericPacks, true},
-    };
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f<Return...>(callback: () -> Return...) end
 
@@ -2159,6 +2138,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped
             foo(x)
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "variadic_generics_dont_leak")
+{
+    ScopedFastFlag _{FFlag::LuauDontIncludeVarargWithAnnotation, true};
+
+    CheckResult res = check(R"(
+        local function makeApplier<A..., R...>(f: (A...) -> (R...))
+            return function (... : A...): R...
+                f(...)
+            end
+        end
+        local function add(x: number, y: number): number return x + y end
+        local f = makeApplier(add)
+    )");
+
+    CHECK_EQ("(number, number) -> number", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function id<T>(t: T) return t end
+        local function foo(x)
+            id(x)
+        end
+    )"));
+
+    CHECK_EQ("(unknown) -> ()", toString(requireType("foo")));
 }
 
 TEST_SUITE_END();

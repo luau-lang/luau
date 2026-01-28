@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+LUAU_FASTFLAGVARIABLE(UseNewTraceback)
+
 static lua_State* getthread(lua_State* L, int* arg)
 {
     if (lua_isthread(L, 1))
@@ -126,46 +128,54 @@ static int db_traceback(lua_State* L)
     int level = luaL_optinteger(L, arg + 2, (L == L1) ? 1 : 0);
     luaL_argcheck(L, level >= 0, arg + 2, "level can't be negative");
 
-    luaL_Strbuf buf;
-    luaL_buffinit(L, &buf);
-
-    if (msg)
+    if (FFlag::UseNewTraceback)
     {
-        luaL_addstring(&buf, msg);
-        luaL_addstring(&buf, "\n");
+        luaL_traceback(L, L1, msg, level);
     }
-
-    lua_Debug ar;
-    for (int i = level; lua_getinfo(L1, i, "sln", &ar); ++i)
+    else
     {
-        if (strcmp(ar.what, "C") == 0)
-            continue;
+        luaL_Strbuf buf;
+        luaL_buffinit(L, &buf);
 
-        if (ar.source)
-            luaL_addstring(&buf, ar.short_src);
-
-        if (ar.currentline > 0)
+        if (msg)
         {
-            char line[32]; // manual conversion for performance
-            char* lineend = line + sizeof(line);
-            char* lineptr = lineend;
-            for (unsigned int r = ar.currentline; r > 0; r /= 10)
-                *--lineptr = '0' + (r % 10);
-
-            luaL_addchar(&buf, ':');
-            luaL_addlstring(&buf, lineptr, lineend - lineptr);
+            luaL_addstring(&buf, msg);
+            luaL_addstring(&buf, "\n");
         }
 
-        if (ar.name)
+        lua_Debug ar;
+        for (int i = level; lua_getinfo(L1, i, "sln", &ar); ++i)
         {
-            luaL_addstring(&buf, " function ");
-            luaL_addstring(&buf, ar.name);
+            if (strcmp(ar.what, "C") == 0)
+                continue;
+
+            if (ar.source)
+                luaL_addstring(&buf, ar.short_src);
+
+            if (ar.currentline > 0)
+            {
+                char line[32]; // manual conversion for performance
+                char* lineend = line + sizeof(line);
+                char* lineptr = lineend;
+                for (unsigned int r = ar.currentline; r > 0; r /= 10)
+                    *--lineptr = '0' + (r % 10);
+
+                luaL_addchar(&buf, ':');
+                luaL_addlstring(&buf, lineptr, lineend - lineptr);
+            }
+
+            if (ar.name)
+            {
+                luaL_addstring(&buf, " function ");
+                luaL_addstring(&buf, ar.name);
+            }
+
+            luaL_addchar(&buf, '\n');
         }
 
-        luaL_addchar(&buf, '\n');
+        luaL_pushresult(&buf);
     }
 
-    luaL_pushresult(&buf);
     return 1;
 }
 

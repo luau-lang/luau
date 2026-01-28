@@ -194,6 +194,7 @@ struct TypeFunctionProperty
     static TypeFunctionProperty rw(TypeFunctionTypeId ty);                             // Shared read-write type.
     static TypeFunctionProperty rw(TypeFunctionTypeId read, TypeFunctionTypeId write); // Separate read-write type.
 
+    bool isShared() const;
     bool isReadOnly() const;
     bool isWriteOnly() const;
 
@@ -256,8 +257,9 @@ using TypeFunctionTypeVariant = Luau::Variant<
 struct TypeFunctionType
 {
     TypeFunctionTypeVariant type;
+    bool frozen = false;
 
-    TypeFunctionType(TypeFunctionTypeVariant type)
+    explicit TypeFunctionType(TypeFunctionTypeVariant type)
         : type(std::move(type))
     {
     }
@@ -324,7 +326,10 @@ TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L);
 TypeFunctionType* allocateTypeFunctionType(lua_State* L, TypeFunctionTypeVariant type);
 TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunctionTypePackVariant type);
 
-void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type);
+void pushType(lua_State* L, TypeFunctionTypeId type);
+void pushTypePack(lua_State* L, TypeFunctionTypePackId tp);
+
+void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen = false);
 
 bool isTypeUserData(lua_State* L, int idx);
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx);

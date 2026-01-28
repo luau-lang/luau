@@ -1,8 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/ApplyTypeFunction.h"
-#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/IterativeTypeFunctionTypeVisitor.h"
 #include "Luau/Normalize.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
@@ -11,6 +11,8 @@
 
 #include "lua.h"
 #include "lualib.h"
+
+LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 
 namespace Luau
 {
@@ -74,6 +76,20 @@ struct FindUserTypeFunctionBlockers : TypeOnceVisitor
     bool visit(TypeId ty, const ExternType&) override
     {
         return false;
+    }
+};
+
+struct FreezeTypeFunctionTypes : IterativeTypeFunctionTypeVisitor
+{
+    FreezeTypeFunctionTypes()
+        : IterativeTypeFunctionTypeVisitor("FreezeTypeFunctionTypes")
+    {
+    }
+
+    bool visit(TypeFunctionTypeId ty) override
+    {
+        const_cast<TypeFunctionType*>(ty)->frozen = true;
+        return true;
     }
 };
 
@@ -161,10 +177,16 @@ static int evaluateTypeAliasCall(lua_State* L)
 
     TypeFunctionTypeId serializedTy = serialize(follow(target), runtimeBuilder);
 
+    if (FFlag::LuauTypeFunctionSupportsFrozen)
+    {
+        FreezeTypeFunctionTypes freezer{};
+        freezer.run(serializedTy);
+    }
+
     if (!runtimeBuilder->errors.empty())
         luaL_error(L, "%s", runtimeBuilder->errors.front().c_str());
 
-    allocTypeUserData(L, serializedTy->type);
+    allocTypeUserData(L, serializedTy->type, /* frozen */ true);
     return 1;
 }
 
@@ -290,10 +312,16 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
                     TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
 
+                    if (FFlag::LuauTypeFunctionSupportsFrozen)
+                    {
+                        FreezeTypeFunctionTypes freezer{};
+                        freezer.run(serializedTy);
+                    }
+
                     // Only register aliases that are representable in type environment
                     if (runtimeBuilder->errors.empty())
                     {
-                        allocTypeUserData(L, serializedTy->type);
+                        allocTypeUserData(L, serializedTy->type, /* frozen */ true);
                         lua_setfield(L, -2, name.c_str());
                     }
                 }

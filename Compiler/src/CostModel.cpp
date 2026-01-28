@@ -9,7 +9,7 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCompileCallCostModel)
 
 namespace Luau
@@ -219,7 +219,7 @@ struct CostVisitor : AstVisitor
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             return model(expr->expr);
         }
         else

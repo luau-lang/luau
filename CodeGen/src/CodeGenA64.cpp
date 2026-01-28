@@ -12,7 +12,7 @@
 
 #include "lstate.h"
 
-LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck);
+LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
 
 namespace Luau
 {
@@ -85,7 +85,7 @@ static void emitInterrupt(AssemblyBuilderA64& build)
     // note: recomputing this avoids having to stash x0
     build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
     build.ldr(x0, mem(x1, offsetof(CallInfo, savedpc)));
-    build.sub(x0, x0, sizeof(Instruction));
+    build.sub(x0, x0, uint16_t(sizeof(Instruction)));
     build.str(x0, mem(x1, offsetof(CallInfo, savedpc)));
 
     emitExit(build, /* continueInVm */ false);
@@ -145,14 +145,14 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     Label repeatNilLoop = build.setLabel();
     build.str(w4, mem(x1, offsetof(TValue, tt)));
-    build.add(x1, x1, sizeof(TValue));
-    build.sub(w2, w2, 1);
+    build.add(x1, x1, uint16_t(sizeof(TValue)));
+    build.sub(w2, w2, uint16_t(1));
     build.cbnz(w2, repeatNilLoop);
 
     build.setLabel(skipResultCopy);
 
     // x2 = cip = ci - 1
-    build.sub(x2, x0, sizeof(CallInfo));
+    build.sub(x2, x0, uint16_t(sizeof(CallInfo)));
 
     // res = cip->top when nresults >= 0
     Label skipFixedRetTop;
@@ -169,11 +169,11 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     // Unlikely, but this might be the last return from VM
     build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));
-    build.tbnz(w4, countrz(LUA_CALLINFO_RETURN), helpers.exitNoContinueVm);
+    build.tbnz(w4, countrz(uint32_t(LUA_CALLINFO_RETURN)), helpers.exitNoContinueVm);
 
     // Continue in interpreter if function has no native data
     build.ldr(w4, mem(x2, offsetof(CallInfo, flags)));
-    build.tbz(w4, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
+    build.tbz(w4, countrz(uint32_t(LUA_CALLINFO_NATIVE)), helpers.exitContinueVm);
 
     // Need to update state of the current function before we jump away
     build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));
@@ -218,7 +218,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     locations.start = build.setLabel();
 
     // prologue
-    build.sub(sp, sp, kStackSize);
+    build.sub(sp, sp, uint16_t(kStackSize));
     build.stp(x29, x30, mem(sp)); // fp, lr
 
     // stash non-volatile registers used for execution environment
@@ -259,7 +259,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.ldp(x21, x22, mem(sp, 32));
     build.ldp(x19, x20, mem(sp, 16));
     build.ldp(x29, x30, mem(sp)); // fp, lr
-    build.add(sp, sp, kStackSize);
+    build.add(sp, sp, uint16_t(kStackSize));
 
     build.ret();
 

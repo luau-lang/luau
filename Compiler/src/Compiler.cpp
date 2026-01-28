@@ -27,8 +27,11 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoInterpStorage)
+LUAU_FASTFLAGVARIABLE(LuauCompileInlineInitializers)
+LUAU_FASTFLAGVARIABLE(LuauCompileExtraTableHints)
 
 namespace Luau
 {
@@ -815,7 +818,10 @@ struct Compiler
 
                     compileExprTemp(arg, temp);
 
-                    args.push_back({var, temp, {Constant::Type_Unknown}, allocpc});
+                    if (FFlag::LuauCompileInlineInitializers)
+                        args.push_back({var, temp, {Constant::Type_Unknown}, allocpc, arg});
+                    else
+                        args.push_back({var, temp, {Constant::Type_Unknown}, allocpc});
                 }
             }
         }
@@ -1157,9 +1163,9 @@ struct Compiler
 
             // it's technically safe to share closures whenever all upvalues are immutable
             // this is because of a runtime equality check in DUPCLOSURE.
-            // however, this results in frequent deoptimization and increases the set of reachable objects, making some temporary objects permanent
+            // however, this results in frequent de-optimization and increases the set of reachable objects, making some temporary objects permanent
             // instead we apply a heuristic: we share closures if they refer to top-level upvalues, or closures that refer to top-level upvalues
-            // this will only deoptimize (outside of fenv changes) if top level code is executed twice with different results.
+            // this will only de-optimize (outside of fenv changes) if top level code is executed twice with different results.
             if (uv->functionDepth != 0 || uv->loopDepth != 0)
             {
                 AstExprFunction* uf = ul->init ? ul->init->as<AstExprFunction>() : nullptr;
@@ -1977,17 +1983,30 @@ struct Compiler
             }
         }
 
-        size_t formatStringSize = formatString.size();
+        int32_t formatStringIndex = -1;
 
-        // We can't use formatStringRef.data() directly, because short strings don't have their data
-        // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
-        std::unique_ptr<char[]> formatStringPtr(new char[formatStringSize]);
-        memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
+        if (FFlag::LuauCompileNoInterpStorage)
+        {
+            if (formatString.empty())
+                formatStringIndex = bytecode.addConstantString({"", 0});
+            else
+                formatStringIndex = bytecode.addConstantString(sref(names.getOrAdd(formatString.c_str(), formatString.size())));
+        }
+        else
+        {
+            size_t formatStringSize = formatString.size();
 
-        AstArray<char> formatStringArray{formatStringPtr.get(), formatStringSize};
-        interpStrings.emplace_back(std::move(formatStringPtr)); // invalidates formatStringPtr, but keeps formatStringArray intact
+            // We can't use formatStringRef.data() directly, because short strings don't have their data
+            // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
+            std::unique_ptr<char[]> formatStringPtr(new char[formatStringSize]);
+            memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
 
-        int32_t formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+            AstArray<char> formatStringArray{formatStringPtr.get(), formatStringSize};
+            interpStrings_DEPRECATED.emplace_back(std::move(formatStringPtr)); // invalidates formatStringPtr, but keeps formatStringArray intact
+
+            formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+        }
+
         if (formatStringIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
@@ -2184,7 +2203,7 @@ struct Compiler
                 LValue lv = compileLValueIndex(reg, key, rsi);
                 uint8_t rv = compileExprAuto(value, rsi);
 
-                compileAssign(lv, rv);
+                compileAssign(lv, rv, nullptr);
             }
             // items without a key are set using SETLIST so that we can initialize large arrays quickly
             else
@@ -2297,6 +2316,9 @@ struct Compiler
             setDebugLine(expr->index);
 
             bytecode.emitABC(LOP_GETTABLEN, target, rt, i);
+
+            if (FFlag::LuauCompileExtraTableHints)
+                hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 1);
         }
         else if (cv.type == Constant::Type_String)
         {
@@ -2311,6 +2333,9 @@ struct Compiler
 
             bytecode.emitABC(LOP_GETTABLEKS, target, rt, uint8_t(BytecodeBuilder::getStringHash(iname)));
             bytecode.emitAux(cid);
+
+            if (FFlag::LuauCompileExtraTableHints)
+                hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 2);
         }
         else
         {
@@ -2318,6 +2343,12 @@ struct Compiler
             uint8_t ri = compileExprAuto(expr->index, rs);
 
             bytecode.emitABC(LOP_GETTABLE, target, rt, ri);
+
+            if (FFlag::LuauCompileExtraTableHints)
+            {
+                hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 1);
+                hintTemporaryExprRegType(expr->index, ri, LBC_TYPE_NUMBER, /* instLength */ 1);
+            }
         }
     }
 
@@ -2525,7 +2556,7 @@ struct Compiler
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
+            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             compileExpr(expr->expr, target, targetTemp);
         }
         else
@@ -2742,7 +2773,7 @@ struct Compiler
         }
     }
 
-    void compileLValueUse(const LValue& lv, uint8_t reg, bool set)
+    void compileLValueUse(const LValue& lv, uint8_t reg, bool set, AstExpr* targetExpr)
     {
         setDebugLine(lv.location);
 
@@ -2778,15 +2809,36 @@ struct Compiler
 
             bytecode.emitABC(set ? LOP_SETTABLEKS : LOP_GETTABLEKS, reg, lv.reg, uint8_t(BytecodeBuilder::getStringHash(lv.name)));
             bytecode.emitAux(cid);
+
+            if (FFlag::LuauCompileExtraTableHints && targetExpr)
+            {
+                if (AstExprIndexName* targetExprIndexName = targetExpr->as<AstExprIndexName>())
+                    hintTemporaryExprRegType(targetExprIndexName->expr, lv.reg, LBC_TYPE_TABLE, /* instLength */ 2);
+            }
         }
         break;
 
         case LValue::Kind_IndexNumber:
             bytecode.emitABC(set ? LOP_SETTABLEN : LOP_GETTABLEN, reg, lv.reg, lv.number);
+
+            if (FFlag::LuauCompileExtraTableHints && targetExpr)
+            {
+                if (AstExprIndexExpr* targetExprIndexExpr = targetExpr->as<AstExprIndexExpr>())
+                    hintTemporaryExprRegType(targetExprIndexExpr->expr, lv.reg, LBC_TYPE_TABLE, /* instLength */ 1);
+            }
             break;
 
         case LValue::Kind_IndexExpr:
             bytecode.emitABC(set ? LOP_SETTABLE : LOP_GETTABLE, reg, lv.reg, lv.index);
+
+            if (FFlag::LuauCompileExtraTableHints && targetExpr)
+            {
+                if (AstExprIndexExpr* targetExprIndexExpr = targetExpr->as<AstExprIndexExpr>())
+                {
+                    hintTemporaryExprRegType(targetExprIndexExpr->expr, lv.reg, LBC_TYPE_TABLE, /* instLength */ 1);
+                    hintTemporaryExprRegType(targetExprIndexExpr->index, lv.index, LBC_TYPE_NUMBER, /* instLength */ 1);
+                }
+            }
             break;
 
         default:
@@ -2794,9 +2846,9 @@ struct Compiler
         }
     }
 
-    void compileAssign(const LValue& lv, uint8_t source)
+    void compileAssign(const LValue& lv, uint8_t source, AstExpr* targetExpr)
     {
-        compileLValueUse(lv, source, /* set= */ true);
+        compileLValueUse(lv, source, /* set= */ true, targetExpr);
     }
 
     AstExprLocal* getExprLocal(AstExpr* node)
@@ -2955,7 +3007,7 @@ struct Compiler
 
         setDebugLine(stat->condition);
 
-        // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptible and we want all loops to have at least one interruptible
+        // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptable and we want all loops to have at least one interruptable
         // instruction
         bytecode.emitAD(LOP_JUMPBACK, 0, 0);
 
@@ -3045,7 +3097,7 @@ struct Compiler
 
             size_t backLabel = bytecode.emitLabel();
 
-            // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptible and we want all loops to have at least one interruptible
+            // Note: this is using JUMPBACK, not JUMP, since JUMPBACK is interruptable and we want all loops to have at least one interruptable
             // instruction
             bytecode.emitAD(LOP_JUMPBACK, 0, 0);
 
@@ -3561,7 +3613,11 @@ struct Compiler
                 uint8_t reg = compileExprAuto(stat->values.data[0], rs);
 
                 setDebugLine(stat->vars.data[0]);
-                compileAssign(var, reg);
+
+                if (FFlag::LuauCompileExtraTableHints)
+                    compileAssign(var, reg, stat->vars.data[0]);
+                else
+                    compileAssign(var, reg, nullptr);
             }
             return;
         }
@@ -3621,6 +3677,7 @@ struct Compiler
 
         // almost done... let's assign everything left to right, noting that locals were either written-to directly, or will be written-to in a
         // separate pass to avoid conflicts
+        size_t varPos = 0;
         for (const Assignment& var : vars)
         {
             LUAU_ASSERT(var.valueReg != kInvalidReg);
@@ -3628,8 +3685,15 @@ struct Compiler
             if (var.lvalue.kind != LValue::Kind_Local)
             {
                 setDebugLine(var.lvalue.location);
-                compileAssign(var.lvalue, var.valueReg);
+
+                if (FFlag::LuauCompileExtraTableHints && varPos < stat->vars.size)
+                    compileAssign(var.lvalue, var.valueReg, stat->vars.data[varPos]);
+                else
+                    compileAssign(var.lvalue, var.valueReg, nullptr);
             }
+
+            if (FFlag::LuauCompileExtraTableHints)
+                varPos++;
         }
 
         // all regular local writes are done by the prior loops by computing result directly into target, so this just handles conflicts OR
@@ -3661,7 +3725,7 @@ struct Compiler
         case AstExprBinary::Pow:
         {
             if (var.kind != LValue::Kind_Local)
-                compileLValueUse(var, target, /* set= */ false);
+                compileLValueUse(var, target, /* set= */ false, FFlag::LuauCompileExtraTableHints ? stat->var : nullptr);
 
             int32_t rc = getConstantNumber(stat->value);
 
@@ -3692,7 +3756,7 @@ struct Compiler
 
             uint8_t regs = allocReg(stat, unsigned(1 + args.size()));
 
-            compileLValueUse(var, regs, /* set= */ false);
+            compileLValueUse(var, regs, /* set= */ false, FFlag::LuauCompileExtraTableHints ? stat->var : nullptr);
 
             for (size_t i = 0; i < args.size(); ++i)
                 compileExprTemp(args[i], uint8_t(regs + 1 + i));
@@ -3706,7 +3770,7 @@ struct Compiler
         }
 
         if (var.kind != LValue::Kind_Local)
-            compileAssign(var, target);
+            compileAssign(var, target, FFlag::LuauCompileExtraTableHints ? stat->var : nullptr);
     }
 
     void compileStatFunction(AstStatFunction* stat)
@@ -3724,7 +3788,7 @@ struct Compiler
         compileExprTemp(stat->func, reg);
 
         LValue var = compileLValue(stat->name, rs);
-        compileAssign(var, reg);
+        compileAssign(var, reg, FFlag::LuauCompileExtraTableHints ? stat->name : nullptr);
     }
 
     void compileStat(AstStat* node)
@@ -4385,7 +4449,7 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
-    std::vector<std::unique_ptr<char[]>> interpStrings;
+    std::vector<std::unique_ptr<char[]>> interpStrings_DEPRECATED; // TODO: remove with FFlagLuauCompileNoInterpStorage
 };
 
 static void setCompileOptionsForNativeCompilation(CompileOptions& options)
@@ -4442,7 +4506,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
         root->visit(&fenvVisitor);
     }
 
-    // builtin folding is enabled on optimization level 2 since we can't deoptimize folding at runtime
+    // builtin folding is enabled on optimization level 2 since we can't de-optimize folding at runtime
     if (options.optimizationLevel >= 2 && (!compiler.getfenvUsed && !compiler.setfenvUsed))
     {
         compiler.builtinsFold = &compiler.builtins;

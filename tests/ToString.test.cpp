@@ -15,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauToStringDecomposition)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -482,7 +483,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_stringified_differently_from_gener
     TypePackVar tpv{GenericTypePack{"a"}};
     CHECK_EQ(toString(&tpv), "a...");
 
-    Type tv{GenericType{"a"}};
+    Type tv{GenericType{"a", Polarity::Mixed}};
     CHECK_EQ(toString(&tv), "a");
 }
 
@@ -964,6 +965,129 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
 
     if (FFlag::LuauSolverV2)
         CHECK_EQ(toString(&tv, {}), "woohoo<number>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "record_type_compositions_table")
+{
+    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
+
+    CheckResult checkResult = check(R"(
+        type Table = {}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(checkResult);
+
+    ToStringOptions opts;
+
+    TypeId ty = requireTypeAlias("Table");
+    ToStringResult result = toStringDetailed(ty, opts);
+
+    REQUIRE_EQ(result.typeSpans.size(), 1);
+
+    auto [startPos, endPos, recordedTy] = result.typeSpans[0];
+    CHECK_EQ(startPos, 0);
+    CHECK_EQ(endPos, 5);
+    CHECK_EQ(recordedTy, ty);
+}
+
+TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_intersection")
+{
+    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
+
+    CheckResult checkResult = check(R"(
+        type TableA = {}
+        type TableB = {}
+
+        type Composite1 = TableA | TableB
+        type Composite2 = TableA & TableB
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(checkResult);
+
+    ToStringOptions opts;
+
+    for (const auto& aliasName : {"Composite1", "Composite2"})
+    {
+        TypeId ty = requireTypeAlias(aliasName);
+        ToStringResult result = toStringDetailed(ty, opts);
+
+        REQUIRE_EQ(result.typeSpans.size(), 2);
+
+        auto [startPosA, endPosA, recordedTyA] = result.typeSpans[0];
+        CHECK_EQ(startPosA, 0);
+        CHECK_EQ(endPosA, 6);
+        CHECK_EQ(recordedTyA, requireTypeAlias("TableA"));
+
+        auto [startPosB, endPosB, recordedTyB] = result.typeSpans[1];
+        CHECK_EQ(startPosB, 9);
+        CHECK_EQ(endPosB, 15);
+        CHECK_EQ(recordedTyB, requireTypeAlias("TableB"));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_handle_resorted_results")
+{
+    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
+
+    CheckResult checkResult = check(R"(
+        type Zebra = {}
+        type Alpha = {}
+
+        type Composite = Zebra | Alpha
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(checkResult);
+
+    ToStringOptions opts;
+
+    TypeId ty = requireTypeAlias("Composite");
+    ToStringResult result = toStringDetailed(ty, opts);
+
+    CHECK_EQ(result.name, "Alpha | Zebra");
+
+    REQUIRE_EQ(result.typeSpans.size(), 2);
+
+    auto [startPosAlpha, endPosAlpha, recordedTyAlpha] = result.typeSpans[0];
+    CHECK_EQ(startPosAlpha, 0);
+    CHECK_EQ(endPosAlpha, 5);
+    CHECK_EQ(recordedTyAlpha, requireTypeAlias("Alpha"));
+
+    auto [startPosZebra, endPosZebra, recordedTyZebra] = result.typeSpans[1];
+    CHECK_EQ(startPosZebra, 8);
+    CHECK_EQ(endPosZebra, 13);
+    CHECK_EQ(recordedTyZebra, requireTypeAlias("Zebra"));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "record_type_compositions_generic")
+{
+    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
+
+    CheckResult checkResult = check(R"(
+        type Object = {}
+        type Box<T> = { inner: T }
+
+        local x: Box<Object>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(checkResult);
+
+    ToStringOptions opts;
+
+    TypeId ty = requireType("x");
+    ToStringResult result = toStringDetailed(ty, opts);
+
+    REQUIRE_EQ(result.typeSpans.size(), 2);
+
+    auto [startPosBox, endPosBox, recordedTyBox] = result.typeSpans[0];
+    CHECK_EQ(startPosBox, 0);
+    CHECK_EQ(endPosBox, 3);
+    CHECK_EQ(recordedTyBox, ty);
+
+    auto [startPosObject, endPosObject, recordedTyObject] = result.typeSpans[1];
+    CHECK_EQ(startPosObject, 4);
+    CHECK_EQ(endPosObject, 10);
+    CHECK_EQ(recordedTyObject, requireTypeAlias("Object"));
 }
 
 TEST_SUITE_END();

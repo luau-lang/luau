@@ -26,15 +26,15 @@ LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAG(LuauMetatableAvoidSingletonUnion)
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauAvoidMintingMultipleBlockedTypesForGlobals)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 
 using namespace Luau;
 
@@ -211,8 +211,8 @@ TEST_CASE_FIXTURE(Fixture, "if_statement")
     }
     else
     {
-        CHECK_EQ(*getBuiltins()->stringType, *requireType("a"));
-        CHECK_EQ(*getBuiltins()->numberType, *requireType("b"));
+        CHECK("string" == toString(requireType("a")));
+        CHECK("number" == toString(requireType("b")));
     }
 }
 
@@ -1236,7 +1236,17 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     validateErrors(result.errors);
     REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        REQUIRE(3 == result.errors.size());
+        CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
+        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
+        CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
+
+        for (const TypeError& e : result.errors)
+            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
+    }
+    else if (FFlag::LuauSolverV2)
     {
         REQUIRE(4 == result.errors.size());
         CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
@@ -1379,8 +1389,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
-
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
@@ -1806,7 +1814,6 @@ TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_types_of_globals")
 {
     ScopedFastFlag sff_LuauSolverV2{FFlag::LuauSolverV2, true};
-    ScopedFastFlag unknownGlobalFixSuggestion{FFlag::LuauUnknownGlobalFixSuggestion, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -2729,8 +2736,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_function_argument_should_not_err
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
 {
-    ScopedFastFlag _{FFlag::LuauMetatableAvoidSingletonUnion, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if true then _ else {},if (_) then _ elseif "" then {} elseif _ then {} elseif _ then _ else {}
         for l0,l2 in setmetatable(_,_),l0,_ do
@@ -2767,6 +2772,15 @@ TEST_CASE_FIXTURE(Fixture, "captured_globals_are_not_blocked")
         end
 
         return {}
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesGenericPolarityFollow, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        _ = if {l0._,} then if _ then _ elseif rawset({[_]=_,[{_._,}]=_,}) then _ else {_._,} elseif rawset(_) then (true),""
     )"));
 }
 

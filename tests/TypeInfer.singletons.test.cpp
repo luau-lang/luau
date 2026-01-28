@@ -7,9 +7,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauPushTypeConstraintIndexer)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauPushTypeUnifyConstantHandling)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -231,7 +232,21 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        // clang-format off
+        const std::string expected =
+            "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; \n"
+            "this is because \n"
+            "	 * the 1st component of the union is `\"foo\"`, and `\"bang\"` is not a subtype of `\"foo\"`\n"
+            "	 * the 2nd component of the union is `\"bar\"`, and `\"bang\"` is not a subtype of `\"bar\"`\n"
+            "	 * the 3rd component of the union is `\"baz\"`, and `\"bang\"` is not a subtype of `\"baz\"`"
+        ;
+        // clang-format on
+
+        CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+    }
+    else if (FFlag::LuauSolverV2)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK("Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'" == toString(result.errors[0]));
@@ -460,6 +475,10 @@ Table type 'a' not compatible with type 'Cat' because the former is missing fiel
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauBetterTypeMismatchErrors, true},
+        {FFlag::LuauPushTypeUnifyConstantHandling, true},
+    };
     CheckResult result = check(R"(
 type Good = { success: true, result: string }
 type Bad = { success: false, error: string }
@@ -471,22 +490,14 @@ local a: Result = { success = false, result = 'something' }
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::LuauSolverV2)
     {
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'Bad | Good', but got '{ result: string, success: boolean }'" == toString(result.errors[0]));
-        else
-            CHECK("Type '{ result: string, success: boolean }' could not be converted into 'Bad | Good'" == toString(result.errors[0]));
-    }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
-    {
-        const std::string expected = R"(Expected this to be 'Bad | Good', but got 'a'
-caused by:
-  None of the union options are compatible. For example:
-Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')";
-        CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(
+            "Table type '{ result: string, success: false }' not compatible with type 'Bad' because the former is missing field 'error'",
+            toString(result.errors[0])
+        );
     }
     else
     {
-        const std::string expected = R"(Type 'a' could not be converted into 'Bad | Good'
+        const std::string expected = R"(Expected this to be 'Bad | Good', but got 'a'
 caused by:
   None of the union options are compatible. For example:
 Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')";
@@ -498,6 +509,8 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
+        {FFlag::LuauBetterTypeMismatchErrors, true},
+        {FFlag::LuauPushTypeUnifyConstantHandling, true},
     };
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}
@@ -510,15 +523,10 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expectedError = FFlag::LuauBetterTypeMismatchErrors ? "Expected this to be\n\t"
-                                                                            "'Err<number> | Ok<string>'"
-                                                                            "\nbut got\n\t"
-                                                                            "'{ result: string, success: boolean }'"
-                                                                          : "Type\n\t"
-                                                                            "'{ result: string, success: boolean }'"
-                                                                            "\ncould not be converted into\n\t"
-                                                                            "'Err<number> | Ok<string>'";
-    CHECK(toString(result.errors[0]) == expectedError);
+    CHECK_EQ(
+        "Table type '{ result: string, success: false }' not compatible with type 'Err<number>' because the former is missing field 'error'",
+        toString(result.errors[0])
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
@@ -790,10 +798,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1773")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintIndexer, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -820,10 +825,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1773")
 
 TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintIndexer, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -839,7 +841,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    for (const auto& e: result.errors)
+    for (const auto& e : result.errors)
         CHECK(get<TypeMismatch>(e));
 }
 
@@ -847,6 +849,63 @@ TEST_CASE_FIXTURE(Fixture, "oss_2018")
 {
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local rule: { rule: "AppendTextComment" } | { rule: "Other" } = { rule = "AppendTextComment" }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeUnifyConstantHandling, true},
+    };
+
+    CheckResult results = check(R"(
+        local function foo<T>(my_enum: true | T): T
+            return my_enum :: T
+        end
+
+        local function bar<T>(my_enum: true & T): T
+            return my_enum :: T
+        end
+
+        local var1 = foo(true)
+        local var2 = foo(false)
+
+        local var3 = bar(true)
+        local var4 = bar(false)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("true", toString(err->wantedType));
+    CHECK_EQ("false", toString(err->givenType));
+
+    // FIXME: That one seems arguably correct.
+    CHECK_EQ("unknown", toString(requireType("var1")));
+    CHECK_EQ("false", toString(requireType("var2")));
+    CHECK_EQ("true", toString(requireType("var3")));
+    CHECK_EQ("false", toString(requireType("var4")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_184125")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauPushTypeUnifyConstantHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type MyTypeA = {Value: true}
+        type MyTypeB = {Value: false}
+
+        local function Func(input: number) : (MyTypeA | MyTypeB)
+            if input == 1 then
+                return {Value = true}
+            else
+                return {Value = false}
+            end
+        end
     )"));
 }
 

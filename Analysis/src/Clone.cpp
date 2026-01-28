@@ -273,7 +273,7 @@ private:
 
     void cloneChildren(GenericType* t)
     {
-        // TOOD: clone upper bounds.
+        // TODO: clone upper bounds.
     }
 
     void cloneChildren(PrimitiveType* t)
@@ -410,7 +410,7 @@ private:
 
     void cloneChildren(GenericTypePack* t)
     {
-        // TOOD: clone upper bounds.
+        // TODO: clone upper bounds.
     }
 
     void cloneChildren(BlockedTypePack* t)

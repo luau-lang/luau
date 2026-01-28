@@ -35,7 +35,7 @@ void luaC_validate(lua_State* L);
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauMathIsNanInfFinite)
@@ -44,6 +44,7 @@ LUAU_FASTFLAG(LuauTypeCheckerMathIsNanInfFinite)
 LUAU_FASTFLAG(LuauCodegenChainedSpills)
 LUAU_FASTFLAG(LuauCodegenSpillRestoreFreeTemp)
 LUAU_FASTFLAG(LuauCodegenDwordSpillSlots)
+LUAU_FASTFLAG(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauActivationRecordStopDeadnaming)
 
 static lua_CompileOptions defaultOptions()
@@ -1049,7 +1050,7 @@ TEST_CASE("Pack")
 
 TEST_CASE("ExplicitTypeInstantiations")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
+    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
     runConformance("explicit_type_instantiations.luau");
 }
 
@@ -2044,8 +2045,25 @@ TEST_CASE("ApiIter")
     }
     CHECK(sum2 == 580);
 
-    // pop table
-    lua_pop(L, 1);
+    // check lua_rawiter compatibility with C stack limit
+    lua_settop(L, 18);
+    lua_pushvalue(L, 1);
+
+    CHECK(lua_gettop(L) == 19);
+    CHECK(lua_checkstack(L, 2));
+
+    // Luau iteration interface: lua_rawiter (faster and preferable to lua_next)
+    double sum3 = 0;
+    for (int index = 0; index = lua_rawiter(L, -1, index), index >= 0;)
+    {
+        sum3 += lua_tonumber(L, -2); // key
+        sum3 += lua_tonumber(L, -1); // value
+        lua_pop(L, 2);               // pop both key and value
+    }
+    CHECK(sum3 == 580);
+
+    // pop everything
+    lua_pop(L, 19);
 }
 
 static int cpcallTest(lua_State* L)
@@ -3445,6 +3463,9 @@ TEST_CASE("SafeEnv")
 TEST_CASE("Native")
 {
     ScopedFastFlag luauCodegenSpillRestoreFreeTemp{FFlag::LuauCodegenSpillRestoreFreeTemp, true};
+    ScopedFastFlag luauCodegenChainedSpills{FFlag::LuauCodegenChainedSpills, true};
+    ScopedFastFlag luauCodegenDwordSpillSlots{FFlag::LuauCodegenDwordSpillSlots, true};
+    ScopedFastFlag luauCodegenExtraSpills{FFlag::LuauCodegenExtraSpills, true};
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())

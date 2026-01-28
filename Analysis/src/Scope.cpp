@@ -4,7 +4,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2);
 
-LUAU_FASTFLAGVARIABLE(LuauNoScopeShallNotSubsumeAll)
+LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
 namespace Luau
 {
@@ -251,11 +251,24 @@ bool Scope::shouldWarnGlobal(std::string name) const
     return false;
 }
 
-bool Scope::isInvalidTypeAliasName(const std::string& name) const
+std::optional<Location> Scope::isInvalidTypeAlias(const std::string& name) const
 {
+    LUAU_ASSERT(FFlag::LuauReworkInfiniteTypeFinder);
     for (auto scope = this; scope; scope = scope->parent.get())
     {
-        if (scope->invalidTypeAliasNames.contains(name))
+        if (auto loc = scope->invalidTypeAliases.find(name))
+            return {*loc};
+    }
+
+    return std::nullopt;
+}
+
+bool Scope::isInvalidTypeAliasName_DEPRECATED(const std::string& name) const
+{
+    LUAU_ASSERT(!FFlag::LuauReworkInfiniteTypeFinder);
+    for (auto scope = this; scope; scope = scope->parent.get())
+    {
+        if (scope->invalidTypeAliasNames_DEPRECATED.contains(name))
             return true;
     }
 
@@ -287,11 +300,8 @@ NotNull<Scope> Scope::findNarrowestScopeContaining(Location location)
 
 bool subsumesStrict(Scope* left, Scope* right)
 {
-    if (FFlag::LuauNoScopeShallNotSubsumeAll)
-    {
-        if (!left || !right)
-            return false;
-    }
+    if (!left || !right)
+        return false;
 
     while (right)
     {
@@ -306,11 +316,8 @@ bool subsumesStrict(Scope* left, Scope* right)
 
 bool subsumes(Scope* left, Scope* right)
 {
-    if (FFlag::LuauNoScopeShallNotSubsumeAll)
-    {
-        if (!left || !right)
-            return false;
-    }
+    if (!left || !right)
+        return false;
 
     return left == right || subsumesStrict(left, right);
 }

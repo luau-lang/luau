@@ -57,7 +57,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 
     state.log.commit();
 
-    CHECK_EQ(functionOne, functionTwo);
+    CHECK(toString(functionOne) == toString(functionTwo));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
@@ -80,8 +80,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
     CHECK(state.failure);
     CHECK(!state.errors.empty());
 
-    CHECK_EQ(functionOne, functionOneSaved);
-    CHECK_EQ(functionTwo, functionTwoSaved);
+    CHECK(toString(functionOne) == toString(functionOneSaved));
+    CHECK(toString(functionTwo) == toString(functionTwoSaved));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
@@ -94,7 +94,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
         TableType{{{"foo", {arena.freshType(getBuiltins(), globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
-    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED(), *getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED());
+    CHECK(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED() != getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED());
 
     state.tryUnify(&tableTwo, &tableOne);
 
@@ -103,7 +103,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     state.log.commit();
 
-    CHECK_EQ(*getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED(), *getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED());
+    CHECK(
+        follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) ==
+        follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED())
+    );
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
@@ -126,14 +129,17 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
         },
     }};
 
-    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED(), *getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED());
+    CHECK(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED() != getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED());
 
     state.tryUnify(&tableTwo, &tableOne);
 
     CHECK(state.failure);
     CHECK_EQ(1, state.errors.size());
 
-    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED(), *getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED());
+    CHECK(
+        follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) !=
+        follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED())
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_intersection_sub_never")

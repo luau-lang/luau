@@ -17,7 +17,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauHandleFunctionOversaturation)
 LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
-LUAU_FASTFLAG(LuauPushTypeConstraintLambdas2)
+LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 
@@ -174,7 +174,7 @@ TEST_CASE_FIXTURE(Fixture, "pass_too_many_arguments")
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas2, true},
+        {FFlag::LuauPushTypeConstraintLambdas3, true},
         {FFlag::LuauHandleFunctionOversaturation, true},
     };
 
@@ -799,7 +799,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
-    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, { /* exhaustive */ true}));
+    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

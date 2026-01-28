@@ -9,7 +9,9 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse)
+LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse2)
+LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -99,12 +101,26 @@ struct RemoveDeadStoreState
 
     void killTValueStore(StoreRegInfo& regInfo)
     {
-        if (regInfo.tvalueInstIdx != ~0u)
+        if (FFlag::LuauCodegenGcoDse2)
         {
-            kill(function, function.instructions[regInfo.tvalueInstIdx]);
+            // TValue can only be killed if it is not overlayed by a partial tag/value write
+            if (regInfo.tvalueInstIdx != kInvalidInstIdx && regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx)
+            {
+                kill(function, function.instructions[regInfo.tvalueInstIdx]);
 
-            regInfo.tvalueInstIdx = ~0u;
-            regInfo.maybeGco = false;
+                regInfo.tvalueInstIdx = kInvalidInstIdx;
+                regInfo.maybeGco = false;
+            }
+        }
+        else
+        {
+            if (regInfo.tvalueInstIdx != kInvalidInstIdx)
+            {
+                kill(function, function.instructions[regInfo.tvalueInstIdx]);
+
+                regInfo.tvalueInstIdx = kInvalidInstIdx;
+                regInfo.maybeGco = false;
+            }
         }
     }
 
@@ -119,6 +135,13 @@ struct RemoveDeadStoreState
 
         killTagAndValueStorePair(regInfo);
         killTValueStore(regInfo);
+
+        if (FFlag::LuauCodegenGcoDse2)
+        {
+            regInfo.tagInstIdx = kInvalidInstIdx;
+            regInfo.valueInstIdx = kInvalidInstIdx;
+            regInfo.tvalueInstIdx = kInvalidInstIdx;
+        }
 
         // Opaque register definition removes the knowledge of the actual tag value
         regInfo.knownTag = kUnknownTag;
@@ -299,7 +322,7 @@ struct RemoveDeadStoreState
                 // If we happen to know the exact tag, it has to be a GCO, otherwise 'maybeGCO' should be false
                 CODEGEN_ASSERT(regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag));
 
-                if (FFlag::LuauCodegenGcoDse)
+                if (FFlag::LuauCodegenGcoDse2)
                 {
                     // If the values stored are still used and might be a GCO object, we have to pin in to the stack
                     // And we have to pin all components of the register containing GCO
@@ -369,16 +392,16 @@ static bool tryReplaceTagWithFullStore(
 
             if (prevValueInst.cmd == IrCmd::STORE_VECTOR)
             {
-                CODEGEN_ASSERT(prevValueInst.e.kind == IrOpKind::None);
-                IrOp prevValueX = prevValueInst.b;
-                IrOp prevValueY = prevValueInst.c;
-                IrOp prevValueZ = prevValueInst.d;
-                replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, targetOp, prevValueX, prevValueY, prevValueZ, tagOp});
+                CODEGEN_ASSERT(OP_E(prevValueInst).kind == IrOpKind::None);
+                IrOp prevValueX = OP_B(prevValueInst);
+                IrOp prevValueY = OP_C(prevValueInst);
+                IrOp prevValueZ = OP_D(prevValueInst);
+                replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, {targetOp, prevValueX, prevValueY, prevValueZ, tagOp}});
             }
             else
             {
-                IrOp prevValueOp = prevValueInst.b;
-                replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, tagOp, prevValueOp});
+                IrOp prevValueOp = OP_B(prevValueInst);
+                replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, tagOp, prevValueOp}});
             }
         }
 
@@ -399,13 +422,13 @@ static bool tryReplaceTagWithFullStore(
 
         if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
         {
-            CODEGEN_ASSERT(prev.d.kind == IrOpKind::None);
+            CODEGEN_ASSERT(OP_D(prev).kind == IrOpKind::None);
 
             // If the 'nil' is stored, we keep 'STORE_TAG Rn, tnil' as it writes the 'full' TValue
             if (tag != LUA_TNIL)
             {
-                IrOp prevValueOp = prev.c;
-                replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, tagOp, prevValueOp});
+                IrOp prevValueOp = OP_C(prev);
+                replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, tagOp, prevValueOp}});
             }
 
             state.killTValueStore(regInfo);
@@ -421,10 +444,10 @@ static bool tryReplaceTagWithFullStore(
             // If the 'nil' is stored, we keep 'STORE_TAG Rn, tnil' as it writes the 'full' TValue
             if (tag != LUA_TNIL)
             {
-                IrOp prevValueX = prev.b;
-                IrOp prevValueY = prev.c;
-                IrOp prevValueZ = prev.d;
-                replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, targetOp, prevValueX, prevValueY, prevValueZ, tagOp});
+                IrOp prevValueX = OP_B(prev);
+                IrOp prevValueY = OP_C(prev);
+                IrOp prevValueZ = OP_D(prev);
+                replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, {targetOp, prevValueX, prevValueY, prevValueZ, tagOp}});
             }
 
             state.killTValueStore(regInfo);
@@ -454,11 +477,11 @@ static bool tryReplaceValueWithFullStore(
     // If the tag+value pair is established, we can mark both as dead and use a single split TValue store
     if (regInfo.tagInstIdx != ~0u && regInfo.valueInstIdx != ~0u)
     {
-        IrOp prevTagOp = function.instructions[regInfo.tagInstIdx].b;
+        IrOp prevTagOp = OP_B(function.instructions[regInfo.tagInstIdx]);
         uint8_t prevTag = function.tagOp(prevTagOp);
 
         CODEGEN_ASSERT(regInfo.knownTag == prevTag);
-        replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, prevTagOp, valueOp});
+        replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
         state.killTagStore(regInfo);
         state.killValueStore(regInfo);
@@ -474,12 +497,12 @@ static bool tryReplaceValueWithFullStore(
 
         if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
         {
-            IrOp prevTagOp = prev.b;
+            IrOp prevTagOp = OP_B(prev);
             uint8_t prevTag = function.tagOp(prevTagOp);
 
             CODEGEN_ASSERT(regInfo.knownTag == prevTag);
-            CODEGEN_ASSERT(prev.d.kind == IrOpKind::None);
-            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, prevTagOp, valueOp});
+            CODEGEN_ASSERT(OP_D(prev).kind == IrOpKind::None);
+            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
             state.killTValueStore(regInfo);
 
@@ -488,12 +511,12 @@ static bool tryReplaceValueWithFullStore(
         }
         else if (prev.cmd == IrCmd::STORE_VECTOR)
         {
-            IrOp prevTagOp = prev.e;
+            IrOp prevTagOp = OP_E(prev);
             CODEGEN_ASSERT(prevTagOp.kind != IrOpKind::None);
             uint8_t prevTag = function.tagOp(prevTagOp);
 
             CODEGEN_ASSERT(regInfo.knownTag == prevTag);
-            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, prevTagOp, valueOp});
+            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
             state.killTValueStore(regInfo);
 
@@ -517,14 +540,14 @@ static bool tryReplaceVectorValueWithFullStore(
     // If the tag+value pair is established, we can mark both as dead and use a single split TValue store
     if (regInfo.tagInstIdx != ~0u && regInfo.valueInstIdx != ~0u)
     {
-        IrOp prevTagOp = function.instructions[regInfo.tagInstIdx].b;
+        IrOp prevTagOp = OP_B(function.instructions[regInfo.tagInstIdx]);
         uint8_t prevTag = function.tagOp(prevTagOp);
 
         CODEGEN_ASSERT(regInfo.knownTag == prevTag);
 
         IrInst& storeInst = function.instructions[instIndex];
         CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
-        replace(function, storeInst.e, prevTagOp);
+        replace(function, OP_E(storeInst), prevTagOp);
 
         state.killTagStore(regInfo);
         state.killValueStore(regInfo);
@@ -540,15 +563,15 @@ static bool tryReplaceVectorValueWithFullStore(
 
         if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
         {
-            IrOp prevTagOp = prev.b;
+            IrOp prevTagOp = OP_B(prev);
             uint8_t prevTag = function.tagOp(prevTagOp);
 
             CODEGEN_ASSERT(regInfo.knownTag == prevTag);
-            CODEGEN_ASSERT(prev.d.kind == IrOpKind::None);
+            CODEGEN_ASSERT(OP_D(prev).kind == IrOpKind::None);
 
             IrInst& storeInst = function.instructions[instIndex];
             CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
-            replace(function, storeInst.e, prevTagOp);
+            replace(function, OP_E(storeInst), prevTagOp);
 
             state.killTValueStore(regInfo);
 
@@ -557,7 +580,7 @@ static bool tryReplaceVectorValueWithFullStore(
         }
         else if (prev.cmd == IrCmd::STORE_VECTOR)
         {
-            IrOp prevTagOp = prev.e;
+            IrOp prevTagOp = OP_E(prev);
             CODEGEN_ASSERT(prevTagOp.kind != IrOpKind::None);
             uint8_t prevTag = function.tagOp(prevTagOp);
 
@@ -565,7 +588,7 @@ static bool tryReplaceVectorValueWithFullStore(
 
             IrInst& storeInst = function.instructions[instIndex];
             CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
-            replace(function, storeInst.e, prevTagOp);
+            replace(function, OP_E(storeInst), prevTagOp);
 
             state.killTValueStore(regInfo);
 
@@ -596,25 +619,25 @@ static void updateRemainingUses(RemoveDeadStoreState& state, IrInst& inst, uint3
 
 static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, IrFunction& function, IrBlock& block, IrInst& inst, uint32_t index)
 {
-    if (FFlag::LuauCodegenGcoDse)
+    if (FFlag::LuauCodegenGcoDse2)
         updateRemainingUses(state, inst, index);
 
     switch (inst.cmd)
     {
     case IrCmd::STORE_TAG:
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(OP_A(inst));
 
             if (function.cfg.captured.regs.test(reg))
                 return;
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            if (tryReplaceTagWithFullStore(state, build, function, block, index, inst.a, inst.b, regInfo))
+            if (tryReplaceTagWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
                 break;
 
-            uint8_t tag = function.tagOp(inst.b);
+            uint8_t tag = function.tagOp(OP_B(inst));
 
             regInfo.tagInstIdx = index;
             regInfo.maybeGco = isGCO(tag);
@@ -624,22 +647,22 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
     case IrCmd::STORE_EXTRA:
         // To simplify, extra field store is preserved along with all other stores made so far
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            state.useReg(vmRegOp(inst.a));
+            state.useReg(vmRegOp(OP_A(inst)));
         }
         break;
     case IrCmd::STORE_POINTER:
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(OP_A(inst));
 
             if (function.cfg.captured.regs.test(reg))
                 return;
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            if (tryReplaceValueWithFullStore(state, build, function, block, index, inst.a, inst.b, regInfo))
+            if (tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
             {
                 regInfo.maybeGco = true;
                 state.hasGcoToClear |= true;
@@ -657,16 +680,16 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(OP_A(inst));
 
             if (function.cfg.captured.regs.test(reg))
                 return;
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            if (tryReplaceValueWithFullStore(state, build, function, block, index, inst.a, inst.b, regInfo))
+            if (tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
                 break;
 
             // Partial value store can be removed by a new one if the tag is known
@@ -678,9 +701,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         }
         break;
     case IrCmd::STORE_VECTOR:
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(OP_A(inst));
 
             if (function.cfg.captured.regs.test(reg))
                 return;
@@ -699,9 +722,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         }
         break;
     case IrCmd::STORE_TVALUE:
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(OP_A(inst));
 
             if (function.cfg.captured.regs.test(reg))
                 return;
@@ -710,6 +733,12 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             state.killTagAndValueStorePair(regInfo);
             state.killTValueStore(regInfo);
+
+            if (FFlag::LuauCodegenGcoDse2)
+            {
+                regInfo.tagInstIdx = kInvalidInstIdx;
+                regInfo.valueInstIdx = kInvalidInstIdx;
+            }
 
             regInfo.tvalueInstIdx = index;
             regInfo.maybeGco = true;
@@ -720,22 +749,22 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             // If the argument is a vector, it's not a GC object
             // Note that for known boolean/number/GCO, we already optimize into STORE_SPLIT_TVALUE form
             // TODO (CLI-101027): similar code is used in constant propagation optimization and should be shared in utilities
-            if (IrInst* arg = function.asInstOp(inst.b))
+            if (IrInst* arg = function.asInstOp(OP_B(inst)))
             {
                 if (arg->cmd == IrCmd::TAG_VECTOR)
                     regInfo.maybeGco = false;
 
-                if (arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
-                    regInfo.maybeGco = isGCO(function.tagOp(arg->c));
+                if (arg->cmd == IrCmd::LOAD_TVALUE && OP_C(arg).kind != IrOpKind::None)
+                    regInfo.maybeGco = isGCO(function.tagOp(OP_C(arg)));
             }
 
             state.hasGcoToClear |= regInfo.maybeGco;
         }
         break;
     case IrCmd::STORE_SPLIT_TVALUE:
-        if (inst.a.kind == IrOpKind::VmReg)
+        if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(inst.a);
+            int reg = vmRegOp(OP_A(inst));
 
             if (function.cfg.captured.regs.test(reg))
                 return;
@@ -745,65 +774,77 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             state.killTagAndValueStorePair(regInfo);
             state.killTValueStore(regInfo);
 
+            if (FFlag::LuauCodegenGcoDse2)
+            {
+                regInfo.tagInstIdx = kInvalidInstIdx;
+                regInfo.valueInstIdx = kInvalidInstIdx;
+            }
+
             regInfo.tvalueInstIdx = index;
-            regInfo.maybeGco = isGCO(function.tagOp(inst.b));
-            regInfo.knownTag = function.tagOp(inst.b);
+            regInfo.maybeGco = isGCO(function.tagOp(OP_B(inst)));
+            regInfo.knownTag = function.tagOp(OP_B(inst));
             state.hasGcoToClear |= regInfo.maybeGco;
         }
         break;
 
         // Guard checks can jump to a block which might be using some or all the values we stored
     case IrCmd::CHECK_TAG:
-        state.checkLiveIns(inst.c);
+        state.checkLiveIns(OP_C(inst));
 
         // Tag guard establishes the tag value of the register in the current block
-        if (IrInst* load = function.asInstOp(inst.a); load && load->cmd == IrCmd::LOAD_TAG && load->a.kind == IrOpKind::VmReg)
+        if (IrInst* load = function.asInstOp(OP_A(inst)); load && load->cmd == IrCmd::LOAD_TAG && OP_A(load).kind == IrOpKind::VmReg)
         {
-            int reg = vmRegOp(load->a);
+            int reg = vmRegOp(OP_A(load));
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            regInfo.knownTag = function.tagOp(inst.b);
+            regInfo.knownTag = function.tagOp(OP_B(inst));
         }
         break;
     case IrCmd::TRY_NUM_TO_INDEX:
-        state.checkLiveIns(inst.b);
+        state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::TRY_CALL_FASTGETTM:
-        state.checkLiveIns(inst.c);
+        state.checkLiveIns(OP_C(inst));
         break;
     case IrCmd::CHECK_FASTCALL_RES:
-        state.checkLiveIns(inst.b);
+        state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_TRUTHY:
-        state.checkLiveIns(inst.c);
+        state.checkLiveIns(OP_C(inst));
         break;
     case IrCmd::CHECK_READONLY:
-        state.checkLiveIns(inst.b);
+        state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_NO_METATABLE:
-        state.checkLiveIns(inst.b);
+        state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_SAFE_ENV:
-        state.checkLiveIns(inst.a);
+        state.checkLiveIns(OP_A(inst));
         break;
     case IrCmd::CHECK_ARRAY_SIZE:
-        state.checkLiveIns(inst.c);
+        state.checkLiveIns(OP_C(inst));
         break;
     case IrCmd::CHECK_SLOT_MATCH:
-        state.checkLiveIns(inst.c);
+        state.checkLiveIns(OP_C(inst));
         break;
     case IrCmd::CHECK_NODE_NO_NEXT:
-        state.checkLiveIns(inst.b);
+        state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_NODE_VALUE:
-        state.checkLiveIns(inst.b);
+        state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        state.checkLiveIns(inst.d);
+        if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
+            state.checkLiveIns(OP_F(inst));
+        else
+            state.checkLiveIns(OP_D(inst));
         break;
     case IrCmd::CHECK_USERDATA_TAG:
-        state.checkLiveIns(inst.c);
+        state.checkLiveIns(OP_C(inst));
+        break;
+    case IrCmd::CHECK_CMP_INT:
+        state.checkLiveIns(OP_D(inst));
         break;
 
     case IrCmd::JUMP:
@@ -847,7 +888,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
 
     case IrCmd::NEW_USERDATA:
-        if (FFlag::LuauCodegenGcoDse)
+        if (FFlag::LuauCodegenGcoDse2)
             state.hasAllocations = true;
         break;
 
@@ -885,7 +926,7 @@ static void markDeadStoresInBlockChain(
 
     RemoveDeadStoreState state{function, remainingUses};
 
-    if (FFlag::LuauCodegenGcoDse)
+    if (FFlag::LuauCodegenGcoDse2)
     {
         // We will be visiting this chain a few times to clean unreferenced temporaries
         // Clear the storage we reuse
@@ -898,7 +939,7 @@ static void markDeadStoresInBlockChain(
         CODEGEN_ASSERT(!visited[blockIdx]);
         visited[blockIdx] = true;
 
-        if (FFlag::LuauCodegenGcoDse)
+        if (FFlag::LuauCodegenGcoDse2)
             blockIdxChain.push_back(blockIdx);
 
         markDeadStoresInBlock(build, *block, state);
@@ -909,9 +950,9 @@ static void markDeadStoresInBlockChain(
 
         // Unconditional jump into a block with a single user (current block) allows us to continue optimization
         // with the information we have gathered so far (unless we have already visited that block earlier)
-        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind == IrOpKind::Block)
+        if (termInst.cmd == IrCmd::JUMP && OP_A(termInst).kind == IrOpKind::Block)
         {
-            IrBlock& target = function.blockOp(termInst.a);
+            IrBlock& target = function.blockOp(OP_A(termInst));
             uint32_t targetIdx = function.getBlockIndex(target);
 
             if (target.useCount == 1 && !visited[targetIdx] && target.kind != IrBlockKind::Fallback)
@@ -922,7 +963,7 @@ static void markDeadStoresInBlockChain(
     }
 
     // If there are allocating instructions, check if they have 'read' uses after DSE
-    if (FFlag::LuauCodegenGcoDse && state.hasAllocations)
+    if (FFlag::LuauCodegenGcoDse2 && state.hasAllocations)
     {
         bool foundUnused = false;
 
@@ -944,9 +985,9 @@ static void markDeadStoresInBlockChain(
                 case IrCmd::BUFFER_WRITEI32:
                 case IrCmd::BUFFER_WRITEF32:
                 case IrCmd::BUFFER_WRITEF64:
-                    state.remainingUses[inst.a.index]--;
+                    state.remainingUses[OP_A(inst).index]--;
 
-                    if (state.remainingUses[inst.a.index] == 0)
+                    if (state.remainingUses[OP_A(inst).index] == 0)
                         foundUnused = true;
                     break;
                 default:
@@ -973,9 +1014,9 @@ static void markDeadStoresInBlockChain(
                     case IrCmd::BUFFER_WRITEI32:
                     case IrCmd::BUFFER_WRITEF32:
                     case IrCmd::BUFFER_WRITEF64:
-                        if (state.remainingUses[inst.a.index] == 0)
+                        if (state.remainingUses[OP_A(inst).index] == 0)
                         {
-                            IrInst& pointer = function.instOp(inst.a);
+                            IrInst& pointer = function.instOp(OP_A(inst));
 
                             if (pointer.cmd == IrCmd::NEW_USERDATA)
                                 kill(function, inst);

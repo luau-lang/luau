@@ -178,6 +178,8 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
+    Polarity polarity = Polarity::None;
+
     DenseHashMap<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen{{nullptr, ""}};
 
     // Used to keep track of when we are inside a large table and should
@@ -397,7 +399,13 @@ public:
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type of the AST annotation.
      **/
-    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
+    TypeId resolveType(
+        const ScopePtr& scope,
+        AstType* ty,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
 
 private:
     // resolveType() is recursive, but we only want to invoke
@@ -412,9 +420,15 @@ private:
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
+    TypePackId resolveTypePack(
+        const ScopePtr& scope,
+        AstTypePack* tp,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
 
-    // Inner hepler for resolveTypePack
+    // Inner helper for resolveTypePack
     TypePackId resolveTypePack_(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
@@ -424,7 +438,13 @@ private:
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments, bool replaceErrorWithFresh = false);
+    TypePackId resolveTypePack(
+        const ScopePtr& scope,
+        const AstTypeList& list,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
 
     /**
      * Creates generic types given a list of AST definitions, resolving default

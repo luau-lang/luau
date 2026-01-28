@@ -13,10 +13,9 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIntersection)
-LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintIndexer)
-LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintLambdas2)
+LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintStripNilFromFunction)
+LUAU_FASTFLAGVARIABLE(LuauPushTypeUnifyConstantHandling)
 
 namespace Luau
 {
@@ -32,12 +31,32 @@ struct BidirectionalTypePusher
 
     NotNull<ConstraintSolver> solver;
     NotNull<const Constraint> constraint;
+    DenseHashSet<const void*>* genericTypesAndPacks;
     NotNull<Unifier2> unifier;
     NotNull<Subtyping> subtyping;
 
     std::vector<IncompleteInference> incompleteInferences;
 
     DenseHashSet<std::pair<TypeId, const AstExpr*>, PairHash<TypeId, const AstExpr*>> seen{{nullptr, nullptr}};
+
+    BidirectionalTypePusher(
+        NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
+        NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+        NotNull<ConstraintSolver> solver,
+        NotNull<const Constraint> constraint,
+        NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+        NotNull<Unifier2> unifier,
+        NotNull<Subtyping> subtyping
+    )
+        : astTypes{astTypes}
+        , astExpectedTypes{astExpectedTypes}
+        , solver{solver}
+        , constraint{constraint}
+        , genericTypesAndPacks{genericTypesAndPacks.get()}
+        , unifier{unifier}
+        , subtyping{subtyping}
+    {
+    }
 
     BidirectionalTypePusher(
         NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
@@ -51,6 +70,7 @@ struct BidirectionalTypePusher
         , astExpectedTypes{astExpectedTypes}
         , solver{solver}
         , constraint{constraint}
+        , genericTypesAndPacks{nullptr}
         , unifier{unifier}
         , subtyping{subtyping}
     {
@@ -58,7 +78,7 @@ struct BidirectionalTypePusher
 
     TypeId pushType(TypeId expectedType, const AstExpr* expr)
     {
-        if (FFlag::LuauPushTypeConstraintLambdas2)
+        if (FFlag::LuauPushTypeConstraintLambdas3)
         {
             (*astExpectedTypes)[expr] = expectedType;
             // We may not have a type here if this is the last argument
@@ -75,12 +95,9 @@ struct BidirectionalTypePusher
 
         TypeId exprType = *astTypes->find(expr);
 
-        if (FFlag::LuauPushTypeConstraintIntersection)
-        {
-            if (seen.contains({expectedType, expr}))
-                return exprType;
-            seen.insert({expectedType, expr});
-        }
+        if (seen.contains({expectedType, expr}))
+            return exprType;
+        seen.insert({expectedType, expr});
 
         expectedType = follow(expectedType);
         exprType = follow(exprType);
@@ -110,7 +127,7 @@ struct BidirectionalTypePusher
         if (is<AnyType, UnknownType>(expectedType))
             return exprType;
 
-        if (!FFlag::LuauPushTypeConstraintLambdas2)
+        if (!FFlag::LuauPushTypeConstraintLambdas3)
             (*astExpectedTypes)[expr] = expectedType;
 
         if (auto group = expr->as<AstExprGroup>())
@@ -131,132 +148,180 @@ struct BidirectionalTypePusher
             // just return the original expression type.
             return exprType;
 
-        if (expr->is<AstExprConstantString>())
+        if (FFlag::LuauPushTypeUnifyConstantHandling)
         {
-            auto ft = get<FreeType>(exprType);
-            if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->stringType, ft->upperBound) &&
-                fastIsSubtype(ft->lowerBound, solver->builtinTypes->stringType))
+            if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
+                expr->is<AstExprConstantNil>())
             {
-                if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
+                if (auto ft = get<FreeType>(exprType))
                 {
-                    // If we see a pattern like:
-                    //
-                    //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
-                    //      return my_enum
-                    //  end
-                    //  local var = foo("meow")
-                    //
-                    // ... where we are attempting to push a singleton onto any string
-                    // literal, and the lower bound is still a singleton, then snap
-                    // to said lower bound.
-                    if (FFlag::LuauPushTypeConstraintLambdas2)
+                    if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
                     {
+                        // If we see a pattern like:
+                        //
+                        //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
+                        //      return my_enum
+                        //  end
+                        //  local var = foo("meow")
+                        //
+                        // ... where we are attempting to push a singleton onto any string
+                        // literal, and the lower bound is still a singleton, then snap
+                        // to said lower bound.
                         solver->bind(constraint, exprType, ft->lowerBound);
+                        return exprType;
                     }
-                    else
-                    {
-                        emplaceType<BoundType>(asMutable(exprType), ft->lowerBound);
-                        solver->unblock(exprType, expr->location);
-                    }
-                    return exprType;
-                }
 
-                // if the upper bound is a subtype of the expected type, we can push the expected type in
-                Relation upperBoundRelation = relate(ft->upperBound, expectedType);
-                if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
-                {
-                    if (FFlag::LuauPushTypeConstraintLambdas2)
+                    // if the upper bound is a subtype of the expected type, we can push the expected type in
+                    Relation upperBoundRelation = relate(ft->upperBound, expectedType);
+                    if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
                     {
                         solver->bind(constraint, exprType, expectedType);
+                        return exprType;
                     }
-                    else
-                    {
-                        emplaceType<BoundType>(asMutable(exprType), expectedType);
-                        solver->unblock(exprType, expr->location);
-                    }
-                    return exprType;
-                }
 
-                // likewise, if the lower bound is a subtype, we can force the expected type in
-                // if this is the case and the previous relation failed, it means that the primitive type
-                // constraint was going to have to select the lower bound for this type anyway.
-                Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
-                if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
-                {
-                    if (FFlag::LuauPushTypeConstraintLambdas2)
+                    // likewise, if the lower bound is a subtype, we can force the expected type in
+                    // if this is the case and the previous relation failed, it means that the primitive type
+                    // constraint was going to have to select the lower bound for this type anyway.
+                    Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
+                    if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
                     {
                         solver->bind(constraint, exprType, expectedType);
+                        return exprType;
                     }
-                    else
-                    {
-                        emplaceType<BoundType>(asMutable(exprType), expectedType);
-                        solver->unblock(exprType, expr->location);
-                    }
-                    return exprType;
                 }
             }
         }
-        else if (expr->is<AstExprConstantBool>())
+        else
         {
-            auto ft = get<FreeType>(exprType);
-            if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->booleanType, ft->upperBound) &&
-                fastIsSubtype(ft->lowerBound, solver->builtinTypes->booleanType))
+            if (expr->is<AstExprConstantString>())
             {
-                // if the upper bound is a subtype of the expected type, we can push the expected type in
-                Relation upperBoundRelation = relate(ft->upperBound, expectedType);
-                if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
+                auto ft = get<FreeType>(exprType);
+                if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->stringType, ft->upperBound) &&
+                    fastIsSubtype(ft->lowerBound, solver->builtinTypes->stringType))
                 {
-                    if (FFlag::LuauPushTypeConstraintLambdas2)
+                    if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
                     {
-                        solver->bind(constraint, exprType, expectedType);
+                        // If we see a pattern like:
+                        //
+                        //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
+                        //      return my_enum
+                        //  end
+                        //  local var = foo("meow")
+                        //
+                        // ... where we are attempting to push a singleton onto any string
+                        // literal, and the lower bound is still a singleton, then snap
+                        // to said lower bound.
+                        if (FFlag::LuauPushTypeConstraintLambdas3)
+                        {
+                            solver->bind(constraint, exprType, ft->lowerBound);
+                        }
+                        else
+                        {
+                            emplaceType<BoundType>(asMutable(exprType), ft->lowerBound);
+                            solver->unblock(exprType, expr->location);
+                        }
+                        return exprType;
                     }
-                    else
-                    {
-                        emplaceType<BoundType>(asMutable(exprType), expectedType);
-                        solver->unblock(exprType, expr->location);
-                    }
-                    return exprType;
-                }
 
-                // likewise, if the lower bound is a subtype, we can force the expected type in
-                // if this is the case and the previous relation failed, it means that the primitive type
-                // constraint was going to have to select the lower bound for this type anyway.
-                Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
-                if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
-                {
-                    if (FFlag::LuauPushTypeConstraintLambdas2)
+                    // if the upper bound is a subtype of the expected type, we can push the expected type in
+                    Relation upperBoundRelation = relate(ft->upperBound, expectedType);
+                    if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
                     {
-                        solver->bind(constraint, exprType, expectedType);
+                        if (FFlag::LuauPushTypeConstraintLambdas3)
+                        {
+                            solver->bind(constraint, exprType, expectedType);
+                        }
+                        else
+                        {
+                            emplaceType<BoundType>(asMutable(exprType), expectedType);
+                            solver->unblock(exprType, expr->location);
+                        }
+                        return exprType;
                     }
-                    else
+
+                    // likewise, if the lower bound is a subtype, we can force the expected type in
+                    // if this is the case and the previous relation failed, it means that the primitive type
+                    // constraint was going to have to select the lower bound for this type anyway.
+                    Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
+                    if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
                     {
-                        emplaceType<BoundType>(asMutable(exprType), expectedType);
-                        solver->unblock(exprType, expr->location);
+                        if (FFlag::LuauPushTypeConstraintLambdas3)
+                        {
+                            solver->bind(constraint, exprType, expectedType);
+                        }
+                        else
+                        {
+                            emplaceType<BoundType>(asMutable(exprType), expectedType);
+                            solver->unblock(exprType, expr->location);
+                        }
+                        return exprType;
                     }
-                    return exprType;
                 }
             }
-        }
-
-        if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
-            expr->is<AstExprConstantNil>())
-        {
-            if (auto ft = get<FreeType>(exprType); ft && fastIsSubtype(ft->upperBound, expectedType))
+            else if (expr->is<AstExprConstantBool>())
             {
-                emplaceType<BoundType>(asMutable(exprType), expectedType);
-                solver->unblock(exprType, expr->location);
+                auto ft = get<FreeType>(exprType);
+                if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->booleanType, ft->upperBound) &&
+                    fastIsSubtype(ft->lowerBound, solver->builtinTypes->booleanType))
+                {
+                    // if the upper bound is a subtype of the expected type, we can push the expected type in
+                    Relation upperBoundRelation = relate(ft->upperBound, expectedType);
+                    if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
+                    {
+                        if (FFlag::LuauPushTypeConstraintLambdas3)
+                        {
+                            solver->bind(constraint, exprType, expectedType);
+                        }
+                        else
+                        {
+                            emplaceType<BoundType>(asMutable(exprType), expectedType);
+                            solver->unblock(exprType, expr->location);
+                        }
+                        return exprType;
+                    }
+
+                    // likewise, if the lower bound is a subtype, we can force the expected type in
+                    // if this is the case and the previous relation failed, it means that the primitive type
+                    // constraint was going to have to select the lower bound for this type anyway.
+                    Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
+                    if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
+                    {
+                        if (FFlag::LuauPushTypeConstraintLambdas3)
+                        {
+                            solver->bind(constraint, exprType, expectedType);
+                        }
+                        else
+                        {
+                            emplaceType<BoundType>(asMutable(exprType), expectedType);
+                            solver->unblock(exprType, expr->location);
+                        }
+                        return exprType;
+                    }
+                }
+            }
+
+            if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
+                expr->is<AstExprConstantNil>())
+            {
+                if (auto ft = get<FreeType>(exprType); ft && fastIsSubtype(ft->upperBound, expectedType))
+                {
+                    emplaceType<BoundType>(asMutable(exprType), expectedType);
+                    solver->unblock(exprType, expr->location);
+                    return exprType;
+                }
+
+                Relation r = relate(exprType, expectedType);
+                if (r == Relation::Coincident || r == Relation::Subset)
+                    return expectedType;
+
                 return exprType;
             }
-
-            Relation r = relate(exprType, expectedType);
-            if (r == Relation::Coincident || r == Relation::Subset)
-                return expectedType;
-
-            return exprType;
         }
 
-        if (FFlag::LuauPushTypeConstraintLambdas2)
+
+        if (FFlag::LuauPushTypeConstraintLambdas3)
         {
+            LUAU_ASSERT(genericTypesAndPacks);
             if (auto exprLambda = expr->as<AstExprFunction>())
             {
                 const auto lambdaTy = get<FunctionType>(exprType);
@@ -271,19 +336,13 @@ struct BidirectionalTypePusher
                     auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
                     for (size_t argIndex = 0; argIndex < limit; argIndex++)
                     {
-                        if (
-                            !exprLambda->args.data[argIndex]->annotation &&
-                            get<FreeType>(follow(lambdaArgTys[argIndex])) &&
-                            !ContainsAnyGeneric::hasAnyGeneric(expectedLambdaArgTys[argIndex])
-                        )
+                        if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])) &&
+                            !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks}))
                             solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
                     }
 
-                    if (
-                        !exprLambda->returnAnnotation &&
-                        get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
-                        !ContainsAnyGeneric::hasAnyGeneric(expectedLambdaTy->retTypes)
-                    )
+                    if (!exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
+                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
                         solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
                 }
             }
@@ -315,7 +374,7 @@ struct BidirectionalTypePusher
                     if (tt)
                         (void)pushType(*tt, expr);
                 }
-                else if (auto itv = get<IntersectionType>(expectedType); FFlag::LuauPushTypeConstraintIntersection && itv)
+                else if (auto itv = get<IntersectionType>(expectedType))
                 {
                     for (const auto part : itv)
                         (void)pushType(part, expr);
@@ -348,16 +407,8 @@ struct BidirectionalTypePusher
                         //  { foo = bar }
                         //
                         // Then the intent is probably to push `U` into `bar`.
-                        if (FFlag::LuauPushTypeConstraintIndexer)
-                        {
-                            if (expectedTableTy->indexer)
-                                (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
-                        }
-                        else
-                        {
-                            if (expectedTableTy->indexer && fastIsSubtype(solver->builtinTypes->stringType, expectedTableTy->indexer->indexType))
-                                (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
-                        }
+                        if (expectedTableTy->indexer)
+                            (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
 
                         // If it's just an extra property and the expected type
                         // has no indexer, there's no work to do here.
@@ -410,7 +461,7 @@ struct BidirectionalTypePusher
 };
 } // namespace
 
-PushTypeResult pushTypeInto(
+PushTypeResult pushTypeInto_DEPRECATED(
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
     NotNull<ConstraintSolver> solver,
@@ -422,6 +473,23 @@ PushTypeResult pushTypeInto(
 )
 {
     BidirectionalTypePusher btp{astTypes, astExpectedTypes, solver, constraint, unifier, subtyping};
+    (void)btp.pushType(expectedType, expr);
+    return {std::move(btp.incompleteInferences)};
+}
+
+PushTypeResult pushTypeInto(
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<ConstraintSolver> solver,
+    NotNull<const Constraint> constraint,
+    NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+    NotNull<Unifier2> unifier,
+    NotNull<Subtyping> subtyping,
+    TypeId expectedType,
+    const AstExpr* expr
+)
+{
+    BidirectionalTypePusher btp{astTypes, astExpectedTypes, solver, constraint, genericTypesAndPacks, unifier, subtyping};
     (void)btp.pushType(expectedType, expr);
     return {std::move(btp.incompleteInferences)};
 }

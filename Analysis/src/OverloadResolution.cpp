@@ -13,7 +13,6 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
-LUAU_FASTFLAG(LuauNewOverloadResolver2)
 
 namespace Luau
 {
@@ -44,7 +43,7 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         // FIXME CLI-180645: We should try to infer a union of return
         // types here so that we get better autocomplete / type
         // inference for the rest of the function.
-        return { std::nullopt, {}, false };
+        return {std::nullopt, {}, false};
     }
 
     if (potentialOverloads.size() + ok.size() > 1)
@@ -56,11 +55,11 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         // This is the one spot where we return `true`, which callers may use
         // to determine whether they should emit an error or try again later.
         if (ok.empty())
-            return { potentialOverloads.front().first, potentialOverloads.front().second, true};
+            return {potentialOverloads.front().first, potentialOverloads.front().second, true};
         else
         {
             LUAU_ASSERT(ok.size() == 1);
-            return { ok.front(), {}, true };
+            return {ok.front(), {}, true};
         }
     }
 
@@ -73,10 +72,10 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         // There's exactly one incompatible overload, but it has
         // the right arity, so just use that. We'll fail type checking
         // but that's ok.
-        return { incompatibleOverloads.front().first, {}, false };
+        return {incompatibleOverloads.front().first, {}, false};
     }
 
-    // FIXME: CLI-180645: if `incompatiableOverloads` is non-empty, return a
+    // FIXME: CLI-180645: if `incompatibleOverloads` is non-empty, return a
     // union of all its type packs to the user to use as the inferred return
     // type.
     //
@@ -91,7 +90,7 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
     // - There are either no, or more than one, overloads that just have an
     //   arity mismatch.
     // The best we can do here is unify against the error type and move on.
-    return { std::nullopt, {}, false };
+    return {std::nullopt, {}, false};
 }
 
 OverloadResolver::OverloadResolver(
@@ -131,7 +130,7 @@ static void ignoreReasoningForReturnType(SubtypingResult& sr)
 {
     SubtypingReasonings result{kEmptyReasoning};
 
-    for (const SubtypingReasoning& reasoning: sr.reasoning)
+    for (const SubtypingReasoning& reasoning : sr.reasoning)
     {
         if (reasoningIsReturnTypes(reasoning.subPath) && reasoningIsReturnTypes(reasoning.superPath))
             continue;
@@ -355,6 +354,19 @@ void OverloadResolver::reportErrors(
 
         switch (shouldSuppressErrors(normalizer, argPack))
         {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        case ErrorSuppression::NormalizationFailed:
+            errors.emplace_back(fnLocation, moduleName, NormalizationTooComplex{});
+            return;
+        }
+
+        if (failedSuperPack)
+        {
+            switch (shouldSuppressErrors(normalizer, requiredMappedArgs))
+            {
             case ErrorSuppression::Suppress:
                 return;
             case ErrorSuppression::DoNotSuppress:
@@ -362,19 +374,6 @@ void OverloadResolver::reportErrors(
             case ErrorSuppression::NormalizationFailed:
                 errors.emplace_back(fnLocation, moduleName, NormalizationTooComplex{});
                 return;
-        }
-
-        if (failedSuperPack)
-        {
-            switch (shouldSuppressErrors(normalizer, requiredMappedArgs))
-            {
-                case ErrorSuppression::Suppress:
-                    return;
-                case ErrorSuppression::DoNotSuppress:
-                    break;
-                case ErrorSuppression::NormalizationFailed:
-                    errors.emplace_back(fnLocation, moduleName, NormalizationTooComplex{});
-                    return;
             }
         }
 
@@ -678,45 +677,6 @@ std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload_D
     return {Analysis::OverloadIsNonviable, ty};
 }
 
-void OverloadResolver::resolve_DEPRECATED(
-    TypeId fnTy,
-    const TypePack* args,
-    AstExpr* selfExpr,
-    const std::vector<AstExpr*>* argExprs,
-    NotNull<DenseHashSet<TypeId>> uniqueTypes
-)
-{
-    fnTy = follow(fnTy);
-
-    auto it = get<IntersectionType>(fnTy);
-    if (!it)
-    {
-        auto [analysis, errors] = checkOverload(fnTy, args, selfExpr, argExprs, uniqueTypes);
-        add(analysis, fnTy, std::move(errors));
-        return;
-    }
-
-    for (TypeId ty : it)
-    {
-        if (resolution.find(ty) != resolution.end())
-            continue;
-
-        if (const FunctionType* fn = get<FunctionType>(follow(ty)))
-        {
-            // If the overload isn't arity compatible, report the mismatch and don't do more work
-            const TypePackId argPack = arena->addTypePack(*args);
-            if (!isArityCompatible(argPack, fn->argTypes, builtinTypes))
-            {
-                add(ArityMismatch, ty, {});
-                continue;
-            }
-        }
-
-        auto [analysis, errors] = checkOverload(ty, args, selfExpr, argExprs, uniqueTypes);
-        add(analysis, ty, std::move(errors));
-    }
-}
-
 std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload(
     TypeId fnTy,
     const TypePack* args,
@@ -746,17 +706,6 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload(
     }
     else
         return {TypeIsNotAFunction, {}}; // Intentionally empty. We can just fabricate the type error later on.
-}
-
-bool OverloadResolver::isLiteral(AstExpr* expr)
-{
-    if (auto group = expr->as<AstExprGroup>())
-        return isLiteral(group->expr);
-    else if (auto assertion = expr->as<AstExprTypeAssertion>())
-        return isLiteral(assertion->expr);
-
-    return expr->is<AstExprConstantNil>() || expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNumber>() ||
-           expr->is<AstExprConstantString>() || expr->is<AstExprFunction>() || expr->is<AstExprTable>();
 }
 
 void OverloadResolver::maybeEmplaceError(
@@ -880,32 +829,11 @@ bool OverloadResolver::isArityCompatible(const TypePackId candidate, const TypeP
     }
 
     // Too many parameters were passed
-    if (FFlag::LuauNewOverloadResolver2)
+    if (candidateHead.size() > desiredHead.size())
     {
-        if (candidateHead.size() > desiredHead.size())
-        {
-            // If the function being called accepts a variadic or generic tail, then the arities match.
-            return desiredTail.has_value();
-        }
+        // If the function being called accepts a variadic or generic tail, then the arities match.
+        return desiredTail.has_value();
     }
-    else
-    {
-        if (desiredTail && candidateHead.size() <= desiredHead.size() && !candidateTail)
-        {
-            // A non-tail candidate can't match a desired tail unless the tail accepts nils
-            // We don't allow generic packs to implicitly accept an empty pack here
-            TypePackId desiredTailTP = follow(*desiredTail);
-
-            if (desiredTailTP == builtinTypes->unknownTypePack || desiredTailTP == builtinTypes->anyTypePack)
-                return true;
-
-            if (const VariadicTypePack* vtp = get<VariadicTypePack>(desiredTailTP))
-                return vtp->ty == builtinTypes->nilType;
-
-            return false;
-        }
-    }
-
     // There aren't any other failure conditions; we don't care if we pass more args than needed
 
     return true;
@@ -1258,8 +1186,7 @@ SolveResult solveFunctionCall_DEPRECATED(
         }
         else
         {
-            auto instantiation = std::make_unique<Instantiation2>(
-                arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions));
+            auto instantiation = std::make_unique<Instantiation2>(arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions));
 
             std::optional<TypePackId> subst = instantiation->substitute(resultPack);
 

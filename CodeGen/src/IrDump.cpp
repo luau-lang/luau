@@ -171,6 +171,30 @@ const char* getCmdName(IrCmd cmd)
         return "ABS_NUM";
     case IrCmd::SIGN_NUM:
         return "SIGN_NUM";
+    case IrCmd::ADD_FLOAT:
+        return "ADD_FLOAT";
+    case IrCmd::SUB_FLOAT:
+        return "SUB_FLOAT";
+    case IrCmd::MUL_FLOAT:
+        return "MUL_FLOAT";
+    case IrCmd::DIV_FLOAT:
+        return "DIV_FLOAT";
+    case IrCmd::MIN_FLOAT:
+        return "MIN_FLOAT";
+    case IrCmd::MAX_FLOAT:
+        return "MAX_FLOAT";
+    case IrCmd::UNM_FLOAT:
+        return "UNM_FLOAT";
+    case IrCmd::FLOOR_FLOAT:
+        return "FLOOR_FLOAT";
+    case IrCmd::CEIL_FLOAT:
+        return "CEIL_FLOAT";
+    case IrCmd::SQRT_FLOAT:
+        return "SQRT_FLOAT";
+    case IrCmd::ABS_FLOAT:
+        return "ABS_FLOAT";
+    case IrCmd::SIGN_FLOAT:
+        return "SIGN_FLOAT";
     case IrCmd::SELECT_NUM:
         return "SELECT_NUM";
     case IrCmd::MULADD_NUM:
@@ -187,6 +211,8 @@ const char* getCmdName(IrCmd cmd)
         return "MUL_VEC";
     case IrCmd::DIV_VEC:
         return "DIV_VEC";
+    case IrCmd::IDIV_VEC:
+        return "IDIV_VEC";
     case IrCmd::MULADD_VEC:
         return "MULADD_VEC";
     case IrCmd::UNM_VEC:
@@ -219,6 +245,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
         return "JUMP_CMP_NUM";
+    case IrCmd::JUMP_CMP_FLOAT:
+        return "JUMP_CMP_FLOAT";
     case IrCmd::JUMP_FORN_LOOP_COND:
         return "JUMP_FORN_LOOP_COND";
     case IrCmd::JUMP_SLOT_MATCH:
@@ -243,6 +271,8 @@ const char* getCmdName(IrCmd cmd)
         return "INT_TO_NUM";
     case IrCmd::UINT_TO_NUM:
         return "UINT_TO_NUM";
+    case IrCmd::UINT_TO_FLOAT:
+        return "UINT_TO_FLOAT";
     case IrCmd::NUM_TO_INT:
         return "NUM_TO_INT";
     case IrCmd::NUM_TO_UINT:
@@ -251,8 +281,10 @@ const char* getCmdName(IrCmd cmd)
         return "FLOAT_TO_NUM";
     case IrCmd::NUM_TO_FLOAT:
         return "NUM_TO_FLOAT";
-    case IrCmd::NUM_TO_VEC:
+    case IrCmd::NUM_TO_VEC_DEPRECATED:
         return "NUM_TO_VEC";
+    case IrCmd::FLOAT_TO_VEC:
+        return "FLOAT_TO_VEC";
     case IrCmd::TAG_VECTOR:
         return "TAG_VECTOR";
     case IrCmd::TRUNCATE_UINT:
@@ -305,6 +337,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_BUFFER_LEN";
     case IrCmd::CHECK_USERDATA_TAG:
         return "CHECK_USERDATA_TAG";
+    case IrCmd::CHECK_CMP_INT:
+        return "CHECK_CMP_INT";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
@@ -447,22 +481,13 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 
     ctx.result.append(getCmdName(inst.cmd));
 
-    auto checkOp = [&ctx](IrOp op, const char* sep)
+    for (size_t i = 0; i < inst.ops.size(); i++)
     {
-        if (op.kind != IrOpKind::None)
-        {
-            ctx.result.append(sep);
-            toString(ctx, op);
-        }
-    };
-
-    checkOp(inst.a, " ");
-    checkOp(inst.b, ", ");
-    checkOp(inst.c, ", ");
-    checkOp(inst.d, ", ");
-    checkOp(inst.e, ", ");
-    checkOp(inst.f, ", ");
-    checkOp(inst.g, ", ");
+        if (inst.ops[i].kind == IrOpKind::None)
+            continue;
+        ctx.result.append(i == 0 ? " " : ", ");
+        toString(ctx, inst.ops[i]);
+    }
 }
 
 void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
@@ -714,7 +739,7 @@ static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs, con
     }
 }
 
-static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst)
+static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IrInst& inst)
 {
     RegisterSet extraRs;
 
@@ -725,20 +750,14 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
 
     // Find first block argument, for guard instructions (isNonTerminatingJump), that's the first and only one
     CODEGEN_ASSERT(isNonTerminatingJump(inst.cmd));
-    IrOp op = inst.a;
+    IrOp op = OP_A(inst);
 
-    if (inst.b.kind == IrOpKind::Block)
-        op = inst.b;
-    else if (inst.c.kind == IrOpKind::Block)
-        op = inst.c;
-    else if (inst.d.kind == IrOpKind::Block)
-        op = inst.d;
-    else if (inst.e.kind == IrOpKind::Block)
-        op = inst.e;
-    else if (inst.f.kind == IrOpKind::Block)
-        op = inst.f;
-    else if (inst.g.kind == IrOpKind::Block)
-        op = inst.g;
+    for (size_t i = 1; i < inst.ops.size(); i++)
+        if (inst.ops[i].kind == IrOpKind::Block)
+        {
+            op = inst.ops[i];
+            break;
+        }
 
     if (op.kind == IrOpKind::Block && op.index < ctx.cfg.in.size())
     {
@@ -753,14 +772,7 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
     return extraRs;
 }
 
-void toStringDetailed(
-    IrToStringContext& ctx,
-    const IrBlock& block,
-    uint32_t blockIdx,
-    const IrInst& inst,
-    uint32_t instIdx,
-    IncludeUseInfo includeUseInfo
-)
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IrInst& inst, uint32_t instIdx, IncludeUseInfo includeUseInfo)
 {
     size_t start = ctx.result.size();
 
@@ -891,7 +903,7 @@ void toStringDetailed(
     }
 }
 
-std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
+std::string toString(IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
     IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
@@ -917,7 +929,7 @@ std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
         // To allow dumping blocks that are still being constructed, we can't rely on terminator and need a bounds check
         for (uint32_t index = block.start; index <= block.finish && index < uint32_t(function.instructions.size()); index++)
         {
-            const IrInst& inst = function.instructions[index];
+            IrInst& inst = function.instructions[index];
 
             // Skip pseudo instructions unless they are still referenced
             if (isPseudo(inst.cmd) && inst.useCount == 0)
@@ -940,7 +952,7 @@ std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
     return result;
 }
 
-std::string dump(const IrFunction& function)
+std::string dump(IrFunction& function)
 {
     std::string result = toString(function, IncludeUseInfo::Yes);
 
@@ -1040,13 +1052,8 @@ std::string toDot(const IrFunction& function, bool includeInst)
                 }
             };
 
-            checkOp(inst.a);
-            checkOp(inst.b);
-            checkOp(inst.c);
-            checkOp(inst.d);
-            checkOp(inst.e);
-            checkOp(inst.f);
-            checkOp(inst.g);
+            for (auto& op : inst.ops)
+                checkOp(op);
         }
     }
 
