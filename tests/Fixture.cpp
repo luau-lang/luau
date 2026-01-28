@@ -330,6 +330,7 @@ CheckResult Fixture::check(Mode mode, const std::string& source, std::optional<F
     configResolver.defaultConfig.mode = mode;
     fileResolver.source[mm] = std::move(source);
     getFrontend().markDirty(mm);
+    getFrontend().clearStats();
 
     CheckResult result = getFrontend().check(mm, options);
 
@@ -561,12 +562,7 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
 TypeId Fixture::parseType(std::string_view src)
 {
     return getFrontend().parseType(
-        NotNull{&allocator},
-        NotNull{&nameTable},
-        NotNull{&getFrontend().iceHandler},
-        TypeCheckLimits{},
-        NotNull{&arena},
-        src
+        NotNull{&allocator}, NotNull{&nameTable}, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, NotNull{&arena}, src
     );
 }
 

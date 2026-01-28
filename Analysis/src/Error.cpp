@@ -792,7 +792,7 @@ struct ErrorConverter
     std::string operator()(const CheckedFunctionCallError& e) const
     {
         return "the function '" + e.checkedFunctionName + "' expects to get a " + toString(e.expected) + " as its " +
-            toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
+               toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
@@ -820,7 +820,7 @@ struct ErrorConverter
     {
 
         return "the function '" + e.functionName + "' will error at runtime if it is not called with " + std::to_string(e.expected) +
-            " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
+               " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
     }
 
     std::string operator()(const UnexpectedTypeInSubtyping& e) const

@@ -50,7 +50,7 @@ uintptr_t getStackAddressSpaceSize()
     return high - low;
 }
 
-}
+} // namespace Luau
 
 #elif defined(__APPLE__)
 
@@ -92,7 +92,7 @@ uintptr_t getStackAddressSpaceSize()
     return pthread_get_stacksize_np(self);
 }
 
-}
+} // namespace Luau
 
 #else
 
@@ -118,6 +118,6 @@ uintptr_t getStackAddressSpaceSize()
     return 0;
 }
 
-}
+} // namespace Luau
 
 #endif

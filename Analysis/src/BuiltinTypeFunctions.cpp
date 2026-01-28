@@ -528,32 +528,14 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
 
         if (!reversed)
             solveResult = solveFunctionCall_DEPRECATED(
-                ctx->arena,
-                ctx->builtins,
-                ctx->normalizer,
-                ctx->typeFunctionRuntime,
-                ctx->ice,
-                ctx->limits,
-                ctx->scope,
-                location,
-                *mmType,
-                argPack
+                ctx->arena, ctx->builtins, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack
             );
         else
         {
             TypePack* p = getMutable<TypePack>(argPack);
             std::swap(p->head.front(), p->head.back());
             solveResult = solveFunctionCall_DEPRECATED(
-                ctx->arena,
-                ctx->builtins,
-                ctx->normalizer,
-                ctx->typeFunctionRuntime,
-                ctx->ice,
-                ctx->limits,
-                ctx->scope,
-                location,
-                *mmType,
-                argPack
+                ctx->arena, ctx->builtins, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack
             );
         }
 
@@ -755,7 +737,9 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
         else
             inferredArgs = {rhsTy, lhsTy};
 
-        if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))))
+        if (!solveFunctionCall(
+                ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))
+            ))
             return {std::nullopt, Reduction::Erroneous, {}, {}};
     }
     else
@@ -1399,30 +1383,30 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     }
 
     std::vector<TypeId> discriminantTypes;
-        for (size_t i = 1; i < typeParams.size(); i++)
-        {
-            auto discriminant = follow(typeParams[i]);
+    for (size_t i = 1; i < typeParams.size(); i++)
+    {
+        auto discriminant = follow(typeParams[i]);
 
-            // Filter out any top level types that are meaningless to refine
-            // against.
-            if (is<UnknownType, NoRefineType>(discriminant))
-                continue;
+        // Filter out any top level types that are meaningless to refine
+        // against.
+        if (is<UnknownType, NoRefineType>(discriminant))
+            continue;
 
-            // If the discriminant type is only:
-            // - The `*no-refine*` type (covered above) or;
-            // - tables, metatables, unions, intersections, functions, or
-            //   negations containing `*no-refine*` (covered below).
-            // There's no point in refining against it.
-            ContainsRefinableType crt;
-            crt.traverse(discriminant);
+        // If the discriminant type is only:
+        // - The `*no-refine*` type (covered above) or;
+        // - tables, metatables, unions, intersections, functions, or
+        //   negations containing `*no-refine*` (covered below).
+        // There's no point in refining against it.
+        ContainsRefinableType crt;
+        crt.traverse(discriminant);
 
-            if (crt.found)
-                discriminantTypes.push_back(discriminant);
-        }
+        if (crt.found)
+            discriminantTypes.push_back(discriminant);
+    }
 
-        // if we don't have any real refinements, i.e. they're all `*no-refine*`, then we can reduce immediately.
-        if (discriminantTypes.empty())
-            return {targetTy, {}};
+    // if we don't have any real refinements, i.e. they're all `*no-refine*`, then we can reduce immediately.
+    if (discriminantTypes.empty())
+        return {targetTy, {}};
 
     const bool targetIsPending = isBlockedOrUnsolvedType(targetTy);
 

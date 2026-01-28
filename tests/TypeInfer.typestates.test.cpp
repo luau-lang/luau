@@ -364,10 +364,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type"
 
 TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauUnionOfTablesPreservesReadWrite, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauUnionOfTablesPreservesReadWrite, true}};
 
     CheckResult result = check(R"(
         local t = {x = nil}
@@ -383,7 +380,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<TypeMismatch>(result.errors[0]);
-    CHECK_EQ("{ x: nil } | { x: number }", toString(err->wantedType, { /* exhaustive */ true}));
+    CHECK_EQ("{ x: nil } | { x: number }", toString(err->wantedType, {/* exhaustive */ true}));
     CHECK_EQ("{ x: string }", toString(err->givenType));
     CHECK("{ x: nil } | { x: number }" == toString(requireTypeAtPosition({4, 18}), {true}));
     CHECK("number?" == toString(requireTypeAtPosition({4, 20})));

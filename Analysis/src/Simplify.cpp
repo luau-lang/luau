@@ -691,9 +691,11 @@ TypeId TypeSimplifier::mkNegation(TypeId ty) const
     return result;
 }
 
-namespace {
+namespace
+{
 
-enum class Inhabited {
+enum class Inhabited
+{
     Yes,
     No
 };
@@ -771,7 +773,7 @@ Inhabited intersectOneWithIntersection(TypeSimplifier& simplifier, TypeIds& sour
 
     return Inhabited::Yes;
 }
-}
+} // namespace
 
 TypeId TypeSimplifier::intersectFromParts(TypeIds parts)
 {
@@ -811,7 +813,6 @@ TypeId TypeSimplifier::intersectFromParts(TypeIds parts)
         ib.add(ty);
 
     return ib.build();
-
 }
 
 TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
@@ -887,7 +888,6 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
     }
 
     return ub.build();
-
 }
 
 TypeId TypeSimplifier::intersectNegatedUnion(TypeId left, TypeId right)
@@ -1636,7 +1636,7 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
                     // a single property.
                     //
                     // We probably could do something quicker here for disjoint,
-                    // given that the union should just mint a new union type 
+                    // given that the union should just mint a new union type
                     // anyhow.
                     TableType result;
                     result.state = TableState::Sealed;
