@@ -195,12 +195,13 @@ struct SubtypingEnvironment
      */
     DenseHashMap<TypeId, TypeId> substitutions{nullptr};
 
-
     // We use this cache to track pairs of subtypes that we tried to subtype, and found them to be in the seen set at the time.
     // In those situations, we return True, but mark the result as not cacheable, because we don't want to cache broader results which
     // led to the seen pair. However, those results were previously being cache in the ephemeralCache, and we still want to cache them somewhere
     // for performance reasons.
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> seenSetCache{{}};
+
+    int iterationCount = 0;
 };
 
 struct Subtyping
@@ -248,12 +249,7 @@ struct Subtyping
     // TODO recursion limits
 
     SubtypingResult isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope);
-    SubtypingResult isSubtype(
-        TypePackId subTp,
-        TypePackId superTp,
-        NotNull<Scope> scope,
-        const std::vector<TypeId>& bindableGenerics
-    );
+    SubtypingResult isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, const std::vector<TypeId>& bindableGenerics);
     SubtypingResult isSubtype(
         TypePackId subTp,
         TypePackId superTp,
@@ -334,12 +330,7 @@ private:
         const FunctionType* superFunction,
         NotNull<Scope> scope
     );
-    SubtypingResult isCovariantWith(
-        SubtypingEnvironment& env,
-        const MetatableType* subMt,
-        const PrimitiveType* superPrim,
-        NotNull<Scope> scope
-    );
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const PrimitiveType* superPrim, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const PrimitiveType* superPrim, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const PrimitiveType* subPrim, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const SingletonType* subSingleton, const TableType* superTable, NotNull<Scope> scope);
@@ -442,15 +433,53 @@ private:
     );
 
     // Markers to help overload selection.
-    struct Anything{};
-    struct Nothing{};
+    struct Anything
+    {
+    };
+    struct Nothing
+    {
+    };
 
-    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const VariadicTypePack* sub, TypePackId superTp, const VariadicTypePack* super);
-    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, TypePackId superTp, const GenericTypePack* super);
-    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const VariadicTypePack* sub, TypePackId superTp, const GenericTypePack* super);
-    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, TypePackId superTp, const VariadicTypePack* super);
+    SubtypingResult isTailCovariantWithTail(
+        SubtypingEnvironment& env,
+        NotNull<Scope> scope,
+        TypePackId subTp,
+        const VariadicTypePack* sub,
+        TypePackId superTp,
+        const VariadicTypePack* super
+    );
+    SubtypingResult isTailCovariantWithTail(
+        SubtypingEnvironment& env,
+        NotNull<Scope> scope,
+        TypePackId subTp,
+        const GenericTypePack* sub,
+        TypePackId superTp,
+        const GenericTypePack* super
+    );
+    SubtypingResult isTailCovariantWithTail(
+        SubtypingEnvironment& env,
+        NotNull<Scope> scope,
+        TypePackId subTp,
+        const VariadicTypePack* sub,
+        TypePackId superTp,
+        const GenericTypePack* super
+    );
+    SubtypingResult isTailCovariantWithTail(
+        SubtypingEnvironment& env,
+        NotNull<Scope> scope,
+        TypePackId subTp,
+        const GenericTypePack* sub,
+        TypePackId superTp,
+        const VariadicTypePack* super
+    );
     SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, Nothing);
-    SubtypingResult isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, Nothing, TypePackId superTp, const GenericTypePack* super);
+    SubtypingResult isTailCovariantWithTail(
+        SubtypingEnvironment& env,
+        NotNull<Scope> scope,
+        Nothing,
+        TypePackId superTp,
+        const GenericTypePack* super
+    );
 
     bool bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId superTy) const;
 

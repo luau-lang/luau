@@ -1936,6 +1936,10 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
         end
     )");
 
+    // We have one error here for the parameter being reduced to never, and
+    // then three bits of extra information indicating the three upper
+    // bound contributors: `{ x: number }`, `{ x: string }`, and `{ x: a }`
+    // from the function inference.
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
     CHECK_EQ("(never) -> { x: number } & { x: string }", toString(requireType("f")));

@@ -11,7 +11,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAG(LuauCodegenLinearVecEq)
+LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 
 namespace Luau
 {
@@ -584,7 +584,7 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
 
 static HostMetamethod opcodeToHostMetamethod(LuauOpcode op)
 {
-    switch (op)
+    switch (int(op))
     {
     case LOP_ADD:
         return HostMetamethod::Add;
@@ -1352,7 +1352,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_JUMPIFNOTLE:
             case LOP_JUMPIFNOTLT:
             {
-                if (FFlag::LuauCodegenLinearVecEq)
+                if (FFlag::LuauCodegenLinearNonNumComp)
                 {
                     int ra = LUAU_INSN_A(*pc);
                     int rb = pc[1];

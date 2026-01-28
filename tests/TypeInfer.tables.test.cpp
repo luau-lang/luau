@@ -524,8 +524,8 @@ TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_3")
     {
         // This does not error because `baz` in the method is being inferred as having the type `unknown`, which is an optional type.
         // Specifically, `T` has the type `{ bar: string, method: ... }` and `method` has the type `function({ read baz: unknown }) -> ()`.
-        // In this case, `T` functions as a valid argument type for `method` because it will always read `baz` as `nil` which is a subtype of `unknown.`
-        // This is safe because in order to do anything with that value, the function body _must_ do some kind of conditional testing.
+        // In this case, `T` functions as a valid argument type for `method` because it will always read `baz` as `nil` which is a subtype of
+        // `unknown.` This is safe because in order to do anything with that value, the function body _must_ do some kind of conditional testing.
         LUAU_REQUIRE_NO_ERRORS(result);
     }
     else
@@ -4236,7 +4236,6 @@ TEST_CASE_FIXTURE(Fixture, "when_augmenting_an_unsealed_table_with_an_indexer_ap
         LUAU_REQUIRE_NO_ERRORS(result);
         CHECK("string" == toString(tt->indexer->indexType));
     }
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_extend_unsealed_tables_in_rvalue_position")
@@ -6489,7 +6488,7 @@ TEST_CASE_FIXTURE(Fixture, "table_with_intersection_containing_lambda")
         }
     )"));
 
-    CHECK_EQ("{ foo: string }", toString(requireTypeAtPosition({10, 28}), { /* exhaustive */ true}));
+    CHECK_EQ("{ foo: string }", toString(requireTypeAtPosition({10, 28}), {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_174304_allow_getmetatable_error_and_table")
@@ -6578,7 +6577,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1684")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
-    for (const auto& e: result.errors)
+    for (const auto& e : result.errors)
         CHECK(get<TypeMismatch>(e));
 }
 
@@ -6605,7 +6604,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2094_push_type_constraint_should_always_
             }
         end
     )"));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_access_indexer_via_name_expr")
@@ -6681,6 +6679,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_allow_laundering")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
+{
+    CheckResult result = check(R"(
+        local function makeTable(x): { x: number, y: string }
+            return { x = x, y = true }
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("(number) -> { x: number, y: string }", toString(requireType("makeTable")));
 }
 
 

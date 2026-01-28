@@ -41,7 +41,7 @@ inline constexpr RegisterX64 rBase = r14;          // StkId base
 inline constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
 inline constexpr RegisterX64 rConstants = r12;     // TValue* k
 
-inline constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
+inline constexpr unsigned kExtraLocals = 3;            // Number of 8 byte slots available for specialized local variables specified below
 inline constexpr unsigned kSpillSlots_DEPRECATED = 13; // Number of 8 byte slots available for register allocator to spill data into
 inline constexpr unsigned kSpillSlots_NEW = 12;        // TODO: after removal of FFlagLuauCodegenExtraSpills, re-adjust kExtraLocals/kSpillSlots
 static_assert((kExtraLocals + kSpillSlots_DEPRECATED) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");

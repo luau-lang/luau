@@ -799,7 +799,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
-    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, { /* exhaustive */ true}));
+    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

@@ -413,4 +413,11 @@ struct ContainsAnyGeneric final : public TypeOnceVisitor
 bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics);
 bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics);
 
+/**
+ * @return Whether `ty` is a type that cannot be unified with another type,
+ *         such as a blocked type, pending expansion type, or an unsolved
+ *         type function.
+ */
+bool isBlocked(TypeId ty);
+
 } // namespace Luau

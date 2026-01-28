@@ -336,19 +336,13 @@ struct BidirectionalTypePusher
                     auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
                     for (size_t argIndex = 0; argIndex < limit; argIndex++)
                     {
-                        if (
-                            !exprLambda->args.data[argIndex]->annotation &&
-                            get<FreeType>(follow(lambdaArgTys[argIndex])) &&
-                            !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks})
-                        )
+                        if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])) &&
+                            !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks}))
                             solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
                     }
 
-                    if (
-                        !exprLambda->returnAnnotation &&
-                        get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
-                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks})
-                    )
+                    if (!exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
+                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
                         solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
                 }
             }
