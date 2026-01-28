@@ -4064,8 +4064,7 @@ AstExpr* Parser::parseInterpString()
         {
             AstArray<AstArray<char>> stringsArray = copy(strings);
             AstArray<AstExpr*> exprs = copy(expressions);
-            AstExprInterpString* node =
-                allocator.alloc<AstExprInterpString>(Location{startLocation, lexer.previousLocation()}, stringsArray, exprs);
+            AstExprInterpString* node = allocator.alloc<AstExprInterpString>(Location{startLocation, lexer.previousLocation()}, stringsArray, exprs);
             if (options.storeCstData)
                 cstNodeMap[node] = allocator.alloc<CstExprInterpString>(copy(sourceStrings), copy(stringPositions));
             if (auto top = lexer.peekBraceStackTop())

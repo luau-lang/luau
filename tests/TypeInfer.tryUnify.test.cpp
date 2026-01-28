@@ -103,7 +103,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     state.log.commit();
 
-    CHECK(follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) == follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED()));
+    CHECK(
+        follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) ==
+        follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED())
+    );
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
@@ -133,7 +136,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
     CHECK(state.failure);
     CHECK_EQ(1, state.errors.size());
 
-    CHECK(follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) != follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED()));
+    CHECK(
+        follow(getMutable<TableType>(&tableOne)->props["foo"].type_DEPRECATED()) !=
+        follow(getMutable<TableType>(&tableTwo)->props["foo"].type_DEPRECATED())
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "uninhabited_intersection_sub_never")

@@ -1950,10 +1950,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_any_should_not_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         local function foo(): any
@@ -1968,10 +1965,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_any_should_not_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_check_should_not_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         local function maybeFreeze(t: any)
@@ -1986,10 +1980,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_check_should_not_erro
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_args")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         table.freeze()
@@ -2001,10 +1992,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_args")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_pack_should_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         table.freeze({x = 5}, {y = "hello"})
@@ -2016,10 +2004,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_pack_should_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_any_should_not_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         local function bar(): ...any
@@ -2034,10 +2019,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_any_should_not_er
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_non_error_suppressing_should_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         local function bar(): ...string
@@ -2079,10 +2061,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_return_to_single_parameter_function
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_generic_pack")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         local function foo<T...>(...: T...)
@@ -2100,10 +2079,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_generic_pack")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauTableFreezeCheckIsSubtype, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
 
     CheckResult result = check(R"(
         local function foo(f: () -> ())

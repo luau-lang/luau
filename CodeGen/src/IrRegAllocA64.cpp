@@ -377,13 +377,8 @@ void IrRegAllocA64::freeLastUseRegs(const IrInst& inst, uint32_t index)
             freeLastUseReg(function.instructions[op.index], index);
     };
 
-    checkOp(inst.a);
-    checkOp(inst.b);
-    checkOp(inst.c);
-    checkOp(inst.d);
-    checkOp(inst.e);
-    checkOp(inst.f);
-    checkOp(inst.g);
+    for (const IrOp& op : inst.ops)
+        checkOp(op);
 }
 
 void IrRegAllocA64::freeTemp(RegisterA64 reg)

@@ -1273,9 +1273,9 @@ void checkNonStrict(
             {
                 return get<UnknownRequire>(err) != nullptr;
             }
-            ),
+        ),
         module->errors.end()
-        );
+    );
 
     freeze(module->interfaceTypes);
 }

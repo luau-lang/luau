@@ -1596,13 +1596,7 @@ ModulePtr check(
                 // fallthrough intentional
             case Mode::Strict:
                 Luau::check(
-                    builtinTypes,
-                    NotNull{&typeFunctionRuntime},
-                    NotNull{&unifierState},
-                    NotNull{&limits},
-                    logger.get(),
-                    sourceModule,
-                    module.get()
+                    builtinTypes, NotNull{&typeFunctionRuntime}, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, module.get()
                 );
                 break;
             case Mode::NoCheck:

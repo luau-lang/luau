@@ -287,13 +287,8 @@ void visitArguments(IrInst& inst, F&& func)
     if (isPseudo(inst.cmd))
         return;
 
-    func(inst.a);
-    func(inst.b);
-    func(inst.c);
-    func(inst.d);
-    func(inst.e);
-    func(inst.f);
-    func(inst.g);
+    for (auto& op : inst.ops)
+        func(op);
 }
 template<typename F>
 bool anyArgumentMatch(IrInst& inst, F&& func)
@@ -301,7 +296,10 @@ bool anyArgumentMatch(IrInst& inst, F&& func)
     if (isPseudo(inst.cmd))
         return false;
 
-    return func(inst.a) || func(inst.b) || func(inst.c) || func(inst.d) || func(inst.e) || func(inst.f) || func(inst.g);
+    for (auto& op : inst.ops)
+        if (func(op))
+            return true;
+    return false;
 }
 
 bool isGCO(uint8_t tag);
@@ -309,6 +307,9 @@ bool isGCO(uint8_t tag);
 // Optional bit has to be cleared at call site, otherwise, this will return 'false' for 'userdata?'
 bool isUserdataBytecodeType(uint8_t ty);
 bool isCustomUserdataBytecodeType(uint8_t ty);
+
+// Check that 'ty' is 'expected' or 'any'
+bool isExpectedOrUnknownBytecodeType(uint8_t ty, LuauBytecodeType expected);
 
 HostMetamethod tmToHostMetamethod(int tm);
 

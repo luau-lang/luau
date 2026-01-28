@@ -240,4 +240,4 @@ bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs)
     return false;
 }
 
-}
+} // namespace Luau
